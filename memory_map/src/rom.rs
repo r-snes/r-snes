@@ -4,6 +4,7 @@ use std::path::Path;
 
 pub struct Rom {
     pub data: Vec<u8>,
+    pub map: RomMapping,
 }
 
 impl Rom {
@@ -28,7 +29,10 @@ impl Rom {
             println!("---------------------------\n");
         }
 
-        Ok(Rom { data: rom_data })
+        Ok(Rom {
+            data: rom_data,
+            map: RomMapping::Unknown,
+        })
     }
 
     fn print_header_info(header: &[u8]) {
@@ -63,6 +67,28 @@ impl Rom {
 
     pub fn read_byte(&self, offset: usize) -> Option<u8> {
         self.data.get(offset).copied()
+    }
+
+    pub fn print_rom_header(&self) {
+        let header_offset = match self.map {
+            RomMapping::LoRom => 0x7FC0,
+            RomMapping::HiRom => 0xFFC0,
+            RomMapping::Unknown => {
+                println!("Cannot print ROM header: unknown ROM mapping.");
+                return;
+            }
+        };
+
+        if self.data.len() < header_offset + 64 {
+            println!("ROM too small to contain a valid header.");
+            return;
+        }
+
+        let header = &self.data[header_offset..header_offset + 64];
+
+        println!("\n--- ROM Header at offset 0x{:06X} ---", header_offset);
+        Self::print_header_info(header);
+        println!("-------------------------------------\n");
     }
 }
 
