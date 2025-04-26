@@ -32,31 +32,39 @@ mod tests {
     #[test]
     fn test_dsp_step_function() {
         let mut dsp = Dsp::new();
-
+    
         // Set up the registers for a typical DSP update cycle
         dsp.set_register_select(0x4C);
         dsp.write_selected_register(0x01); // Voice 0 key on
-
+    
+        // Set the pitch (Low byte first, then high byte)
         dsp.set_register_select(0x2C);
         dsp.write_selected_register(0x30); // Low byte of pitch
-
+    
         dsp.set_register_select(0x2D);
         dsp.write_selected_register(0x12); // High byte of pitch
-
-        dsp.set_register_select(0x4C);
+    
+        // Set the left volume for Voice 0
+        dsp.set_register_select(0x0C); // Correct register for volume left
         dsp.write_selected_register(0x50); // Left volume
-
-        dsp.set_register_select(0x5C);
+    
+        // Set the right volume for Voice 0
+        dsp.set_register_select(0x1C); // Correct register for volume right
         dsp.write_selected_register(0x60); // Right volume
-
-        dsp.step(); // Call the DSP step function
-
+    
+        // Call the DSP step function to simulate the update
+        dsp.step();
+    
         // Assertions to check if the state has been updated correctly
         assert_eq!(dsp.voice0_pitch, 0x1230, "Voice 0 pitch is incorrect");
         assert_eq!(dsp.voice0_volume_left, 0x50, "Voice 0 left volume is incorrect");
         assert_eq!(dsp.voice0_volume_right, 0x60, "Voice 0 right volume is incorrect");
+        assert_eq!(dsp.voice0_key_on, true, "Voice 0 key on state is incorrect");
+    
+        // If you have other updated attributes in your DSP, make sure to add them here
     }
-
+    
+    
     // Test the Spc700 functionality (assuming a similar structure exists for Spc700)
     #[test]
     fn test_spc700_memory_read_and_write() {
