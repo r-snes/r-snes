@@ -1,25 +1,20 @@
 use std::io;
 
 mod rom;
-use rom::Rom;
-use rom::RomMapping;
-use rom::detect_rom_mapping;
+use rom::{Rom, RomError, RomMapping};
 
-fn main() -> io::Result<()> {
+fn main() {
+    if let Err(e) = run() {
+        eprintln!("Error: {}", e);
+    }
+}
+
+fn run() -> Result<(), RomError> {
     let mut rom = Rom::load_from_file("super_mario_world.smc")?;
-    // let mut rom = Rom::load_from_file("secret_of_mana.sfc")?;
-
     println!("ROM loaded successfully!");
     println!("ROM size: {} bytes", rom.size());
 
-    // println!("First 16 bytes of ROM:");
-    // for i in 0..16 {
-    //     if let Some(byte) = rom.read_byte(i) {
-    //         print!("{:02X} ", byte);
-    //     }
-    // }
-    // println!();
-    rom.map = detect_rom_mapping(&rom.data);
+    rom.map = RomMapping::detect_rom_mapping(&rom.data);
     match rom.map {
         RomMapping::LoRom => println!("Detected: LoROM"),
         RomMapping::HiRom => println!("Detected: HiROM"),
