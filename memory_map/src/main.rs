@@ -6,8 +6,8 @@ use rom::RomMapping;
 use rom::detect_rom_mapping;
 
 fn main() -> io::Result<()> {
-    // let rom = Rom::load_from_file("super_mario_world.smc")?;
-    let rom = Rom::load_from_file("secret_of_mana.sfc")?;
+    let mut rom = Rom::load_from_file("super_mario_world.smc")?;
+    // let mut rom = Rom::load_from_file("secret_of_mana.sfc")?;
 
     println!("ROM loaded successfully!");
     println!("ROM size: {} bytes", rom.size());
@@ -19,12 +19,13 @@ fn main() -> io::Result<()> {
     //     }
     // }
     // println!();
-
-    match detect_rom_mapping(&rom.data) {
+    rom.map = detect_rom_mapping(&rom.data);
+    match rom.map {
         RomMapping::LoRom => println!("Detected: LoROM"),
         RomMapping::HiRom => println!("Detected: HiROM"),
         RomMapping::Unknown => println!("Detected: Unknown mapping"),
     }
+    rom.print_rom_header();
 
     Ok(())
 }
