@@ -1,6 +1,9 @@
 use std::fs::File;
-use std::io::{self, Read};
+use std::io::Read;
 use std::path::Path;
+
+use super::error::RomError;
+use super::mapping::RomMapping;
 
 pub struct Rom {
     pub data: Vec<u8>,
@@ -8,10 +11,14 @@ pub struct Rom {
 }
 
 impl Rom {
-    pub fn load_from_file<P: AsRef<Path>>(path: P) -> io::Result<Self> {
-        let mut file = File::open(path)?;
+    pub fn load_from_file<P: AsRef<Path>>(path: P) -> Result<Self, RomError> {
+        let mut file = File::open(path).map_err(RomError::IoError)?;
         let mut buffer = Vec::new();
-        file.read_to_end(&mut buffer)?;
+        file.read_to_end(&mut buffer).map_err(RomError::IoError)?;
+
+        if buffer.len() < 0x8000 {
+            return Err(RomError::FileTooSmall);
+        }
 
         // Check for 512-byte header
         let (rom_data, maybe_header) = if buffer.len() % 0x8000 == 512 {
@@ -90,60 +97,4 @@ impl Rom {
         Self::print_header_info(header);
         println!("-------------------------------------\n");
     }
-}
-
-pub enum RomMapping {
-    LoRom,
-    HiRom,
-    Unknown,
-}
-
-pub fn detect_rom_mapping(rom_data: &[u8]) -> RomMapping {
-    if rom_data.len() < 0x10000 {
-        return RomMapping::Unknown;
-    }
-
-    // Try LoROM header at 0x7FC0
-    let lorom_score = score_header(rom_data, 0x7FC0);
-    // Try HiROM header at 0xFFC0
-    let hirom_score = score_header(rom_data, 0xFFC0);
-
-    if lorom_score > hirom_score {
-        RomMapping::LoRom
-    } else if hirom_score > lorom_score {
-        RomMapping::HiRom
-    } else {
-        RomMapping::Unknown
-    }
-}
-
-fn score_header(rom_data: &[u8], header_offset: usize) -> u32 {
-    if header_offset + 0x20 > rom_data.len() {
-        return 0;
-    }
-
-    let mut score = 0;
-
-    // Title should be mostly ASCII
-    let title = &rom_data[header_offset..header_offset + 21];
-    if title
-        .iter()
-        .all(|&c| (c == 0x20) || (0x20..=0x7E).contains(&c))
-    {
-        score += 1;
-    }
-
-    // Checksum and complement
-    let checksum = read_u16(rom_data, header_offset + 0x1E);
-    let checksum_complement = read_u16(rom_data, header_offset + 0x1C);
-
-    if checksum != 0 && (checksum ^ checksum_complement) == 0xFFFF {
-        score += 2;
-    }
-
-    score
-}
-
-fn read_u16(data: &[u8], offset: usize) -> u16 {
-    (data[offset] as u16) | ((data[offset + 1] as u16) << 8)
 }
