@@ -1,3 +1,5 @@
+use crate::dsp::Dsp;
+
 pub struct Spc700 {
     // 8-bit registers
     pub a: u8,  // Accumulator
@@ -11,6 +13,8 @@ pub struct Spc700 {
 
     // 64 KB memory
     pub ram: [u8; 65536],
+
+    pub dsp: Dsp,
 }
 
 impl Spc700 {
@@ -23,6 +27,7 @@ impl Spc700 {
             pc: 0x0000,
             psw: 0b0000_0000,
             ram: [0; 65536],
+            dsp: Dsp::new(), // Initialize test DSP
         }
     }
 
@@ -44,7 +49,10 @@ impl Spc700 {
     }
 
     pub fn read_byte(&self, addr: u16) -> u8 {
-        self.ram[addr as usize]
+        match addr {
+            0xF3 => self.dsp.read_selected_register(),
+            _ => self.ram[addr as usize],
+        }
     }
 
     pub fn read_word(&self, addr: u16) -> u16 {
@@ -54,7 +62,11 @@ impl Spc700 {
     }
 
     pub fn write_byte(&mut self, addr: u16, value: u8) {
-        self.ram[addr as usize] = value;
+        match addr {
+            0xF2 => self.dsp.set_register_select(value),
+            0xF3 => self.dsp.write_selected_register(value),
+            _ => self.ram[addr as usize] = value,
+        }
     }
 
     pub fn execute(&mut self, opcode: u8) {
@@ -62,17 +74,17 @@ impl Spc700 {
             0x00 => { // NOP
                 // Do nothing
             }
-            0xE8 => { // MOV A 
+            0xE8 => { // MOV A, #imm
                 let imm = self.fetch_byte();
                 self.a = imm;
                 self.update_zero_neg_flags(self.a);
             }
-            0xE4 => { // MOV X
+            0xE4 => { // MOV X, #imm
                 let imm = self.fetch_byte();
                 self.x = imm;
                 self.update_zero_neg_flags(self.x);
             }
-            0xEC => { // MOV Y
+            0xEC => { // MOV Y, #imm
                 let imm = self.fetch_byte();
                 self.y = imm;
                 self.update_zero_neg_flags(self.y);
@@ -96,7 +108,7 @@ impl Spc700 {
                 self.pc = self.pc.wrapping_add(offset as u16);
             }
             _ => {
-                println!("Unknown opcode: 0x{:02X}", opcode);
+                println!("Unknown opcode: 0x{:02X} at PC 0x{:04X}", opcode, self.pc.wrapping_sub(1));
             }
         }
     }    
