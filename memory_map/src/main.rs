@@ -1,5 +1,6 @@
 use std::io;
 
+mod bus;
 mod rom;
 use rom::Rom;
 use rom::RomMapping;
