@@ -9,40 +9,8 @@ on:
       - 'ga-ignore-*'
 env:
   MIRROR_URL: "git@github.com:EpitechPromo2027/G-EIP-600-NAN-6-1-eip-florent.charpentier.git"
-  # EXECUTABLES: "rsnes"
 
 jobs:
-  # check_program_compilation:
-  #   runs-on: ubuntu-latest
-
-  #   steps:
-  #     - name: Checkout fetch
-  #       uses: actions/checkout@v4.2.2
-  #     - name: cargo build
-  #       timeout-minutes: 3
-  #       run: cargo build
-  #     - name: check execs
-  #       run: |
-  #         for executables in $(echo "${{ env.EXECUTABLES }}" | tr ',' ' '); do
-  #           if [ ! -x "${executables}" ]; then
-  #             echo "Executable ${executables} doesn't exist or isn't excutable."
-  #             exit 1
-  #           fi
-  #         done
-
-
-  # run_tests:
-  #   needs: [check_program_compilation]
-  #   runs-on: ubuntu-latest
-
-  #   steps:
-  #     - name: Checkout fetch
-  #       uses: actions/checkout@v4.2.2
-  #     - name: cargo test
-  #       timeout-minutes: 2
-  #       run: cargo test
-
-
   push_to_mirror:
     runs-on: ubuntu-latest
 
