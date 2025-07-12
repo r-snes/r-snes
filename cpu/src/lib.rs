@@ -1,4 +1,5 @@
-mod registers;
+pub mod registers;
+pub mod cpu;
 
 #[cfg(test)]
 mod tests {
@@ -8,6 +9,6 @@ mod tests {
 
     #[test]
     fn regs () {
-        let regs = Registers::default();
+        let _ = Registers::default();
     }
 }
