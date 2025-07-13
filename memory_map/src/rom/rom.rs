@@ -3,11 +3,11 @@ use std::io::Read;
 use std::path::Path;
 
 use super::error::RomError;
-use super::mapping::RomMapping;
+use super::mapping_mode::MappingMode;
 
 pub struct Rom {
     pub data: Vec<u8>,
-    pub map: RomMapping,
+    pub map: MappingMode,
 }
 
 impl Rom {
@@ -21,28 +21,48 @@ impl Rom {
         }
 
         // Check for 512-byte header
-        let (rom_data, maybe_header) = if buffer.len() % 0x8000 == 512 {
-            println!("512-byte header detected!");
-            let header = &buffer[..512];
-            (buffer[512..].to_vec(), Some(header))
+        let rom_data = if buffer.len() % 0x8000 == 512 {
+            buffer[512..].to_vec() // Remove useless "Copier" 512-byte header
         } else {
-            println!("No header detected.");
-            (buffer, None)
+            buffer.to_vec()
         };
 
-        if let Some(header) = maybe_header {
-            println!("\n--- Header Information ---");
-            Self::print_header_info(header);
-            println!("---------------------------\n");
-        }
+        // Check map mode
+        let map_mode = MappingMode::detect_rom_mapping(&rom_data);
 
         Ok(Rom {
             data: rom_data,
-            map: RomMapping::Unknown,
+            map: map_mode,
         })
     }
 
-    fn print_header_info(header: &[u8]) {
+    pub fn size(&self) -> usize {
+        self.data.len()
+    }
+
+    pub fn print_rom_header(&self) {
+        let header_offset = match self.map {
+            MappingMode::LoRom => 0x7FC0,
+            MappingMode::HiRom => 0xFFC0,
+            MappingMode::Unknown => {
+                println!("Cannot print ROM header: unknown ROM mapping.");
+                return;
+            }
+        };
+
+        if self.data.len() < header_offset + 64 {
+            println!("ROM too small to contain a valid header.");
+            return;
+        }
+
+        let header = &self.data[header_offset..header_offset + 64];
+
+        println!("\n--- ROM Header at offset 0x{:06X} ---", header_offset);
+        Self::print_header_bytes(header);
+        println!("-------------------------------------\n");
+    }
+
+    fn print_header_bytes(header: &[u8]) {
         let limit = 64.min(header.len());
 
         for (i, chunk) in header[..limit].chunks(16).enumerate() {
@@ -66,35 +86,5 @@ impl Rom {
             }
             println!();
         }
-    }
-
-    pub fn size(&self) -> usize {
-        self.data.len()
-    }
-
-    pub fn read_byte(&self, offset: usize) -> Option<u8> {
-        self.data.get(offset).copied()
-    }
-
-    pub fn print_rom_header(&self) {
-        let header_offset = match self.map {
-            RomMapping::LoRom => 0x7FC0,
-            RomMapping::HiRom => 0xFFC0,
-            RomMapping::Unknown => {
-                println!("Cannot print ROM header: unknown ROM mapping.");
-                return;
-            }
-        };
-
-        if self.data.len() < header_offset + 64 {
-            println!("ROM too small to contain a valid header.");
-            return;
-        }
-
-        let header = &self.data[header_offset..header_offset + 64];
-
-        println!("\n--- ROM Header at offset 0x{:06X} ---", header_offset);
-        Self::print_header_info(header);
-        println!("-------------------------------------\n");
     }
 }
