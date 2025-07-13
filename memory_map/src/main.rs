@@ -1,7 +1,6 @@
-use std::io;
-
+use std::env;
 mod rom;
-use rom::{Rom, RomError, RomMapping};
+use rom::{Rom, RomError};
 
 fn main() {
     if let Err(e) = run() {
@@ -10,16 +9,10 @@ fn main() {
 }
 
 fn run() -> Result<(), RomError> {
-    let mut rom = Rom::load_from_file("super_mario_world.smc")?;
-    println!("ROM loaded successfully!");
-    println!("ROM size: {} bytes", rom.size());
+    let args: Vec<String> = env::args().collect();
 
-    rom.map = RomMapping::detect_rom_mapping(&rom.data);
-    match rom.map {
-        RomMapping::LoRom => println!("Detected: LoROM"),
-        RomMapping::HiRom => println!("Detected: HiROM"),
-        RomMapping::Unknown => println!("Detected: Unknown mapping"),
-    }
+    let rom = Rom::load_from_file(&args[1])?;
+
     rom.print_rom_header();
 
     Ok(())
