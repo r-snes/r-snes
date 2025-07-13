@@ -1,13 +1,13 @@
-pub enum RomMapping {
+pub enum MappingMode {
     LoRom,
     HiRom,
     Unknown,
 }
 
-impl RomMapping {
-    pub fn detect_rom_mapping(rom_data: &[u8]) -> RomMapping {
+impl MappingMode {
+    pub fn detect_rom_mapping(rom_data: &[u8]) -> MappingMode {
         if rom_data.len() < 0x10000 {
-            return RomMapping::Unknown;
+            return MappingMode::Unknown;
         }
 
         // Try LoROM header at 0x7FC0
@@ -16,11 +16,11 @@ impl RomMapping {
         let hirom_score = Self::score_header(rom_data, 0xFFC0);
 
         if lorom_score > hirom_score {
-            RomMapping::LoRom
+            MappingMode::LoRom
         } else if hirom_score > lorom_score {
-            RomMapping::HiRom
+            MappingMode::HiRom
         } else {
-            RomMapping::Unknown
+            MappingMode::Unknown
         }
     }
 
