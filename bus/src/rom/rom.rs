@@ -1,3 +1,4 @@
+use crate::memory_region::MemoryRegion;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
@@ -8,6 +9,32 @@ use super::mapping_mode::MappingMode;
 pub struct Rom {
     pub data: Vec<u8>,
     pub map: MappingMode,
+}
+
+impl MemoryRegion for Rom {
+    fn read(&self, addr: u32) -> u8 {
+        let offset = match self.map {
+            MappingMode::HiRom => {
+                // HiROM maps banks fully, 64 KiB per bank
+                (addr & 0x3FFFFF) as usize
+            }
+            MappingMode::LoRom => {
+                // LoROM maps 32 KiB per bank, only $8000–$FFFF
+                let bank = (addr >> 16) & 0x7F;
+                let lo_offset = addr & 0x7FFF;
+                (bank * 0x8000 + lo_offset) as usize
+            }
+            MappingMode::Unknown => {
+                return 0xFF; // default open bus value for undefined map
+            }
+        };
+
+        self.data.get(offset).copied().unwrap_or(0xFF)
+    }
+
+    fn write(&mut self, _addr: u32, _value: u8) {
+        // ROM is read-only, ignore writes
+    }
 }
 
 impl Rom {
