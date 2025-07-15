@@ -1,6 +1,11 @@
-use std::env;
+mod bus;
+mod memory_region;
 mod rom;
+mod wram;
+
+use bus::Bus;
 use rom::{Rom, RomError};
+use std::{env, error::Error};
 
 fn main() {
     if let Err(e) = run() {
@@ -8,12 +13,12 @@ fn main() {
     }
 }
 
-fn run() -> Result<(), RomError> {
+fn run() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = env::args().collect();
 
-    let rom = Rom::load_from_file(&args[1])?;
+    let bus = Bus::new(&args[1])?;
 
-    rom.print_rom_header();
+    bus.rom.print_rom_header();
 
     Ok(())
 }
