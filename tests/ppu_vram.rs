@@ -1,4 +1,5 @@
-use rsnes::ppu::{PPU, VRAM_SIZE};
+use rsnes::ppu::{PPU};
+use rsnes::utils::{VRAM_SIZE};
 
 #[test] // Should return the value that was written at the address
 fn test_write_and_read_valid_addr() {

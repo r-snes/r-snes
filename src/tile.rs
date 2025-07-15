@@ -3,7 +3,7 @@ use image::{GenericImageView, Rgba, Pixel};
 pub const TILE_SIZE: u32 = 8;
 
 pub fn load_and_split_image(image_path: &str) -> Vec<Vec<Rgba<u8>>> {
-    let img = image::open(image_path).expect("Failed to open image");
+    let img = image::open(image_path).expect("[ERR::ImageLoad] Failed to load image file.");
     let (width, height) = img.dimensions();
     let mut tiles = Vec::new();
 

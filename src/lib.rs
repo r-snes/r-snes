@@ -1,2 +1,3 @@
-pub mod ppu;
+pub mod utils;
 pub mod tile;
+pub mod ppu;

@@ -1,5 +1,6 @@
 use image::{Rgba, ImageBuffer};
-use rsnes::tile::{load_and_split_image, TILE_SIZE};
+use rsnes::tile::{load_and_split_image}; // le soucis c'est que si on conserve ce système pour la vram, ça bouscule tout le fonctionnement derrière
+use rsnes::utils::{TILE_SIZE};
 
 use std::path::Path;
 
