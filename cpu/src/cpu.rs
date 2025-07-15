@@ -23,7 +23,7 @@ impl CPU {
     pub fn inx(&mut self) -> i32 {
         self.registers.X = self.registers.X.wrapping_add(1);
         self.registers.P.Z = self.registers.X == 0;
-        self.registers.P.Z = self.registers.X > 0x7fff;
+        self.registers.P.N = self.registers.X > 0x7fff;
 
         2
     }
