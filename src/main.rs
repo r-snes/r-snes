@@ -1,7 +1,4 @@
-fn main() {
-    println!("{}", add(1, 2));
-    println!("Hello, world!");
-}
+fn main() {}
 
 fn add(nb1: u16, nb2: u16) -> u16 {
     nb1 + nb2
