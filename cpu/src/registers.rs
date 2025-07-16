@@ -51,10 +51,23 @@ pub struct RegisterP {
     /// IRQ Disable flag
     pub I: bool,
 
-    /// Memory/Accumulator flag
+    /// Memory/Accumulator flag: Controls the width of the A register
+    ///
+    /// When set to 0, the accumulator register (A) is 16 bits wide \
+    /// When set to 1, the accumulator register (A) is 8 bits wide
+    ///
+    /// Always set to 1 in emulation mode, reset to 1 when switching to native mode
     pub M: bool,
 
-    /// Index flag
+    /// Index flag: Controls the width of the index registers X and Y
+    ///
+    /// When set to 0, both X and Y are 16 bits wide \
+    /// When set to 1, both X and Y are 8 bits wide
+    ///
+    /// When switching from 0 to 1, the high byte of both registers resets to 0
+    ///
+    /// Only exists in native mode (E=1), replaced by the B flag in emulation mode.\
+    /// Reset to 1 when switching to native mode
     pub X: bool,
 
     /// Emulation flag: whether the CPU is in 8-bit compatibility mode
