@@ -18,10 +18,9 @@ fn main() {
 
     let mut window = create_window();
 
-    ppu.update_framebuffer(tiles_per_row, tiles.len());
-
     // hard-coded display => to be removed (but ok for pr #13)
     while window.is_open() && !window.is_key_down(Key::Escape) {
+        ppu.render(tiles_per_row);
         update_window(&mut window, &ppu.framebuffer);
     }
 }

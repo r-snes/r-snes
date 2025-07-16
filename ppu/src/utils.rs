@@ -31,16 +31,23 @@ pub fn update_window(window: &mut Window, framebuffer: &Vec<u32>) {
         .expect("[ERR::Render] Framebuffer refused to cooperate.");
 }
 
-pub fn render_tile_from_vram(ppu: &mut PPU, tile_index: usize, tile_x: usize, tile_y: usize) {
-    let tile_pixels = get_tile_from_vram(ppu, tile_index);
+pub fn render_scanline(ppu: &mut PPU, y: usize, tiles_per_row: usize) {
+    if y >= HEIGHT {
+        return;
+    }
 
-    for y in 0..TILE_SIZE {
-        for x in 0..TILE_SIZE {
-            let px = tile_x * TILE_SIZE + x;
-            let py = tile_y * TILE_SIZE + y;
-            if px < WIDTH && py < HEIGHT {
-                let color = tile_pixels[y * TILE_SIZE + x];
-                ppu.framebuffer[py * WIDTH + px] = color;
+    for x in 0..tiles_per_row {
+        let tile_index = (y / TILE_SIZE) * tiles_per_row + x;
+
+        let tile_pixels = get_tile_from_vram(ppu, tile_index);
+
+        let tile_line = y % TILE_SIZE;
+
+        for px in 0..TILE_SIZE {
+            let screen_x = x * TILE_SIZE + px;
+            if screen_x < WIDTH {
+                let color = tile_pixels[tile_line * TILE_SIZE + px];
+                ppu.framebuffer[y * WIDTH + screen_x] = color;
             }
         }
     }

@@ -1,5 +1,4 @@
-use crate::utils::render_tile_from_vram;
-use crate::utils::{WIDTH, HEIGHT, VRAM_SIZE};
+use crate::utils::{render_scanline, WIDTH, HEIGHT, VRAM_SIZE};
 
 pub struct PPU {
     pub framebuffer: Vec<u32>,
@@ -32,12 +31,9 @@ impl PPU {
         return self.vram[addr];
     }
 
-    pub fn update_framebuffer(&mut self, tiles_per_row: usize, total_tiles: usize) {
-        self.framebuffer.fill(0);
-        for i in 0..total_tiles {
-            let x = i % tiles_per_row;
-            let y = i / tiles_per_row;
-            render_tile_from_vram(self, i, x, y);
+    pub fn render(&mut self, tiles_per_row: usize) {
+        for y in 0..HEIGHT {
+            render_scanline(self, y, tiles_per_row);
         }
     }
 }
