@@ -33,6 +33,8 @@ jobs:
     steps:
       - name: Checkout fetch
         uses: actions/checkout@v4.2.2
+      - name: Install openssl dev lib (necessary for cargo-tarpaulin)
+        run: apt install libssl-dev
       - name: Install cargo tarpaulin
         timeout-minutes: 5
         run: cargo install cargo-tarpaulin
