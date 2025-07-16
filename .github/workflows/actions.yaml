@@ -38,7 +38,7 @@ jobs:
         run: cargo install cargo-tarpaulin
       - name: Check for failing unit test and coverage < COVERAGE_MINIMUM_PERCENTAGE
         timeout-minutes: 2
-        run: cargo tarpaulin --fail-under ${{ COVERAGE_MINIMUM_PERCENTAGE }}
+        run: cargo tarpaulin --fail-under $COVERAGE_MINIMUM_PERCENTAGE
 
   push_to_mirror:
     needs: [run_tests]
@@ -53,7 +53,5 @@ jobs:
 
       - uses: pixta-dev/repository-mirroring-action@v1
         with:
-          target_repo_url:
-            ${{ env.MIRROR_URL}}
-          ssh_private_key:
-            ${{ secrets.GIT_SSH_PRIVATE_KEY }}
+          target_repo_url: ${{ env.MIRROR_URL}}
+          ssh_private_key: ${{ secrets.GIT_SSH_PRIVATE_KEY }}
