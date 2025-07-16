@@ -10,6 +10,7 @@ on:
 env:
   MIRROR_URL: "git@github.com:EpitechPromo2027/G-EIP-600-NAN-6-1-eip-florent.charpentier.git"
   EXECUTABLES: "target/debug/r-snes"
+  COVERAGE_MINIMUM_PERCENTAGE: 80
 
 jobs:
   check_program_compilation:
@@ -21,7 +22,7 @@ jobs:
       - name: Checkout fetch
         uses: actions/checkout@v4.2.2
       - name: cargo build
-        timeout-minutes: 3
+        timeout-minutes: 2
         run: cargo build
       - name: check execs
         if: ${{ false }} # to disable step temporarly
@@ -42,9 +43,12 @@ jobs:
     steps:
       - name: Checkout fetch
         uses: actions/checkout@v4.2.2
-      - name: cargo test
+      - name: Install cargo tarpaulin
+        timeout-minutes: 5
+        run: cargo install cargo-tarpaulin
+      - name: Check for failing unit test and coverage < COVERAGE_MINIMUM_PERCENTAGE
         timeout-minutes: 2
-        run: cargo test
+        run: cargo tarpaulin --fail-under ${{ COVERAGE_MINIMUM_PERCENTAGE }}
 
   push_to_mirror:
     needs: [run_tests]
