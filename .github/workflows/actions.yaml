@@ -9,11 +9,44 @@ on:
       - 'ga-ignore-*'
 env:
   MIRROR_URL: "git@github.com:EpitechPromo2027/G-EIP-600-NAN-6-1-eip-florent.charpentier.git"
+  COVERAGE_MINIMUM_PERCENTAGE: 80
 
 jobs:
-  push_to_mirror:
+  check_program_compilation:
+    runs-on: ubuntu-latest
+    container:
+      image: rust:1.86.0-slim-bookworm
+
+    steps:
+      - name: Checkout fetch
+        uses: actions/checkout@v4.2.2
+      - name: Check program compilation
+        timeout-minutes: 2
+        run: cargo build
+
+  run_tests:
+    needs: [check_program_compilation]
     runs-on: ubuntu-latest
 
+    steps:
+      - name: Checkout fetch
+        uses: actions/checkout@v4.2.2
+      - name: Update apt repositories
+        run: sudo apt update
+      - name: Install cargo
+        run: sudo apt install cargo -y 
+      - name: Install openssl dev lib (necessary for cargo-tarpaulin)
+        run: sudo apt install libssl-dev pkg-config -y
+      - name: Install cargo tarpaulin
+        timeout-minutes: 5
+        run: cargo install cargo-tarpaulin
+      - name: Check for failing unit test and coverage < COVERAGE_MINIMUM_PERCENTAGE
+        timeout-minutes: 2
+        run: cargo tarpaulin --fail-under $COVERAGE_MINIMUM_PERCENTAGE
+      
+  push_to_mirror:
+    needs: [run_tests]
+    runs-on: ubuntu-latest
     if: ${{ github.event_name == 'push' }}
 
     steps:
@@ -24,7 +57,5 @@ jobs:
 
       - uses: pixta-dev/repository-mirroring-action@v1
         with:
-          target_repo_url:
-            ${{ env.MIRROR_URL}}
-          ssh_private_key:
-            ${{ secrets.GIT_SSH_PRIVATE_KEY }}
+          target_repo_url: ${{ env.MIRROR_URL }}
+          ssh_private_key: ${{ secrets.GIT_SSH_PRIVATE_KEY }}
