@@ -1,5 +1,5 @@
 use image::{Rgba, ImageBuffer};
-use rsnes::tile::{load_and_split_image}; // le soucis c'est que si on conserve ce système pour la vram, ça bouscule tout le fonctionnement derrière
+use rsnes::tile::{load_and_split_image};
 use rsnes::utils::{TILE_SIZE};
 
 use std::path::Path;
@@ -34,7 +34,7 @@ fn test_tile_count_and_size() {
         create_test_image(path);
     }
 
-    let tiles = load_and_split_image(path);
+    let (tiles, _) = load_and_split_image(path);
 
     assert_eq!(tiles.len(), 4);
 
@@ -51,7 +51,7 @@ fn test_tile_pixel_values() {
         create_test_image(path);
     }
 
-    let tiles = load_and_split_image(path);
+    let (tiles, _)  = load_and_split_image(path);
 
     // tile 0 : red
     for px in &tiles[0] {
@@ -93,9 +93,13 @@ fn test_image_smaller_than_tile() {
     }
     img.save(path).unwrap();
 
-    let tiles = load_and_split_image(path);
+    let (tiles, width)  = load_and_split_image(path);
+    println!("Image width: {}", width);
+    println!("Tile size: {}", TILE_SIZE);
+    println!("Number of tiles: {}", tiles.len());
     assert_eq!(tiles.len(), 1); // Should still create one tile
     assert_eq!(tiles[0].len(), 16); // 4x4 = 16 pixels, rest is missing
+
 }
 
 #[test] // Should correctly handle images whose dimensions are not divisible by TILE_SIZE
@@ -109,7 +113,7 @@ fn test_non_divisible_dimensions() {
     }
     img.save(path).unwrap();
 
-    let tiles = load_and_split_image(path);
+    let (tiles, _)  = load_and_split_image(path);
     assert_eq!(tiles.len(), 4);
     assert!(tiles[0].len() <= (TILE_SIZE * TILE_SIZE) as usize);
 }
@@ -127,7 +131,7 @@ fn test_transparent_pixels() {
 
     img.save(path).unwrap();
 
-    let tiles = load_and_split_image(path);
+    let (tiles, _)  = load_and_split_image(path);
     assert_eq!(tiles.len(), 1);
 
     for px in &tiles[0] {
@@ -151,7 +155,7 @@ fn test_2_horizontal_tiles() {
 
     img.save(path).unwrap();
 
-    let tiles = load_and_split_image(path);
+    let (tiles, _)  = load_and_split_image(path);
     assert_eq!(tiles.len(), 2);
 
     // Check tile 0 (red)
