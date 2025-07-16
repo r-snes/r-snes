@@ -27,6 +27,30 @@ impl CPU {
 
         2
     }
+
+    /// `CLC` instruction: clear carry flag
+    pub fn clc(&mut self) -> i32 {
+        self.registers.P.C = false;
+        2
+    }
+
+    /// `CLD` instruction: clear decimal flag
+    pub fn cld(&mut self) -> i32 {
+        self.registers.P.D = false;
+        2
+    }
+
+    /// `CLI` instruction: clear interrupt flag
+    pub fn cli(&mut self) -> i32 {
+        self.registers.P.I = false;
+        2
+    }
+
+    /// `CLV` instruction: clear overflow flag
+    pub fn clv(&mut self) -> i32 {
+        self.registers.P.V = false;
+        2
+    }
 }
 
 #[cfg(test)]
