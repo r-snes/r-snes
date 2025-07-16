@@ -9,7 +9,6 @@ on:
       - 'ga-ignore-*'
 env:
   MIRROR_URL: "git@github.com:EpitechPromo2027/G-EIP-600-NAN-6-1-eip-florent.charpentier.git"
-  EXECUTABLES: "target/debug/r-snes"
   COVERAGE_MINIMUM_PERCENTAGE: 80
 
 jobs:
@@ -21,18 +20,9 @@ jobs:
     steps:
       - name: Checkout fetch
         uses: actions/checkout@v4.2.2
-      - name: cargo build
+      - name: Check program compilation
         timeout-minutes: 2
         run: cargo build
-      - name: check execs
-        if: ${{ false }} # to disable step temporarly
-        run: |
-          for executables in $(echo "${{ env.EXECUTABLES }}" | tr ',' ' '); do
-            if [ ! -x "${executables}" ]; then
-              echo "Executable ${executables} doesn't exist or isn't excutable."
-              exit 1
-            fi
-          done
 
   run_tests:
     needs: [check_program_compilation]
