@@ -20,9 +20,11 @@ jobs:
     steps:
       - name: Checkout fetch
         uses: actions/checkout@v4.2.2
+      - name: Install g++
+        run: apt-get update && apt-get install -y g++
       - name: Check program compilation
         timeout-minutes: 2
-        run: cargo build
+        run: cargo build --workspace
 
   run_tests:
     needs: [check_program_compilation]
@@ -34,7 +36,7 @@ jobs:
       - name: Update apt repositories
         run: sudo apt update
       - name: Install cargo
-        run: sudo apt install cargo -y 
+        run: sudo apt install cargo -y
       - name: Install openssl dev lib (necessary for cargo-tarpaulin)
         run: sudo apt install libssl-dev pkg-config -y
       - name: Install cargo tarpaulin
@@ -42,8 +44,8 @@ jobs:
         run: cargo install cargo-tarpaulin
       - name: Check for failing unit test and coverage < COVERAGE_MINIMUM_PERCENTAGE
         timeout-minutes: 2
-        run: cargo tarpaulin --fail-under $COVERAGE_MINIMUM_PERCENTAGE
-      
+        run: cargo tarpaulin --workspace --fail-under $COVERAGE_MINIMUM_PERCENTAGE --exclude-files */tests/*
+
   push_to_mirror:
     needs: [run_tests]
     runs-on: ubuntu-latest
