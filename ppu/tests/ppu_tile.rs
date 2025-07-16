@@ -93,10 +93,8 @@ fn test_image_smaller_than_tile() {
     }
     img.save(path).unwrap();
 
-    let (tiles, width)  = load_and_split_image(path);
-    println!("Image width: {}", width);
-    println!("Tile size: {}", TILE_SIZE);
-    println!("Number of tiles: {}", tiles.len());
+    let (tiles, _)  = load_and_split_image(path);
+
     assert_eq!(tiles.len(), 1); // Should still create one tile
     assert_eq!(tiles[0].len(), 16); // 4x4 = 16 pixels, rest is missing
 
