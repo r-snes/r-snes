@@ -50,11 +50,11 @@ jobs:
       - name: Checkout fetch
         uses: actions/checkout@v4.2.2
       - name: Update apt repositories
-        run: apt update
+        run: sudo apt update
       - name: Install cargo
-        run: apt install cargo -y 
+        run: sudo apt install cargo -y 
       - name: Install openssl dev lib (necessary for cargo-tarpaulin)
-        run: apt install libssl-dev pkg-config -y
+        run: sudo apt install libssl-dev pkg-config -y
       - name: Install cargo tarpaulin
         timeout-minutes: 5
         run: cargo install cargo-tarpaulin
