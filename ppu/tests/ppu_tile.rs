@@ -1,6 +1,6 @@
 use image::{Rgba, ImageBuffer};
-use rsnes::tile::{load_and_split_image};
-use rsnes::utils::{TILE_SIZE};
+use ppu::tile::{load_and_split_image};
+use ppu::utils::{TILE_SIZE};
 
 use std::path::Path;
 

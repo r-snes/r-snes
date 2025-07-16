@@ -1,5 +1,5 @@
-use rsnes::ppu::PPU;
-use rsnes::utils::{WIDTH, HEIGHT, TILE_SIZE};
+use ppu::ppu::PPU;
+use ppu::utils::{render_scanline, WIDTH, HEIGHT, TILE_SIZE};
 
 // Helper: fill a single tile in VRAM with a given color
 fn fill_tile(ppu: &mut PPU, tile_index: usize, color: u8) {
@@ -31,7 +31,7 @@ fn test_render_scanline_out_of_bounds_does_nothing() {
 
     ppu.framebuffer.iter_mut().for_each(|px| *px = 42);
 
-    rsnes::utils::render_scanline(&mut ppu, HEIGHT + 10, WIDTH / TILE_SIZE);
+    render_scanline(&mut ppu, HEIGHT + 10, WIDTH / TILE_SIZE);
 
     assert!(ppu.framebuffer.iter().all(|&px| px == 42));
 }
@@ -44,7 +44,7 @@ fn test_render_scanline_modifies_only_one_line() {
     let scanline_y = 3;
 
     // Render a single scanline
-    rsnes::utils::render_scanline(&mut ppu, scanline_y, WIDTH / TILE_SIZE);
+    render_scanline(&mut ppu, scanline_y, WIDTH / TILE_SIZE);
 
     for y in 0..HEIGHT {
         for x in 0..WIDTH {
