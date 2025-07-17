@@ -51,6 +51,24 @@ impl CPU {
         self.registers.P.V = false;
         2
     }
+
+    /// `SEC` instruction: set carry flag
+    pub fn sec(&mut self) -> i32 {
+        self.registers.P.C = true;
+        2
+    }
+
+    /// `SEI` instruction: set interrupt flag
+    pub fn sei(&mut self) -> i32 {
+        self.registers.P.I = true;
+        2
+    }
+
+    /// `SED` instruction: set decimal flag
+    pub fn sed(&mut self) -> i32 {
+        self.registers.P.D = true;
+        2
+    }
 }
 
 #[cfg(test)]
