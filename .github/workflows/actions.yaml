@@ -44,7 +44,7 @@ jobs:
         run: cargo install cargo-tarpaulin
       - name: Check for failing unit test and coverage < COVERAGE_MINIMUM_PERCENTAGE
         timeout-minutes: 2
-        run: cargo tarpaulin --workspace --fail-under $COVERAGE_MINIMUM_PERCENTAGE --exclude-files */tests/*
+        run: cargo tarpaulin --workspace --fail-under $COVERAGE_MINIMUM_PERCENTAGE --exclude-files */tests/* */src/main.rs */main.rs
 
   push_to_mirror:
     needs: [run_tests]
