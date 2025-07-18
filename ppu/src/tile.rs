@@ -38,10 +38,18 @@ pub fn load_and_split_image(path: &str) -> (Vec<Vec<Rgba<u8>>>, usize) {
     (tiles, width)
 }
 
-
 pub fn load_tiles_into_vram(ppu: &mut PPU, tiles: &Vec<Vec<Rgba<u8>>>) {
     for (tile_index, tile) in tiles.iter().enumerate() {
         let base_addr = tile_index * TILE_SIZE * TILE_SIZE;
+        if tile.len() < TILE_SIZE * TILE_SIZE {
+            eprintln!(
+                "[WARN] Skipping tile {}: only {} pixels, expected {}",
+                tile_index,
+                tile.len(),
+                TILE_SIZE * TILE_SIZE
+            );
+            continue;
+        }
 
         for y in 0..TILE_SIZE {
             for x in 0..TILE_SIZE {

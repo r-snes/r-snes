@@ -1,11 +1,11 @@
 use ppu::ppu::PPU;
-use ppu::utils::{render_scanline, WIDTH, HEIGHT, TILE_SIZE};
+use ppu::utils::{render_scanline, create_window, update_window, WIDTH, HEIGHT, TILE_SIZE};
 
 // Helper: fill a single tile in VRAM with a given color
 fn fill_tile(ppu: &mut PPU, tile_index: usize, color: u8) {
-    let tile_addr = tile_index * 64;
-    for i in 0..64 {
-        ppu.write_vram(tile_addr + i, color);
+    let base = tile_index * TILE_SIZE * TILE_SIZE;
+    for i in 0..(TILE_SIZE * TILE_SIZE) {
+        ppu.write_vram(base + i, color);
     }
 }
 
@@ -67,4 +67,31 @@ fn test_render_full_screen_repeat_tile() {
 
     let filled = ppu.framebuffer.iter().filter(|&&px| px != 0).count();
     assert!(filled > (0.8 * (WIDTH * HEIGHT) as f64) as usize, "Most of the screen should be filled");
+}
+
+#[test] // Should render a scanline from tile 0 with the expected color
+fn test_render_scanline_renders_correct_line() {
+    let mut ppu = PPU::new();
+    let tile_index = 0;
+
+    fill_tile(&mut ppu, tile_index, 0xFF);
+
+    render_scanline(&mut ppu, 0, WIDTH / TILE_SIZE);
+
+    for x in 0..TILE_SIZE {
+        let color = ppu.framebuffer[x];
+        println!("----Actual color: {:#X}", color);
+        assert_eq!(color, 0xFFFFFFF0);
+    }
+}
+
+#[test] // Should create a window and update it with a pink framebuffer (because why not)
+#[ignore] // Requires a graphical environment
+fn test_create_window_and_update() {
+    let mut window = create_window();
+    assert!(window.is_open());
+
+    let framebuffer = vec![0xFF00FFu32; WIDTH * HEIGHT];
+
+    update_window(&mut window, &framebuffer);
 }
