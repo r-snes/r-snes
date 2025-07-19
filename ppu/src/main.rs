@@ -20,19 +20,8 @@ fn main() {
     let mut window = create_window();
 
     // hard-coded display => to be removed (but ok for pr #13)
-    #[cfg(test)]
-    let mut frame_limit = 3;
-
     while window.is_open() && !window.is_key_down(Key::Escape) {
         ppu.render(tiles_per_row);
         update_window(&mut window, &ppu.framebuffer);
-
-        #[cfg(test)]
-        {
-            frame_limit -= 1;
-            if frame_limit == 0 {
-                break;
-            }
-        }
     }
 }

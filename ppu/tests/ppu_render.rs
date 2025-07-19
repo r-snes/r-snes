@@ -84,14 +84,3 @@ fn test_render_scanline_renders_correct_line() {
         assert_eq!(color, 0xFFFFFFF0);
     }
 }
-
-#[test] // Should create a window and update it with a pink framebuffer (because why not)
-#[ignore] // Requires a graphical environment
-fn test_create_window_and_update() {
-    let mut window = create_window();
-    assert!(window.is_open());
-
-    let framebuffer = vec![0xFF00FFu32; WIDTH * HEIGHT];
-
-    update_window(&mut window, &framebuffer);
-}
