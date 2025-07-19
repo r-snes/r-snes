@@ -56,7 +56,7 @@ pub fn load_tiles_into_vram(ppu: &mut PPU, tiles: &Vec<Vec<Rgba<u8>>>) {
                 let pixel = &tile[y * TILE_SIZE + x];
 
                 // tmp 4 bits color saving => gonna be fixed when CGRAM ok (CGRAM not ok for PR #13]
-                let value = pixel[0] / 16;
+                let value = pixel[0] >> 4;
 
                 let addr = base_addr + y * TILE_SIZE + x;
                 ppu.write_vram(addr, value);
@@ -74,7 +74,7 @@ pub fn get_tile_from_vram(ppu: &PPU, tile_index: usize) -> Vec<u32> {
             let addr = base_addr + y * TILE_SIZE + x;
             let value = ppu.read_vram(addr);
 
-            let color = (value as u32) * 16;
+            let color = (value as u32) << 4;
             let argb = (0xFF << 24) | (color << 16) | (color << 8) | color;
             tile_pixels.push(argb);
         }
