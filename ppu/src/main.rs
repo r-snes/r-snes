@@ -2,10 +2,30 @@ mod ppu;
 mod tile;
 mod utils;
 
-use minifb::Key;
+use minifb::{Key, Window, WindowOptions};
 use crate::ppu::PPU;
 use crate::tile::{load_and_split_image, load_tiles_into_vram};
-use crate::utils::{create_window, update_window, TILE_SIZE};
+use crate::utils::{SCREEN_WIDTH, SCREEN_HEIGHT, WIDTH, HEIGHT, TILE_SIZE};
+
+pub fn create_window() -> Window {
+    Window::new(
+        "rsnes ppu",
+        SCREEN_WIDTH,
+        SCREEN_HEIGHT,
+        WindowOptions {
+            resize: false,
+            ..WindowOptions::default()
+        },
+    )
+    .expect("[ERR::WindowInit] Unable to create display context.")
+}
+
+pub fn update_window(window: &mut Window, framebuffer: &Vec<u32>) {
+    window
+        .update_with_buffer(framebuffer, WIDTH, HEIGHT)
+        .expect("[ERR::Render] Framebuffer refused to cooperate.");
+}
+
 
 fn main() {
     let (tiles, image_width) = load_and_split_image("./tileset.png");

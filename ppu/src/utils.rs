@@ -1,4 +1,3 @@
-use minifb::{Window, WindowOptions};
 use crate::ppu::PPU;
 use crate::tile::get_tile_from_vram;
 
@@ -11,27 +10,6 @@ pub const HEIGHT: usize = TILES_Y * TILE_SIZE;
 pub const SCALE: usize = 2;
 pub const SCREEN_WIDTH: usize = WIDTH * SCALE;
 pub const SCREEN_HEIGHT: usize = HEIGHT * SCALE;
-
-#[ignore] // Requires a graphical environment
-pub fn create_window() -> Window {
-    Window::new(
-        "rsnes ppu",
-        SCREEN_WIDTH,
-        SCREEN_HEIGHT,
-        WindowOptions {
-            resize: false,
-            ..WindowOptions::default()
-        },
-    )
-    .expect("[ERR::WindowInit] Unable to create display context.")
-}
-
-#[ignore] // Requires a graphical environment
-pub fn update_window(window: &mut Window, framebuffer: &Vec<u32>) {
-    window
-        .update_with_buffer(framebuffer, WIDTH, HEIGHT)
-        .expect("[ERR::Render] Framebuffer refused to cooperate.");
-}
 
 pub fn render_scanline(ppu: &mut PPU, y: usize, tiles_per_row: usize) {
     if y >= HEIGHT {
