@@ -8,7 +8,7 @@ use crate::tile::{load_and_split_image, load_tiles_into_vram};
 use crate::utils::{create_window, update_window, TILE_SIZE};
 
 fn main() {
-    let (tiles, image_width) = load_and_split_image("tests/assets/test_10x10.png");
+    let (tiles, image_width) = load_and_split_image("./tileset.png");
     println!("Loaded {} tiles, image width: {}", tiles.len(), image_width);
     // hard-coded filepath => to be removed (but ok for pr #13)
 
