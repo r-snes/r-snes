@@ -8,7 +8,7 @@ pub fn load_and_split_image(path: &str) -> (Vec<Vec<Rgba<u8>>>, usize) {
     let width = img.width() as usize;
     let height = img.height() as usize;
 
-    let tile_size = TILE_SIZE as usize;
+    let tile_size = TILE_SIZE;
 
     let tiles_x = (width + tile_size - 1) / tile_size;
     let tiles_y = (height + tile_size - 1) / tile_size;
