@@ -69,8 +69,14 @@ impl Rom {
 
     pub fn print_rom_header(&self) {
         let header_offset = match self.map {
-            MappingMode::LoRom => 0x7FC0,
-            MappingMode::HiRom => 0xFFC0,
+            MappingMode::LoRom => {
+                println!("LoRom Mode");
+                0x7FC0
+            }
+            MappingMode::HiRom => {
+                println!("hiRom Mode");
+                0xFFC0
+            }
             MappingMode::Unknown => {
                 println!("Cannot print ROM header: unknown ROM mapping.");
                 return;
