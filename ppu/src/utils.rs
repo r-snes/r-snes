@@ -2,6 +2,7 @@ use crate::ppu::PPU;
 use crate::tile::get_tile_from_vram;
 
 pub const VRAM_SIZE: usize = 64 * 1024; // 64 KB
+pub const CGRAM_SIZE: usize = 256; // 256 color palette
 pub const TILE_SIZE: usize = 8;
 pub const TILES_X: usize = 32;
 pub const TILES_Y: usize = 32;
