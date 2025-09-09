@@ -1,4 +1,6 @@
-fn main() {}
+fn main() {
+    println!("You just ran the root main.rs");
+}
 
 #[allow(dead_code)] // Function never read
 fn add(nb1: u16, nb2: u16) -> u16 {
