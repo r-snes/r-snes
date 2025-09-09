@@ -1,7 +1,7 @@
 pub enum MappingMode {
     LoRom,
     HiRom,
-    Unknown,
+    Unknown, // Error case, can't continue execution if we don't know mapping mode
 }
 
 impl MappingMode {
