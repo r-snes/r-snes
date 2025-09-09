@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 pub enum MappingMode {
     LoRom,
     HiRom,
@@ -15,12 +17,10 @@ impl MappingMode {
         // Try HiROM header at 0xFFC0
         let hirom_score = Self::score_header(rom_data, 0xFFC0);
 
-        if lorom_score > hirom_score {
-            MappingMode::LoRom
-        } else if hirom_score > lorom_score {
-            MappingMode::HiRom
-        } else {
-            MappingMode::Unknown
+        match lorom_score.cmp(&hirom_score) {
+            Ordering::Greater => MappingMode::LoRom,
+            Ordering::Less => MappingMode::HiRom,
+            Ordering::Equal => MappingMode::Unknown,
         }
     }
 
