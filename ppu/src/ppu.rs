@@ -3,7 +3,7 @@ use crate::utils::{render_scanline, CGRAM_SIZE, HEIGHT, VRAM_SIZE, WIDTH};
 pub struct PPU {
     pub framebuffer: Vec<u32>,
     vram: [u8; VRAM_SIZE],
-    cgram: [u32; CGRAM_SIZE],
+    cgram: [u16; CGRAM_SIZE]
 }
 
 impl PPU {
@@ -11,16 +11,15 @@ impl PPU {
         let mut ppu = Self {
             framebuffer: vec![0; WIDTH * HEIGHT],
             vram: [0; VRAM_SIZE],
-            cgram: [0; 256],
+            cgram: [0; CGRAM_SIZE]
         };
 
-        // Hardcoded palette (SNES = 15 bits, here simplified to 32-bit ARGB)
-        for i in 0..256 {
-            // Example: colorful gradient
-            let r = ((i & 0x1F) << 3) as u32;
-            let g = (((i >> 2) & 0x1F) << 3) as u32;
-            let b = (((i >> 4) & 0x1F) << 3) as u32;
-            ppu.cgram[i] = (0xFF << 24) | (r << 16) | (g << 8) | b;
+        // Hardcoded palette
+        for i in 0..CGRAM_SIZE {
+            let r = (i & 0x1F) as u16;
+            let g = ((i >> 2) & 0x1F) as u16;
+            let b = ((i >> 4) & 0x1F) as u16;
+            ppu.cgram[i] = (b << 10) | (g << 5) | r;
         }
 
         ppu
@@ -31,7 +30,6 @@ impl PPU {
             eprintln!("[ERR::VRAM] Write attempt to invalid address 0x{:04X}", addr);
             return;
         }
-
         self.vram[addr] = value;
     }
 
@@ -40,12 +38,11 @@ impl PPU {
             eprintln!("[ERR::VRAM] Read attempt from invalid address 0x{:04X}", addr);
             return 0;
         }
-
-        return self.vram[addr];
+        self.vram[addr]
     }
 
     pub fn read_cgram(&self, index: u8) -> u32 {
-        self.cgram[index as usize]
+        bgr555_to_argb(self.cgram[index as usize])
     }
 
     pub fn render(&mut self, tiles_per_row: usize) {
@@ -53,4 +50,17 @@ impl PPU {
             render_scanline(self, y, tiles_per_row);
         }
     }
+}
+
+fn bgr555_to_argb(bgr: u16) -> u32 {
+    let r = (bgr & 0x1F) as u32;
+    let g = ((bgr >> 5) & 0x1F) as u32;
+    let b = ((bgr >> 10) & 0x1F) as u32;
+
+    // Expand 5-bit to 8-bit by duplicating upper bits
+    let r8 = (r << 3) | (r >> 2);
+    let g8 = (g << 3) | (g >> 2);
+    let b8 = (b << 3) | (b >> 2);
+
+    (0xFF << 24) | (r8 << 16) | (g8 << 8) | b8
 }
