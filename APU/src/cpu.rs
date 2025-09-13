@@ -7,8 +7,18 @@ pub struct Registers {
     pub y: u8,     // Index Y
     pub sp: u8,    // Stack Pointer
     pub pc: u16,   // Program Counter
-    pub psw: u8,   // Processor Status Word
+    pub psw: u8,   // Processor Status Word (flags)
 }
+
+// Processor status flags
+pub const FLAG_C: u8 = 0x01; // Carry
+pub const FLAG_Z: u8 = 0x02; // Zero
+pub const FLAG_I: u8 = 0x04; // Interrupt Disable
+pub const FLAG_H: u8 = 0x08; // Half-Carry
+pub const FLAG_B: u8 = 0x10; // Break
+pub const FLAG_P: u8 = 0x20; // Direct Page
+pub const FLAG_V: u8 = 0x40; // Overflow
+pub const FLAG_N: u8 = 0x80; // Negative
 
 pub struct Spc700 {
     pub regs: Registers,
@@ -39,30 +49,76 @@ impl Spc700 {
             0xF8 => self.inst_mov_a_y(),
             0x8B => self.inst_mov_x_a(),
             0x9B => self.inst_mov_y_a(),
+
+            // Immediate loads
+            0xA9 => self.inst_lda_imm(mem),
+            0xA2 => self.inst_ldx_imm(mem),
+            0xA0 => self.inst_ldy_imm(mem),
+
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
         }        
     }
 
-    fn inst_mov_a_x(&mut self) {
-        self.regs.a = self.regs.x; // copy X into A
-        self.cycles += 2; // SPC700: 2 cycles
-    }
-    fn inst_mov_a_y(&mut self) {
-        self.regs.a = self.regs.y; // copy Y into A
-        self.cycles += 2; // SPC700: 2 cycles
-    }
-    fn inst_mov_x_a(&mut self) {
-        self.regs.x = self.regs.a; // copy A into X
-        self.cycles += 2; // SPC700: 2 cycles
-    }
-    fn inst_mov_y_a(&mut self) {
-        self.regs.y = self.regs.a; // copy A into Y
-        self.cycles += 2; // SPC700: 2 cycles
+    // Flag helpers
+    fn set_flag(&mut self, mask: u8, value: bool) {
+        if value {
+            self.regs.psw |= mask;
+        } else {
+            self.regs.psw &= !mask;
+        }
     }
 
-    fn inst_nop(&mut self) { // do nothing
-        // NOP takes 2 cycles on the SPC700
+    pub fn get_flag(&self, mask: u8) -> bool {
+        (self.regs.psw & mask) != 0
+    }      
+
+    fn set_zn_flags(&mut self, value: u8) {
+        self.set_flag(FLAG_Z, value == 0);
+        self.set_flag(FLAG_N, (value & 0x80) != 0);
+    }
+
+    // Implemented instructions
+    fn inst_mov_a_x(&mut self) {
+        self.regs.a = self.regs.x;
         self.cycles += 2;
     }
-    
+    fn inst_mov_a_y(&mut self) {
+        self.regs.a = self.regs.y;
+        self.cycles += 2;
+    }
+    fn inst_mov_x_a(&mut self) {
+        self.regs.x = self.regs.a;
+        self.cycles += 2;
+    }
+    fn inst_mov_y_a(&mut self) {
+        self.regs.y = self.regs.a;
+        self.cycles += 2;
+    }
+    fn inst_nop(&mut self) {
+        self.cycles += 2;
+    }
+
+    pub fn inst_lda_imm(&mut self, mem: &mut Memory) {
+        let value = mem.read8(self.regs.pc);
+        self.regs.pc = self.regs.pc.wrapping_add(1);
+        self.regs.a = value;
+        self.set_zn_flags(self.regs.a);
+        self.cycles += 2;
+    }
+
+    pub fn inst_ldx_imm(&mut self, mem: &mut Memory) {
+        let value = mem.read8(self.regs.pc);
+        self.regs.pc = self.regs.pc.wrapping_add(1);
+        self.regs.x = value;
+        self.set_zn_flags(self.regs.x);
+        self.cycles += 2;
+    }
+
+    pub fn inst_ldy_imm(&mut self, mem: &mut Memory) {
+        let value = mem.read8(self.regs.pc);
+        self.regs.pc = self.regs.pc.wrapping_add(1);
+        self.regs.y = value;
+        self.set_zn_flags(self.regs.y);
+        self.cycles += 2;
+    }
 }

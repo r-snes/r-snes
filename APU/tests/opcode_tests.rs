@@ -1,4 +1,7 @@
 use apu::{Memory, Spc700};
+use apu::cpu::FLAG_N;
+use apu::cpu::FLAG_Z;
+
 
 #[test]
 fn test_nop() {
@@ -66,4 +69,50 @@ fn test_mov_y_a() {
     assert_eq!(cpu.regs.y, 0x99, "Y should equal A");
     assert_eq!(cpu.cycles, 2);
     assert_eq!(cpu.regs.pc, 0x0201);
+}
+
+#[test]
+fn test_lda_imm_step() {
+    let mut mem = Memory::new();
+    let mut cpu = Spc700::new();
+
+    // Place instruction at 0x200: LDA #$42
+    cpu.regs.pc = 0x200;
+    mem.write8(0x200, 0xA9); // LDA #imm opcode
+    mem.write8(0x201, 0x42); // operand
+
+    cpu.step(&mut mem);
+
+    assert_eq!(cpu.regs.a, 0x42);
+    assert!(!cpu.get_flag(0x02)); // not zero
+    assert!(!cpu.get_flag(0x80)); // not negative
+}
+
+
+#[test]
+fn test_ldx_imm_negative() {
+    let mut mem = Memory::new();
+    let mut cpu = Spc700::new();
+    cpu.regs.pc = 0x200;
+    mem.write8(0x200, 0x80); // sets negative flag
+
+    cpu.inst_ldx_imm(&mut mem);
+
+    assert_eq!(cpu.regs.x, 0x80);
+    assert!(cpu.get_flag(FLAG_N));
+    assert!(!cpu.get_flag(FLAG_Z));
+}
+
+#[test]
+fn test_ldy_imm_zero() {
+    let mut mem = Memory::new();
+    let mut cpu = Spc700::new();
+    cpu.regs.pc = 0x200;
+    mem.write8(0x200, 0x00); // sets zero flag
+
+    cpu.inst_ldy_imm(&mut mem);
+
+    assert_eq!(cpu.regs.y, 0x00);
+    assert!(cpu.get_flag(FLAG_Z));
+    assert!(!cpu.get_flag(FLAG_N));
 }
