@@ -1,4 +1,5 @@
 mod bus;
+mod io;
 mod memory_region;
 mod rom;
 mod wram;
