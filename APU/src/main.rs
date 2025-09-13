@@ -97,8 +97,11 @@ fn main() {
     );
 }
 
-//What this does:
-// Prints initial state of the CPU before running.
-// Before each step(), it fetches and shows the opcode at the current PC.
-// After the step, prints all registers, relevant flags, and total cycles.
-// Loops for a set number of steps (5 here), so you can see the CPU run instruction by instruction.
+// What this does:
+// - Prints the initial state of the CPU before running.
+// - Loops through the program memory, fetching the opcode at the current PC.
+// - Before each step(), it logs the current PC, opcode, and operand (if applicable).
+// - Executes one instruction per step() call.
+// - After the step, prints all CPU registers (A, X, Y, SP, PC), the N and Z flags, and total cycles.
+// - Shows memory writes for direct page store instructions (MOV d, A).
+// - Stops execution when a BRK opcode (0x00 or 0xFF) is encountered, printing the final CPU state.
