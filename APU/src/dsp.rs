@@ -8,6 +8,7 @@ pub struct Voice {
     pub pitch: u16,
     pub key_on: bool,
     pub sample_start: u16,
+    pub current_addr: u16,
     pub sample_end: u16,
 }
 
@@ -20,7 +21,15 @@ impl Dsp {
     pub fn new() -> Self {
         Self {
             registers: [0; 128],
-            voices: [Voice::default(); 8],
+            voices: [Voice {
+                key_on: false,
+                sample_start: 0,
+                sample_end: 0,
+                current_addr: 0,
+                pitch: 0,
+                left_vol: 0,
+                right_vol: 0,
+            }; 8],
         }
     }
 
@@ -79,8 +88,18 @@ impl Dsp {
         }
     }
 
-    pub fn step(&mut self) {
-        // Here we would process voices (ADSR, echo, sample position, etc.)
+    pub fn step(&mut self, _memory: &crate::memory::Memory) {
+        for voice in self.voices.iter_mut() {
+            if voice.key_on {
+                // Advance current address by pitch (simplified)
+                voice.current_addr = voice.current_addr.wrapping_add(voice.pitch);
+
+                // Stop if we reach the end of the sample
+                if voice.current_addr >= voice.sample_end {
+                    voice.key_on = false;
+                }
+            }
+        }
     }
 
     pub fn render_audio(&self, num_samples: usize) -> Vec<i16> {

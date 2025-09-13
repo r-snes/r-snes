@@ -25,7 +25,7 @@ impl Apu {
         for _ in 0..cycles {
             self.cpu.step(&mut self.memory);
             self.timers.step(&mut self.memory);
-            self.dsp.step();
+            self.dsp.step(&mut self.memory);
             self.cycles += 1;
         }
     }
