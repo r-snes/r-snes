@@ -5,10 +5,10 @@
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct SnesAddress {
     /// The bank number of the address
-    bank: u8,
+    pub bank: u8,
 
     /// The memory address within the bank
-    addr: u16,
+    pub addr: u16,
 }
 
 impl SnesAddress {
