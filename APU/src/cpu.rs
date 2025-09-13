@@ -44,39 +44,46 @@ impl Spc700 {
         self.regs.pc = self.regs.pc.wrapping_add(1);
 
         match opcode {
+            // NOP
             0x00 => self.inst_nop(),
-            0xE8 => self.inst_mov_a_x(),
-            0xF8 => self.inst_mov_a_y(),
-            0x8B => self.inst_mov_x_a(),
-            0x9B => self.inst_mov_y_a(),
-
+        
+            // Register moves
+            0x7D => self.inst_mov_a_x(), // MOV A, X
+            0xDD => self.inst_mov_a_y(), // MOV A, Y
+            0x5D => self.inst_mov_x_a(), // MOV X, A
+            0xFD => self.inst_mov_y_a(), // MOV Y, A
+        
             // Immediate loads
-            0xA9 => self.inst_lda_imm(mem),
-            0xA2 => self.inst_ldx_imm(mem),
-            0xA0 => self.inst_ldy_imm(mem),
+            0xA9 => self.inst_lda_imm(mem), // LDA #i
+            0xCD => self.inst_ldx_imm(mem), // LDX #i
+            0x8D => self.inst_ldy_imm(mem), // LDY #i
+        
+            // Absolute loads
+            0xAD => self.inst_lda_abs(mem), // LDA !a
+            0xAE => self.inst_ldx_abs(mem), // LDX !a
+            0xAF => self.inst_ldy_abs(mem), // LDY !a
+        
+            // Direct page loads
+            0xA5 => self.inst_lda_dp(mem), // LDA d
+            0xA6 => self.inst_ldx_dp(mem), // LDX d
+            0xA7 => self.inst_ldy_dp(mem), // LDY d
+        
+            // Store instructions (MOV to memory)
+            0xC4 => self.inst_sta_dp(mem),     // MOV d, A
+            0xC5 => self.inst_sta_abs(mem),    // MOV !a, A
+            0x8E => self.inst_stx_abs(mem),    // MOV !a, X
+            0xCC => self.inst_sty_abs(mem),    // MOV !a, Y
 
-            0x8D => self.inst_sta_abs(mem),
-            0x8E => self.inst_stx_abs(mem),
-            0x8F => self.inst_sty_abs(mem),
-            0xAD => self.inst_lda_abs(mem),
-            0xAE => self.inst_ldx_abs(mem),
-            0xAF => self.inst_ldy_abs(mem),
-
-            0xA5 => self.inst_lda_dp(mem),
-            0xA6 => self.inst_ldx_dp(mem),
-            0xA7 => self.inst_ldy_dp(mem),
-            0x85 => self.inst_sta_dp(mem),
-            0x86 => self.inst_stx_dp(mem),
-            0x87 => self.inst_sty_dp(mem),
-
-            0x69 => self.inst_adc_imm(mem),
-            0xC9 => self.inst_cmp_imm(mem),
-
-            0xE9 => self.inst_sbc_imm(mem), // SBC #imm
-            0x29 => self.inst_and_imm(mem), // AND #imm
-            0x09 => self.inst_ora_imm(mem), // ORA #imm
-            0x49 => self.inst_eor_imm(mem), // EOR #imm
-
+        
+            // Arithmetic & logic
+            0x69 => self.inst_adc_imm(mem), // ADC #i
+            0xE9 => self.inst_sbc_imm(mem), // SBC #i
+            0xC9 => self.inst_cmp_imm(mem), // CMP #i
+            0x29 => self.inst_and_imm(mem), // AND #i
+            0x09 => self.inst_ora_imm(mem), // ORA #i
+            0x49 => self.inst_eor_imm(mem), // EOR #i
+        
+            // Catch-all for unimplemented opcodes
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
         }        
     }
@@ -145,22 +152,39 @@ impl Spc700 {
     }
 
     pub fn inst_sta_abs(&mut self, mem: &mut Memory) {
-        let addr = mem.read16(self.regs.pc);
+        // Read the 16-bit address in little-endian
+        let lo = mem.read8(self.regs.pc) as u16;
+        let hi = mem.read8(self.regs.pc.wrapping_add(1)) as u16;
+        let addr = lo | (hi << 8);
+    
+        // Move PC past the operand
         self.regs.pc = self.regs.pc.wrapping_add(2);
+    
+        // Store A into memory
         mem.write8(addr, self.regs.a);
+    
+        // Increment cycles
         self.cycles += 4;
     }
-
+    
     pub fn inst_stx_abs(&mut self, mem: &mut Memory) {
-        let addr = mem.read16(self.regs.pc);
+        let lo = mem.read8(self.regs.pc) as u16;
+        let hi = mem.read8(self.regs.pc.wrapping_add(1)) as u16;
+        let addr = lo | (hi << 8);
+    
         self.regs.pc = self.regs.pc.wrapping_add(2);
+    
         mem.write8(addr, self.regs.x);
         self.cycles += 4;
     }
-
+    
     pub fn inst_sty_abs(&mut self, mem: &mut Memory) {
-        let addr = mem.read16(self.regs.pc);
+        let lo = mem.read8(self.regs.pc) as u16;
+        let hi = mem.read8(self.regs.pc.wrapping_add(1)) as u16;
+        let addr = lo | (hi << 8);
+    
         self.regs.pc = self.regs.pc.wrapping_add(2);
+    
         mem.write8(addr, self.regs.y);
         self.cycles += 4;
     }
