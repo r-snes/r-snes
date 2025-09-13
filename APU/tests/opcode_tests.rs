@@ -116,3 +116,111 @@ fn test_ldy_imm_zero() {
     assert!(cpu.get_flag(FLAG_Z));
     assert!(!cpu.get_flag(FLAG_N));
 }
+
+#[test]
+fn test_sta_abs() {
+    let mut mem = Memory::new();
+    let mut cpu = Spc700::new();
+
+    cpu.regs.pc = 0x200;
+    cpu.regs.a = 0x55;
+
+    // STA $1234
+    mem.write8(0x200, 0x8D); // opcode
+    mem.write16(0x201, 0x1234); // address
+
+    cpu.step(&mut mem);
+
+    assert_eq!(mem.read8(0x1234), 0x55);
+}
+
+#[test]
+fn test_stx_abs() {
+    let mut mem = Memory::new();
+    let mut cpu = Spc700::new();
+
+    cpu.regs.pc = 0x200;
+    cpu.regs.x = 0xAA;
+
+    // STX $4321
+    mem.write8(0x200, 0x8E); 
+    mem.write16(0x201, 0x4321);
+
+    cpu.step(&mut mem);
+
+    assert_eq!(mem.read8(0x4321), 0xAA);
+}
+
+#[test]
+fn test_sty_abs() {
+    let mut mem = Memory::new();
+    let mut cpu = Spc700::new();
+
+    cpu.regs.pc = 0x200;
+    cpu.regs.y = 0x99;
+
+    // STY $5678
+    mem.write8(0x200, 0x8F); 
+    mem.write16(0x201, 0x5678);
+
+    cpu.step(&mut mem);
+
+    assert_eq!(mem.read8(0x5678), 0x99);
+}
+
+#[test]
+fn test_lda_abs() {
+    let mut mem = Memory::new();
+    let mut cpu = Spc700::new();
+
+    cpu.regs.pc = 0x200;
+
+    // LDA $1234
+    mem.write8(0x200, 0xAD); 
+    mem.write16(0x201, 0x1234);
+    mem.write8(0x1234, 0x77);
+
+    cpu.step(&mut mem);
+
+    assert_eq!(cpu.regs.a, 0x77);
+    assert!(!cpu.get_flag(FLAG_Z));
+    assert!(!cpu.get_flag(FLAG_N));
+}
+
+#[test]
+fn test_ldx_abs() {
+    let mut mem = Memory::new();
+    let mut cpu = Spc700::new();
+
+    cpu.regs.pc = 0x200;
+
+    // LDX $4321
+    mem.write8(0x200, 0xAE); 
+    mem.write16(0x201, 0x4321);
+    mem.write8(0x4321, 0x80); // will set negative flag
+
+    cpu.step(&mut mem);
+
+    assert_eq!(cpu.regs.x, 0x80);
+    assert!(cpu.get_flag(FLAG_N));
+    assert!(!cpu.get_flag(FLAG_Z));
+}
+
+#[test]
+fn test_ldy_abs() {
+    let mut mem = Memory::new();
+    let mut cpu = Spc700::new();
+
+    cpu.regs.pc = 0x200;
+
+    // LDY $5678
+    mem.write8(0x200, 0xAF); 
+    mem.write16(0x201, 0x5678);
+    mem.write8(0x5678, 0x00); // will set zero flag
+
+    cpu.step(&mut mem);
+
+    assert_eq!(cpu.regs.y, 0x00);
+    assert!(cpu.get_flag(FLAG_Z));
+    assert!(!cpu.get_flag(FLAG_N));
+}

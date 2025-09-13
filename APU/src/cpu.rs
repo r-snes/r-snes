@@ -55,6 +55,13 @@ impl Spc700 {
             0xA2 => self.inst_ldx_imm(mem),
             0xA0 => self.inst_ldy_imm(mem),
 
+            0x8D => self.inst_sta_abs(mem),
+            0x8E => self.inst_stx_abs(mem),
+            0x8F => self.inst_sty_abs(mem),
+            0xAD => self.inst_lda_abs(mem),
+            0xAE => self.inst_ldx_abs(mem),
+            0xAF => self.inst_ldy_abs(mem),
+
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
         }        
     }
@@ -120,5 +127,50 @@ impl Spc700 {
         self.regs.y = value;
         self.set_zn_flags(self.regs.y);
         self.cycles += 2;
+    }
+
+    pub fn inst_sta_abs(&mut self, mem: &mut Memory) {
+        let addr = mem.read16(self.regs.pc);
+        self.regs.pc = self.regs.pc.wrapping_add(2);
+        mem.write8(addr, self.regs.a);
+        self.cycles += 4;
+    }
+
+    pub fn inst_stx_abs(&mut self, mem: &mut Memory) {
+        let addr = mem.read16(self.regs.pc);
+        self.regs.pc = self.regs.pc.wrapping_add(2);
+        mem.write8(addr, self.regs.x);
+        self.cycles += 4;
+    }
+
+    pub fn inst_sty_abs(&mut self, mem: &mut Memory) {
+        let addr = mem.read16(self.regs.pc);
+        self.regs.pc = self.regs.pc.wrapping_add(2);
+        mem.write8(addr, self.regs.y);
+        self.cycles += 4;
+    }
+
+    pub fn inst_lda_abs(&mut self, mem: &mut Memory) {
+        let addr = mem.read16(self.regs.pc);
+        self.regs.pc = self.regs.pc.wrapping_add(2);
+        self.regs.a = mem.read8(addr);
+        self.set_zn_flags(self.regs.a);
+        self.cycles += 4;
+    }
+
+    pub fn inst_ldx_abs(&mut self, mem: &mut Memory) {
+        let addr = mem.read16(self.regs.pc);
+        self.regs.pc = self.regs.pc.wrapping_add(2);
+        self.regs.x = mem.read8(addr);
+        self.set_zn_flags(self.regs.x);
+        self.cycles += 4;
+    }
+
+    pub fn inst_ldy_abs(&mut self, mem: &mut Memory) {
+        let addr = mem.read16(self.regs.pc);
+        self.regs.pc = self.regs.pc.wrapping_add(2);
+        self.regs.y = mem.read8(addr);
+        self.set_zn_flags(self.regs.y);
+        self.cycles += 4;
     }
 }

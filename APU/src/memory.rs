@@ -20,4 +20,11 @@ impl Memory {
     pub fn write8(&mut self, addr: u16, val: u8) {
         self.ram[addr as usize] = val;
     }
+
+    pub fn write16(&mut self, addr: u16, value: u16) {
+        let lo = (value & 0xFF) as u8;
+        let hi = (value >> 8) as u8;
+        self.write8(addr, lo);
+        self.write8(addr.wrapping_add(1), hi);
+    }
 }
