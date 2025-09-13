@@ -1,5 +1,6 @@
 use apu::dsp::Dsp;
-use apu::memory::Memory;
+use apu::Memory;
+
 
 #[test]
 fn test_dsp_register_write_read() {
@@ -97,4 +98,31 @@ fn test_voice_step_advances() {
 
     // Should stop at sample_end
     assert!(!dsp.voices[0].key_on);
+}
+
+#[test]
+fn test_voice_sample_fetch() {
+    let mut dsp = Dsp::new();
+    let mut mem = Memory::new();
+
+    // Sample data at 0x1000: 0x00, 0x80, 0xFF
+    mem.write8(0x1000, 0x00);
+    mem.write8(0x1001, 0x80);
+    mem.write8(0x1002, 0xFF);
+
+    // Activate voice
+    dsp.voices[0].key_on = true;
+    dsp.voices[0].sample_start = 0x1000;
+    dsp.voices[0].sample_end = 0x1003;
+    dsp.voices[0].current_addr = 0x1000;
+    dsp.voices[0].pitch = 1;
+
+    dsp.step(&mem);
+    assert_eq!(dsp.voices[0].current_sample, 0x00);
+
+    dsp.step(&mem);
+    assert_eq!(dsp.voices[0].current_sample, 0x8000_u16 as i16);
+
+    dsp.step(&mem);
+    assert_eq!(dsp.voices[0].current_sample, -0x0100); // 0xFF -> -256
 }

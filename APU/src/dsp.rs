@@ -1,5 +1,3 @@
-use crate::memory::Memory;
-
 /// One voice of the SNES APU DSP
 #[derive(Default, Debug, Clone, Copy)]
 pub struct Voice {
@@ -10,6 +8,7 @@ pub struct Voice {
     pub sample_start: u16,
     pub current_addr: u16,
     pub sample_end: u16,
+    pub current_sample: i16,
 }
 
 pub struct Dsp {
@@ -29,6 +28,7 @@ impl Dsp {
                 pitch: 0,
                 left_vol: 0,
                 right_vol: 0,
+                current_sample: 0,
             }; 8],
         }
     }
@@ -88,13 +88,17 @@ impl Dsp {
         }
     }
 
-    pub fn step(&mut self, _memory: &crate::memory::Memory) {
+    pub fn step(&mut self, memory: &crate::memory::Memory) {
         for voice in self.voices.iter_mut() {
             if voice.key_on {
-                // Advance current address by pitch (simplified)
+                // Fetch the sample from memory (8-bit unsigned -> i16 signed)
+                let sample_byte = memory.read8(voice.current_addr);
+                voice.current_sample = (sample_byte as i16) << 8; // simple conversion to signed
+    
+                // Advance current address by pitch
                 voice.current_addr = voice.current_addr.wrapping_add(voice.pitch);
-
-                // Stop if we reach the end of the sample
+    
+                // Stop if we reach end of sample
                 if voice.current_addr >= voice.sample_end {
                     voice.key_on = false;
                 }
@@ -103,6 +107,18 @@ impl Dsp {
     }
 
     pub fn render_audio(&self, num_samples: usize) -> Vec<i16> {
-        vec![0; num_samples]
+        let mut buffer = vec![0i16; num_samples * 2]; // stereo interleaved: L/R
+        for voice in self.voices.iter() {
+            if voice.key_on {
+                let l = voice.left_vol as i16;
+                let r = voice.right_vol as i16;
+                for i in 0..num_samples {
+                    buffer[i*2] = buffer[i*2].saturating_add(l * (voice.current_sample >> 8));
+                    buffer[i*2+1] = buffer[i*2+1].saturating_add(r * (voice.current_sample >> 8));
+                }
+            }
+        }
+        buffer
     }
+    
 }
