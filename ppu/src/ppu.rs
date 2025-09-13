@@ -80,9 +80,26 @@ impl PPU {
             render_scanline(self, y, tiles_per_row);
         }
     }
+
+    // Tests functions
+    pub fn cgram_len(&self) -> usize {
+        self.cgram.len()
+    }
+
+    pub fn get_cgram_value(&self, index: usize) -> u16 {
+        self.cgram[index]
+    }
+
+    pub fn get_cgaddr(&self) -> u8 {
+        self.cgaddr
+    }
+
+    pub fn is_latch_set(&self) -> bool {
+        self.latch.is_some()
+    }
 }
 
-fn bgr555_to_argb(bgr: u16) -> u32 {
+pub fn bgr555_to_argb(bgr: u16) -> u32 {
     let r = (bgr & 0x1F) as u32;
     let g = ((bgr >> 5) & 0x1F) as u32;
     let b = ((bgr >> 10) & 0x1F) as u32;
