@@ -25,7 +25,7 @@ impl MemoryRegion for Rom {
                 (bank * 0x8000 + lo_offset) as usize
             }
             MappingMode::Unknown => {
-                return 0xFF; // default open bus value for undefined map
+                return 0xFF; // TODO : Crash here since shouldn't continue when MappingMode = unknown ?
             }
         };
 
