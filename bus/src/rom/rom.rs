@@ -68,6 +68,7 @@ impl Rom {
         })
     }
 
+    #[allow(dead_code)]
     pub fn size(&self) -> usize {
         self.data.len()
     }

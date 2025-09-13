@@ -20,6 +20,7 @@ impl Bus {
         })
     }
 
+    #[allow(dead_code)]
     pub fn read(&self, addr: u32) -> u8 {
         let bank = (addr >> 16) as u8;
         let offset = addr & 0xFFFF;
@@ -40,10 +41,10 @@ impl Bus {
             }
             0x7E..=0x7F => self.wram.read(addr),
             0x40..=0x7D | 0xC0..=0xFF => self.rom.read(addr),
-            _ => 0xFF, // TODO : Shouldn't come here, maybe just add debug ?
         }
     }
 
+    #[allow(dead_code)]
     pub fn write(&mut self, addr: u32, value: u8) {
         let bank = (addr >> 16) as u8;
         let offset = addr & 0xFFFF;
@@ -64,7 +65,6 @@ impl Bus {
             }
             0x7E..=0x7F => self.wram.write(addr, value),
             0x40..=0x7D | 0xC0..=0xFF => self.rom.write(addr, value),
-            _ => {} // TODO : Shouldn't come here, maybe just add debug ?
         }
     }
 }

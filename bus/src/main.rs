@@ -6,7 +6,6 @@ mod rom;
 mod wram;
 
 use bus::Bus;
-use rom::{Rom, RomError};
 use std::{env, error::Error};
 
 fn main() {
