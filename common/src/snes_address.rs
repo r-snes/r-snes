@@ -2,7 +2,7 @@
 /// SNES adddress space.
 ///
 /// The address space is split in 256 64Ko banks.
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Default)]
 pub struct SnesAddress {
     /// The bank number of the address
     pub bank: u8,
