@@ -16,22 +16,22 @@ fn main() {
     // 0x020E: EOR #$FF       -> A = A ^ 0xFF
     // 0x0210: BRK (stop)
     apu.memory.write8(0x0200, 0xA9); // LDA #imm
-    apu.memory.write8(0x0201, 0x42); // operand
-    apu.memory.write8(0x0202, 0xC4); // MOV d, A (our STA replacement)
-    apu.memory.write8(0x0203, 0x10); // direct page $10
+    apu.memory.write8(0x0201, 0x42);
+    apu.memory.write8(0x0202, 0xC4); // MOV d, A
+    apu.memory.write8(0x0203, 0x10);
     apu.memory.write8(0x0204, 0x7D); // MOV A, X
     apu.memory.write8(0x0205, 0x00); // NOP
     apu.memory.write8(0x0206, 0x69); // ADC #imm
-    apu.memory.write8(0x0207, 0x01); // operand
+    apu.memory.write8(0x0207, 0x01);
     apu.memory.write8(0x0208, 0xC9); // CMP #imm
-    apu.memory.write8(0x0209, 0x42); // operand
+    apu.memory.write8(0x0209, 0x42);
     apu.memory.write8(0x020A, 0x29); // AND #imm
-    apu.memory.write8(0x020B, 0x0F); // operand
+    apu.memory.write8(0x020B, 0x0F);
     apu.memory.write8(0x020C, 0x09); // ORA #imm
-    apu.memory.write8(0x020D, 0xF0); // operand
+    apu.memory.write8(0x020D, 0xF0);
     apu.memory.write8(0x020E, 0x49); // EOR #imm
-    apu.memory.write8(0x020F, 0xFF); // operand
-    apu.memory.write8(0x0210, 0x00); // BRK (stop)
+    apu.memory.write8(0x020F, 0xFF);
+    apu.memory.write8(0x0210, 0x00); // BRK
 
     // Initialize CPU registers
     apu.cpu.regs.pc = 0x0200;
@@ -44,6 +44,7 @@ fn main() {
         apu.cpu.regs.sp, apu.cpu.cycles
     );
 
+    // CPU execution loop
     loop {
         let pc = apu.cpu.regs.pc;
         let opcode = apu.memory.read8(pc);
@@ -82,7 +83,6 @@ fn main() {
             );
         }
 
-        // Stop execution at BRK
         if opcode == 0x00 || opcode == 0xFF {
             println!("\nBRK encountered. CPU halted.");
             break;
@@ -95,6 +95,24 @@ fn main() {
         apu.cpu.regs.pc, apu.cpu.regs.a, apu.cpu.regs.x, apu.cpu.regs.y,
         apu.cpu.regs.sp, apu.cpu.cycles
     );
+
+    // --- DSP test ---
+    println!("\nTesting DSP memory-mapped registers...");
+
+    // Write to DSP registers ($F200-$F20F)
+    for i in 0..16 {
+        let addr = 0xF200 + i;
+        apu.memory.write8(addr, i as u8);
+    }
+
+    // Read back from DSP
+    for i in 0..16 {
+        let addr = 0xF200 + i;
+        let val = apu.memory.read8(addr);
+        println!("DSP[0x{:04X}] = {:02X}", addr, val);
+    }
+
+    println!("DSP test complete.");
 }
 
 // What this does:

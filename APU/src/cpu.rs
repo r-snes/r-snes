@@ -44,8 +44,7 @@ impl Spc700 {
         self.regs.pc = self.regs.pc.wrapping_add(1);
 
         match opcode {
-            // NOP
-            0x00 => self.inst_nop(),
+            0x00 => self.inst_nop(), // NOP (No Operation)
         
             // Register moves
             0x7D => self.inst_mov_a_x(), // MOV A, X
@@ -73,7 +72,6 @@ impl Spc700 {
             0xC5 => self.inst_sta_abs(mem),    // MOV !a, A
             0x8E => self.inst_stx_abs(mem),    // MOV !a, X
             0xCC => self.inst_sty_abs(mem),    // MOV !a, Y
-
         
             // Arithmetic & logic
             0x69 => self.inst_adc_imm(mem), // ADC #i

@@ -1,14 +1,25 @@
+use crate::dsp::Dsp;
+
 pub struct Memory {
     pub ram: [u8; 64 * 1024], // 64KB APU RAM
+    pub dsp: Dsp,             // DSP registers
 }
 
 impl Memory {
     pub fn new() -> Self {
-        Self { ram: [0; 64 * 1024] }
+        Self {
+            ram: [0; 64 * 1024],
+            dsp: Dsp::new(),
+        }
     }
 
     pub fn read8(&self, addr: u16) -> u8 {
-        self.ram[addr as usize]
+        // DSP memory-mapped registers
+        if (0xF200..=0xF27F).contains(&addr) {
+            self.dsp.read(addr)
+        } else {
+            self.ram[addr as usize]
+        }
     }
 
     pub fn read16(&self, addr: u16) -> u16 {
@@ -18,7 +29,11 @@ impl Memory {
     }
 
     pub fn write8(&mut self, addr: u16, val: u8) {
-        self.ram[addr as usize] = val;
+        if (0xF200..=0xF27F).contains(&addr) {
+            self.dsp.write(addr, val);
+        } else {
+            self.ram[addr as usize] = val;
+        }
     }
 
     pub fn write16(&mut self, addr: u16, value: u16) {
