@@ -1,8 +1,5 @@
+use crate::constants::{IO_END_ADDRESS, IO_SIZE, IO_START_ADDRESS};
 use crate::memory_region::MemoryRegion;
-
-const IO_START: u32 = 0x2000;
-const IO_END: u32 = 0x5FFF;
-const IO_SIZE: usize = (IO_END - IO_START + 1) as usize;
 
 pub struct Io {
     // TODO : Implement real CPU, PPU, APU, etc... memories.
@@ -20,8 +17,8 @@ impl Io {
     fn map_offset(addr: u32) -> Option<usize> {
         let offset_in_bank = addr & 0xFFFF; // address within the current 64 KiB bank
 
-        if (IO_START..=IO_END).contains(&offset_in_bank) {
-            let index = (offset_in_bank - IO_START) as usize;
+        if (IO_START_ADDRESS..=IO_END_ADDRESS).contains(&offset_in_bank) {
+            let index = (offset_in_bank - IO_START_ADDRESS) as usize;
             Some(index)
         } else {
             None

@@ -1,3 +1,7 @@
+use crate::constants::{
+    HEADER_CHECKSUM_COMPLEMENT_OFFSET, HEADER_CHECKSUM_OFFSET, HEADER_MIN_LEN, HEADER_TITLE_LEN,
+    HIROM_BANK_SIZE, HIROM_HEADER_OFFSET, LOROM_HEADER_OFFSET,
+};
 use std::cmp::Ordering;
 
 pub enum MappingMode {
@@ -8,14 +12,14 @@ pub enum MappingMode {
 
 impl MappingMode {
     pub fn detect_rom_mapping(rom_data: &[u8]) -> MappingMode {
-        if rom_data.len() < 0x10000 {
+        if rom_data.len() < HIROM_BANK_SIZE {
             return MappingMode::Unknown;
         }
 
-        // Try LoROM header at 0x7FC0
-        let lorom_score = Self::score_header(rom_data, 0x7FC0);
-        // Try HiROM header at 0xFFC0
-        let hirom_score = Self::score_header(rom_data, 0xFFC0);
+        // Try LoROM header
+        let lorom_score = Self::score_header(rom_data, LOROM_HEADER_OFFSET);
+        // Try HiROM header
+        let hirom_score = Self::score_header(rom_data, HIROM_HEADER_OFFSET);
 
         match lorom_score.cmp(&hirom_score) {
             Ordering::Greater => MappingMode::LoRom,
@@ -25,14 +29,14 @@ impl MappingMode {
     }
 
     fn score_header(rom_data: &[u8], header_offset: usize) -> u32 {
-        if header_offset + 0x20 > rom_data.len() {
+        if header_offset + HEADER_MIN_LEN > rom_data.len() {
             return 0;
         }
 
         let mut score = 0;
 
         // Title should be mostly ASCII
-        let title = &rom_data[header_offset..header_offset + 21];
+        let title = &rom_data[header_offset..header_offset + HEADER_TITLE_LEN];
         if title
             .iter()
             .all(|&c| (c == 0x20) || (0x20..=0x7E).contains(&c))
@@ -41,8 +45,9 @@ impl MappingMode {
         }
 
         // Checksum and complement
-        let checksum = Self::read_u16(rom_data, header_offset + 0x1E);
-        let checksum_complement = Self::read_u16(rom_data, header_offset + 0x1C);
+        let checksum = Self::read_u16(rom_data, header_offset + HEADER_CHECKSUM_OFFSET);
+        let checksum_complement =
+            Self::read_u16(rom_data, header_offset + HEADER_CHECKSUM_COMPLEMENT_OFFSET);
 
         if checksum != 0 && (checksum ^ checksum_complement) == 0xFFFF {
             score += 2;

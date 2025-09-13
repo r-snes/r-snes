@@ -9,7 +9,6 @@ pub struct Bus {
     pub wram: Wram,
     pub rom: Rom,
     pub io: Io,
-    // TODO : Add other peripherals here later
 }
 
 impl Bus {

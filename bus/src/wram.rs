@@ -1,17 +1,15 @@
+use crate::constants::{MIRROR_MASK, WRAM_SIZE};
 use crate::memory_region::MemoryRegion;
 
-const BANK_SIZE: usize = 0xFFFF + 1; // 64 KiB per bank
-const BANK_COUNT: usize = 2; // WRAM spans 2 banks
-const SIZE: usize = BANK_SIZE * BANK_COUNT;
-const MIRROR_MASK: u32 = 0x1_FFFF; // 17 bits : wraps addresses
-
 pub struct Wram {
-    data: [u8; SIZE], // 128 KiB WRAM
+    data: [u8; WRAM_SIZE], // 128 KiB WRAM
 }
 
 impl Wram {
     pub fn new() -> Self {
-        Self { data: [0; SIZE] }
+        Self {
+            data: [0; WRAM_SIZE],
+        }
     }
 
     fn map_addr(addr: u32) -> usize {
