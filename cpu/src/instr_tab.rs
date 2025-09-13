@@ -259,9 +259,9 @@ pub(crate) const INSTRUCTIONS: [Option<&'static Instruction>; 256] = [
     /* e5 */ None,
     /* e6 */ None,
     /* e7 */ None,
-    /* e8 */ None,
+    /* e8 */ Some(&[InstructionCycle::Internal(CPU::inx)]),
     /* e9 */ None,
-    /* ea */ None,
+    /* ea */ Some(&[InstructionCycle::Internal(|_| {})]), // No-op, do nothing
     /* eb */ None,
     /* ec */ None,
     /* ed */ None,

@@ -32,6 +32,7 @@ pub struct CPU {
 ///
 /// This enum is the return type of the [`CPU::cycle`] function: it is used
 /// to inform the caller of what the CPU has done or I/O requests.
+#[derive(Debug, PartialEq, Eq)]
 pub enum CycleResult {
     /// The CPU wants to read from RAM. The caller should write in the data
     /// bus the byte contained at the address pointed to by the address bus.
@@ -114,14 +115,10 @@ impl CPU {
     /// Flags set:
     /// - `Z`: whether the result is zero
     /// - `N`: whether the result is negative (if it were interpreted as signed)
-    ///
-    /// Returns the number of CPU cycles of execution
-    pub fn inx(&mut self) -> i32 {
+    pub(crate) fn inx(&mut self) {
         self.registers.X = self.registers.X.wrapping_add(1);
         self.registers.P.Z = self.registers.X == 0;
         self.registers.P.N = self.registers.X > 0x7fff;
-
-        2
     }
 }
 
@@ -138,5 +135,37 @@ mod test {
 
         cpu.inx();
         assert_eq!(cpu.regs().X, 2);
+    }
+
+    #[test]
+    fn test_1_plus_1_is_2_cycle_api() {
+        let mut regs = Registers::default();
+        regs.PB = 0x12;
+        regs.PC = 0x3456;
+
+        regs.X = 1;
+        let mut cpu = CPU::new(regs);
+
+        assert_eq!(
+            cpu.cycle(),
+            CycleResult::Read,
+            "Expecting a read cycle for opcode fetch"
+        );
+        assert_eq!(
+            *cpu.addr_bus(),
+            SnesAddress {
+                bank: 0x12,
+                addr: 0x3456
+            },
+            "Read query should be from address at PB:PC"
+        );
+        cpu.data_bus = 0xe8; // Inject the INX opcode into the CPU
+
+        assert_eq!(
+            cpu.cycle(),
+            CycleResult::Internal,
+            "Expecting internal cycle for register increment"
+        );
+        assert_eq!(cpu.regs().X, 2, "Expecting value 2 in X register");
     }
 }
