@@ -5,10 +5,10 @@ pub struct PPU {
     vram: [u8; VRAM_SIZE],
     cgram: [u16; CGRAM_SIZE],
 
-    #[allow(dead_code)] // used for CPU write emulation (not implemented yet)
+    #[allow(dead_code)] // For future CPU write handling (not implemented yet)
     cgaddr: u8,
 
-    #[allow(dead_code)] // used for CPU write emulation (not implemented yet)
+    #[allow(dead_code)] // For future CPU write handling (not implemented yet)
     latch: Option<u8>,
 }
 
@@ -49,14 +49,14 @@ impl PPU {
         self.vram[addr]
     }
 
-    #[allow(dead_code)] // used for CPU write emulation (not implemented yet)
+    #[allow(dead_code)] // For future CPU write handling (not implemented yet)
     // Set current CGRAM address ($2121 on the SNES)
     pub fn set_cgram_addr(&mut self, addr: u8) {
         self.cgaddr = addr;
         self.latch = None; // reset latch when address changes
     }
 
-    #[allow(dead_code)] // used for CPU write emulation (not implemented yet)
+    #[allow(dead_code)] // For future CPU write handling (not implemented yet)
     // Write one byte to CGRAM ($2122 on the SNES I think ?)
     pub fn write_cgram_data(&mut self, value: u8) {
         if let Some(low) = self.latch {
