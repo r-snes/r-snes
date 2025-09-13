@@ -3,7 +3,13 @@ use crate::utils::{render_scanline, CGRAM_SIZE, HEIGHT, VRAM_SIZE, WIDTH};
 pub struct PPU {
     pub framebuffer: Vec<u32>,
     vram: [u8; VRAM_SIZE],
-    cgram: [u16; CGRAM_SIZE]
+    cgram: [u16; CGRAM_SIZE],
+
+    #[allow(dead_code)] // used for CPU write emulation (not implemented yet)
+    cgaddr: u8,
+
+    #[allow(dead_code)] // used for CPU write emulation (not implemented yet)
+    latch: Option<u8>,
 }
 
 impl PPU {
@@ -11,7 +17,9 @@ impl PPU {
         let mut ppu = Self {
             framebuffer: vec![0; WIDTH * HEIGHT],
             vram: [0; VRAM_SIZE],
-            cgram: [0; CGRAM_SIZE]
+            cgram: [0; CGRAM_SIZE],
+            cgaddr: 0,
+            latch: None,
         };
 
         // Hardcoded palette
@@ -39,6 +47,28 @@ impl PPU {
             return 0;
         }
         self.vram[addr]
+    }
+
+    #[allow(dead_code)] // used for CPU write emulation (not implemented yet)
+    // Set current CGRAM address ($2121 on the SNES)
+    pub fn set_cgram_addr(&mut self, addr: u8) {
+        self.cgaddr = addr;
+        self.latch = None; // reset latch when address changes
+    }
+
+    #[allow(dead_code)] // used for CPU write emulation (not implemented yet)
+    // Write one byte to CGRAM ($2122 on the SNES I think ?)
+    pub fn write_cgram_data(&mut self, value: u8) {
+        if let Some(low) = self.latch {
+            // 2nd write → combine low + high into one 16-bit value
+            let color = ((value as u16) << 8) | (low as u16);
+            self.cgram[self.cgaddr as usize] = color & 0x7FFF; // mask to 15 bits
+            self.cgaddr = self.cgaddr.wrapping_add(1); // auto-increment address
+            self.latch = None;
+        } else {
+            // 1st write → store in latch
+            self.latch = Some(value);
+        }
     }
 
     pub fn read_cgram(&self, index: u8) -> u32 {
