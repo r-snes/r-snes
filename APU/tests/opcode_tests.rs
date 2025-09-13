@@ -1,7 +1,8 @@
 use apu::{Memory, Spc700};
 use apu::cpu::FLAG_N;
 use apu::cpu::FLAG_Z;
-
+use apu::cpu::FLAG_C;
+use apu::cpu::FLAG_V;
 
 #[test]
 fn test_nop() {
@@ -255,4 +256,89 @@ fn test_sta_dp() {
     cpu.step(&mut mem);
 
     assert_eq!(mem.read8(0x0020), 0x99);
+}
+
+
+#[test]
+fn test_adc_no_carry() {
+    let mut cpu = Spc700::new();
+    let mut mem = Memory::new();
+
+    cpu.regs.pc = 0x200;
+    cpu.regs.a = 0x10;
+    mem.write8(0x200, 0x05); // ADC #$05
+
+    cpu.inst_adc_imm(&mut mem);
+
+    assert_eq!(cpu.regs.a, 0x15);
+    assert!(!cpu.get_flag(FLAG_C));
+    assert!(!cpu.get_flag(FLAG_V));
+    assert!(!cpu.get_flag(FLAG_N));
+    assert!(!cpu.get_flag(FLAG_Z));
+}
+
+#[test]
+fn test_adc_with_carry_and_overflow() {
+    let mut cpu = Spc700::new();
+    let mut mem = Memory::new();
+
+    cpu.regs.pc = 0x200;
+    cpu.regs.a = 0x80;
+    mem.write8(0x200, 0x80); // ADC #$80
+
+    cpu.inst_adc_imm(&mut mem);
+
+    assert_eq!(cpu.regs.a, 0x00); // 0x80 + 0x80 = 0x100 -> 0x00
+    assert!(cpu.get_flag(FLAG_C));
+    assert!(cpu.get_flag(FLAG_V));
+    assert!(cpu.get_flag(FLAG_Z));
+    assert!(!cpu.get_flag(FLAG_N));
+}
+
+#[test]
+fn test_cmp_greater() {
+    let mut cpu = Spc700::new();
+    let mut mem = Memory::new();
+
+    cpu.regs.pc = 0x200;
+    cpu.regs.a = 0x50;
+    mem.write8(0x200, 0x40); // CMP #$40
+
+    cpu.inst_cmp_imm(&mut mem);
+
+    assert!(cpu.get_flag(FLAG_C));
+    assert!(!cpu.get_flag(FLAG_Z));
+    assert!(!cpu.get_flag(FLAG_N));
+}
+
+#[test]
+fn test_cmp_equal() {
+    let mut cpu = Spc700::new();
+    let mut mem = Memory::new();
+
+    cpu.regs.pc = 0x200;
+    cpu.regs.a = 0x42;
+    mem.write8(0x200, 0x42); // CMP #$42
+
+    cpu.inst_cmp_imm(&mut mem);
+
+    assert!(cpu.get_flag(FLAG_C));
+    assert!(cpu.get_flag(FLAG_Z));
+    assert!(!cpu.get_flag(FLAG_N));
+}
+
+#[test]
+fn test_cmp_less() {
+    let mut cpu = Spc700::new();
+    let mut mem = Memory::new();
+
+    cpu.regs.pc = 0x200;
+    cpu.regs.a = 0x30;
+    mem.write8(0x200, 0x40); // CMP #$40
+
+    cpu.inst_cmp_imm(&mut mem);
+
+    assert!(!cpu.get_flag(FLAG_C));
+    assert!(!cpu.get_flag(FLAG_Z));
+    assert!(cpu.get_flag(FLAG_N));
 }

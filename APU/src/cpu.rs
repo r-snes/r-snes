@@ -69,6 +69,9 @@ impl Spc700 {
             0x86 => self.inst_stx_dp(mem),
             0x87 => self.inst_sty_dp(mem),
 
+            0x69 => self.inst_adc_imm(mem),
+            0xC9 => self.inst_cmp_imm(mem),
+
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
         }        
     }
@@ -226,5 +229,40 @@ impl Spc700 {
         self.regs.pc = self.regs.pc.wrapping_add(1);
         mem.write8(addr, self.regs.y);
         self.cycles += 3;
+    }
+
+    pub fn inst_adc_imm(&mut self, mem: &mut Memory) {
+        let value = mem.read8(self.regs.pc);
+        self.regs.pc = self.regs.pc.wrapping_add(1);
+
+        let carry_in = if self.get_flag(FLAG_C) { 1 } else { 0 };
+        let result = self.regs.a as u16 + value as u16 + carry_in as u16;
+
+        // Update flags
+        self.set_flag(FLAG_C, result > 0xFF);
+        let result_u8 = result as u8;
+        self.set_zn_flags(result_u8);
+
+        // Overflow flag
+        self.set_flag(
+            FLAG_V,
+            (!(self.regs.a ^ value) & (self.regs.a ^ result_u8) & 0x80) != 0,
+        );
+
+        self.regs.a = result_u8;
+        self.cycles += 2;
+    }
+
+    /// Compare memory with accumulator (sets flags only)
+    pub fn inst_cmp_imm(&mut self, mem: &mut Memory) {
+        let value = mem.read8(self.regs.pc);
+        self.regs.pc = self.regs.pc.wrapping_add(1);
+
+        let result = self.regs.a.wrapping_sub(value);
+
+        self.set_flag(FLAG_C, self.regs.a >= value);
+        self.set_zn_flags(result);
+
+        self.cycles += 2;
     }
 }
