@@ -5,6 +5,7 @@ edition = "2024"
 
 [workspace]
 members = [
+    "common",
     "ppu",
 ]
 
