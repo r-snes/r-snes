@@ -1,14 +1,33 @@
-/// One voice of the SNES APU DSP
-#[derive(Default, Debug, Clone, Copy)]
+use crate::memory::Memory;
+
+/// Voice of the SNES APU DSP
+#[derive(Debug, Clone, Copy)]
 pub struct Voice {
     pub left_vol: u8,
     pub right_vol: u8,
     pub pitch: u16,
     pub key_on: bool,
     pub sample_start: u16,
-    pub current_addr: u16,
     pub sample_end: u16,
-    pub current_sample: i16,
+    pub current_addr: u16,
+    pub frac: u16, // fractional accumulator for pitch stepping
+    pub current_sample: i8, // last fetched sample
+}
+
+impl Default for Voice {
+    fn default() -> Self {
+        Self {
+            left_vol: 0,
+            right_vol: 0,
+            pitch: 0,
+            key_on: false,
+            sample_start: 0,
+            sample_end: 0,
+            current_addr: 0,
+            frac: 0,
+            current_sample: 0,
+        }
+    }
 }
 
 pub struct Dsp {
@@ -20,16 +39,7 @@ impl Dsp {
     pub fn new() -> Self {
         Self {
             registers: [0; 128],
-            voices: [Voice {
-                key_on: false,
-                sample_start: 0,
-                sample_end: 0,
-                current_addr: 0,
-                pitch: 0,
-                left_vol: 0,
-                right_vol: 0,
-                current_sample: 0,
-            }; 8],
+            voices: [Voice::default(); 8],
         }
     }
 
@@ -46,79 +56,77 @@ impl Dsp {
 
         // Map registers to voices
         match index {
-            0x00..=0x07 => {
-                // Left volume
-                self.voices[index as usize].left_vol = value;
-            }
-            0x08..=0x0F => {
-                // Right volume
-                let voice_idx = index - 0x08;
-                self.voices[voice_idx].right_vol = value;
-            }
+            0x00..=0x07 => self.voices[index].left_vol = value,
+            0x08..=0x0F => self.voices[index - 0x08].right_vol = value,
             0x10..=0x17 => {
-                // Pitch low byte
                 let voice_idx = index - 0x10;
                 let pitch = (self.voices[voice_idx].pitch & 0xFF00) | value as u16;
                 self.voices[voice_idx].pitch = pitch;
             }
             0x18..=0x1F => {
-                // Pitch high byte
                 let voice_idx = index - 0x18;
-                let pitch = (value as u16) << 8 | (self.voices[voice_idx].pitch & 0x00FF);
+                let pitch = ((value as u16) << 8) | (self.voices[voice_idx].pitch & 0x00FF);
                 self.voices[voice_idx].pitch = pitch;
             }
             0x20..=0x27 => {
-                // Key on/off
                 let voice_idx = index - 0x20;
                 self.voices[voice_idx].key_on = value != 0;
+                if value != 0 {
+                    self.voices[voice_idx].current_addr = self.voices[voice_idx].sample_start;
+                    self.voices[voice_idx].frac = 0;
+                }
             }
             0x30..=0x37 => {
-                // Sample start
                 let voice_idx = index - 0x30;
-                self.voices[voice_idx].sample_start = (self.voices[voice_idx].sample_start & 0xFF00) | value as u16;
+                self.voices[voice_idx].sample_start =
+                    (self.voices[voice_idx].sample_start & 0xFF00) | value as u16;
             }
             0x38..=0x3F => {
-                // Sample end
                 let voice_idx = index - 0x38;
-                self.voices[voice_idx].sample_end = (self.voices[voice_idx].sample_end & 0xFF00) | value as u16;
+                self.voices[voice_idx].sample_end =
+                    (self.voices[voice_idx].sample_end & 0xFF00) | value as u16;
             }
-            _ => {
-                // Other registers (echo, ADSR, etc.) not implemented yet
-            }
+            _ => {} // Other registers (echo, ADSR) not implemented yet
         }
     }
 
-    pub fn step(&mut self, memory: &crate::memory::Memory) {
+    /// Step DSP one tick (process voices)
+    pub fn step(&mut self, mem: &Memory) {
         for voice in self.voices.iter_mut() {
             if voice.key_on {
-                // Fetch the sample from memory (8-bit unsigned -> i16 signed)
-                let sample_byte = memory.read8(voice.current_addr);
-                voice.current_sample = (sample_byte as i16) << 8; // simple conversion to signed
-    
-                // Advance current address by pitch
-                voice.current_addr = voice.current_addr.wrapping_add(voice.pitch);
-    
-                // Stop if we reach end of sample
+                // Fetch current sample first
+                voice.current_sample = mem.read8(voice.current_addr) as i8;
+        
+                // Advance fractional accumulator
+                voice.frac = voice.frac.wrapping_add(voice.pitch);
+                let step = voice.frac >> 8;
+                voice.frac &= 0xFF;
+        
+                // Advance current address
+                voice.current_addr = voice.current_addr.wrapping_add(step);
+        
+                // Stop if we reach end
                 if voice.current_addr >= voice.sample_end {
                     voice.key_on = false;
                 }
             }
-        }
+        }        
     }
 
-    pub fn render_audio(&self, num_samples: usize) -> Vec<i16> {
-        let mut buffer = vec![0i16; num_samples * 2]; // stereo interleaved: L/R
-        for voice in self.voices.iter() {
+    /// Mix all voices into stereo output buffer
+    pub fn render_audio(&self, num_samples: usize) -> Vec<(i16, i16)> {
+        let mut buffer = vec![(0i16, 0i16); num_samples];
+
+        for voice in &self.voices {
             if voice.key_on {
-                let l = voice.left_vol as i16;
-                let r = voice.right_vol as i16;
-                for i in 0..num_samples {
-                    buffer[i*2] = buffer[i*2].saturating_add(l * (voice.current_sample >> 8));
-                    buffer[i*2+1] = buffer[i*2+1].saturating_add(r * (voice.current_sample >> 8));
+                for sample in &mut buffer {
+                    let sample_val = voice.current_sample as i16;
+                    sample.0 = sample.0.saturating_add(sample_val * voice.left_vol as i16);
+                    sample.1 = sample.1.saturating_add(sample_val * voice.right_vol as i16);
                 }
             }
         }
+
         buffer
     }
-    
 }

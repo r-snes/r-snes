@@ -1,7 +1,6 @@
 use apu::dsp::Dsp;
 use apu::Memory;
 
-
 #[test]
 fn test_dsp_register_write_read() {
     let mut dsp = Dsp::new();
@@ -17,22 +16,6 @@ fn test_dsp_register_write_read() {
         assert_eq!(val, i, "DSP register 0x{:X} mismatch", 0xF200 + i as u16);
     }
 }
-
-// #[test]
-// fn test_dsp_step_placeholder() {
-//     let mut dsp = Dsp::new();
-
-//     // Set a few registers
-//     dsp.write(0xF200, 0x12);
-//     dsp.write(0xF201, 0x34);
-
-//     // Call step (currently placeholder)
-//     dsp.step();
-
-//     // Since step does nothing, registers should be unchanged
-//     assert_eq!(dsp.read(0xF200), 0x12);
-//     assert_eq!(dsp.read(0xF201), 0x34);
-// }
 
 #[test]
 fn test_voice_volume_mapping() {
@@ -74,6 +57,7 @@ fn test_voice_initialization() {
         assert_eq!(voice.sample_start, 0);
         assert_eq!(voice.sample_end, 0);
         assert_eq!(voice.current_addr, 0);
+        assert_eq!(voice.current_sample, 0);
     }
 }
 
@@ -86,7 +70,7 @@ fn test_voice_step_advances() {
     dsp.voices[0].sample_start = 0x1000;
     dsp.voices[0].sample_end = 0x1005;
     dsp.voices[0].current_addr = 0x1000;
-    dsp.voices[0].pitch = 1;
+    dsp.voices[0].pitch = 0x100; // integer increment = 1
 
     dsp.step(&mut mem);
     assert_eq!(dsp.voices[0].current_addr, 0x1001);
@@ -96,7 +80,6 @@ fn test_voice_step_advances() {
     dsp.step(&mut mem);
     dsp.step(&mut mem);
 
-    // Should stop at sample_end
     assert!(!dsp.voices[0].key_on);
 }
 
@@ -105,24 +88,22 @@ fn test_voice_sample_fetch() {
     let mut dsp = Dsp::new();
     let mut mem = Memory::new();
 
-    // Sample data at 0x1000: 0x00, 0x80, 0xFF
     mem.write8(0x1000, 0x00);
     mem.write8(0x1001, 0x80);
     mem.write8(0x1002, 0xFF);
 
-    // Activate voice
     dsp.voices[0].key_on = true;
     dsp.voices[0].sample_start = 0x1000;
     dsp.voices[0].sample_end = 0x1003;
     dsp.voices[0].current_addr = 0x1000;
-    dsp.voices[0].pitch = 1;
+    dsp.voices[0].pitch = 0x100; // integer increment = 1
 
     dsp.step(&mem);
-    assert_eq!(dsp.voices[0].current_sample, 0x00);
+    assert_eq!(dsp.voices[0].current_sample, 0x00u8 as i8);
 
     dsp.step(&mem);
-    assert_eq!(dsp.voices[0].current_sample, 0x8000_u16 as i16);
+    assert_eq!(dsp.voices[0].current_sample, 0x80u8 as i8);
 
     dsp.step(&mem);
-    assert_eq!(dsp.voices[0].current_sample, -0x0100); // 0xFF -> -256
+    assert_eq!(dsp.voices[0].current_sample, 0xFFu8 as i8);
 }
