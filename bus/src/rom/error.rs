@@ -1,9 +1,10 @@
-use std::{error::Error, fmt};
+use std::fmt;
 
 #[derive(Debug)]
 pub enum RomError {
     IoError(std::io::Error),
     FileTooSmall,
+    #[allow(dead_code)]
     InvalidFormat,
 }
 
