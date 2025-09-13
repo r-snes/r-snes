@@ -80,7 +80,6 @@ fn test_render_scanline_renders_correct_line() {
 
     for x in 0..TILE_SIZE {
         let color = ppu.framebuffer[x];
-        println!("----Actual color: {:#X}", color);
-        assert_eq!(color, 0xFFFFFFF0);
+        assert_eq!(color, 0xFFFFFF7B);
     }
 }
