@@ -62,6 +62,13 @@ impl Spc700 {
             0xAE => self.inst_ldx_abs(mem),
             0xAF => self.inst_ldy_abs(mem),
 
+            0xA5 => self.inst_lda_dp(mem),
+            0xA6 => self.inst_ldx_dp(mem),
+            0xA7 => self.inst_ldy_dp(mem),
+            0x85 => self.inst_sta_dp(mem),
+            0x86 => self.inst_stx_dp(mem),
+            0x87 => self.inst_sty_dp(mem),
+
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
         }        
     }
@@ -172,5 +179,52 @@ impl Spc700 {
         self.regs.y = mem.read8(addr);
         self.set_zn_flags(self.regs.y);
         self.cycles += 4;
+    }
+
+    // Load accumulator from direct page
+    pub fn inst_lda_dp(&mut self, mem: &mut Memory) {
+        let addr = mem.read8(self.regs.pc) as u16;
+        self.regs.pc = self.regs.pc.wrapping_add(1);
+        self.regs.a = mem.read8(addr);
+        self.set_zn_flags(self.regs.a);
+        self.cycles += 3; // Direct page is faster than absolute
+    }
+
+    pub fn inst_ldx_dp(&mut self, mem: &mut Memory) {
+        let addr = mem.read8(self.regs.pc) as u16;
+        self.regs.pc = self.regs.pc.wrapping_add(1);
+        self.regs.x = mem.read8(addr);
+        self.set_zn_flags(self.regs.x);
+        self.cycles += 3;
+    }
+
+    pub fn inst_ldy_dp(&mut self, mem: &mut Memory) {
+        let addr = mem.read8(self.regs.pc) as u16;
+        self.regs.pc = self.regs.pc.wrapping_add(1);
+        self.regs.y = mem.read8(addr);
+        self.set_zn_flags(self.regs.y);
+        self.cycles += 3;
+    }
+
+    // Store accumulator into direct page
+    pub fn inst_sta_dp(&mut self, mem: &mut Memory) {
+        let addr = mem.read8(self.regs.pc) as u16;
+        self.regs.pc = self.regs.pc.wrapping_add(1);
+        mem.write8(addr, self.regs.a);
+        self.cycles += 3;
+    }
+
+    pub fn inst_stx_dp(&mut self, mem: &mut Memory) {
+        let addr = mem.read8(self.regs.pc) as u16;
+        self.regs.pc = self.regs.pc.wrapping_add(1);
+        mem.write8(addr, self.regs.x);
+        self.cycles += 3;
+    }
+
+    pub fn inst_sty_dp(&mut self, mem: &mut Memory) {
+        let addr = mem.read8(self.regs.pc) as u16;
+        self.regs.pc = self.regs.pc.wrapping_add(1);
+        mem.write8(addr, self.regs.y);
+        self.cycles += 3;
     }
 }

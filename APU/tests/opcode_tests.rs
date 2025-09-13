@@ -224,3 +224,35 @@ fn test_ldy_abs() {
     assert!(cpu.get_flag(FLAG_Z));
     assert!(!cpu.get_flag(FLAG_N));
 }
+
+#[test]
+fn test_lda_dp() {
+    let mut mem = Memory::new();
+    let mut cpu = Spc700::new();
+    cpu.regs.pc = 0x200;
+
+    mem.write8(0x200, 0xA5); // LDA dp
+    mem.write8(0x201, 0x10); // direct page $0010
+    mem.write8(0x0010, 0x55);
+
+    cpu.step(&mut mem);
+
+    assert_eq!(cpu.regs.a, 0x55);
+    assert!(!cpu.get_flag(FLAG_N));
+    assert!(!cpu.get_flag(FLAG_Z));
+}
+
+#[test]
+fn test_sta_dp() {
+    let mut mem = Memory::new();
+    let mut cpu = Spc700::new();
+    cpu.regs.pc = 0x200;
+    cpu.regs.a = 0x99;
+
+    mem.write8(0x200, 0x85); // STA dp
+    mem.write8(0x201, 0x20); // direct page $0020
+
+    cpu.step(&mut mem);
+
+    assert_eq!(mem.read8(0x0020), 0x99);
+}
