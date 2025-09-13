@@ -1,119 +1,119 @@
-use apu::Apu;
-use apu::cpu::{FLAG_N, FLAG_Z};
+// use apu::Apu;
+// use apu::cpu::{FLAG_N, FLAG_Z};
 
-fn main() {
-    let mut apu = Apu::new();
+// fn main() {
+//     let mut apu = Apu::new();
 
-    // Program memory setup
-    // 0x0200: LDA #$42      -> load 0x42 into A
-    // 0x0202: STA $0010      -> store A into direct page 0x10
-    // 0x0204: MOV A, X       -> copy X into A
-    // 0x0205: NOP
-    // 0x0206: ADC #$01       -> add 1 to A
-    // 0x0208: CMP #$42       -> compare A with 0x42
-    // 0x020A: AND #$0F       -> A = A & 0x0F
-    // 0x020C: ORA #$F0       -> A = A | 0xF0
-    // 0x020E: EOR #$FF       -> A = A ^ 0xFF
-    // 0x0210: BRK (stop)
-    apu.memory.write8(0x0200, 0xA9); // LDA #imm
-    apu.memory.write8(0x0201, 0x42);
-    apu.memory.write8(0x0202, 0xC4); // MOV d, A
-    apu.memory.write8(0x0203, 0x10);
-    apu.memory.write8(0x0204, 0x7D); // MOV A, X
-    apu.memory.write8(0x0205, 0x00); // NOP
-    apu.memory.write8(0x0206, 0x69); // ADC #imm
-    apu.memory.write8(0x0207, 0x01);
-    apu.memory.write8(0x0208, 0xC9); // CMP #imm
-    apu.memory.write8(0x0209, 0x42);
-    apu.memory.write8(0x020A, 0x29); // AND #imm
-    apu.memory.write8(0x020B, 0x0F);
-    apu.memory.write8(0x020C, 0x09); // ORA #imm
-    apu.memory.write8(0x020D, 0xF0);
-    apu.memory.write8(0x020E, 0x49); // EOR #imm
-    apu.memory.write8(0x020F, 0xFF);
-    apu.memory.write8(0x0210, 0x00); // BRK
+//     // Program memory setup
+//     // 0x0200: LDA #$42      -> load 0x42 into A
+//     // 0x0202: STA $0010      -> store A into direct page 0x10
+//     // 0x0204: MOV A, X       -> copy X into A
+//     // 0x0205: NOP
+//     // 0x0206: ADC #$01       -> add 1 to A
+//     // 0x0208: CMP #$42       -> compare A with 0x42
+//     // 0x020A: AND #$0F       -> A = A & 0x0F
+//     // 0x020C: ORA #$F0       -> A = A | 0xF0
+//     // 0x020E: EOR #$FF       -> A = A ^ 0xFF
+//     // 0x0210: BRK (stop)
+//     apu.memory.write8(0x0200, 0xA9); // LDA #imm
+//     apu.memory.write8(0x0201, 0x42);
+//     apu.memory.write8(0x0202, 0xC4); // MOV d, A
+//     apu.memory.write8(0x0203, 0x10);
+//     apu.memory.write8(0x0204, 0x7D); // MOV A, X
+//     apu.memory.write8(0x0205, 0x00); // NOP
+//     apu.memory.write8(0x0206, 0x69); // ADC #imm
+//     apu.memory.write8(0x0207, 0x01);
+//     apu.memory.write8(0x0208, 0xC9); // CMP #imm
+//     apu.memory.write8(0x0209, 0x42);
+//     apu.memory.write8(0x020A, 0x29); // AND #imm
+//     apu.memory.write8(0x020B, 0x0F);
+//     apu.memory.write8(0x020C, 0x09); // ORA #imm
+//     apu.memory.write8(0x020D, 0xF0);
+//     apu.memory.write8(0x020E, 0x49); // EOR #imm
+//     apu.memory.write8(0x020F, 0xFF);
+//     apu.memory.write8(0x0210, 0x00); // BRK
 
-    // Initialize CPU registers
-    apu.cpu.regs.pc = 0x0200;
-    apu.cpu.regs.x = 0x99;
+//     // Initialize CPU registers
+//     apu.cpu.regs.pc = 0x0200;
+//     apu.cpu.regs.x = 0x99;
 
-    println!("Starting CPU execution:");
-    println!(
-        "Initial state: PC={:04X} A={:02X} X={:02X} Y={:02X} SP={:02X} Cycles={}",
-        apu.cpu.regs.pc, apu.cpu.regs.a, apu.cpu.regs.x, apu.cpu.regs.y,
-        apu.cpu.regs.sp, apu.cpu.cycles
-    );
+//     println!("Starting CPU execution:");
+//     println!(
+//         "Initial state: PC={:04X} A={:02X} X={:02X} Y={:02X} SP={:02X} Cycles={}",
+//         apu.cpu.regs.pc, apu.cpu.regs.a, apu.cpu.regs.x, apu.cpu.regs.y,
+//         apu.cpu.regs.sp, apu.cpu.cycles
+//     );
 
-    // CPU execution loop
-    loop {
-        let pc = apu.cpu.regs.pc;
-        let opcode = apu.memory.read8(pc);
+//     // CPU execution loop
+//     loop {
+//         let pc = apu.cpu.regs.pc;
+//         let opcode = apu.memory.read8(pc);
 
-        // Fetch operand for logging
-        let operand = match opcode {
-            0xA9 | 0xCD | 0x8D | 0x69 | 0xC9 | 0xE9 | 0x29 | 0x09 | 0x49 => {
-                apu.memory.read8(pc + 1) as u16
-            }
-            0xC4 => apu.memory.read8(pc + 1) as u16, // direct page store
-            _ => 0,
-        };
+//         // Fetch operand for logging
+//         let operand = match opcode {
+//             0xA9 | 0xCD | 0x8D | 0x69 | 0xC9 | 0xE9 | 0x29 | 0x09 | 0x49 => {
+//                 apu.memory.read8(pc + 1) as u16
+//             }
+//             0xC4 => apu.memory.read8(pc + 1) as u16, // direct page store
+//             _ => 0,
+//         };
 
-        // Execute instruction
-        apu.step(1);
+//         // Execute instruction
+//         apu.step(1);
 
-        // Log step
-        println!("\nPC={:04X} Opcode {:02X} Operand={:04X}", pc, opcode, operand);
-        println!(
-            "Registers: A={:02X} X={:02X} Y={:02X} SP={:02X} PC={:04X}",
-            apu.cpu.regs.a, apu.cpu.regs.x, apu.cpu.regs.y,
-            apu.cpu.regs.sp, apu.cpu.regs.pc
-        );
-        println!(
-            "Flags: N={} Z={}",
-            apu.cpu.get_flag(FLAG_N),
-            apu.cpu.get_flag(FLAG_Z)
-        );
-        println!("Total cycles: {}", apu.cpu.cycles);
+//         // Log step
+//         println!("\nPC={:04X} Opcode {:02X} Operand={:04X}", pc, opcode, operand);
+//         println!(
+//             "Registers: A={:02X} X={:02X} Y={:02X} SP={:02X} PC={:04X}",
+//             apu.cpu.regs.a, apu.cpu.regs.x, apu.cpu.regs.y,
+//             apu.cpu.regs.sp, apu.cpu.regs.pc
+//         );
+//         println!(
+//             "Flags: N={} Z={}",
+//             apu.cpu.get_flag(FLAG_N),
+//             apu.cpu.get_flag(FLAG_Z)
+//         );
+//         println!("Total cycles: {}", apu.cpu.cycles);
 
-        // Show memory writes for direct page stores
-        if opcode == 0xC4 {
-            println!(
-                "Memory[0x{:04X}] <- {:02X}",
-                operand, apu.memory.read8(operand)
-            );
-        }
+//         // Show memory writes for direct page stores
+//         if opcode == 0xC4 {
+//             println!(
+//                 "Memory[0x{:04X}] <- {:02X}",
+//                 operand, apu.memory.read8(operand)
+//             );
+//         }
 
-        if opcode == 0x00 || opcode == 0xFF {
-            println!("\nBRK encountered. CPU halted.");
-            break;
-        }
-    }
+//         if opcode == 0x00 || opcode == 0xFF {
+//             println!("\nBRK encountered. CPU halted.");
+//             break;
+//         }
+//     }
 
-    println!("\nFinal state:");
-    println!(
-        "PC={:04X} A={:02X} X={:02X} Y={:02X} SP={:02X} Cycles={}",
-        apu.cpu.regs.pc, apu.cpu.regs.a, apu.cpu.regs.x, apu.cpu.regs.y,
-        apu.cpu.regs.sp, apu.cpu.cycles
-    );
+//     println!("\nFinal state:");
+//     println!(
+//         "PC={:04X} A={:02X} X={:02X} Y={:02X} SP={:02X} Cycles={}",
+//         apu.cpu.regs.pc, apu.cpu.regs.a, apu.cpu.regs.x, apu.cpu.regs.y,
+//         apu.cpu.regs.sp, apu.cpu.cycles
+//     );
 
-    // --- DSP test ---
-    println!("\nTesting DSP memory-mapped registers...");
+//     // --- DSP test ---
+//     println!("\nTesting DSP memory-mapped registers...");
 
-    // Write to DSP registers ($F200-$F20F)
-    for i in 0..16 {
-        let addr = 0xF200 + i;
-        apu.memory.write8(addr, i as u8);
-    }
+//     // Write to DSP registers ($F200-$F20F)
+//     for i in 0..16 {
+//         let addr = 0xF200 + i;
+//         apu.memory.write8(addr, i as u8);
+//     }
 
-    // Read back from DSP
-    for i in 0..16 {
-        let addr = 0xF200 + i;
-        let val = apu.memory.read8(addr);
-        println!("DSP[0x{:04X}] = {:02X}", addr, val);
-    }
+//     // Read back from DSP
+//     for i in 0..16 {
+//         let addr = 0xF200 + i;
+//         let val = apu.memory.read8(addr);
+//         println!("DSP[0x{:04X}] = {:02X}", addr, val);
+//     }
 
-    println!("DSP test complete.");
-}
+//     println!("DSP test complete.");
+// }
 
 // What this does:
 // - Prints the initial state of the CPU before running.
@@ -123,3 +123,50 @@ fn main() {
 // - After the step, prints all CPU registers (A, X, Y, SP, PC), the N and Z flags, and total cycles.
 // - Shows memory writes for direct page store instructions (MOV d, A).
 // - Stops execution when a BRK opcode (0x00 or 0xFF) is encountered, printing the final CPU state.
+
+
+use apu::dsp::Dsp;
+use apu::Memory;
+use std::fs::File;
+use std::io::Write;
+
+fn main() {
+    let mut dsp = Dsp::new();
+    let mut mem = Memory::new();
+
+    // --- Step 1: Fill memory with a simple waveform (square wave) ---
+    let sample_start = 0x1000;
+    let sample_end = 0x1080; // 128 samples
+    for i in 0..(sample_end - sample_start) {
+        // Alternating 127 and -128 for square wave
+        let val = if i % 2 == 0 { 127u8 } else { 128u8 };
+        mem.write8(sample_start + i, val);
+    }
+
+    // --- Step 2: Configure the voice ---
+    dsp.voices[0].key_on = true;
+    dsp.voices[0].sample_start = sample_start;
+    dsp.voices[0].sample_end = sample_end;
+    dsp.voices[0].current_addr = sample_start;
+    dsp.voices[0].pitch = 0x100; // integer increment = 1
+    dsp.voices[0].left_vol = 50;
+    dsp.voices[0].right_vol = 50;
+
+    // --- Step 3: Generate a short buffer ---
+    let mut audio_buffer = vec![];
+    let num_samples = 44100; // 1 second at 44.1kHz
+    for _ in 0..num_samples {
+        dsp.step(&mem);
+        let mix = dsp.render_audio(1);
+        audio_buffer.push(mix[0].0); // left channel only for simplicity
+    }
+
+    // --- Step 4: Save to raw PCM file (16-bit signed little-endian) ---
+    let mut file = File::create("square_wave.raw").unwrap();
+    for sample in audio_buffer {
+        let bytes = sample.to_le_bytes();
+        file.write_all(&bytes).unwrap();
+    }
+
+    println!("Raw audio written to square_wave.raw");
+}

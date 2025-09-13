@@ -10,7 +10,7 @@ pub struct Voice {
     pub sample_start: u16,
     pub sample_end: u16,
     pub current_addr: u16,
-    pub frac: u16, // fractional accumulator for pitch stepping
+    pub frac: u16,          // fractional accumulator for pitch stepping
     pub current_sample: i8, // last fetched sample
 }
 
@@ -54,7 +54,6 @@ impl Dsp {
         let index = (addr - 0xF200) as usize;
         self.registers[index] = value;
 
-        // Map registers to voices
         match index {
             0x00..=0x07 => self.voices[index].left_vol = value,
             0x08..=0x0F => self.voices[index - 0x08].right_vol = value,
@@ -94,39 +93,43 @@ impl Dsp {
     pub fn step(&mut self, mem: &Memory) {
         for voice in self.voices.iter_mut() {
             if voice.key_on {
-                // Fetch current sample first
-                voice.current_sample = mem.read8(voice.current_addr) as i8;
-        
                 // Advance fractional accumulator
                 voice.frac = voice.frac.wrapping_add(voice.pitch);
-                let step = voice.frac >> 8;
-                voice.frac &= 0xFF;
-        
+                let step = voice.frac >> 8; // integer increment
+                voice.frac &= 0xFF;         // keep fractional
+
                 // Advance current address
                 voice.current_addr = voice.current_addr.wrapping_add(step);
-        
-                // Stop if we reach end
+
+                // Stop if we reach the end of the sample
                 if voice.current_addr >= voice.sample_end {
                     voice.key_on = false;
+                } else {
+                    // Fetch sample from memory after stepping
+                    voice.current_sample = mem.read8(voice.current_addr) as i8;
                 }
             }
-        }        
+        }
     }
 
-    /// Mix all voices into stereo output buffer
+    /// Mix all voices into a stereo output buffer
     pub fn render_audio(&self, num_samples: usize) -> Vec<(i16, i16)> {
         let mut buffer = vec![(0i16, 0i16); num_samples];
 
         for voice in &self.voices {
             if voice.key_on {
+                let left_vol = voice.left_vol as i32;
+                let right_vol = voice.right_vol as i32;
+                let sample_val = voice.current_sample as i32;
+
                 for sample in &mut buffer {
-                    let sample_val = voice.current_sample as i16;
-                    sample.0 = sample.0.saturating_add(sample_val * voice.left_vol as i16);
-                    sample.1 = sample.1.saturating_add(sample_val * voice.right_vol as i16);
+                    sample.0 = (sample.0 as i32 + sample_val * left_vol)
+                        .clamp(-32768, 32767) as i16;
+                    sample.1 = (sample.1 as i32 + sample_val * right_vol)
+                        .clamp(-32768, 32767) as i16;
                 }
             }
         }
-
         buffer
     }
 }
