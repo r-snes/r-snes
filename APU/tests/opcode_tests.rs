@@ -342,3 +342,65 @@ fn test_cmp_less() {
     assert!(!cpu.get_flag(FLAG_Z));
     assert!(cpu.get_flag(FLAG_N));
 }
+
+#[test]
+fn test_sbc_no_borrow() {
+    let mut cpu = Spc700::new();
+    let mut mem = Memory::new();
+    cpu.regs.pc = 0x200;
+    cpu.regs.a = 0x50;
+    cpu.set_flag(FLAG_C, true); // carry set -> no borrow
+    mem.write8(0x200, 0x10); // SBC #$10
+
+    cpu.inst_sbc_imm(&mut mem);
+
+    assert_eq!(cpu.regs.a, 0x40);
+    assert!(cpu.get_flag(FLAG_C));
+    assert!(!cpu.get_flag(FLAG_Z));
+    assert!(!cpu.get_flag(FLAG_N));
+}
+
+#[test]
+fn test_and_sets_flags() {
+    let mut cpu = Spc700::new();
+    let mut mem = Memory::new();
+    cpu.regs.pc = 0x200;
+    cpu.regs.a = 0b10101010;
+    mem.write8(0x200, 0b11001100);
+
+    cpu.inst_and_imm(&mut mem);
+
+    assert_eq!(cpu.regs.a, 0b10001000);
+    assert!(!cpu.get_flag(FLAG_Z));
+    assert!(cpu.get_flag(FLAG_N)); // negative bit set
+}
+
+#[test]
+fn test_ora_sets_flags() {
+    let mut cpu = Spc700::new();
+    let mut mem = Memory::new();
+    cpu.regs.pc = 0x200;
+    cpu.regs.a = 0b10101010;
+    mem.write8(0x200, 0b01010101);
+
+    cpu.inst_ora_imm(&mut mem);
+
+    assert_eq!(cpu.regs.a, 0b11111111);
+    assert!(!cpu.get_flag(FLAG_Z));
+    assert!(cpu.get_flag(FLAG_N));
+}
+
+#[test]
+fn test_eor_sets_flags() {
+    let mut cpu = Spc700::new();
+    let mut mem = Memory::new();
+    cpu.regs.pc = 0x200;
+    cpu.regs.a = 0b11110000;
+    mem.write8(0x200, 0b10101010);
+
+    cpu.inst_eor_imm(&mut mem);
+
+    assert_eq!(cpu.regs.a, 0b01011010);
+    assert!(!cpu.get_flag(FLAG_Z));
+    assert!(!cpu.get_flag(FLAG_N));
+}

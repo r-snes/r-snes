@@ -72,12 +72,17 @@ impl Spc700 {
             0x69 => self.inst_adc_imm(mem),
             0xC9 => self.inst_cmp_imm(mem),
 
+            0xE9 => self.inst_sbc_imm(mem), // SBC #imm
+            0x29 => self.inst_and_imm(mem), // AND #imm
+            0x09 => self.inst_ora_imm(mem), // ORA #imm
+            0x49 => self.inst_eor_imm(mem), // EOR #imm
+
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
         }        
     }
 
     // Flag helpers
-    fn set_flag(&mut self, mask: u8, value: bool) {
+    pub fn set_flag(&mut self, mask: u8, value: bool) {
         if value {
             self.regs.psw |= mask;
         } else {
@@ -263,6 +268,55 @@ impl Spc700 {
         self.set_flag(FLAG_C, self.regs.a >= value);
         self.set_zn_flags(result);
 
+        self.cycles += 2;
+    }
+
+    pub fn inst_sbc_imm(&mut self, mem: &mut Memory) {
+        let value = mem.read8(self.regs.pc);
+        self.regs.pc = self.regs.pc.wrapping_add(1);
+
+        let carry_in = if self.get_flag(FLAG_C) { 0 } else { 1 }; // SPC700 uses inverted carry
+        let result = self.regs.a as i16 - value as i16 - carry_in as i16;
+
+        self.set_flag(FLAG_C, result >= 0);
+        let result_u8 = result as u8;
+        self.set_zn_flags(result_u8);
+        self.set_flag(
+            FLAG_V,
+            ((self.regs.a ^ result_u8) & (self.regs.a ^ value) & 0x80) != 0,
+        );
+
+        self.regs.a = result_u8;
+        self.cycles += 2;
+    }
+
+    /// Bitwise AND with accumulator
+    pub fn inst_and_imm(&mut self, mem: &mut Memory) {
+        let value = mem.read8(self.regs.pc);
+        self.regs.pc = self.regs.pc.wrapping_add(1);
+
+        self.regs.a &= value;
+        self.set_zn_flags(self.regs.a);
+        self.cycles += 2;
+    }
+
+    /// Bitwise OR with accumulator
+    pub fn inst_ora_imm(&mut self, mem: &mut Memory) {
+        let value = mem.read8(self.regs.pc);
+        self.regs.pc = self.regs.pc.wrapping_add(1);
+
+        self.regs.a |= value;
+        self.set_zn_flags(self.regs.a);
+        self.cycles += 2;
+    }
+
+    /// Bitwise XOR with accumulator
+    pub fn inst_eor_imm(&mut self, mem: &mut Memory) {
+        let value = mem.read8(self.regs.pc);
+        self.regs.pc = self.regs.pc.wrapping_add(1);
+
+        self.regs.a ^= value;
+        self.set_zn_flags(self.regs.a);
         self.cycles += 2;
     }
 }
