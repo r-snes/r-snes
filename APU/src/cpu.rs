@@ -188,28 +188,37 @@ impl Spc700 {
     }
 
     pub fn inst_lda_abs(&mut self, mem: &mut Memory) {
-        let addr = mem.read16(self.regs.pc);
+        let lo = mem.read8(self.regs.pc) as u16;
+        let hi = mem.read8(self.regs.pc.wrapping_add(1)) as u16;
+        let addr = lo | (hi << 8);
+    
         self.regs.pc = self.regs.pc.wrapping_add(2);
-        self.regs.a = mem.read8(addr);
+        self.regs.a = mem.read8(addr as u16);
         self.set_zn_flags(self.regs.a);
         self.cycles += 4;
     }
-
+    
     pub fn inst_ldx_abs(&mut self, mem: &mut Memory) {
-        let addr = mem.read16(self.regs.pc);
+        let lo = mem.read8(self.regs.pc) as u16;
+        let hi = mem.read8(self.regs.pc.wrapping_add(1)) as u16;
+        let addr = lo | (hi << 8);
+    
         self.regs.pc = self.regs.pc.wrapping_add(2);
-        self.regs.x = mem.read8(addr);
+        self.regs.x = mem.read8(addr as u16);
         self.set_zn_flags(self.regs.x);
         self.cycles += 4;
     }
-
+    
     pub fn inst_ldy_abs(&mut self, mem: &mut Memory) {
-        let addr = mem.read16(self.regs.pc);
+        let lo = mem.read8(self.regs.pc) as u16;
+        let hi = mem.read8(self.regs.pc.wrapping_add(1)) as u16;
+        let addr = lo | (hi << 8);
+    
         self.regs.pc = self.regs.pc.wrapping_add(2);
-        self.regs.y = mem.read8(addr);
+        self.regs.y = mem.read8(addr as u16);
         self.set_zn_flags(self.regs.y);
         self.cycles += 4;
-    }
+    }    
 
     // Load accumulator from direct page
     pub fn inst_lda_dp(&mut self, mem: &mut Memory) {
