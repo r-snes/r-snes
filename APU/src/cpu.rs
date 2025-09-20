@@ -44,7 +44,7 @@ impl Spc700 {
         self.regs.pc = self.regs.pc.wrapping_add(1);
 
         match opcode {
-            0x00 => self.inst_nop(), // NOP (No Operation)
+            0x00 => self.inst_nop(), // NOP
         
             // Register moves
             0x7D => self.inst_mov_a_x(), // MOV A, X
@@ -53,38 +53,38 @@ impl Spc700 {
             0xFD => self.inst_mov_y_a(), // MOV Y, A
         
             // Immediate loads
-            0xA9 => self.inst_lda_imm(mem), // LDA #i
-            0xCD => self.inst_ldx_imm(mem), // LDX #i
-            0x8D => self.inst_ldy_imm(mem), // LDY #i
+            0xE8 => self.inst_lda_imm(mem), // LDA #imm
+            0xCD => self.inst_ldx_imm(mem), // LDX #imm
+            0x8D => self.inst_ldy_imm(mem), // LDY #imm
         
             // Absolute loads
-            0xAD => self.inst_lda_abs(mem), // LDA !a
-            0xAE => self.inst_ldx_abs(mem), // LDX !a
-            0xAF => self.inst_ldy_abs(mem), // LDY !a
+            0xE5 => self.inst_lda_abs(mem), // MOV A, !a
+            0xE9 => self.inst_ldx_abs(mem), // MOV X, !a
+            0xEC => self.inst_ldy_abs(mem), // MOV Y, !a
         
-            // Direct page loads
-            0xA5 => self.inst_lda_dp(mem), // LDA d
-            0xA6 => self.inst_ldx_dp(mem), // LDX d
-            0xA7 => self.inst_ldy_dp(mem), // LDY d
+            // Direct Page loads
+            0xE4 => self.inst_lda_dp(mem), // MOV A, d
+            0xF8 => self.inst_ldx_dp(mem), // MOV X, d
+            0xEB => self.inst_ldy_dp(mem), // MOV Y, d
         
-            // Store instructions (MOV to memory)
-            0xC4 => self.inst_sta_dp(mem),     // MOV d, A
-            0xC5 => self.inst_sta_abs(mem),    // MOV !a, A
-            0x8E => self.inst_stx_abs(mem),    // MOV !a, X
-            0xCC => self.inst_sty_abs(mem),    // MOV !a, Y
+            // Stores
+            0xC4 => self.inst_sta_dp(mem),  // MOV d, A
+            0xC5 => self.inst_sta_abs(mem), // MOV !a, A
+            0xC9 => self.inst_stx_abs(mem), // MOV !a, X
+            0xCC => self.inst_sty_abs(mem), // MOV !a, Y
         
             // Arithmetic & logic
-            0x69 => self.inst_adc_imm(mem), // ADC #i
-            0xE9 => self.inst_sbc_imm(mem), // SBC #i
-            0xC9 => self.inst_cmp_imm(mem), // CMP #i
-            0x29 => self.inst_and_imm(mem), // AND #i
-            0x09 => self.inst_ora_imm(mem), // ORA #i
-            0x49 => self.inst_eor_imm(mem), // EOR #i
+            0x88 => self.inst_adc_imm(mem), // ADC #imm
+            0xA8 => self.inst_sbc_imm(mem), // SBC #imm
+            0x68 => self.inst_cmp_imm(mem), // CMP #imm
+            0x28 => self.inst_and_imm(mem), // AND #imm
+            0x08 => self.inst_ora_imm(mem), // ORA #imm
+            0x48 => self.inst_eor_imm(mem), // EOR #imm
         
-            // Catch-all for unimplemented opcodes
+            // Catch-all
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
-        }        
-    }
+        }
+    }        
 
     // Flag helpers
     pub fn set_flag(&mut self, mask: u8, value: bool) {
