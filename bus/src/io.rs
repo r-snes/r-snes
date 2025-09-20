@@ -1,3 +1,5 @@
+use common::snes_address::SnesAddress;
+
 use crate::constants::{IO_END_ADDRESS, IO_SIZE, IO_START_ADDRESS};
 use crate::memory_region::MemoryRegion;
 
@@ -14,8 +16,8 @@ impl Io {
         }
     }
 
-    fn map_offset(addr: u32) -> Option<usize> {
-        let offset_in_bank = addr & 0xFFFF; // address within the current 64 KiB bank
+    fn map_offset(addr: SnesAddress) -> Option<usize> {
+        let offset_in_bank = (addr.addr & 0xFFFF) as u32; // address within the current 64 KiB bank
 
         if (IO_START_ADDRESS..=IO_END_ADDRESS).contains(&offset_in_bank) {
             let index = (offset_in_bank - IO_START_ADDRESS) as usize;
@@ -27,7 +29,7 @@ impl Io {
 }
 
 impl MemoryRegion for Io {
-    fn read(&self, addr: u32) -> u8 {
+    fn read(&self, addr: SnesAddress) -> u8 {
         if let Some(offset) = Self::map_offset(addr) {
             self.memory[offset]
         } else {
@@ -35,7 +37,7 @@ impl MemoryRegion for Io {
         }
     }
 
-    fn write(&mut self, addr: u32, value: u8) {
+    fn write(&mut self, addr: SnesAddress, value: u8) {
         if let Some(offset) = Self::map_offset(addr) {
             self.memory[offset] = value;
         }

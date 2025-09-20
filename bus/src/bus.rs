@@ -2,6 +2,7 @@ use crate::io::Io;
 use crate::memory_region::MemoryRegion;
 use crate::rom::Rom;
 use crate::wram::Wram;
+use common::snes_address::SnesAddress;
 use std::error::Error;
 use std::path::Path;
 
@@ -21,19 +22,16 @@ impl Bus {
     }
 
     #[allow(dead_code)]
-    pub fn read(&self, addr: u32) -> u8 {
-        let bank = (addr >> 16) as u8;
-        let offset = addr & 0xFFFF;
-
-        match bank {
+    pub fn read(&self, addr: SnesAddress) -> u8 {
+        match addr.bank {
             0x00..=0x3F | 0x80..=0xBF => {
-                if offset < 0x2000 {
+                if addr.addr < 0x2000 {
                     self.wram.read(addr)
-                } else if offset >= 0x2000 && offset < 0x6000 {
+                } else if addr.addr >= 0x2000 && addr.addr < 0x6000 {
                     self.io.read(addr)
-                } else if offset >= 0x6000 && offset < 0x8000 {
+                } else if addr.addr >= 0x6000 && addr.addr < 0x8000 {
                     self.rom.read(addr) // TODO : Expansion port
-                } else if offset >= 0x8000 {
+                } else if addr.addr >= 0x8000 {
                     self.rom.read(addr)
                 } else {
                     0xFF // TODO : Shouldn't come here, maybe just add debug ?
@@ -45,19 +43,16 @@ impl Bus {
     }
 
     #[allow(dead_code)]
-    pub fn write(&mut self, addr: u32, value: u8) {
-        let bank = (addr >> 16) as u8;
-        let offset = addr & 0xFFFF;
-
-        match bank {
+    pub fn write(&mut self, addr: SnesAddress, value: u8) {
+        match addr.bank {
             0x00..=0x3F | 0x80..=0xBF => {
-                if offset < 0x2000 {
+                if addr.addr < 0x2000 {
                     self.wram.write(addr, value);
-                } else if offset >= 0x2000 && offset < 0x6000 {
+                } else if addr.addr >= 0x2000 && addr.addr < 0x6000 {
                     self.io.write(addr, value);
-                } else if offset >= 0x6000 && offset < 0x8000 {
+                } else if addr.addr >= 0x6000 && addr.addr < 0x8000 {
                     self.rom.write(addr, value); // TODO : Expansion port
-                } else if offset >= 0x8000 {
+                } else if addr.addr >= 0x8000 {
                     self.rom.write(addr, value); // ROM no writes handled in `rom`
                 } else {
                     // TODO : Shouldn't come here, maybe just add debug ?
