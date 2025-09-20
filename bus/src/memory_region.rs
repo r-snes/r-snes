@@ -1,6 +1,9 @@
+use common::snes_address::SnesAddress;
+
 pub trait MemoryRegion {
     #[allow(dead_code)]
-    fn read(&self, addr: u32) -> u8;
+    fn read(&self, addr: SnesAddress) -> u8;
+
     #[allow(dead_code)]
-    fn write(&mut self, addr: u32, value: u8);
+    fn write(&mut self, addr: SnesAddress, value: u8);
 }

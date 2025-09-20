@@ -1,13 +1,13 @@
-use crate::memory_region::MemoryRegion;
-use std::fs::File;
-use std::io::Read;
-use std::path::Path;
-
 use crate::constants::{
     COPIER_HEADER_SIZE, HEADER_SIZE, HIROM_HEADER_OFFSET, LOROM_BANK_SIZE, LOROM_HEADER_OFFSET,
 };
+use crate::memory_region::MemoryRegion;
 use crate::rom::error::RomError;
 use crate::rom::mapping_mode::MappingMode;
+use common::snes_address::SnesAddress;
+use std::fs::File;
+use std::io::Read;
+use std::path::Path;
 
 pub struct Rom {
     pub data: Vec<u8>,
@@ -16,16 +16,17 @@ pub struct Rom {
 
 impl MemoryRegion for Rom {
     // TODO : Check if mapping and mirroring is okay
-    fn read(&self, addr: u32) -> u8 {
+    // (clearly not okay since switch to SnesAddress)
+    fn read(&self, addr: SnesAddress) -> u8 {
         let offset = match self.map {
             MappingMode::HiRom => {
                 // HiROM maps banks fully, 64 KiB per bank
-                (addr & 0x3FFFFF) as usize
+                (addr.addr as u32 & 0x3FFFFF) as usize
             }
             MappingMode::LoRom => {
                 // LoROM maps 32 KiB per bank, only $8000–$FFFF
-                let bank = (addr >> 16) & 0x7F;
-                let lo_offset = addr & 0x7FFF;
+                let bank = ((addr.bank as u32 >> 16) & 0x7F) as u32;
+                let lo_offset = (addr.addr & 0x7FFF) as u32;
                 (bank * (LOROM_BANK_SIZE as u32) + lo_offset) as usize
             }
             MappingMode::Unknown => {
@@ -36,7 +37,7 @@ impl MemoryRegion for Rom {
         self.data.get(offset).copied().unwrap_or(0xFF)
     }
 
-    fn write(&mut self, _addr: u32, _value: u8) {
+    fn write(&mut self, _addr: SnesAddress, _value: u8) {
         // ROM is read-only, ignore writes
         // TODO : Add a wawrning ?
     }
