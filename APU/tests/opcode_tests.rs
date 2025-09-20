@@ -78,7 +78,7 @@ fn test_lda_imm_step() {
     let mut cpu = Spc700::new();
 
     cpu.regs.pc = 0x0200;
-    mem.write8(0x0200, 0xA9); // LDA #imm
+    mem.write8(0x0200, 0xE8); // LDA #imm
     mem.write8(0x0201, 0x42);
 
     cpu.step(&mut mem);
@@ -144,7 +144,7 @@ fn test_stx_abs() {
     cpu.regs.x = 0xAA;
 
     // STX $4321
-    mem.write8(0x200, 0x8E); 
+    mem.write8(0x200, 0xc9); 
     mem.write16(0x201, 0x4321);
 
     cpu.step(&mut mem);
@@ -175,7 +175,7 @@ fn test_lda_abs() {
     cpu.regs.pc = 0x200;
 
     // LDA $1234
-    mem.write8(0x200, 0xAD); 
+    mem.write8(0x200, 0xE5); 
     mem.write16(0x201, 0x1234);
     mem.write8(0x1234, 0x77);
 
@@ -194,7 +194,7 @@ fn test_ldx_abs() {
     cpu.regs.pc = 0x200;
 
     // LDX $4321
-    mem.write8(0x200, 0xAE); 
+    mem.write8(0x200, 0xE9); 
     mem.write16(0x201, 0x4321);
     mem.write8(0x4321, 0x80); // will set negative flag
 
@@ -213,7 +213,7 @@ fn test_ldy_abs() {
     cpu.regs.pc = 0x200;
 
     // LDY $5678
-    mem.write8(0x200, 0xAF); 
+    mem.write8(0x200, 0xEC); 
     mem.write16(0x201, 0x5678);
     mem.write8(0x5678, 0x00); // will set zero flag
 
@@ -230,7 +230,7 @@ fn test_lda_dp() {
     let mut cpu = Spc700::new();
     cpu.regs.pc = 0x200;
 
-    mem.write8(0x200, 0xA5); // LDA dp
+    mem.write8(0x200, 0xE4); // LDA dp
     mem.write8(0x201, 0x10); // direct page $0010
     mem.write8(0x0010, 0x55);
 
