@@ -63,7 +63,7 @@ impl PPU {
     pub fn write_cgram_data(&mut self, value: u8) {
         if self.latch_filled {
             // 2nd write → combine low + high into one 16-bit value
-            let color = ((value as u16) << 8) | (self.latch as u16);
+            let color = u16::from_le_bytes([self.latch, value]);
             self.cgram[self.cgaddr as usize] = color & 0x7FFF; // mask to 15 bits
             self.cgaddr = self.cgaddr.wrapping_add(1); // auto-increment address
             self.latch_filled = false;
