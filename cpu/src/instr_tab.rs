@@ -15,7 +15,7 @@ pub(crate) enum InstructionCycle {
 
 /// Type representing the definition of a CPU instruction
 ///
-/// Conceptually, an instruction is simple a list of actions
+/// Conceptually, an instruction is simply a list of actions
 /// done in 1 cycle each. This is what this type represents.
 pub(crate) type Instruction = [InstructionCycle];
 
