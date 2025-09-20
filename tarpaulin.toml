@@ -1,0 +1,6 @@
+[test_config]
+name = "tarpaulin"
+manifest-path = "./Cargo.toml"
+workspace = true
+fail-under = 80.0
+exclude-files = ["*/tests/*", "*/main.rs"]
