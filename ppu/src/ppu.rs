@@ -9,7 +9,8 @@ pub struct PPU {
     cgaddr: u8,
 
     #[allow(dead_code)] // For future CPU write handling (not implemented yet)
-    latch: Option<u8>,
+    latch: u8,
+    latch_filled: bool
 }
 
 impl PPU {
@@ -19,7 +20,8 @@ impl PPU {
             vram: [0; VRAM_SIZE],
             cgram: [0; CGRAM_SIZE],
             cgaddr: 0,
-            latch: None,
+            latch: 0,
+            latch_filled: false
         };
 
         // Hardcoded palette
@@ -53,21 +55,22 @@ impl PPU {
     // Set current CGRAM address ($2121 on the SNES)
     pub fn set_cgram_addr(&mut self, addr: u8) {
         self.cgaddr = addr;
-        self.latch = None; // reset latch when address changes
+        self.latch_filled = false; // reset latch when address changes
     }
 
     #[allow(dead_code)] // For future CPU write handling (not implemented yet)
     // Write one byte to CGRAM ($2122 on the SNES I think ?)
     pub fn write_cgram_data(&mut self, value: u8) {
-        if let Some(low) = self.latch {
+        if self.latch_filled {
             // 2nd write → combine low + high into one 16-bit value
-            let color = ((value as u16) << 8) | (low as u16);
+            let color = ((value as u16) << 8) | (self.latch as u16);
             self.cgram[self.cgaddr as usize] = color & 0x7FFF; // mask to 15 bits
             self.cgaddr = self.cgaddr.wrapping_add(1); // auto-increment address
-            self.latch = None;
+            self.latch_filled = false;
         } else {
             // 1st write → store in latch
-            self.latch = Some(value);
+            self.latch = value;
+            self.latch_filled = true;
         }
     }
 
@@ -82,20 +85,24 @@ impl PPU {
     }
 
     // Tests functions
+    #[allow(dead_code)]
     pub fn cgram_len(&self) -> usize {
         self.cgram.len()
     }
 
+    #[allow(dead_code)]
     pub fn get_cgram_value(&self, index: usize) -> u16 {
         self.cgram[index]
     }
 
+    #[allow(dead_code)]
     pub fn get_cgaddr(&self) -> u8 {
         self.cgaddr
     }
 
+    #[allow(dead_code)]
     pub fn is_latch_set(&self) -> bool {
-        self.latch.is_some()
+        self.latch_filled
     }
 }
 
