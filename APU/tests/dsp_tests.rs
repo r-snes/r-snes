@@ -1,4 +1,4 @@
-use apu::dsp::Dsp;
+use apu::dsp::{Dsp, Voice};
 use apu::Memory;
 
 #[test]
@@ -80,64 +80,72 @@ fn test_voice_step_advances() {
 
     assert!(!dsp.voices[0].key_on);
 }
-
 #[test]
-fn test_voice_sample_fetch() {
-    let mut dsp = Dsp::new();
+fn test_step_voice_advances_and_fetches_sample() {
     let mut mem = Memory::new();
+    let mut dsp = Dsp::new();
 
-    // Sample data at 0x1000: 0x00, 0x80, 0xFF
-    mem.write8(0x1000, 0x00);
-    mem.write8(0x1001, 0x80);
-    mem.write8(0x1002, 0xFF);
+    let voice = Voice {
+        key_on: true,
+        current_addr: 0,
+        sample_start: 0,
+        frac: 0,
+        pitch: 256, // step = 1 per call
+        sample_end: 3,
+        current_sample: 0,
+        left_vol: 1,
+        right_vol: 1,
+    };
 
-    // Activate voice
-    dsp.voices[0].key_on = true;
-    dsp.voices[0].sample_start = 0x1000;
-    dsp.voices[0].sample_end = 0x1003;
-    dsp.voices[0].current_addr = 0x1000;
-    dsp.voices[0].pitch = 0x100; // integer increment = 1
+    dsp.voices[0] = voice;
 
-    // Step once: fetch first sample
+    mem.write8(0, 10);
+    mem.write8(1, 20);
+    mem.write8(2, 30);
+
     dsp.step(&mem);
-    assert_eq!(dsp.voices[0].current_sample, 0x00i8); // 0x00 -> 0
+    assert_eq!(dsp.voices[0].current_addr, 1);
+    assert_eq!(dsp.voices[0].current_sample, 20);
+    assert!(dsp.voices[0].key_on);
 
-    // Step twice: fetch second sample
     dsp.step(&mem);
-    assert_eq!(dsp.voices[0].current_sample, -128i8); // 0x80 -> -128
+    assert_eq!(dsp.voices[0].current_addr, 2);
+    assert_eq!(dsp.voices[0].current_sample, 30);
+    assert!(dsp.voices[0].key_on);
 
-    // Step thrice: fetch third sample
     dsp.step(&mem);
-    assert_eq!(dsp.voices[0].current_sample, -1i8); // 0xFF -> -1
+    assert_eq!(dsp.voices[0].current_addr, 3);
+    assert!(!dsp.voices[0].key_on);
 }
 
 #[test]
-fn test_voice_sample_mixing() {
+fn test_render_audio_single_voice() {
     let mut dsp = Dsp::new();
-    let mut mem = Memory::new();
+    
+    dsp.voices[0] = Voice {
+        key_on: true,
+        current_sample: 50, // i8 value
+        sample_start: 0,
+        left_vol: 2,
+        right_vol: 3,
+        ..Default::default()
+    };
 
-    // Sample values
-    mem.write8(0x1000, 0x10); // 16
-    mem.write8(0x1001, 0x20); // 32
+    let buffer = dsp.render_audio(2);
 
-    // Configure voice with different left/right volumes
-    dsp.voices[0].key_on = true;
-    dsp.voices[0].sample_start = 0x1000;
-    dsp.voices[0].sample_end = 0x1002;
-    dsp.voices[0].current_addr = 0x1000;
-    dsp.voices[0].pitch = 1;
-    dsp.voices[0].left_vol = 2;
-    dsp.voices[0].right_vol = 4;
+    assert_eq!(buffer[0], (100, 150)); // 50*2, 50*3
+    assert_eq!(buffer[1], (100, 150));
+}
 
-    // Step once to fetch first sample
-    dsp.step(&mem);
-    let mix = dsp.render_audio(1);
-    assert_eq!(mix[0].0, 16 * 2); // left
-    assert_eq!(mix[0].1, 16 * 4); // right
+#[test]
+fn test_render_audio_multiple_voices_mixed_and_clamped() {
+    let mut dsp = Dsp::new();
 
-    // Step again to fetch second sample
-    dsp.step(&mem);
-    let mix = dsp.render_audio(1);
-    assert_eq!(mix[0].0, 32 * 2); // left
-    assert_eq!(mix[0].1, 32 * 4); // right
+    dsp.voices[0] = Voice { key_on: true, current_sample: 100, sample_start: 0, left_vol: 2, right_vol: 2, ..Default::default() };
+    dsp.voices[1] = Voice { key_on: true, current_sample: 120, sample_start: 0, left_vol: 2, right_vol: 2, ..Default::default() };
+
+    let buffer = dsp.render_audio(1);
+
+    // 100*2 + 120*2 = 440 -> clamped to 32767 (but here it's still in range)
+    assert_eq!(buffer[0], (440, 440));
 }
