@@ -1,3 +1,5 @@
+use std::convert::From;
+
 /// Common struct used to represent memory addresses in the global
 /// SNES adddress space.
 ///
@@ -11,23 +13,24 @@ pub struct SnesAddress {
     pub addr: u16,
 }
 
-impl SnesAddress {
-    /// Returns SnesAddress object converted as usize.
-    pub fn to_usize(self) -> usize {
-        ((self.bank as usize) << 16) | (self.addr as usize)
+impl From<SnesAddress> for usize {
+    fn from(addr: SnesAddress) -> usize {
+        ((addr.bank as usize) << 16) | (addr.addr as usize)
     }
+}
 
-    /// Creates SnesAddress object from usize.
-    ///
+impl From<usize> for SnesAddress {
     /// If value is larger than 24 bits, only the lowest 24 bits are used and
     /// the excess bits are ignored.
-    pub fn from_usize(value: usize) -> Self {
+    fn from(value: usize) -> SnesAddress {
         SnesAddress {
             bank: ((value >> 16) & 0xFF) as u8,
             addr: (value & 0xFFFF) as u16,
         }
     }
+}
 
+impl SnesAddress {
     /// Increment the memory address stored in [`self`]
     ///
     /// Returns whether the increment caused a bank change.
@@ -110,7 +113,7 @@ mod test {
         };
         let expected: usize = 0xE33F49;
 
-        assert_eq!(addr.to_usize(), expected);
+        assert_eq!(usize::from(addr), expected);
     }
 
     #[test]
@@ -121,7 +124,7 @@ mod test {
             addr: (0x4089),
         };
 
-        assert_eq!(SnesAddress::from_usize(nb), expected);
+        assert_eq!(SnesAddress::from(nb), expected);
     }
 
     #[test]
@@ -132,7 +135,7 @@ mod test {
             addr: (0x3245),
         };
 
-        assert_eq!(SnesAddress::from_usize(nb), expected);
+        assert_eq!(SnesAddress::from(nb), expected);
     }
 
     #[test]
@@ -143,6 +146,6 @@ mod test {
             addr: (0x0124),
         };
 
-        assert_eq!(SnesAddress::from_usize(nb), expected);
+        assert_eq!(SnesAddress::from(nb), expected);
     }
 }
