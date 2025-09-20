@@ -12,6 +12,22 @@ pub struct SnesAddress {
 }
 
 impl SnesAddress {
+    /// Returns SnesAddress object converted as usize.
+    pub fn to_usize(self) -> usize {
+        ((self.bank as usize) << 16) | (self.addr as usize)
+    }
+
+    /// Creates SnesAddress object from usize.
+    ///
+    /// If value is larger than 24 bits, only the lowest 24 bits are used and
+    /// the excess bits are ignored.
+    pub fn from_usize(value: usize) -> Self {
+        SnesAddress {
+            bank: ((value >> 16) & 0xFF) as u8,
+            addr: (value & 0xFFFF) as u16,
+        }
+    }
+
     /// Increment the memory address stored in [`self`]
     ///
     /// Returns whether the increment caused a bank change.
@@ -63,7 +79,10 @@ mod test {
 
     #[test]
     fn test_wrapping_increment() {
-        let mut addr = SnesAddress { bank: 3, addr: u16::MAX };
+        let mut addr = SnesAddress {
+            bank: 3,
+            addr: u16::MAX,
+        };
         assert!(addr.increment());
 
         assert_eq!(addr, SnesAddress { bank: 4, addr: 0 });
@@ -74,6 +93,56 @@ mod test {
         let mut addr = SnesAddress { bank: 3, addr: 0 };
         assert!(addr.decrement());
 
-        assert_eq!(addr, SnesAddress { bank: 2, addr: u16::MAX });
+        assert_eq!(
+            addr,
+            SnesAddress {
+                bank: 2,
+                addr: u16::MAX
+            }
+        );
+    }
+
+    #[test]
+    fn test_to_usize() {
+        let addr: SnesAddress = SnesAddress {
+            bank: (0xE3),
+            addr: (0x3F49),
+        };
+        let expected: usize = 0xE33F49;
+
+        assert_eq!(addr.to_usize(), expected);
+    }
+
+    #[test]
+    fn test_from_usize() {
+        let nb: usize = 0x124089;
+        let expected: SnesAddress = SnesAddress {
+            bank: (0x12),
+            addr: (0x4089),
+        };
+
+        assert_eq!(SnesAddress::from_usize(nb), expected);
+    }
+
+    #[test]
+    fn test_from_usize_too_big() {
+        let nb: usize = 0x12408993245;
+        let expected: SnesAddress = SnesAddress {
+            bank: (0x99),
+            addr: (0x3245),
+        };
+
+        assert_eq!(SnesAddress::from_usize(nb), expected);
+    }
+
+    #[test]
+    fn test_from_usize_too_small() {
+        let nb: usize = 0x124;
+        let expected: SnesAddress = SnesAddress {
+            bank: (0x00),
+            addr: (0x0124),
+        };
+
+        assert_eq!(SnesAddress::from_usize(nb), expected);
     }
 }
