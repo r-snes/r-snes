@@ -2,8 +2,18 @@ use crate::constants::WRAM_SIZE;
 use crate::memory_region::MemoryRegion;
 use common::snes_address::SnesAddress;
 
+/// WRAM (Work RAM) - 128 KiB (2 full banks)
+///
+/// - Located in banks 0x7E and 0x7F (64 KiB each).  
+/// - A portion of bank 0x7E (`0x0000–0x1FFF`) is mirrored across all banks  
+///   0x00–0x3F and 0x80–0xBF.
+///
+/// For example, the addresses `0x001000`, `0x7E1000`, and `0x9E1000` all refer to
+/// the same memory location.
+///
+/// Warning: bank 0x7F is not mirrored, so `0x7F1000` is independent.
 pub struct Wram {
-    data: [u8; WRAM_SIZE], // 128 KiB WRAM
+    data: [u8; WRAM_SIZE],
 }
 
 impl Wram {
