@@ -30,6 +30,13 @@ impl Io {
         );
     }
 
+    /// Converts a `SnesAddress` into an internal I/O offset.
+    ///
+    /// Maps addresses between 0x2000–0x5FFF and mirrored across banks
+    /// 0x00–0x3F and 0x80–0xBF.
+    ///
+    /// # Panics
+    /// Panics if the address is outside the valid I/O memory zone range.
     fn to_offset(addr: SnesAddress) -> usize {
         match addr.bank {
             0x00..=0x3F | 0x80..=0xBF => {
@@ -47,6 +54,12 @@ impl Io {
 }
 
 impl MemoryRegion for Io {
+    /// Reads a byte from the I/O memory zone at the given `SnesAddress`.
+    ///
+    /// The address is translated to an internal I/O offset using `to_offset`.
+    ///
+    /// # Panics
+    /// Panics if the address does not map to a valid I/O memory location.
     fn read(&self, addr: SnesAddress) -> u8 {
         let offset = Self::to_offset(addr);
 
@@ -57,6 +70,12 @@ impl MemoryRegion for Io {
         ));
     }
 
+    /// Writes a byte to the I/O memory zone at the given `SnesAddress`.
+    ///
+    /// The address is translated to an internal I/O offset using `to_offset`.
+    ///
+    /// # Panics
+    /// Panics if the address does not map to a valid I/O memory location.
     fn write(&mut self, addr: SnesAddress, value: u8) {
         let offset = Self::to_offset(addr);
 

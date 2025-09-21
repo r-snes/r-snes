@@ -7,6 +7,18 @@ use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 
+/// The game cartridge ROM contains the program code and data of the SNES game.
+/// Its size varies by game (commonly 4 MiB or less, but can be larger with special chips).
+///
+/// The ROM can be mapped in two main modes:
+/// - LoROM: 32 KiB of ROM is mapped into the upper half ($8000–$FFFF) of each bank.
+///   Accessible in banks 0x00–0x7D and 0x80–0xFF. Each bank contributes 32 KiB to the ROM.
+/// - HiROM: 64 KiB of ROM is mapped into the full range ($0000–$FFFF) of each bank.
+///   Accessible in banks 0x00–0x3F and 0x80–0xBF. Each bank contributes 64 KiB to the ROM.
+///
+/// Some cartridges may contain a 512-byte copier header at the start of the file,
+/// which is removed on load.
+/// ROM data is read-only and any write attempts are ignored.
 pub struct Rom {
     pub data: Vec<u8>,
     pub map: MappingMode,
@@ -83,6 +95,14 @@ impl Rom {
         }
     }
 
+    /// Converts a `SnesAddress` into an internal ROM offset.
+    ///
+    /// Uses the ROM’s mapping mode (`MappingMode::LoRom` or `MappingMode::HiRom`)
+    /// to compute the correct byte position in the loaded ROM data.
+    ///
+    /// # Panics
+    /// Panics if the address is invalid for the detected mapping mode,
+    /// or if the mapping mode is [`MappingMode::Unknown`].
     fn to_offset(&self, addr: SnesAddress) -> usize {
         match self.map {
             MappingMode::HiRom => self.get_hirom_offset(addr),
@@ -95,6 +115,12 @@ impl Rom {
 }
 
 impl MemoryRegion for Rom {
+    /// Reads a byte from the ROM at the given `SnesAddress`.
+    ///
+    /// The address is translated to an internal ROM offset using `to_offset`.
+    ///
+    /// # Panics
+    /// Panics if the mapping mode is `MappingMode::Unknown` or index out of bounds.
     fn read(&self, addr: SnesAddress) -> u8 {
         let offset = self.to_offset(addr);
 
@@ -104,6 +130,9 @@ impl MemoryRegion for Rom {
         ));
     }
 
+    /// Ignores writes to the ROM.
+    ///
+    /// ROM is read-only; this function performs no action.
     fn write(&mut self, _addr: SnesAddress, _value: u8) {
         // ROM is read-only, ignore writes
         // TODO : Add a warning ?
