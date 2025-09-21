@@ -3,43 +3,147 @@ use common::snes_address::SnesAddress;
 use crate::constants::{IO_END_ADDRESS, IO_SIZE, IO_START_ADDRESS};
 use crate::memory_region::MemoryRegion;
 
+// This memory is only 0x4000 long because all of the IO is mirrored in all banks from 0x00/0X3F - 0X80/0XBF
+/// This memory is the memory for the different components (CPU, APU, etc...)
+///
+/// This memory is accessible in banks 0x00/0X3F - 0X80/0XBF and between the
+/// following addresses 0x2000/0X5FFF.
+///
+/// The data is mirrored in all the banks, for example, the addresses 0x004000 and 0x9E4000
+/// will get the same results
 pub struct Io {
-    // TODO : Implement real CPU, PPU, APU, etc... memories.
-    // This memory is only 0x4000 long because all of the IO is mirrored in all banks from 0x00/0X3F - 0X80/0XBF
-    memory: [u8; IO_SIZE],
+    // TODO : Implement real CPU, PPU, APU, etc... memoriy behaviors.
+    data: [u8; IO_SIZE],
 }
 
 impl Io {
     pub fn new() -> Self {
-        Self {
-            memory: [0; IO_SIZE],
-        }
+        Self { data: [0; IO_SIZE] }
     }
 
-    fn map_offset(addr: SnesAddress) -> Option<usize> {
-        let offset_in_bank = (addr.addr & 0xFFFF) as u32; // address within the current 64 KiB bank
+    fn panic_invalid_addr(addr: SnesAddress) -> ! {
+        // TODO: Just print with usize when SnesAddress PR is merged
+        panic!(
+            "Incorrect access to the IO at address: {:02X}{:04X}",
+            addr.bank, addr.addr
+        );
+    }
 
-        if (IO_START_ADDRESS..=IO_END_ADDRESS).contains(&offset_in_bank) {
-            let index = (offset_in_bank - IO_START_ADDRESS) as usize;
-            Some(index)
-        } else {
-            None
+    fn to_offset(addr: SnesAddress) -> usize {
+        match addr.bank {
+            0x00..=0x3F | 0x80..=0xBF => {
+                if addr.addr >= IO_START_ADDRESS && addr.addr < IO_END_ADDRESS {
+                    return addr.addr as usize;
+                } else {
+                    Self::panic_invalid_addr(addr);
+                }
+            }
+            _ => {
+                Self::panic_invalid_addr(addr);
+            }
         }
     }
 }
 
 impl MemoryRegion for Io {
     fn read(&self, addr: SnesAddress) -> u8 {
-        if let Some(offset) = Self::map_offset(addr) {
-            self.memory[offset]
-        } else {
-            0xFF // TODO: open bus
-        }
+        let offset = Self::to_offset(addr);
+
+        // TODO: Just print with usize when SnesAddress PR is merged
+        return self.data.get(offset as usize).copied().expect(&format!(
+            "ERROR: Couldn't extract value from IO at address: {:02X}{:04X}",
+            addr.bank, addr.addr
+        ));
     }
 
     fn write(&mut self, addr: SnesAddress, value: u8) {
-        if let Some(offset) = Self::map_offset(addr) {
-            self.memory[offset] = value;
+        let offset = Self::to_offset(addr);
+
+        if offset < self.data.len() {
+            self.data[offset] = value;
+        } else {
+            // Shouldn't come here, panics just in case
+            Self::panic_invalid_addr(addr);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_good_map_addr() {
+        for bank in (0x00..=0x3F).chain(0x80..=0xBF) {
+            for addr in IO_START_ADDRESS..IO_END_ADDRESS {
+                let address: SnesAddress = SnesAddress {
+                    bank: (bank),
+                    addr: (addr),
+                };
+                assert_eq!(Io::to_offset(address), addr as usize);
+            }
+        }
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_bad_map_addr_panics() {
+        Io::to_offset(SnesAddress {
+            bank: (0x00),
+            addr: (IO_START_ADDRESS - 0x0321),
+        });
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_bad_map_addr_panics2() {
+        Io::to_offset(SnesAddress {
+            bank: (0x0F),
+            addr: (IO_END_ADDRESS + 0x34EF),
+        });
+    }
+
+    #[test]
+    #[should_panic(expected = "Incorrect access to the IO at address: E32345")]
+    fn test_bad_map_addr_panic_message_read() {
+        let io = Io::new();
+
+        io.read(SnesAddress {
+            bank: (0xE3),
+            addr: (0x2345),
+        });
+    }
+
+    #[test]
+    #[should_panic(expected = "Incorrect access to the IO at address: E32345")]
+    fn test_bad_map_addr_panic_message_write() {
+        let mut io = Io::new();
+
+        io.write(
+            SnesAddress {
+                bank: (0xE3),
+                addr: (0x2345),
+            },
+            0x43,
+        );
+    }
+
+    #[test]
+    fn test_simple_read_write() {
+        let mut wram = Io::new();
+        let first_addr = SnesAddress {
+            bank: (0x00),
+            addr: (IO_START_ADDRESS),
+        };
+        let second_addr = SnesAddress {
+            bank: (0x9F),
+            addr: (IO_START_ADDRESS),
+        };
+
+        wram.write(first_addr, 0x43);
+        assert_eq!(wram.read(first_addr), 0x43);
+
+        wram.write(second_addr, 0x43);
+        assert_eq!(wram.read(second_addr), 0x43);
     }
 }
