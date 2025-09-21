@@ -2,8 +2,8 @@
 pub const BANK_SIZE: usize = 0xFFFF + 1; // 64 KiB per bank
 
 // IO Memory zone
-pub const IO_START_ADDRESS: u32 = 0x2000;
-pub const IO_END_ADDRESS: u32 = 0x5FFF;
+pub const IO_START_ADDRESS: u16 = 0x2000;
+pub const IO_END_ADDRESS: u16 = 0x5FFF;
 pub const IO_SIZE: usize = (IO_END_ADDRESS - IO_START_ADDRESS + 1) as usize; // Equal to 0X4000
 
 // WRAM Memory zone

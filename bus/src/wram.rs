@@ -65,7 +65,6 @@ impl MemoryRegion for Wram {
     }
 }
 
-use std::panic;
 #[cfg(test)]
 mod tests {
     use super::*;
