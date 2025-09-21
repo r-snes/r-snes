@@ -31,6 +31,13 @@ impl Wram {
         );
     }
 
+    /// Converts a `SnesAddress` into an internal WRAM offset.
+    ///
+    /// Handles the mirroring of the lower 0x2000 bytes across banks 0x00–0x3F and 0x80–0xBF,
+    /// and maps banks 0x7E and 0x7F to the actual 128 KiB WRAM.
+    ///
+    /// # Panics
+    /// Panics if the given address does not correspond to a valid WRAM location.
     fn to_offset(addr: SnesAddress) -> usize {
         match addr.bank {
             0x00..=0x3F | 0x80..=0xBF => {
@@ -54,6 +61,12 @@ impl Wram {
 }
 
 impl MemoryRegion for Wram {
+    /// Reads a byte from WRAM at the given `SnesAddress`.
+    ///
+    /// The address is first translated to an internal WRAM offset using `to_offset`.
+    ///
+    /// # Panics
+    /// Panics if the address is invalid or out of bounds.
     fn read(&self, addr: SnesAddress) -> u8 {
         let offset = Self::to_offset(addr);
 
@@ -64,6 +77,12 @@ impl MemoryRegion for Wram {
         ));
     }
 
+    /// Writes a byte to WRAM at the given `SnesAddress`.
+    ///
+    /// The address is first translated to an internal WRAM offset using `to_offset`.
+    ///
+    /// # Panics
+    /// Panics if the address is invalid or out of bounds.
     fn write(&mut self, addr: SnesAddress, value: u8) {
         let offset = Self::to_offset(addr);
         if offset < self.data.len() {
