@@ -3,14 +3,15 @@ use common::snes_address::SnesAddress;
 use crate::constants::{IO_END_ADDRESS, IO_SIZE, IO_START_ADDRESS};
 use crate::memory_region::MemoryRegion;
 
-// This memory is only 0x4000 long because all of the IO is mirrored in all banks from 0x00/0X3F - 0X80/0XBF
-/// This memory is the memory for the different components (CPU, APU, etc...)
+/// I/O Registers – 0x4000 bytes (mirrored)
 ///
-/// This memory is accessible in banks 0x00/0X3F - 0X80/0XBF and between the
-/// following addresses 0x2000/0X5FFF.
+/// - Memory area for various hardware components (CPU, APU, PPU, etc.).  
+/// - Accessible in banks 0x00–0x3F and 0x80–0xBF, within the address
+///   range 0x2000–0x5FFF.  
+/// - Fully mirrored across all these banks.  
 ///
-/// The data is mirrored in all the banks, for example, the addresses 0x004000 and 0x9E4000
-/// will get the same results
+/// For example, the addresses `0x004000` and `0x9E4000` both refer to the
+/// same memory location.
 pub struct Io {
     // TODO : Implement real CPU, PPU, APU, etc... memoriy behaviors.
     data: [u8; IO_SIZE],
