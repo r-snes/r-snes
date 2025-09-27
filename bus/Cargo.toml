@@ -5,3 +5,4 @@ edition = "2024"
 
 [dependencies]
 common = { version = "0.1.0", path = "../common"}
+tempfile = "3.23.0"
