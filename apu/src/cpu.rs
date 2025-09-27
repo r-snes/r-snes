@@ -353,27 +353,21 @@ impl Spc700 {
 
     /// Bitwise AND with accumulator
     pub fn inst_and_imm(&mut self, mem: &mut Memory) {
-        let value = self.read_immediate(mem);
-
-        self.regs.a &= value;
+        self.regs.a &= self.read_immediate(mem);
         self.set_zn_flags(self.regs.a);
         self.cycles += 2;
     }
 
     /// Bitwise OR with accumulator
     pub fn inst_ora_imm(&mut self, mem: &mut Memory) {
-        let value = self.read_immediate(mem);
-
-        self.regs.a |= value;
+        self.regs.a |= self.read_immediate(mem);
         self.set_zn_flags(self.regs.a);
         self.cycles += 2;
     }
 
     /// Bitwise XOR with accumulator
     pub fn inst_eor_imm(&mut self, mem: &mut Memory) {
-        let value = self.read_immediate(mem);
-
-        self.regs.a ^= value;
+        self.regs.a ^= self.read_immediate(mem);
         self.set_zn_flags(self.regs.a);
         self.cycles += 2;
     }
