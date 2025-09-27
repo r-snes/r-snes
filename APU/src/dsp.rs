@@ -92,25 +92,27 @@ impl Dsp {
     /// Step DSP one tick (process voices)
     pub fn step(&mut self, mem: &Memory) {
         for voice in self.voices.iter_mut() {
-            if voice.key_on {
-                // Advance fractional accumulator
-                voice.frac = voice.frac.wrapping_add(voice.pitch);
-                let step = voice.frac >> 8; // integer increment
-                voice.frac &= 0xFF;         // keep fractional
-
-                // Advance current address
-                voice.current_addr = voice.current_addr.wrapping_add(step);
-
-                // Stop if we reach the end of the sample
-                if voice.current_addr >= voice.sample_end {
-                    voice.key_on = false;
-                } else {
-                    // Fetch sample from memory after stepping
-                    voice.current_sample = mem.read8(voice.current_addr) as i8;
-                }
+            if !voice.key_on {
+                continue;
+            }
+    
+            // Advance fractional accumulator
+            voice.frac = voice.frac.wrapping_add(voice.pitch);
+            let step = voice.frac >> 8; // integer increment
+            voice.frac &= 0xFF;         // keep fractional
+    
+            // Advance current address
+            voice.current_addr = voice.current_addr.wrapping_add(step);
+    
+            // Stop if we reach the end of the sample
+            if voice.current_addr >= voice.sample_end {
+                voice.key_on = false;
+            } else {
+                // Fetch sample from memory after stepping
+                voice.current_sample = mem.read8(voice.current_addr) as i8;
             }
         }
-    }
+    }    
 
     /// Mix all voices into a stereo output buffer
     pub fn render_audio(&self, num_samples: usize) -> Vec<(i16, i16)> {
