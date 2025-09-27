@@ -148,7 +148,7 @@ impl Spc700 {
     }
 
     pub fn inst_lda_imm(&mut self, mem: &Memory) {
-        self.regs.a = self.read_immediate(mem)
+        self.regs.a = self.read_immediate(mem);
         self.set_zn_flags(self.regs.a);
         self.cycles += 2;
     }
