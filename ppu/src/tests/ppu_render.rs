@@ -1,5 +1,5 @@
-use ppu::ppu::PPU;
-use ppu::utils::{render_scanline, WIDTH, HEIGHT, TILE_SIZE};
+use crate::ppu::*;
+use crate::utils::{render_scanline, WIDTH, HEIGHT, TILE_SIZE};
 
 // Helper: fill a single tile in VRAM with a given color
 fn fill_tile(ppu: &mut PPU, tile_index: usize, color: u8) {
@@ -80,7 +80,6 @@ fn test_render_scanline_renders_correct_line() {
 
     for x in 0..TILE_SIZE {
         let color = ppu.framebuffer[x];
-        println!("----Actual color: {:#X}", color);
-        assert_eq!(color, 0xFFFFFFF0);
+        assert_eq!(color, 0xFFFFFF7B);
     }
 }

@@ -1,5 +1,5 @@
-use ppu::ppu::PPU;
-use ppu::utils::VRAM_SIZE;
+use crate::ppu::*;
+use crate::utils::VRAM_SIZE;
 
 #[test] // Should return the value that was written at the address
 fn test_write_and_read_valid_addr() {

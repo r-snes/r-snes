@@ -55,8 +55,8 @@ pub fn load_tiles_into_vram(ppu: &mut PPU, tiles: &Vec<Vec<Rgba<u8>>>) {
             for x in 0..TILE_SIZE {
                 let pixel = &tile[y * TILE_SIZE + x];
 
-                // tmp 4 bits color saving => gonna be fixed when CGRAM ok (CGRAM not ok for PR #13]
-                let value = pixel[0] >> 4;
+                // Tmp: taking the red intensity as a "palette index"
+                let value = pixel[0] >> 2; // 0–255 → 0–63 (enough to index a fake palette)
 
                 let addr = base_addr + y * TILE_SIZE + x;
                 ppu.write_vram(addr, value);
@@ -72,10 +72,10 @@ pub fn get_tile_from_vram(ppu: &PPU, tile_index: usize) -> Vec<u32> {
     for y in 0..TILE_SIZE {
         for x in 0..TILE_SIZE {
             let addr = base_addr + y * TILE_SIZE + x;
-            let value = ppu.read_vram(addr);
+            let palette_index = ppu.read_vram(addr);
 
-            let color = (value as u32) << 4;
-            let argb = (0xFF << 24) | (color << 16) | (color << 8) | color;
+            // Get color from CGRAM
+            let argb = ppu.read_cgram(palette_index);
             tile_pixels.push(argb);
         }
     }
