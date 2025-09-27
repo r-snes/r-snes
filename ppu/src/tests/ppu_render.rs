@@ -1,6 +1,5 @@
 use super::ppu::*;
 use crate::utils::{render_scanline, WIDTH, HEIGHT, TILE_SIZE};
-// use ppu::utils::{render_scanline, WIDTH, HEIGHT, TILE_SIZE};
 
 // Helper: fill a single tile in VRAM with a given color
 fn fill_tile(ppu: &mut PPU, tile_index: usize, color: u8) {

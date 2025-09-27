@@ -1,9 +1,8 @@
 use image::{Rgba, ImageBuffer};
+use std::path::Path;
 use super::ppu::*;
 use crate::tile::{load_and_split_image, load_tiles_into_vram};
 use crate::utils::TILE_SIZE;
-
-use std::path::Path;
 
 // Helper: Creates a 16x16 image with red, green, blue, and yellow (4 different tiles)
 fn create_test_image(path: &str) {
