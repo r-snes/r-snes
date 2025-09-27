@@ -304,8 +304,7 @@ impl Spc700 {
     }    
 
     pub fn inst_adc_imm(&mut self, mem: &mut Memory) {
-        let value = mem.read8(self.regs.pc);
-        self.regs.pc = self.regs.pc.wrapping_add(1);
+        let value = self.read_immediate(mem);
 
         let carry_in = if self.get_flag(FLAG_C) { 1 } else { 0 };
         let result = self.regs.a as u16 + value as u16 + carry_in as u16;
@@ -327,8 +326,7 @@ impl Spc700 {
 
     /// Compare memory with accumulator (sets flags only)
     pub fn inst_cmp_imm(&mut self, mem: &mut Memory) {
-        let value = mem.read8(self.regs.pc);
-        self.regs.pc = self.regs.pc.wrapping_add(1);
+        let value = self.read_immediate(mem);
 
         let result = self.regs.a.wrapping_sub(value);
 
@@ -339,8 +337,7 @@ impl Spc700 {
     }
 
     pub fn inst_sbc_imm(&mut self, mem: &mut Memory) {
-        let value = mem.read8(self.regs.pc);
-        self.regs.pc = self.regs.pc.wrapping_add(1);
+        let value = self.read_immediate(mem);
 
         let carry_in = if self.get_flag(FLAG_C) { 0 } else { 1 }; // SPC700 uses inverted carry
         let result = self.regs.a as i16 - value as i16 - carry_in as i16;
@@ -359,8 +356,7 @@ impl Spc700 {
 
     /// Bitwise AND with accumulator
     pub fn inst_and_imm(&mut self, mem: &mut Memory) {
-        let value = mem.read8(self.regs.pc);
-        self.regs.pc = self.regs.pc.wrapping_add(1);
+        let value = self.read_immediate(mem);
 
         self.regs.a &= value;
         self.set_zn_flags(self.regs.a);
@@ -369,8 +365,7 @@ impl Spc700 {
 
     /// Bitwise OR with accumulator
     pub fn inst_ora_imm(&mut self, mem: &mut Memory) {
-        let value = mem.read8(self.regs.pc);
-        self.regs.pc = self.regs.pc.wrapping_add(1);
+        let value = self.read_immediate(mem);
 
         self.regs.a |= value;
         self.set_zn_flags(self.regs.a);
@@ -379,8 +374,7 @@ impl Spc700 {
 
     /// Bitwise XOR with accumulator
     pub fn inst_eor_imm(&mut self, mem: &mut Memory) {
-        let value = mem.read8(self.regs.pc);
-        self.regs.pc = self.regs.pc.wrapping_add(1);
+        let value = self.read_immediate(mem);
 
         self.regs.a ^= value;
         self.set_zn_flags(self.regs.a);
