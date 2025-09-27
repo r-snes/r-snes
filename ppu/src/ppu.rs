@@ -1,16 +1,16 @@
 use crate::utils::{render_scanline, CGRAM_SIZE, HEIGHT, VRAM_SIZE, WIDTH};
 
 pub struct PPU {
-    pub framebuffer: Vec<u32>,
-    vram: [u8; VRAM_SIZE],
-    cgram: [u16; CGRAM_SIZE],
+    pub(crate) framebuffer: Vec<u32>,
+    pub(crate) vram: [u8; VRAM_SIZE],
+    pub(crate) cgram: [u16; CGRAM_SIZE],
 
     #[allow(dead_code)] // For future CPU write handling (not implemented yet)
-    cgaddr: u8,
+    pub(crate) cgaddr: u8,
 
     #[allow(dead_code)] // For future CPU write handling (not implemented yet)
-    latch: u8,
-    latch_filled: bool
+    pub(crate) latch: u8,
+    pub(crate) latch_filled: bool
 }
 
 impl PPU {
@@ -82,27 +82,6 @@ impl PPU {
         for y in 0..HEIGHT {
             render_scanline(self, y, tiles_per_row);
         }
-    }
-
-    // Tests functions
-    #[cfg(test)]
-    pub fn cgram_len(&self) -> usize {
-        self.cgram.len()
-    }
-
-    #[cfg(test)]
-    pub fn get_cgram_value(&self, index: usize) -> u16 {
-        self.cgram[index]
-    }
-
-    #[cfg(test)]
-    pub fn get_cgaddr(&self) -> u8 {
-        self.cgaddr
-    }
-
-    #[cfg(test)]
-    pub fn is_latch_set(&self) -> bool {
-        self.latch_filled
     }
 }
 
