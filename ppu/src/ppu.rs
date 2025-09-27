@@ -59,7 +59,7 @@ impl PPU {
     }
 
     #[allow(dead_code)] // For future CPU write handling (not implemented yet)
-    // Write one byte to CGRAM ($2122 on the SNES I think ?)
+    // Write one byte to CGRAM ($2122 on the SNES)
     pub fn write_cgram_data(&mut self, value: u8) {
         if self.latch_filled {
             // 2nd write → combine low + high into one 16-bit value
