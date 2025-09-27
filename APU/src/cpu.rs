@@ -112,6 +112,20 @@ impl Spc700 {
         }
     }
 
+    /// Reads the next byte from memory and increments the program counter.
+    fn read_immediate(&mut self, mem: &Memory) -> u8 {
+        let value = mem.read8(self.regs.pc);
+        self.regs.pc = self.regs.pc.wrapping_add(1);
+        value
+    }
+
+    /// Read a 16-bit little-endian immediate (two bytes) and advance PC by 2.
+    fn read_immediate16(&mut self, mem: &mut Memory) -> u16 {
+        let lo = self.read_immediate(mem) as u16;
+        let hi = self.read_immediate(mem) as u16;
+        lo | (hi << 8)
+    }
+
     // Implemented instructions
     fn inst_mov_a_x(&mut self) {
         self.regs.a = self.regs.x;
@@ -133,25 +147,22 @@ impl Spc700 {
         self.cycles += 2;
     }
 
-    pub fn inst_lda_imm(&mut self, mem: &mut Memory) {
-        let value = mem.read8(self.regs.pc);
-        self.regs.pc = self.regs.pc.wrapping_add(1);
+    pub fn inst_lda_imm(&mut self, mem: &Memory) {
+        let value = self.read_immediate(mem);
         self.regs.a = value;
         self.set_zn_flags(self.regs.a);
         self.cycles += 2;
     }
 
-    pub fn inst_ldx_imm(&mut self, mem: &mut Memory) {
-        let value = mem.read8(self.regs.pc);
-        self.regs.pc = self.regs.pc.wrapping_add(1);
+    pub fn inst_ldx_imm(&mut self, mem: &Memory) {
+        let value = self.read_immediate(mem);
         self.regs.x = value;
         self.set_zn_flags(self.regs.x);
         self.cycles += 2;
     }
 
-    pub fn inst_ldy_imm(&mut self, mem: &mut Memory) {
-        let value = mem.read8(self.regs.pc);
-        self.regs.pc = self.regs.pc.wrapping_add(1);
+    pub fn inst_ldy_imm(&mut self, mem: &Memory) {
+        let value = self.read_immediate(mem);
         self.regs.y = value;
         self.set_zn_flags(self.regs.y);
         self.cycles += 2;
