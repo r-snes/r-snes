@@ -157,9 +157,9 @@ impl Dsp {
 
                 for sample in &mut buffer {
                     sample.0 = (sample.0 as i32 + sample_val * left_vol)
-                        .clamp(-32768, 32767) as i16;
+                        .clamp(i16::MIN as i32, i16::MAX as i32) as i16;
                     sample.1 = (sample.1 as i32 + sample_val * right_vol)
-                        .clamp(-32768, 32767) as i16;
+                        .clamp(i16::MIN as i32, i16::MAX as i32) as i16;
                 }
             }
         }
