@@ -8,6 +8,7 @@ members = [
     "common",
     "ppu",
     "cpu",
+    "apu",
 ]
 
 [dependencies]
