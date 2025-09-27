@@ -148,22 +148,19 @@ impl Spc700 {
     }
 
     pub fn inst_lda_imm(&mut self, mem: &Memory) {
-        let value = self.read_immediate(mem);
-        self.regs.a = value;
+        self.regs.a = self.read_immediate(mem)
         self.set_zn_flags(self.regs.a);
         self.cycles += 2;
     }
 
     pub fn inst_ldx_imm(&mut self, mem: &Memory) {
-        let value = self.read_immediate(mem);
-        self.regs.x = value;
+        self.regs.x = self.read_immediate(mem);
         self.set_zn_flags(self.regs.x);
         self.cycles += 2;
     }
 
     pub fn inst_ldy_imm(&mut self, mem: &Memory) {
-        let value = self.read_immediate(mem);
-        self.regs.y = value;
+        self.regs.y = self.read_immediate(mem);
         self.set_zn_flags(self.regs.y);
         self.cycles += 2;
     }
