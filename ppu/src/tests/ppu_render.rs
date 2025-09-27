@@ -1,4 +1,4 @@
-use super::ppu::*;
+use crate::ppu::*;
 use crate::utils::{render_scanline, WIDTH, HEIGHT, TILE_SIZE};
 
 // Helper: fill a single tile in VRAM with a given color

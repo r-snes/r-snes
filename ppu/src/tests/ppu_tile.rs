@@ -1,6 +1,6 @@
 use image::{Rgba, ImageBuffer};
 use std::path::Path;
-use super::ppu::*;
+use crate::ppu::*;
 use crate::tile::{load_and_split_image, load_tiles_into_vram};
 use crate::utils::TILE_SIZE;
 

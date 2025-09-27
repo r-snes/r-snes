@@ -1,4 +1,4 @@
-use super::ppu::*;
+use crate::ppu::*;
 
 #[test] // CGRAM should have exactly 256 entries
 fn test_cgram_initialization() {

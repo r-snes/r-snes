@@ -1,4 +1,4 @@
-use super::ppu::*;
+use crate::ppu::*;
 use crate::utils::VRAM_SIZE;
 
 #[test] // Should return the value that was written at the address
