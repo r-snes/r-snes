@@ -402,3 +402,24 @@ fn test_eor_sets_flags() {
     assert!(!cpu.get_flag(FLAG_Z));
     assert!(!cpu.get_flag(FLAG_N));
 }
+
+#[test]
+fn test_adc_overflow_flag_set() {
+    let mut cpu = Spc700::new();
+    let mut mem = Memory::new();
+
+    cpu.regs.pc = 0x200;
+    cpu.regs.a = 0x50; // +80 signed
+    mem.write8(0x200, 0x50); // ADC #$50 (+80 signed)
+
+    cpu.inst_adc_imm(&mut mem);
+
+    // 0x50 + 0x50 = 0xA0
+    assert_eq!(cpu.regs.a, 0xA0);
+
+    // Check flags
+    assert!(!cpu.get_flag(FLAG_C)); // no carry out of 8 bits
+    assert!(cpu.get_flag(FLAG_V));  // signed overflow (80 + 80 = -96)
+    assert!(cpu.get_flag(FLAG_N));  // result has high bit set
+    assert!(!cpu.get_flag(FLAG_Z)); // result != 0
+}
