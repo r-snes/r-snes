@@ -85,22 +85,22 @@ impl PPU {
     }
 
     // Tests functions
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn cgram_len(&self) -> usize {
         self.cgram.len()
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn get_cgram_value(&self, index: usize) -> u16 {
         self.cgram[index]
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn get_cgaddr(&self) -> u8 {
         self.cgaddr
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn is_latch_set(&self) -> bool {
         self.latch_filled
     }

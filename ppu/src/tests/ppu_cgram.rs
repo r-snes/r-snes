@@ -1,5 +1,4 @@
-use ppu::ppu::PPU;
-use ppu::ppu::bgr555_to_argb;
+use super::ppu::*;
 
 #[test] // CGRAM should have exactly 256 entries
 fn test_cgram_initialization() {
