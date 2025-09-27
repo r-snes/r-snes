@@ -9,11 +9,11 @@ use common::snes_address::SnesAddress;
 #[expect(non_snake_case, reason = "Registers are named in full caps")]
 pub struct CPU {
     /// Internal registers accessible read/write to executed programs
-    registers: Registers,
+    pub(crate) registers: Registers,
 
     /// Address bus: points to one byte in the global address space
     /// where memory I/O may occur if a read or write is executed.
-    addr_bus: SnesAddress,
+    pub(crate) addr_bus: SnesAddress,
     /// Data bus: holds one byte that may be sent to RAM (at the address
     /// hold by the address bus) by executing a write) or coming from
     /// RAM (from the address in the address bus) right after a read has
@@ -23,13 +23,19 @@ pub struct CPU {
     /// in bytes read from RAM into the CPU.
     pub data_bus: u8,
 
-    /// Instruction register: in the original hardware, this holds the opcode
-    /// of the current instruction being executed; in our case, we can take
-    /// the shortcut of holding a reference to our custom Instruction type.
-    IR: &'static Instruction,
-    /// Timing control unit: holds how many cycles of the current
-    /// instruction have been executed
-    TCU: usize,
+    /// Internal data bus used to store 16-bits operands before doing
+    /// operations on them.
+    pub(crate) internal_data_bus: u16,
+
+    // /// Instruction register: in the original hardware, this holds the opcode
+    // /// of the current instruction being executed; in our case, we can take
+    // /// the shortcut of holding a reference to our custom Instruction type.
+    // pub(crate) IR: &'static Instruction,
+    // /// Timing control unit: holds how many cycles of the current
+    // /// instruction have been executed
+    // pub(crate) TCU: usize,
+
+    pub(crate) next_cycle: InstrCycle,
 }
 
 /// The result of a CPU cycle.
@@ -57,8 +63,10 @@ impl CPU {
             registers,
             addr_bus: SnesAddress::default(),
             data_bus: 0,
-            IR: INSTRUCTIONS[0xea].unwrap(), // By default hold a NOP (no-operation) to do nothing
-            TCU: 1, // NOP is only 1 cycle, so we go to an opcode fetch cycle
+            internal_data_bus: 0,
+            next_cycle: InstrCycle(opcode_fetch),
+            // IR: INSTRUCTIONS[0xea].unwrap(), // By default hold a NOP (no-operation) to do nothing
+            // TCU: 1, // NOP is only 1 cycle, so we go to an opcode fetch cycle
         }
     }
 
@@ -125,36 +133,40 @@ impl CPU {
     /// See [`CycleResult`] for more information about the return value of
     /// this function.
     pub fn cycle(&mut self) -> CycleResult {
-        // check for opcode fetch cycle
-        if self.TCU == self.IR.len() {
-            self.TCU = 0;
-            self.addr_bus = SnesAddress {
-                bank: self.registers.PB,
-                addr: self.registers.PC,
-            };
-            return CycleResult::Read;
-        }
+        // // check for opcode fetch cycle
+        // if self.TCU == self.IR.len() {
+        //     self.TCU = 0;
+        //     self.addr_bus = SnesAddress {
+        //         bank: self.registers.PB,
+        //         addr: self.registers.PC,
+        //     };
+        //     return CycleResult::Read;
+        // }
 
-        // if first cycle of an instruction, set IR according to the fetched opcode
-        if self.TCU == 0 {
-            if let Some(instr) = INSTRUCTIONS[self.data_bus as usize] {
-                self.IR = instr;
-            } else {
-                todo!("Unimplemented instruction ({:#02x})", self.data_bus);
-            }
-        }
+        // // if first cycle of an instruction, set IR according to the fetched opcode
+        // if self.TCU == 0 {
+        //     if let Some(instr) = INSTRUCTIONS[self.data_bus as usize] {
+        //         self.IR = instr;
+        //     } else {
+        //         todo!("Unimplemented instruction ({:#02x})", self.data_bus);
+        //     }
+        // }
 
-        // actually run the instr cycle
-        let ret = match self.IR[self.TCU] {
-            InstructionCycle::Read => CycleResult::Read,
-            InstructionCycle::Write => CycleResult::Write,
-            InstructionCycle::Internal(internal) => {
-                internal(self);
-                CycleResult::Internal
-            }
-        };
+        // // actually run the instr cycle
+        // let ret = match self.IR[self.TCU] {
+        //     InstructionCycle::Read => CycleResult::Read,
+        //     InstructionCycle::Write => CycleResult::Write,
+        //     InstructionCycle::Internal(internal) => {
+        //         internal(self);
+        //         CycleResult::Internal
+        //     }
+        // };
 
-        self.TCU += 1;
+        // self.TCU += 1;
+        // ret
+
+        let (ret, next_cycle) = (self.next_cycle.0)(self);
+        self.next_cycle = next_cycle;
         ret
     }
 
