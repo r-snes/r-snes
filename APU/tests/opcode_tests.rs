@@ -356,6 +356,26 @@ fn test_sbc_no_borrow() {
     assert!(cpu.get_flag(FLAG_C));
     assert!(!cpu.get_flag(FLAG_Z));
     assert!(!cpu.get_flag(FLAG_N));
+    assert!(!cpu.get_flag(FLAG_V)); // no signed overflow should occur
+}
+
+#[test]
+fn test_sbc_with_overflow() {
+    let mut cpu = Spc700::new();
+    let mut mem = Memory::new();
+
+    cpu.regs.pc = 0x200;
+    cpu.regs.a = 0x80; // -128 in signed 8-bit
+    cpu.set_flag(FLAG_C, true); // carry set -> no borrow
+    mem.write8(0x200, 0x01); // SBC #$01
+
+    cpu.inst_sbc_imm(&mut mem);
+
+    assert_eq!(cpu.regs.a, 0x7F); // result wraps to +127
+    assert!(cpu.get_flag(FLAG_C)); // carry remains set (no borrow)
+    assert!(!cpu.get_flag(FLAG_Z));
+    assert!(!cpu.get_flag(FLAG_N)); // positive result
+    assert!(cpu.get_flag(FLAG_V));  // signed overflow triggered
 }
 
 #[test]
