@@ -37,3 +37,41 @@ pub(crate) fn cpu_instr2(input: TokenStream) -> TokenStream {
 pub fn cpu_instr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     cpu_instr2(input.into()).into()
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_inx() {
+        let input = quote!(instr_inx {
+            cpu.registers.X = cpu.registers.X.wrapping_add(1);
+            cpu.registers.P.Z = cpu.registers.X == 0;
+            cpu.registers.P.N = cpu.registers.X > 0x7fff;
+
+            meta END_INSTR Internal;
+        });
+
+        let output = cpu_instr2(input);
+
+        print!("{}", prettyplease::unparse(&syn::parse2(output).unwrap()))
+    }
+
+    #[test]
+    fn test_some_instr() {
+        let input = quote!(some_instr {
+            some_function1(cpu);
+            meta END_CYCLE Internal;
+
+            some_function2(cpu);
+            meta END_CYCLE Read;
+
+            some_function3(cpu);
+            meta END_INSTR Write;
+        });
+
+        let output = cpu_instr2(input);
+
+        print!("{}", prettyplease::unparse(&syn::parse2(output).unwrap()))
+    }
+}
