@@ -9,6 +9,7 @@ members = [
     "ppu",
     "cpu",
     "apu",
+    "cpu/instr_metalang_procmacro"
 ]
 
 [dependencies]
