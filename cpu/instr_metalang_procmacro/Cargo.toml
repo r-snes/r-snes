@@ -9,3 +9,7 @@ edition = "2024"
 [dependencies]
 quote = "1.0"
 proc-macro2 = "1.0"
+
+[dev-dependencies]
+prettyplease = "0.2.37"
+syn = "2.0"
