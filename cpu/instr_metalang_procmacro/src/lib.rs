@@ -42,36 +42,79 @@ pub fn cpu_instr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 mod test {
     use super::*;
 
+    fn assert_tokstream_eq(actual: TokenStream, expected: TokenStream) {
+        let Ok(actual) = syn::parse2::<syn::File>(actual) else {
+            panic!("assert_tokstream_eq: actual doesn't parse");
+        };
+        let Ok(expected) = syn::parse2::<syn::File>(expected) else {
+            panic!("assert_tokstream_eq: expected doesn't parse");
+        };
+
+        assert_eq!(
+            actual,
+            expected,
+            "\n=====\nActual:\n{}\n=====\nExpected:\n{}\n",
+            prettyplease::unparse(&actual),
+            prettyplease::unparse(&expected)
+        )
+    }
+
+    fn assert_macro_produces(macro_input: TokenStream, exp_output: TokenStream) {
+        assert_tokstream_eq(cpu_instr2(macro_input), exp_output)
+    }
+
     #[test]
     fn test_inx() {
-        let input = quote!(instr_inx {
-            cpu.registers.X = cpu.registers.X.wrapping_add(1);
-            cpu.registers.P.Z = cpu.registers.X == 0;
-            cpu.registers.P.N = cpu.registers.X > 0x7fff;
+        assert_macro_produces(
+            quote!(instr_inx {
+                cpu.registers.X = cpu.registers.X.wrapping_add(1);
+                cpu.registers.P.Z = cpu.registers.X == 0;
+                cpu.registers.P.N = cpu.registers.X > 0x7fff;
 
-            meta END_INSTR Internal;
-        });
+                meta END_INSTR Internal;
+            }),
+            quote!(
+                pub(crate) fn instr_inx_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
+                    cpu.registers.X = cpu.registers.X.wrapping_add(1);
+                    cpu.registers.P.Z = cpu.registers.X == 0;
+                    cpu.registers.P.N = cpu.registers.X > 0x7fff;
 
-        let output = cpu_instr2(input);
-
-        print!("{}", prettyplease::unparse(&syn::parse2(output).unwrap()))
+                    (CycleResult::Internal, InstrCycle(opcode_fetch))
+                }
+            ),
+        );
     }
 
     #[test]
     fn test_some_instr() {
-        let input = quote!(some_instr {
-            some_function1(cpu);
-            meta END_CYCLE Internal;
+        assert_macro_produces(
+            quote!(some_instr {
+                some_function1(cpu);
+                meta END_CYCLE Internal;
 
-            some_function2(cpu);
-            meta END_CYCLE Read;
+                some_function2(cpu);
+                meta END_CYCLE Read;
 
-            some_function3(cpu);
-            meta END_INSTR Write;
-        });
+                some_function3(cpu);
+                meta END_INSTR Write;
+            }),
+            quote!(
+                pub(crate) fn some_instr_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
+                    some_function1(cpu);
 
-        let output = cpu_instr2(input);
+                    (CycleResult::Internal, InstrCycle(some_instr_cyc2))
+                }
+                pub(crate) fn some_instr_cyc2(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
+                    some_function2(cpu);
 
-        print!("{}", prettyplease::unparse(&syn::parse2(output).unwrap()))
+                    (CycleResult::Read, InstrCycle(some_instr_cyc3))
+                }
+                pub(crate) fn some_instr_cyc3(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
+                    some_function3(cpu);
+
+                    (CycleResult::Write, InstrCycle(opcode_fetch))
+                }
+            ),
+        );
     }
 }
