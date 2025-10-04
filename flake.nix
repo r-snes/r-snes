@@ -33,6 +33,7 @@
           buildInputs = with rust-pkgs; [
             rustc
             cargo
+            cargo-tarpaulin
             cargo-expand
             rustfmt
           ]
