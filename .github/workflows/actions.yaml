@@ -9,7 +9,6 @@ on:
       - 'ga-ignore-*'
 env:
   MIRROR_URL: "git@github.com:EpitechPromo2027/G-EIP-600-NAN-6-1-eip-florent.charpentier.git"
-  COVERAGE_MINIMUM_PERCENTAGE: 80
 
 jobs:
   check_program_compilation:
@@ -23,27 +22,18 @@ jobs:
       - name: Install g++
         run: apt-get update && apt-get install -y g++
       - name: Check program compilation
-        timeout-minutes: 2
+        timeout-minutes: 3
         run: cargo build --workspace
 
   run_tests:
     needs: [check_program_compilation]
     runs-on: ubuntu-latest
+    container:
+      image: xd009642/tarpaulin:latest
 
     steps:
-      - name: Checkout fetch
-        uses: actions/checkout@v4.2.2
-      - name: Update apt repositories
-        run: sudo apt update
-      - name: Install cargo
-        run: sudo apt install cargo -y
-      - name: Install openssl dev lib (necessary for cargo-tarpaulin)
-        run: sudo apt install libssl-dev pkg-config -y
-      - name: Install cargo tarpaulin
-        timeout-minutes: 5
-        run: cargo install cargo-tarpaulin
-      - name: Check for failing unit test and coverage < COVERAGE_MINIMUM_PERCENTAGE
-        timeout-minutes: 2
+      - uses: actions/checkout@v4.2.2
+      - name: Run tests with coverage
         run: cargo tarpaulin
 
   push_to_mirror:
