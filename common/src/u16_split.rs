@@ -80,7 +80,6 @@ mod test {
 
         let byte_refs = my_u16.split();
 
-        println!("lo: {:#x}, hi: {:#x}", byte_refs.lo, byte_refs.hi);
         assert_eq!(*byte_refs.hi, 0x12);
         assert_eq!(*byte_refs.lo, 0x34);
 
