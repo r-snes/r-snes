@@ -87,6 +87,14 @@ mod test {
     }
 
     #[test]
+    fn get_individual_bytes() {
+        let my_u16: u16 = 0xbeef;
+
+        assert_eq!(*my_u16.hi(), 0xbe);
+        assert_eq!(*my_u16.lo(), 0xef);
+    }
+
+    #[test]
     fn test_split_u16_mut() {
         let mut my_u16: u16 = 0x1234;
 
@@ -104,5 +112,8 @@ mod test {
         // we can also assign directly from the method call
         *my_u16.hi_mut() = 0xaa;
         assert_eq!(my_u16, 0xaaee);
+
+        *my_u16.lo_mut() = 0x42;
+        assert_eq!(my_u16, 0xaa42);
     }
 }
