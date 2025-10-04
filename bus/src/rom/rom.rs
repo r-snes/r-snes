@@ -73,30 +73,42 @@ impl Rom {
     ///
     /// # Panics
     /// Panics if the given address does not correspond to a valid LoROM location.
-    fn get_lorom_offset(&self, addr: SnesAddress) -> usize {
+    pub fn get_lorom_offset(addr: SnesAddress) -> usize {
         match addr.bank {
-            // Banks 00-7D and 80-FF
-            0x00..=0x7D | 0x80..=0xFF => {
+            0x00..=0x3F => {
                 if addr.addr >= 0x8000 {
-                    // Regular LoROM region
-                    let bank_index = if addr.bank <= 0x7D {
-                        addr.bank as usize
-                    } else {
-                        addr.bank as usize - 0x80
-                    };
                     let bank_offset = (addr.addr - 0x8000) as usize;
-                    return bank_index * 0x8000 + bank_offset;
-                } else if (0x40..=0x7D).contains(&addr.bank) || (0xC0..=0xFF).contains(&addr.bank) {
-                    // Mirror of upper half: 0000-7FFF → 8000-FFFF
-                    let bank_index = if addr.bank <= 0x7D {
-                        addr.bank as usize - 0x40
-                    } else {
-                        addr.bank as usize - 0xC0
-                    };
-                    let bank_offset = addr.addr as usize;
-                    return bank_index * 0x8000 + bank_offset;
+                    return addr.bank as usize * 0x8000 + bank_offset;
                 } else {
                     Self::panic_invalid_addr(addr);
+                }
+            }
+            0x40..=0x7D => {
+                if addr.addr < 0x8000 {
+                    let bank_offset = addr.addr as usize;
+                    return addr.bank as usize * 0x8000 + bank_offset;
+                } else {
+                    // Superior or equal to 0x8000
+                    let bank_offset = (addr.addr - 0x8000) as usize;
+                    return addr.bank as usize * 0x8000 + bank_offset;
+                }
+            }
+            0x80..=0xBF => {
+                if addr.addr >= 0x8000 {
+                    let bank_offset = (addr.addr - 0x8000) as usize;
+                    return (addr.bank as usize - 0x80) * 0x8000 + bank_offset;
+                } else {
+                    Self::panic_invalid_addr(addr);
+                }
+            }
+            0xC0..=0xFF => {
+                if addr.addr < 0x8000 {
+                    let bank_offset = addr.addr as usize;
+                    return (addr.bank as usize - 0x80) * 0x8000 + bank_offset;
+                } else {
+                    // Superior or equal to 0x8000
+                    let bank_offset = (addr.addr - 0x8000) as usize;
+                    return (addr.bank as usize - 0x80) * 0x8000 + bank_offset;
                 }
             }
             _ => {
@@ -115,7 +127,7 @@ impl Rom {
     ///
     /// # Panics
     /// Panics if the given address does not correspond to a valid HiROM location.
-    fn get_hirom_offset(&self, addr: SnesAddress) -> usize {
+    pub fn get_hirom_offset(addr: SnesAddress) -> usize {
         match addr.bank {
             // Regular HiROM banks
             0x40..=0x7D => {
@@ -153,39 +165,6 @@ impl Rom {
         }
     }
 
-    // TODO : take in account ROM mirrors :
-    // https://problemkaputt.de/fullsnes.htm#snescarthirommappingromdividedinto64kbanksaround500games
-    // fn get_hirom_offset(&self, addr: SnesAddress) -> usize {
-    //     match addr.bank {
-    //         0x00..=0x3F | 0x80..=0xBF => {
-    //             let bank_index = (addr.bank & 0x3F) as usize;
-    //             return bank_index * 0x10000 + addr.addr as usize;
-    //         }
-    //         _ => {
-    //             Self::panic_invalid_addr(addr);
-    //         }
-    //     }
-    // }
-
-    // TODO : take in account ROM mirrors :
-    // https://problemkaputt.de/fullsnes.htm#snescartlorommappingromdividedinto32kbanksaround1500games
-    // fn get_lorom_offset(&self, addr: SnesAddress) -> usize {
-    //     match addr.bank {
-    //         0x00..=0x7D | 0x80..=0xFF => {
-    //             if addr.addr >= 0x8000 {
-    //                 let bank_index = (addr.bank & 0x7F) as usize;
-    //                 let bank_offset = (addr.addr - 0x8000) as usize;
-    //                 return bank_index * LOROM_BANK_SIZE + bank_offset;
-    //             } else {
-    //                 Self::panic_invalid_addr(addr);
-    //             }
-    //         }
-    //         _ => {
-    //             Self::panic_invalid_addr(addr);
-    //         }
-    //     }
-    // }
-
     /// Converts a `SnesAddress` into an internal ROM offset.
     ///
     /// Uses the ROM’s mapping mode (`MappingMode::LoRom` or `MappingMode::HiRom`)
@@ -196,8 +175,8 @@ impl Rom {
     /// or if the mapping mode is [`MappingMode::Unknown`].
     fn to_offset(&self, addr: SnesAddress) -> usize {
         match self.map {
-            MappingMode::HiRom => self.get_hirom_offset(addr),
-            MappingMode::LoRom => self.get_lorom_offset(addr),
+            MappingMode::HiRom => Self::get_hirom_offset(addr),
+            MappingMode::LoRom => Self::get_lorom_offset(addr),
             MappingMode::Unknown => {
                 panic!("ROM mapping mode is Unknown, cannot compute offset");
             }
@@ -394,34 +373,165 @@ mod tests {
         assert_eq!(rom.read(addr), 0);
     }
 
-    // #[test]
-    // fn test_hirom_offset_and_read() {
-    //     // let data = (0..0x20000).map(|x| (x & 0xFF) as u8).collect::<Vec<_>>();
-    //     // let rom = Rom::new(data.clone(), MappingMode::HiRom);
-    //     let data = create_valid_hirom(0x20000);
-    //     let path = create_temp_rom(&data);
-    //     let rom = Rom::load_from_file(&path).unwrap();
+    #[test]
+    fn test_lorom_offset_first_quarter() {
+        let mut addr = SnesAddress {
+            bank: 0x00,
+            addr: 0x8000,
+        };
+        assert_eq!(Rom::get_lorom_offset(addr), 0);
 
-    //     let addr = SnesAddress {
-    //         bank: 0xC0,
-    //         addr: 0x1234,
-    //     };
-    //     let offset = rom.to_offset(addr);
-    //     assert_eq!(rom.read(addr), data[offset]);
-    // }
+        addr.addr = 0xFFFF;
+        assert_eq!(Rom::get_lorom_offset(addr), 0x8000 - 1);
 
-    // #[test]
-    // fn test_lorom_offset_and_read() {
-    //     // 2 banks de 32 KiB
-    //     let data = (0..0x10000).map(|x| (x & 0xFF) as u8).collect::<Vec<_>>();
-    //     let rom = Rom::new(data.clone(), MappingMode::LoRom);
+        addr.bank = 0x01;
+        addr.addr = 0x8000;
+        assert_eq!(Rom::get_lorom_offset(addr), 0x8000);
 
-    //     let addr = SnesAddress {
-    //         bank: 0x01,
-    //         addr: 0x8000,
-    //     }; // début 2ème banque
-    //     let offset = rom.to_offset(addr);
-    //     assert_eq!(offset, LOROM_BANK_SIZE); // doit pointer au début de la 2ème banque
-    //     assert_eq!(rom.read(addr), data[offset]);
-    // }
+        addr.addr = 0xFFFF;
+        assert_eq!(Rom::get_lorom_offset(addr), 0x10000 - 1);
+
+        addr.bank = 0x3F;
+        assert_eq!(Rom::get_lorom_offset(addr), 0x8000 * (0x3F + 1) - 1);
+    }
+
+    #[test]
+    fn test_lorom_offset_second_quarter() {
+        let mut addr = SnesAddress {
+            bank: 0x40,
+            addr: 0x8000,
+        };
+        let mut mirror_addr = SnesAddress {
+            bank: 0x40,
+            addr: 0x0,
+        };
+
+        assert_eq!(
+            Rom::get_lorom_offset(addr),
+            Rom::get_lorom_offset(mirror_addr)
+        );
+        assert_eq!(Rom::get_lorom_offset(addr), 0x8000 * (0x40));
+
+        addr.addr = 0xFFFF;
+        mirror_addr.addr = 0x7FFF;
+        assert_eq!(
+            Rom::get_lorom_offset(addr),
+            Rom::get_lorom_offset(mirror_addr)
+        );
+        assert_eq!(Rom::get_lorom_offset(addr), 0x8000 * (0x40 + 1) - 1);
+
+        addr.addr = 0x8000;
+        mirror_addr.addr = 0x0000;
+        addr.bank = 0x7D;
+        mirror_addr.bank = 0x7D;
+        assert_eq!(
+            Rom::get_lorom_offset(addr),
+            Rom::get_lorom_offset(mirror_addr)
+        );
+        assert_eq!(Rom::get_lorom_offset(addr), 0x8000 * (0x7D));
+
+        addr.addr = 0xFFFF;
+        mirror_addr.addr = 0x7FFF;
+        assert_eq!(
+            Rom::get_lorom_offset(addr),
+            Rom::get_lorom_offset(mirror_addr)
+        );
+        assert_eq!(Rom::get_lorom_offset(addr), 0x8000 * (0x7D + 1) - 1);
+    }
+
+    #[test]
+    fn test_lorom_offset_third_quarter() {
+        let mut addr = SnesAddress {
+            bank: 0x80,
+            addr: 0x8000,
+        };
+        assert_eq!(Rom::get_lorom_offset(addr), 0);
+
+        addr.addr = 0xFFFF;
+        assert_eq!(Rom::get_lorom_offset(addr), 0x8000 - 1);
+
+        addr.bank = 0x81;
+        addr.addr = 0x8000;
+        assert_eq!(Rom::get_lorom_offset(addr), 0x8000);
+
+        addr.addr = 0xFFFF;
+        assert_eq!(Rom::get_lorom_offset(addr), 0x10000 - 1);
+
+        addr.bank = 0xBF;
+        assert_eq!(Rom::get_lorom_offset(addr), 0x8000 * (0x3F + 1) - 1);
+    }
+
+    #[test]
+    fn test_lorom_offset_fourth_quarter() {
+        let mut addr = SnesAddress {
+            bank: 0xC0,
+            addr: 0x8000,
+        };
+        let mut mirror_addr = SnesAddress {
+            bank: 0xC0,
+            addr: 0x0,
+        };
+
+        assert_eq!(
+            Rom::get_lorom_offset(addr),
+            Rom::get_lorom_offset(mirror_addr)
+        );
+        assert_eq!(Rom::get_lorom_offset(addr), 0x8000 * (0x40));
+
+        addr.addr = 0xFFFF;
+        mirror_addr.addr = 0x7FFF;
+        assert_eq!(
+            Rom::get_lorom_offset(addr),
+            Rom::get_lorom_offset(mirror_addr)
+        );
+        assert_eq!(Rom::get_lorom_offset(addr), 0x8000 * (0x40 + 1) - 1);
+
+        addr.addr = 0x8000;
+        mirror_addr.addr = 0x0000;
+        addr.bank = 0xFF;
+        mirror_addr.bank = 0xFF;
+        assert_eq!(
+            Rom::get_lorom_offset(addr),
+            Rom::get_lorom_offset(mirror_addr)
+        );
+        assert_eq!(Rom::get_lorom_offset(addr), 0x8000 * (0x7D + 2));
+
+        addr.addr = 0xFFFF;
+        mirror_addr.addr = 0x7FFF;
+        assert_eq!(
+            Rom::get_lorom_offset(addr),
+            Rom::get_lorom_offset(mirror_addr)
+        );
+        assert_eq!(Rom::get_lorom_offset(addr), 0x8000 * (0x7D + 3) - 1);
+    }
+
+    #[test]
+    #[should_panic(expected = "Incorrect access to the ROM at address: 004000")]
+    fn test_lorom_incorrect_address() {
+        let addr = SnesAddress {
+            bank: 0x00,
+            addr: 0x4000,
+        };
+        assert_eq!(Rom::get_lorom_offset(addr), 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "Incorrect access to the ROM at address: 804000")]
+    fn test_lorom_incorrect_address2() {
+        let addr = SnesAddress {
+            bank: 0x80,
+            addr: 0x4000,
+        };
+        assert_eq!(Rom::get_lorom_offset(addr), 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "Incorrect access to the ROM at address: 7E4000")]
+    fn test_lorom_incorrect_address3() {
+        let addr = SnesAddress {
+            bank: 0x7E,
+            addr: 0x4000,
+        };
+        assert_eq!(Rom::get_lorom_offset(addr), 0);
+    }
 }
