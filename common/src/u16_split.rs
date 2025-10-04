@@ -35,7 +35,6 @@ pub struct SplitU16<'a> {
     pub lo: &'a u8,
     /// Ref to the most significant byte
     pub hi: &'a u8,
-
 }
 
 /// Helper struct which contains two immutable references
@@ -51,21 +50,23 @@ impl U16Split for u16 {
     fn split<'a>(&'a self) -> SplitU16<'a> {
         let first_byte_ptr = self as *const u16 as *const u8;
         let second_byte_ptr = unsafe { first_byte_ptr.add(1) };
-        if cfg!(target_endian = "little") {
-            return unsafe { SplitU16 {lo: &*first_byte_ptr, hi: &*second_byte_ptr }};
+        let (lo, hi) = if cfg!(target_endian = "little") {
+            unsafe { (&*first_byte_ptr, &*second_byte_ptr) }
         } else {
-            return unsafe { SplitU16 {lo: &*second_byte_ptr, hi: &*first_byte_ptr }};
-        }
+            unsafe { (&*second_byte_ptr, &*first_byte_ptr) }
+        };
+        SplitU16 { lo, hi }
     }
 
     fn split_mut<'a>(&'a mut self) -> SplitU16Mut<'a> {
         let first_byte_ptr = self as *mut u16 as *mut u8;
         let second_byte_ptr = unsafe { first_byte_ptr.add(1) };
-        if cfg!(target_endian = "little") {
-            return unsafe { SplitU16Mut {lo: &mut *first_byte_ptr, hi: &mut *second_byte_ptr }};
+        let (lo, hi) = if cfg!(target_endian = "little") {
+            unsafe { (&mut *first_byte_ptr, &mut *second_byte_ptr) }
         } else {
-            return unsafe { SplitU16Mut {lo: &mut *second_byte_ptr, hi: &mut *first_byte_ptr }};
-        }
+            unsafe { (&mut *second_byte_ptr, &mut *first_byte_ptr) }
+        };
+        SplitU16Mut { lo, hi }
     }
 }
 
