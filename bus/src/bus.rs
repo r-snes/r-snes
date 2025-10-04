@@ -67,15 +67,11 @@ impl Bus {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs::File;
     use std::io::Write;
     use tempfile::tempdir;
 
     /// Helper: create a temporary 128 KiB ROM file filled with 0x00
     fn create_temp_rom(vec: Vec<u8>) -> std::path::PathBuf {
-        use std::io::Write;
-        use tempfile::tempdir;
-
         let dir = tempdir().unwrap();
         let rom_path = dir.path().join("test_rom.sfc");
         let mut f = std::fs::File::create(&rom_path).unwrap();
@@ -151,6 +147,17 @@ mod tests {
         };
         assert_eq!(bus.read(addr), 0x42);
         assert_eq!(bus.read(addr_mirror), 0x42);
+
+        let real_addr = SnesAddress {
+            bank: 0x7E,
+            addr: 0x0010,
+        };
+        assert_eq!(bus.read(real_addr), 0x42);
+
+        bus.write(real_addr, 0x21);
+        assert_eq!(bus.read(real_addr), 0x21);
+        assert_eq!(bus.read(addr), 0x21);
+        assert_eq!(bus.read(addr_mirror), 0x21);
     }
 
     #[test]
@@ -159,7 +166,6 @@ mod tests {
         let rom_path = create_temp_rom(rom_data);
         let mut bus = Bus::new(&rom_path).unwrap();
 
-        // IO space is 0x2000..0x5FFF in 0x00..0x3F or 0x80..0xBF banks
         let addr = SnesAddress {
             bank: 0x00,
             addr: 0x2345,
@@ -176,18 +182,27 @@ mod tests {
     }
 
     #[test]
-    fn test_rom_read_through_bus() {
-        let mut rom_data = create_valid_lorom(0x20000);
+    fn test_rom_read_write_through_bus() {
+        let mut rom_data = create_valid_lorom(0x100000 * 0x40);
         rom_data[0x0001] = 0x42;
         let rom_path = create_temp_rom(rom_data);
-        let bus = Bus::new(&rom_path).unwrap();
+        let mut bus = Bus::new(&rom_path).unwrap();
 
-        // LoROM area 0x8000..FFFF in 0x00..0x7D or 0x80..0xFF banks
         let addr = SnesAddress {
             bank: 0x00,
             addr: 0x8001,
         };
         assert_eq!(bus.read(addr), 0x42);
+        bus.write(addr, 0x21);
+        assert_eq!(bus.read(addr), 0x42);
+
+        let other_addr = SnesAddress {
+            bank: 0x40,
+            addr: 0x8001,
+        };
+        assert_eq!(bus.read(other_addr), 0);
+        bus.write(other_addr, 0x21);
+        assert_eq!(bus.read(other_addr), 0);
     }
 
     #[test]
@@ -198,13 +213,10 @@ mod tests {
         let bus = Bus::new(&rom_path).unwrap();
 
         // Create an address mapped to an offset beyond the 128 KiB dummy ROM.
-        // Example: a high bank with a large offset (depends on to_offset logic).
-        // We'll just pick something obviously too far in LoROM.
         let addr = SnesAddress {
             bank: 0x7D,
             addr: 0xFFFF,
         };
-        // Force read to panic if mapping goes past data length
         bus.rom.read(addr);
     }
 }

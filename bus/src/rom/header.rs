@@ -57,3 +57,56 @@ impl Rom {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_rom(data: Vec<u8>, map: MappingMode) -> Rom {
+        Rom { data, map }
+    }
+
+    #[test]
+    fn test_print_rom_header_hirom_with_title() {
+        let mut data = vec![0; 0x10000];
+        // Remplissons le header avec "FINAL FANTASY 6 " comme attendu
+        let title = b"FINAL FANTASY 6 ";
+        data[HIROM_HEADER_OFFSET..HIROM_HEADER_OFFSET + title.len()].copy_from_slice(title);
+
+        let rom = make_rom(data, MappingMode::HiRom);
+
+        rom.print_rom_header();
+    }
+
+    #[test]
+    fn test_print_rom_header_hirom() {
+        let data = vec![0; 0x10000]; // pas assez pour contenir HEADER_SIZE
+        let rom = make_rom(data, MappingMode::HiRom);
+
+        rom.print_rom_header();
+    }
+
+    #[test]
+    fn test_print_rom_header_lorom() {
+        let data = vec![0; 0x10000]; // pas assez pour contenir HEADER_SIZE
+        let rom = make_rom(data, MappingMode::LoRom);
+
+        rom.print_rom_header();
+    }
+
+    #[test]
+    fn test_print_rom_header_unknown() {
+        let data = vec![0; 0x10000]; // pas assez pour contenir HEADER_SIZE
+        let rom = make_rom(data, MappingMode::Unknown);
+
+        rom.print_rom_header();
+    }
+
+    #[test]
+    fn test_print_rom_header_lorom_too_small() {
+        let data = vec![0; LOROM_HEADER_OFFSET]; // pas assez pour contenir HEADER_SIZE
+        let rom = make_rom(data, MappingMode::LoRom);
+
+        rom.print_rom_header();
+    }
+}
