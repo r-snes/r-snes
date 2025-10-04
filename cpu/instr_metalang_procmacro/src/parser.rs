@@ -1,12 +1,15 @@
 use pm2::{Ident, TokenStream, TokenTree};
 use proc_macro2 as pm2;
 
+/// Enum for all the meta instructions implemented for the CPU
+/// meta-language.
 pub(crate) enum MetaInstruction {
     EndCycle(Ident),
     EndInstr(Ident),
 }
 
 impl MetaInstruction {
+    /// Method which checks if this instr is a `EndInstr`
     fn is_end_instr(&self) -> bool {
         match self {
             Self::EndInstr(_) => true,
@@ -16,6 +19,9 @@ impl MetaInstruction {
 }
 
 impl MetaInstruction {
+    /// Conversion from a Token iterator
+    ///
+    /// For some reason can't be implemented as a TryFrom trait
     fn try_from<I: IntoIterator<Item = TokenTree>>(value: I) -> Result<Self, &'static str> {
         let mut it = value.into_iter();
 
@@ -46,6 +52,8 @@ impl MetaInstruction {
     }
 }
 
+/// Type resulting from the parsing of the token stream passed
+/// as parameter to the [`cpu_instr`] proc macro.
 pub(crate) struct Instr {
     pub name: Ident,
     pub cycles: Vec<Cycle>,
@@ -104,8 +112,13 @@ impl TryFrom<TokenStream> for Instr {
     type Error = &'static str;
 }
 
+/// Data structure which contains the info required to build
+/// a cycle function body
 pub(crate) struct Cycle {
+    /// Raw function body
     pub body: TokenStream,
+    /// Cycle type (part of the function return value; should evaluate
+    /// to something of type `CycleResult`)
     pub cyc_type: Ident,
 }
 

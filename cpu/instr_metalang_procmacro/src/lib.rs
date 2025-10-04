@@ -4,6 +4,11 @@ use parser::{Cycle, Instr};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 
+/// Function that actually implements all the logic for the proc macro,
+/// using the types provided by the `proc_macro2` crate, which have the
+/// advantage of also existing outside of proc macro crates; and therefore
+/// have more utilities built around them, which makes unit-testing easier,
+/// among many other things.
 pub(crate) fn cpu_instr2(input: TokenStream) -> TokenStream {
     let Instr { name, cycles } = match parser::Instr::try_from(input) {
         Ok(instr) => instr,
@@ -33,6 +38,38 @@ pub(crate) fn cpu_instr2(input: TokenStream) -> TokenStream {
     TokenStream::from_iter(cycle_funcs)
 }
 
+/// The main proc macro of this crate.
+///
+/// Syntax:
+/// ```rs
+/// cpu_instr!(instr_name {
+///     instruction_body();
+/// });
+/// ```
+///
+/// This macro can be called at the top level (not necessarily within a
+/// function body) since it will only produce function definitions.
+///
+/// The instruction name (`instr_name` in the above example) will be used
+/// as the base for the function name(s) that will be generated, in the
+/// following format: `("{}_cyc{}", instr_name, cycnum)`, where `cycnum`
+/// is the cycle number starting at 1.
+///
+/// The instruction body comes in curly braces after the instruction name.
+/// The body accepts special syntax (*meta instructions*) as well as
+/// function-body Rust code.  
+/// Meta-instructions are a statement starting by a `meta` identifier,
+/// followed by a meta-instruction name (usually in all uppercase),
+/// followed by operands and then a semicolon.
+///
+/// The two basic meta-instructions are `END_CYCLE` and `END_INSTR`,
+/// which both an cycle type as parameter, and act as cycle delimiters;
+/// resulting in a separate function for each cycle.
+///
+/// For a reference of the available meta-instructions
+/// and their behaviour, see the (not yet done because the language is still
+/// very much subject to change) meta language reference in the module
+/// documentation.
 #[proc_macro]
 pub fn cpu_instr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     cpu_instr2(input.into()).into()
