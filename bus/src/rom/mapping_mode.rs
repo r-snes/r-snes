@@ -46,19 +46,20 @@ impl MappingMode {
         }
 
         // Checksum and complement
-        let checksum = Self::read_u16(rom_data, header_offset + HEADER_CHECKSUM_OFFSET);
-        let checksum_complement =
-            Self::read_u16(rom_data, header_offset + HEADER_CHECKSUM_COMPLEMENT_OFFSET);
+        let checksum = u16::from_le_bytes([
+            rom_data[header_offset + HEADER_CHECKSUM_OFFSET],
+            rom_data[header_offset + HEADER_CHECKSUM_OFFSET + 1],
+        ]);
+        let checksum_complement = u16::from_le_bytes([
+            rom_data[header_offset + HEADER_CHECKSUM_COMPLEMENT_OFFSET],
+            rom_data[header_offset + HEADER_CHECKSUM_COMPLEMENT_OFFSET + 1],
+        ]);
 
         if checksum != 0 && (checksum ^ checksum_complement) == 0xFFFF {
             score += 2;
         }
 
         score
-    }
-
-    fn read_u16(data: &[u8], offset: usize) -> u16 {
-        (data[offset] as u16) | ((data[offset + 1] as u16) << 8)
     }
 }
 
