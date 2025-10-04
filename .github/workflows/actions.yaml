@@ -40,7 +40,7 @@ jobs:
 
   run_tests:
     needs: [check_program_compilation]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest 
 
     steps:
       - name: Checkout fetch
