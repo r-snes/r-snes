@@ -18,23 +18,65 @@ jobs:
 
     steps:
       - name: Checkout fetch
-        uses: actions/checkout@v4.2.2
+        uses: actions/checkout@v5.0.0
       - name: Install g++
         run: apt-get update && apt-get install -y g++
       - name: Check program compilation
         timeout-minutes: 3
         run: cargo build --workspace
 
+  # run_tests:
+    # needs: [check_program_compilation]
+    # runs-on: ubuntu-latest
+    # container:
+    #   image: xd009642/tarpaulin:latest
+
+    # steps:
+    #   - name: Checkout fetch
+    #     uses: actions/checkout@v5.0.0
+    #   - name: Run tests with coverage
+    #     run: cargo tarpaulin -- --disable-run-aslr
+
+
   run_tests:
     needs: [check_program_compilation]
     runs-on: ubuntu-latest
-    container:
-      image: xd009642/tarpaulin:latest
 
     steps:
-      - uses: actions/checkout@v4.2.2
+      - name: Checkout fetch
+        uses: actions/checkout@v5.0.0
+
+      - name: Cache cargo registry + git index
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Cache cargo bin (tarpaulin binary)
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin
+          key: ${{ runner.os }}-tarpaulin-${{ hashFiles('.github/workflows/**') }}
+          restore-keys: |
+            ${{ runner.os }}-tarpaulin-
+
+      - name: Install tarpaulin (if not cached)
+        run: |
+          if ! command -v cargo-tarpaulin &> /dev/null; then
+            cargo install cargo-tarpaulin --force
+          fi
+
+      # - name: Install test dependencies
+      #   run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
+
       - name: Run tests with coverage
         run: cargo tarpaulin
+
+
 
   push_to_mirror:
     needs: [run_tests]
@@ -43,7 +85,7 @@ jobs:
 
     steps:
       - name: Checkout fetch
-        uses: actions/checkout@v4.2.2
+        uses: actions/checkout@v5.0.0
         with:
           fetch-depth: 0
 
