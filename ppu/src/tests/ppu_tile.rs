@@ -34,7 +34,7 @@ fn test_tile_count_and_size() {
         create_test_image(path);
     }
 
-    let (tiles, _) = load_and_split_image(path);
+    let tiles = load_and_split_image(path);
 
     assert_eq!(tiles.len(), 4);
 
@@ -51,7 +51,7 @@ fn test_tile_pixel_values() {
         create_test_image(path);
     }
 
-    let (tiles, _)  = load_and_split_image(path);
+    let tiles = load_and_split_image(path);
 
     // tile 0 : red
     for px in &tiles[0] {
@@ -93,7 +93,7 @@ fn test_image_smaller_than_tile() {
     }
     img.save(path).unwrap();
 
-    let (tiles, _)  = load_and_split_image(path);
+    let tiles = load_and_split_image(path);
 
     assert_eq!(tiles.len(), 1); // Should still create one tile
     assert_eq!(tiles[0].len(), 16); // 4x4 = 16 pixels, rest is missing
@@ -111,7 +111,7 @@ fn test_non_divisible_dimensions() {
     }
     img.save(path).unwrap();
 
-    let (tiles, _)  = load_and_split_image(path);
+    let tiles = load_and_split_image(path);
     assert_eq!(tiles.len(), 4);
     assert!(tiles[0].len() <= (TILE_SIZE * TILE_SIZE) as usize);
 }
@@ -129,7 +129,7 @@ fn test_transparent_pixels() {
 
     img.save(path).unwrap();
 
-    let (tiles, _)  = load_and_split_image(path);
+    let tiles = load_and_split_image(path);
     assert_eq!(tiles.len(), 1);
 
     for px in &tiles[0] {
@@ -153,7 +153,7 @@ fn test_2_horizontal_tiles() {
 
     img.save(path).unwrap();
 
-    let (tiles, _)  = load_and_split_image(path);
+    let tiles = load_and_split_image(path);
     assert_eq!(tiles.len(), 2);
 
     // Check tile 0 (red)
@@ -171,21 +171,19 @@ fn test_2_horizontal_tiles() {
     }
 }
 
-#[test] // Tests loading tiles from an image, writing them to VRAM, and rendering them to the framebuffer
+#[test] // Checks that a scanline from tile 0 renders with the expected CGRAM color
 fn test_tile_rendering_logic() {
-    let path = "./src/tests/assets/test_10x10.png";
-
-    let (tiles, image_width) = load_and_split_image(path);
-    assert!(!tiles.is_empty(), "Tiles should not be empty");
-
     let mut ppu = PPU::new();
-    load_tiles_into_vram(&mut ppu, &tiles);
+    let tile_index = 0;
 
-    let tiles_per_row = image_width / TILE_SIZE as usize;
-    assert!(tiles_per_row > 0, "tiles_per_row should be greater than 0");
+    ppu.cgram[1] = 0x7B;
 
-    ppu.render(tiles_per_row);
+    fill_tile(&mut ppu, tile_index, 1);
 
-    let non_zero_pixels = ppu.framebuffer.iter().filter(|&&px| px != 0).count();
-    assert!(non_zero_pixels > 0, "Framebuffer should not be completely empty");
+    render_scanline(&mut ppu, 0);
+
+    for x in 0..TILE_SIZE {
+        let color = ppu.framebuffer[x];
+        assert_eq!(color, 0xFFFFFF7B);
+    }
 }
