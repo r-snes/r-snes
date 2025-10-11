@@ -36,8 +36,7 @@ jobs:
       - name: Cache/Uncache cargo tarpaulin
         uses: actions/cache@v4
         with:
-          path: |
-            ~/.cargo/bin
+          path: ~/.cargo/bin
           key: ${{ runner.os }}-cargo-tarpaulin
 
       - name: Install rust
@@ -50,7 +49,13 @@ jobs:
           fi
 
       - name: Run coverage
-        run: cargo tarpaulin
+        run: cargo tarpaulin --out html
+
+      - name: Cache coverage report
+        uses: actions/cache@v4
+        with:
+          path: ./tarpaulin-report.html
+          key: coverage-report-${{ hashFiles('./tarpaulin-report.html') }}
 
 
   push_to_mirror:

@@ -1,12 +1,9 @@
-# Sample workflow for building and deploying a Jekyll site to GitHub Pages
 name: Gihub Pages Deploy
 
 on:
-  push:
-    branches:
-      - main
-      - gh-pages
-  workflow_dispatch:
+  workflow_run:
+    workflows: [R-SNES]
+    types: [completed]
 
 permissions:
   contents: read
@@ -19,26 +16,24 @@ concurrency:
 
 jobs:
   build:
+    # Run only if R-SNES build succeeded and is on "main" branch
+    if: >
+      ${{ github.event.workflow_run.conclusion == 'success' &&
+          (github.event.workflow_run.head_branch == 'main' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5.0.0
 
-      # - name: Install Rust
-      #   uses: dtolnay/rust-toolchain@1.90.0
-
-      # - name: Install cargo-tarpaulin
-      #   run: cargo install cargo-tarpaulin
-
-      # - name: Run coverage and generate HTML
-      #   run: cargo tarpaulin --out Html
+      - name: Uncache coverage report
+        uses: actions/cache@v4
+        with:
+          path: ./tarpaulin-report.html
+          key: coverage-report-${{ hashFiles('./tarpaulin-report.html') }}
+          restore-keys: coverage-report-
 
       - name: Prepare site for deployment
-        run: |
-          # mkdir -p site
-          # mv tarpaulin-report.html site/
-          # Optionally add README or timestamp
-          echo "Report generated on $(date)" > site/generated.txt
+        run: mv ./tarpaulin-report.html ./site/
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
