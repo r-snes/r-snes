@@ -9,51 +9,58 @@ on:
       - 'ga-ignore-*'
 env:
   MIRROR_URL: "git@github.com:EpitechPromo2027/G-EIP-600-NAN-6-1-eip-florent.charpentier.git"
-  COVERAGE_MINIMUM_PERCENTAGE: 80
 
 jobs:
   check_program_compilation:
     runs-on: ubuntu-latest
-    container:
-      image: rust:1.86.0-slim-bookworm
 
     steps:
       - name: Checkout fetch
-        uses: actions/checkout@v4.2.2
-      - name: Install g++
-        run: apt-get update && apt-get install -y g++
-      - name: Check program compilation
-        timeout-minutes: 2
-        run: cargo build --workspace
+        uses: actions/checkout@v5.0.0
 
-  run_tests:
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@1.90.0
+
+      - name: Check program compilation
+        timeout-minutes: 3
+        run: cargo check --workspace
+
+  coverage:
     needs: [check_program_compilation]
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout fetch
-        uses: actions/checkout@v4.2.2
-      - name: Update apt repositories
-        run: sudo apt update
-      - name: Install cargo
-        run: sudo apt install cargo -y
-      - name: Install openssl dev lib (necessary for cargo-tarpaulin)
-        run: sudo apt install libssl-dev pkg-config -y
-      - name: Install cargo tarpaulin
-        timeout-minutes: 5
-        run: cargo install cargo-tarpaulin
-      - name: Check for failing unit test and coverage < COVERAGE_MINIMUM_PERCENTAGE
-        timeout-minutes: 2
+        uses: actions/checkout@v5.0.0
+
+      - name: Cache/Uncache cargo tarpaulin
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin
+          key: ${{ runner.os }}-cargo-tarpaulin
+
+      - name: Install rust
+        uses: dtolnay/rust-toolchain@1.90.0
+
+      - name: Install cargo-tarpaulin if not cached
+        run: |
+          if ! command -v cargo-tarpaulin &> /dev/null; then
+            cargo install cargo-tarpaulin
+          fi
+
+      - name: Run coverage
         run: cargo tarpaulin
 
+
   push_to_mirror:
-    needs: [run_tests]
+    needs: [coverage]
     runs-on: ubuntu-latest
     if: ${{ github.event_name == 'push' }}
 
     steps:
       - name: Checkout fetch
-        uses: actions/checkout@v4.2.2
+        uses: actions/checkout@v5.0.0
         with:
           fetch-depth: 0
 
