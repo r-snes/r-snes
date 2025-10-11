@@ -11,35 +11,35 @@ env:
   MIRROR_URL: "git@github.com:EpitechPromo2027/G-EIP-600-NAN-6-1-eip-florent.charpentier.git"
 
 jobs:
-  # check_program_compilation:
-  #   runs-on: ubuntu-latest
-  #   container:
-  #     image: rust:1.86.0-slim-bookworm
+  check_program_compilation:
+    runs-on: ubuntu-latest
 
-  #   steps:
-  #     - name: Checkout fetch
-  #       uses: actions/checkout@v5.0.0
-  #     - name: Install g++
-  #       run: apt-get update && apt-get install -y g++
-  #     - name: Check program compilation
-  #       timeout-minutes: 3
-  #       run: cargo build --workspace
+    steps:
+      - name: Checkout fetch
+        uses: actions/checkout@v5.0.0
 
-  # run_tests:
-    # needs: [check_program_compilation]
-    # runs-on: ubuntu-latest
-    # container:
-    #   image: xd009642/tarpaulin:latest
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
 
-    # steps:
-    #   - name: Checkout fetch
-    #     uses: actions/checkout@v5.0.0
-    #   - name: Run tests with coverage
-    #     run: cargo tarpaulin -- --disable-run-aslr
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
 
+      # - name: Install build tools
+      #   run: apt-get update && apt-get install -y --no-install-recommends g++ && rm -rf /var/lib/apt/lists/*
+
+      - name: Check program compilation
+        timeout-minutes: 3
+        run: cargo check --workspace
 
   coverage:
-    # needs: [check_program_compilation]
+    needs: [check_program_compilation]
     runs-on: ubuntu-latest
 
     steps:
