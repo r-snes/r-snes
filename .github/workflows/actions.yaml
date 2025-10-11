@@ -29,10 +29,7 @@ jobs:
           restore-keys: ${{ runner.os }}-cargo-
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      # - name: Install build tools
-      #   run: apt-get update && apt-get install -y --no-install-recommends g++ && rm -rf /var/lib/apt/lists/*
+        uses: dtolnay/rust-toolchain@1.90.0
 
       - name: Check program compilation
         timeout-minutes: 3
@@ -57,7 +54,7 @@ jobs:
           restore-keys: ${{ runner.os }}-cargo-
 
       - name: Install rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.90.0
 
       - name: Install cargo-tarpaulin if not cached
         run: |
