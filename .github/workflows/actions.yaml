@@ -51,11 +51,11 @@ jobs:
       - name: Run coverage
         run: cargo tarpaulin --out html
 
-      - name: Cache coverage report
-        uses: actions/cache@v4
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
         with:
+          name: coverage-report-${{ github.ref_name }}
           path: ./tarpaulin-report.html
-          key: coverage-report-${{ hashFiles('./tarpaulin-report.html') }}
 
 
   push_to_mirror:
