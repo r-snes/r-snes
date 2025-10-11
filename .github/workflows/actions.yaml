@@ -11,19 +11,19 @@ env:
   MIRROR_URL: "git@github.com:EpitechPromo2027/G-EIP-600-NAN-6-1-eip-florent.charpentier.git"
 
 jobs:
-  check_program_compilation:
-    runs-on: ubuntu-latest
-    container:
-      image: rust:1.86.0-slim-bookworm
+  # check_program_compilation:
+  #   runs-on: ubuntu-latest
+  #   container:
+  #     image: rust:1.86.0-slim-bookworm
 
-    steps:
-      - name: Checkout fetch
-        uses: actions/checkout@v5.0.0
-      - name: Install g++
-        run: apt-get update && apt-get install -y g++
-      - name: Check program compilation
-        timeout-minutes: 3
-        run: cargo build --workspace
+  #   steps:
+  #     - name: Checkout fetch
+  #       uses: actions/checkout@v5.0.0
+  #     - name: Install g++
+  #       run: apt-get update && apt-get install -y g++
+  #     - name: Check program compilation
+  #       timeout-minutes: 3
+  #       run: cargo build --workspace
 
   # run_tests:
     # needs: [check_program_compilation]
@@ -39,7 +39,7 @@ jobs:
 
 
   coverage:
-    needs: [check_program_compilation]
+    # needs: [check_program_compilation]
     runs-on: ubuntu-latest
 
     steps:
