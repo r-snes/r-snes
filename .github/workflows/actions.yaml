@@ -18,13 +18,14 @@ jobs:
       - name: Checkout fetch
         uses: actions/checkout@v5.0.0
 
-      # - uses: actions/cache@v4
-      #   with:
-      #     path: |
-      #       ~/.cargo/registry
-      #       ~/.cargo/git
-      #       target
-      #     key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Cache/Uncache cargo build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@1.90.0
@@ -41,12 +42,21 @@ jobs:
       - name: Checkout fetch
         uses: actions/checkout@v5.0.0
 
-      - name: Cache cargo tarpaulin
+      - name: Cache/Uncache cargo build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache/Uncache cargo tarpaulin
         uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/bin
-          key: cargo-tarpaulin
+          key: ${{ runner.os }}-cargo-tarpaulin
 
       - name: Install rust
         uses: dtolnay/rust-toolchain@1.90.0
