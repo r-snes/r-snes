@@ -1,9 +1,24 @@
-use crate::utils::{render_scanline, CGRAM_SIZE, HEIGHT, VRAM_SIZE, WIDTH};
+use crate::utils::{render_scanline, CGRAM_SIZE, HEIGHT, VRAM_SIZE, WIDTH, OAM_MAX_SPRITES};
+
+#[derive(Clone, Copy, Debug)]
+pub struct Sprite {
+    pub x: i16,
+    pub y: i16,
+    pub tile: u16,
+    pub attr: u8, // bitfield: [.. palette_index (low bits) | hflip | vflip | ...]
+}
+
+impl Default for Sprite {
+    fn default() -> Self {
+        Sprite { x: 0, y: 0, tile: 0, attr: 0 }
+    }
+}
 
 pub struct PPU {
     pub(crate) framebuffer: Vec<u32>,
     pub(crate) vram: [u8; VRAM_SIZE],
     pub(crate) cgram: [u16; CGRAM_SIZE],
+    pub(crate) oam: [Sprite; OAM_MAX_SPRITES],
 
     #[allow(dead_code)] // For future CPU write handling (not implemented yet)
     pub(crate) cgaddr: u8,
@@ -19,6 +34,7 @@ impl PPU {
             framebuffer: vec![0; WIDTH * HEIGHT],
             vram: [0; VRAM_SIZE],
             cgram: [0; CGRAM_SIZE],
+            oam: [Sprite::default(); OAM_MAX_SPRITES],
             cgaddr: 0,
             latch: 0,
             latch_filled: false
@@ -78,9 +94,26 @@ impl PPU {
         bgr555_to_argb(self.cgram[index as usize])
     }
 
-    pub fn render(&mut self, tiles_per_row: usize) {
+
+    pub fn set_oam_sprite(&mut self, index: usize, sprite: Sprite) {
+        if index >= OAM_MAX_SPRITES {
+            eprintln!("[ERR::OAM] index out of range: {}", index);
+            return;
+        }
+        self.oam[index] = sprite;
+    }
+
+    pub fn get_oam_sprite(&self, index: usize) -> Option<Sprite> {
+        if index >= OAM_MAX_SPRITES {
+            None
+        } else {
+            Some(self.oam[index])
+        }
+    }
+
+    pub fn render(&mut self) {
         for y in 0..HEIGHT {
-            render_scanline(self, y, tiles_per_row);
+            render_scanline(self, y);
         }
     }
 }
