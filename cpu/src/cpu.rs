@@ -190,4 +190,30 @@ mod test {
         );
         assert_eq!(cpu.regs().X, 2, "Expecting value 2 in X register");
     }
+
+    #[test]
+    fn nop_does_nothing() {
+        let mut regs = Registers::default();
+        regs.PB = 0x12;
+        regs.PC = 0x3456;
+        let mut regs_copy = regs.clone();
+
+        let mut cpu = CPU::new(regs);
+
+        assert_eq!(
+            cpu.cycle(),
+            CycleResult::Read,
+            "Expecting a read cycle for opcode fetch"
+        );
+        cpu.data_bus = 0xea; // Inject the NOP opcode into the CPU
+
+        assert_eq!(
+            cpu.cycle(),
+            CycleResult::Internal,
+            "Expecting internal cycle for register increment"
+        );
+
+        regs_copy.PC = regs_copy.PC + 1;
+        assert_eq!(cpu.registers, regs_copy, "Only PC should have been touched");
+    }
 }

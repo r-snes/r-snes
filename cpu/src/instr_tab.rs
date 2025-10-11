@@ -36,6 +36,11 @@ fn inx_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
     (CycleResult::Internal, InstrCycle(opcode_fetch))
 }
 
+/// `NOP`: "no-op" (no operation). Literally does nothing
+fn nop_cyc1(_: &mut CPU) -> (CycleResult, InstrCycle) {
+    (CycleResult::Internal, InstrCycle(opcode_fetch))
+}
+
 const INSTR_CYC1: [InstrCycle; 256] = [
     /* 00 */ InstrCycle(opcode_fetch),
     /* 01 */ InstrCycle(opcode_fetch),
@@ -271,7 +276,7 @@ const INSTR_CYC1: [InstrCycle; 256] = [
     /* e7 */ InstrCycle(opcode_fetch),
     /* e8 */ InstrCycle(inx_cyc1),
     /* e9 */ InstrCycle(opcode_fetch),
-    /* ea */ InstrCycle(opcode_fetch),
+    /* ea */ InstrCycle(nop_cyc1),
     /* eb */ InstrCycle(opcode_fetch),
     /* ec */ InstrCycle(opcode_fetch),
     /* ed */ InstrCycle(opcode_fetch),
