@@ -10,7 +10,7 @@ members = [
     "cpu",
     "apu",
     "cpu/instr_metalang_procmacro",
-    "bus"
+    "bus",
 ]
 
 [dependencies]
