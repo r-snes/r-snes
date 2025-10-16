@@ -41,6 +41,30 @@ cpu_instr!(nop {
     meta END_INSTR Internal;
 });
 
+// `CLV`: clear overflow flag
+cpu_instr!(clv {
+    cpu.registers.P.V = false;
+    meta END_INSTR Internal;
+});
+
+// `CLC`: clear carry flag
+cpu_instr!(clc {
+    cpu.registers.P.C = false;
+    meta END_INSTR Internal;
+});
+
+// `CLI`: clear Interrupt Disable bit
+cpu_instr!(cli {
+    cpu.registers.P.I = false;
+    meta END_INSTR Internal;
+});
+
+// `CLD`: clear decimal flag
+cpu_instr!(cld {
+    cpu.registers.P.D = false;
+    meta END_INSTR Internal;
+});
+
 const INSTR_CYC1: [InstrCycle; 256] = [
     /* 00 */ InstrCycle(opcode_fetch),
     /* 01 */ InstrCycle(opcode_fetch),
@@ -66,7 +90,7 @@ const INSTR_CYC1: [InstrCycle; 256] = [
     /* 15 */ InstrCycle(opcode_fetch),
     /* 16 */ InstrCycle(opcode_fetch),
     /* 17 */ InstrCycle(opcode_fetch),
-    /* 18 */ InstrCycle(opcode_fetch),
+    /* 18 */ InstrCycle(clc_cyc1),
     /* 19 */ InstrCycle(opcode_fetch),
     /* 1a */ InstrCycle(opcode_fetch),
     /* 1b */ InstrCycle(opcode_fetch),
@@ -130,7 +154,7 @@ const INSTR_CYC1: [InstrCycle; 256] = [
     /* 55 */ InstrCycle(opcode_fetch),
     /* 56 */ InstrCycle(opcode_fetch),
     /* 57 */ InstrCycle(opcode_fetch),
-    /* 58 */ InstrCycle(opcode_fetch),
+    /* 58 */ InstrCycle(cli_cyc1),
     /* 59 */ InstrCycle(opcode_fetch),
     /* 5a */ InstrCycle(opcode_fetch),
     /* 5b */ InstrCycle(opcode_fetch),
@@ -226,7 +250,7 @@ const INSTR_CYC1: [InstrCycle; 256] = [
     /* b5 */ InstrCycle(opcode_fetch),
     /* b6 */ InstrCycle(opcode_fetch),
     /* b7 */ InstrCycle(opcode_fetch),
-    /* b8 */ InstrCycle(opcode_fetch),
+    /* b8 */ InstrCycle(clv_cyc1),
     /* b9 */ InstrCycle(opcode_fetch),
     /* ba */ InstrCycle(opcode_fetch),
     /* bb */ InstrCycle(opcode_fetch),
@@ -258,7 +282,7 @@ const INSTR_CYC1: [InstrCycle; 256] = [
     /* d5 */ InstrCycle(opcode_fetch),
     /* d6 */ InstrCycle(opcode_fetch),
     /* d7 */ InstrCycle(opcode_fetch),
-    /* d8 */ InstrCycle(opcode_fetch),
+    /* d8 */ InstrCycle(cld_cyc1),
     /* d9 */ InstrCycle(opcode_fetch),
     /* da */ InstrCycle(opcode_fetch),
     /* db */ InstrCycle(opcode_fetch),
