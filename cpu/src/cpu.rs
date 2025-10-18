@@ -134,17 +134,6 @@ impl CPU {
         self.next_cycle = next_cycle;
         ret
     }
-
-    /// `INX` instruction: increment register X
-    ///
-    /// Flags set:
-    /// - `Z`: whether the result is zero
-    /// - `N`: whether the result is negative (if it were interpreted as signed)
-    pub(crate) fn inx(&mut self) {
-        self.registers.X = self.registers.X.wrapping_add(1);
-        self.registers.P.Z = self.registers.X == 0;
-        self.registers.P.N = self.registers.X > 0x7fff;
-    }
 }
 
 #[cfg(test)]
@@ -152,17 +141,6 @@ mod test {
     use duplicate::duplicate_item;
 
     use super::*;
-
-    #[test]
-    fn test_1_plus_1_is_2() {
-        let mut regs = Registers::default();
-
-        regs.X = 1;
-        let mut cpu = CPU::new(regs);
-
-        cpu.inx();
-        assert_eq!(cpu.regs().X, 2);
-    }
 
     #[test]
     fn test_1_plus_1_is_2_cycle_api() {
