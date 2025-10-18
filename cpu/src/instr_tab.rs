@@ -1,6 +1,6 @@
 use common::snes_address::SnesAddress;
-
 use crate::cpu::{CPU, CycleResult};
+use instr_metalang_procmacro::cpu_instr;
 
 pub(crate) struct InstrCycle(pub fn(&mut CPU) -> (CycleResult, InstrCycle));
 
@@ -23,23 +23,23 @@ pub(crate) fn opcode_fetch(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
     )
 }
 
-/// `INX` instruction: increment register X
-///
-/// Flags set:
-/// - `Z`: whether the result is zero
-/// - `N`: whether the result is negative (if it were interpreted as signed)
-fn inx_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
+// `INX` instruction: increment register X
+//
+// Flags set:
+// - `Z`: whether the result is zero
+// - `N`: whether the result is negative (if it were interpreted as signed)
+cpu_instr!(inx {
     cpu.registers.X = cpu.registers.X.wrapping_add(1);
     cpu.registers.P.Z = cpu.registers.X == 0;
     cpu.registers.P.N = cpu.registers.X > 0x7fff;
 
-    (CycleResult::Internal, InstrCycle(opcode_fetch))
-}
+    meta END_INSTR Internal;
+});
 
-/// `NOP`: "no-op" (no operation). Literally does nothing
-fn nop_cyc1(_: &mut CPU) -> (CycleResult, InstrCycle) {
-    (CycleResult::Internal, InstrCycle(opcode_fetch))
-}
+// `NOP`: "no-op" (no operation). Literally does nothing
+cpu_instr!(nop {
+    meta END_INSTR Internal;
+});
 
 const INSTR_CYC1: [InstrCycle; 256] = [
     /* 00 */ InstrCycle(opcode_fetch),

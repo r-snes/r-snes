@@ -179,6 +179,7 @@ name = "cpu"
 version = "0.1.0"
 dependencies = [
  "common",
+ "instr_metalang_procmacro",
 ]
 
 [[package]]
