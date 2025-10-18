@@ -12,6 +12,22 @@ pub struct Voice {
     pub current_addr: u16,
     pub frac: u16,          // fractional accumulator for pitch stepping
     pub current_sample: i8, // last fetched sample
+    pub adsr_mode: bool,     // whether ADSR or gain mode is used
+    pub attack_rate: u8,
+    pub decay_rate: u8,
+    pub sustain_level: u8,
+    pub release_rate: u8,
+    pub envelope_level: u16, // current volume (0–0x7FF)
+    pub envelope_phase: EnvelopePhase,
+}
+
+#[derive(Copy, Clone,Debug, PartialEq)]
+pub enum EnvelopePhase {
+    Attack,
+    Decay,
+    Sustain,
+    Release,
+    Off,
 }
 
 impl Default for Voice {
@@ -26,6 +42,14 @@ impl Default for Voice {
             current_addr: 0,
             frac: 0,
             current_sample: 0,
+            // ADSR defaults
+            adsr_mode: false,
+            attack_rate: 0,
+            decay_rate: 0,
+            sustain_level: 0,
+            release_rate: 0,
+            envelope_level: 0,
+            envelope_phase: EnvelopePhase::Off,
         }
     }
 }
