@@ -45,45 +45,24 @@ mod tests {
         let mut regs = Registers::default();
         regs.PB = 0x12;
         regs.PC = 0x3456;
-        let mut regs_copy = regs.clone();
+        let mut expected_regs = regs.clone();
 
         regs.P.DUP_set_flag = true;
         let mut cpu = CPU::new(regs);
 
-        assert_eq!(
-            cpu.cycle(),
-            CycleResult::Read,
-            "Expecting a read cycle for opcode fetch"
-        );
-        cpu.data_bus = DUP_opcode; // Inject the clear opcode into the CPU
+        // Check for opcode fetch cycle and inject the clear opcode into the CPU
+        expect_opcode_fetch(&mut cpu, DUP_opcode);
+        expect_internal_cycle(&mut cpu, "clear flag");
 
-        assert_eq!(
-            cpu.cycle(),
-            CycleResult::Internal,
-            "Expecting internal cycle for clear flag"
-        );
-
-        regs_copy.PC = regs_copy.PC + 1;
-        regs_copy.P.DUP_set_flag = false;
-
-        assert_eq!(cpu.registers, regs_copy, "Flag should be cleared");
+        expected_regs.PC = expected_regs.PC + 1; // We expect PC to be incremented
+        expected_regs.P.DUP_set_flag = false;    // and the flag to be cleared
+        assert_eq!(cpu.registers, expected_regs, "Flag should be cleared");
 
         // Execute the instruction once more to check the flag stays clear
-        assert_eq!(
-            cpu.cycle(),
-            CycleResult::Read,
-            "Expecting a read cycle for opcode fetch"
-        );
-        assert_eq!(
-            cpu.addr_bus,
-            SnesAddress {
-                bank: 0x12,
-                addr: 0x3457
-            },
-            "Opcode fetch should be from the next byte",
-        );
-        regs_copy.PC = regs_copy.PC + 1;
-        assert_eq!(cpu.registers, regs_copy, "Flag should stay cleared");
+        expect_opcode_fetch(&mut cpu, DUP_opcode);
+        expect_internal_cycle(&mut cpu, "clearing the flag again");
+
+        expected_regs.PC = expected_regs.PC + 1; // PC should be incremented once again
+        assert_eq!(cpu.registers, expected_regs, "Flag should stay cleared");
     }
 }
-

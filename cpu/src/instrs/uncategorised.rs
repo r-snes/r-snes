@@ -36,26 +36,9 @@ mod tests {
         regs.X = 1;
         let mut cpu = CPU::new(regs);
 
-        assert_eq!(
-            cpu.cycle(),
-            CycleResult::Read,
-            "Expecting a read cycle for opcode fetch"
-        );
-        assert_eq!(
-            *cpu.addr_bus(),
-            SnesAddress {
-                bank: 0x12,
-                addr: 0x3456
-            },
-            "Read query should be from address at PB:PC"
-        );
-        cpu.data_bus = 0xe8; // Inject the INX opcode into the CPU
+        expect_opcode_fetch(&mut cpu, 0xe8);
+        expect_internal_cycle(&mut cpu, "register increment");
 
-        assert_eq!(
-            cpu.cycle(),
-            CycleResult::Internal,
-            "Expecting internal cycle for register increment"
-        );
         assert_eq!(cpu.regs().X, 2, "Expecting value 2 in X register");
     }
 
@@ -64,24 +47,14 @@ mod tests {
         let mut regs = Registers::default();
         regs.PB = 0x12;
         regs.PC = 0x3456;
-        let mut regs_copy = regs.clone();
+        let mut expected_regs = regs.clone();
 
         let mut cpu = CPU::new(regs);
 
-        assert_eq!(
-            cpu.cycle(),
-            CycleResult::Read,
-            "Expecting a read cycle for opcode fetch"
-        );
-        cpu.data_bus = 0xea; // Inject the NOP opcode into the CPU
+        expect_opcode_fetch(&mut cpu, 0xea);
+        expect_internal_cycle(&mut cpu, "no-op");
 
-        assert_eq!(
-            cpu.cycle(),
-            CycleResult::Internal,
-            "Expecting internal cycle for register increment"
-        );
-
-        regs_copy.PC = regs_copy.PC + 1;
-        assert_eq!(cpu.registers, regs_copy, "Only PC should have been touched");
+        expected_regs.PC = expected_regs.PC + 1;
+        assert_eq!(cpu.registers, expected_regs, "Only PC should have been touched");
     }
 }
