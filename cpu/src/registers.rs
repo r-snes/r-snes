@@ -1,6 +1,6 @@
 /// A struct which represents the WDC 65C816's registers
 #[allow(non_snake_case, reason = "We are naming register in all caps")]
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Registers {
     /// The accumulator register: stores the result of most operations
     pub A: u16,
@@ -30,7 +30,7 @@ pub struct Registers {
 }
 
 #[allow(non_snake_case, reason = "We are naming register in all caps")]
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct RegisterP {
     /// Carry flag: typically set when an arithmetic operation "carries out"
     pub C: bool,
