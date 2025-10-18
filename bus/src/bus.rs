@@ -21,7 +21,6 @@ impl Bus {
         })
     }
 
-    #[allow(dead_code)]
     pub fn read(&self, addr: SnesAddress) -> u8 {
         match addr.bank {
             0x00..=0x3F | 0x80..=0xBF => {
@@ -37,7 +36,6 @@ impl Bus {
         }
     }
 
-    #[allow(dead_code)]
     pub fn write(&mut self, addr: SnesAddress, value: u8) {
         match addr.bank {
             0x00..=0x3F | 0x80..=0xBF => match addr.addr {
