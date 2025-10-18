@@ -26,6 +26,24 @@ cpu_instr!(cld {
     meta END_INSTR Internal;
 });
 
+// `SEC`: SEt Carry flag
+cpu_instr!(sec {
+    cpu.registers.P.C = true;
+    meta END_INSTR Internal;
+});
+
+// `SEI`: SEt Interrupt disable bit
+cpu_instr!(sei {
+    cpu.registers.P.I = true;
+    meta END_INSTR Internal;
+});
+
+// `SED`: SEt Decimal flag
+cpu_instr!(sed {
+    cpu.registers.P.D = true;
+    meta END_INSTR Internal;
+});
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -64,5 +82,37 @@ mod tests {
 
         expected_regs.PC = expected_regs.PC + 1; // PC should be incremented once again
         assert_eq!(cpu.registers, expected_regs, "Flag should stay cleared");
+    }
+
+    #[duplicate_item(
+        DUP_instr_name DUP_set_flag DUP_opcode;
+        [sed] [D] [0xf8];
+        [sei] [I] [0x78];
+        [sec] [C] [0x38];
+    )]
+    #[test]
+    fn DUP_instr_name() {
+        let mut regs = Registers::default();
+        regs.PB = 0x12;
+        regs.PC = 0x3456;
+        let mut expected_regs = regs.clone();
+
+        regs.P.DUP_set_flag = false;
+        let mut cpu = CPU::new(regs);
+
+        // Check for opcode fetch cycle and inject the set flag opcode into the CPU
+        expect_opcode_fetch(&mut cpu, DUP_opcode);
+        expect_internal_cycle(&mut cpu, "set flag");
+
+        expected_regs.PC = expected_regs.PC + 1; // We expect PC to be incremented
+        expected_regs.P.DUP_set_flag = true;     // and the flag to be set
+        assert_eq!(cpu.registers, expected_regs, "Flag should be set");
+
+        // Execute the instruction once more to check the flag stays set
+        expect_opcode_fetch(&mut cpu, DUP_opcode);
+        expect_internal_cycle(&mut cpu, "setting the flag again");
+
+        expected_regs.PC = expected_regs.PC + 1; // PC should be incremented once again
+        assert_eq!(cpu.registers, expected_regs, "Flag should stay set");
     }
 }
