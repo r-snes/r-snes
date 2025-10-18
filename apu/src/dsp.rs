@@ -54,6 +54,48 @@ impl Default for Voice {
     }
 }
 
+impl Voice {
+    /// Update the ADSR envelope each tick
+    pub fn update_envelope(&mut self) {
+        match self.envelope_phase {
+            EnvelopePhase::Attack => {
+                self.envelope_level =
+                    self.envelope_level.saturating_add(self.attack_rate as u16 * 8);
+                if self.envelope_level >= 0x7FF {
+                    self.envelope_level = 0x7FF;
+                    self.envelope_phase = EnvelopePhase::Decay;
+                }
+            }
+
+            EnvelopePhase::Decay => {
+                let target = (self.sustain_level as u16) * 0x100 / 8;
+                if self.envelope_level > target {
+                    self.envelope_level =
+                        self.envelope_level.saturating_sub(self.decay_rate as u16 * 2);
+                } else {
+                    self.envelope_phase = EnvelopePhase::Sustain;
+                }
+            }
+
+            EnvelopePhase::Sustain => {
+                // Sustain phase: hold current envelope level
+            }
+
+            EnvelopePhase::Release => {
+                self.envelope_level =
+                    self.envelope_level.saturating_sub(self.release_rate as u16 * 4);
+                if self.envelope_level == 0 {
+                    self.envelope_phase = EnvelopePhase::Off;
+                }
+            }
+
+            EnvelopePhase::Off => {
+                // Silence, no change
+            }
+        }
+    }
+}
+
 pub struct Dsp {
     registers: [u8; 128], // $F200-$F27F
     pub voices: [Voice; 8],
