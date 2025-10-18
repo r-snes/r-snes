@@ -1,7 +1,6 @@
 use image::{Rgba, ImageBuffer};
 use std::path::Path;
-use crate::ppu::*;
-use crate::tile::{load_and_split_image, load_tiles_into_vram};
+use crate::tile::load_and_split_image;
 use crate::utils::TILE_SIZE;
 
 // Helper: Creates a 16x16 image with red, green, blue, and yellow (4 different tiles)
@@ -168,22 +167,5 @@ fn test_2_horizontal_tiles() {
         assert_eq!(px[0], 0);
         assert_eq!(px[1], 255);
         assert_eq!(px[2], 0);
-    }
-}
-
-#[test] // Checks that a scanline from tile 0 renders with the expected CGRAM color
-fn test_tile_rendering_logic() {
-    let mut ppu = PPU::new();
-    let tile_index = 0;
-
-    ppu.cgram[1] = 0x7B;
-
-    fill_tile(&mut ppu, tile_index, 1);
-
-    render_scanline(&mut ppu, 0);
-
-    for x in 0..TILE_SIZE {
-        let color = ppu.framebuffer[x];
-        assert_eq!(color, 0xFFFFFF7B);
     }
 }

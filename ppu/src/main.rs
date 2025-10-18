@@ -39,9 +39,19 @@ fn main() {
         x: 64,
         y: 64,
         tile: 1, // tile index into VRAM
-        attr: 0x01, // palette = 1 (évite transparence totale)
+        attr: 0x01, // palette = 1 (avoids full transparency)
+        filed: true,
     };
     ppu.set_oam_sprite(0, test_sprite);
+
+    let test_sprite2 = crate::ppu::Sprite {
+        x: 32,
+        y: 32,
+        tile: 27, // tile index into VRAM
+        attr: 0x01, // palette = 1 (avoids full transparency)
+        filed: true,
+    };
+    ppu.set_oam_sprite(1, test_sprite2);
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
         ppu.render();

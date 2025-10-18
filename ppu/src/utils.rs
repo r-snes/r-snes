@@ -26,7 +26,7 @@ pub fn render_scanline(ppu: &mut PPU, y: usize) {
     for i in 0..OAM_MAX_SPRITES {
         let spr = ppu.get_oam_sprite(i).unwrap();
 
-        if spr.tile == 0 && spr.x == 0 && spr.y == 0 && spr.attr == 0 {
+        if !spr.filed {
             continue;
         }
 

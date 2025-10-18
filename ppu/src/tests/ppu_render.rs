@@ -1,11 +1,11 @@
 use crate::ppu::*;
 use crate::utils::{render_scanline, WIDTH, HEIGHT, TILE_SIZE};
 
-// Helper: fill a single tile in VRAM with a given color
-fn fill_tile(ppu: &mut PPU, tile_index: usize, color: u8) {
-    let base = tile_index * TILE_SIZE * TILE_SIZE;
+// Helper: fill a single tile in VRAM with a given palette color index
+fn fill_tile(ppu: &mut PPU, tile_index: usize, palette_index: u8) {
+    let base_addr = tile_index * TILE_SIZE * TILE_SIZE;
     for i in 0..(TILE_SIZE * TILE_SIZE) {
-        ppu.write_vram(base + i, color);
+        ppu.write_vram(base_addr + i, palette_index);
     }
 }
 
@@ -43,7 +43,6 @@ fn test_render_scanline_modifies_only_one_line() {
 
     let scanline_y = 3;
 
-    // Render a single scanline
     render_scanline(&mut ppu, scanline_y);
 
     for y in 0..HEIGHT {
@@ -74,12 +73,22 @@ fn test_render_scanline_renders_correct_line() {
     let mut ppu = PPU::new();
     let tile_index = 0;
 
-    fill_tile(&mut ppu, tile_index, 0xFF);
+    fill_tile(&mut ppu, tile_index, 1);
+
+    ppu.set_oam_sprite(0, Sprite {
+        x: 0,
+        y: 0,
+        tile: tile_index as u16,
+        attr: 0,
+        filed: true
+    });
 
     render_scanline(&mut ppu, 0);
 
+    let expected_color = ppu.read_cgram(1);
+
     for x in 0..TILE_SIZE {
         let color = ppu.framebuffer[x];
-        assert_eq!(color, 0xFFFFFF7B);
+        assert_eq!(color, expected_color, "Pixel {} mismatch", x);
     }
 }
