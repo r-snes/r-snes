@@ -1,4 +1,7 @@
-use crate::{instr_tab::*, registers::Registers};
+use crate::{
+    instrs::instr_tab::*,
+    registers::Registers,
+};
 use common::snes_address::SnesAddress;
 
 /// Resumable main CPU of the SNES, a 65C816

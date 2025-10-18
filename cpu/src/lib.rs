@@ -1,6 +1,6 @@
 pub mod registers;
 pub mod cpu;
-mod instr_tab;
+mod instrs;
 
 #[cfg(test)]
 mod tests {
