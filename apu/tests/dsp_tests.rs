@@ -1,4 +1,5 @@
 use apu::dsp::{Dsp, Voice};
+use apu::dsp::EnvelopePhase;
 use apu::Memory;
 
 #[test]
@@ -95,6 +96,13 @@ fn test_step_voice_advances_and_fetches_sample() {
         current_sample: 0,
         left_vol: 1,
         right_vol: 1,
+        adsr_mode: false,
+        attack_rate: 0,
+        decay_rate: 0,
+        sustain_level: 0,
+        release_rate: 0,
+        envelope_level: 0,
+        envelope_phase: EnvelopePhase::Off,
     };
 
     dsp.voices[0] = voice;
