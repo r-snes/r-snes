@@ -25,7 +25,7 @@ impl Wram {
 
     fn panic_invalid_addr(addr: SnesAddress) -> ! {
         panic!(
-            "ERROR: Couldn't extract value from RAM at address: {:06X}",
+            "Incorrect access to the WRAM at address: {:06X}",
             usize::from(addr)
         );
     }
