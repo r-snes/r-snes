@@ -230,6 +230,9 @@ pub fn write(&mut self, addr: u16, value: u8) {
                 continue;
             }
     
+            // Update the ADSR envelope each tick
+            voice.update_envelope();
+
             // Advance fractional accumulator
             voice.frac = voice.frac.wrapping_add(voice.pitch);
             let step = voice.frac >> 8; // integer increment
