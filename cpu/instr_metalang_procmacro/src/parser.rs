@@ -16,9 +16,7 @@ impl MetaInstruction {
             _ => false,
         }
     }
-}
 
-impl MetaInstruction {
     /// Conversion from a Token iterator  
     ///
     /// The input [`value`] contains all tokens between (excluding)
@@ -33,13 +31,9 @@ impl MetaInstruction {
             Err("Expecting a meta-keyword")?
         };
         let ret = match meta_kw.to_string().as_str() {
-            "END_CYCLE" => {
-                MetaInstruction::EndCycle(it.by_ref().collect())
-            }
+            "END_CYCLE" => MetaInstruction::EndCycle(it.by_ref().collect()),
 
-            "END_INSTR" => {
-                MetaInstruction::EndInstr(it.by_ref().collect())
-            }
+            "END_INSTR" => MetaInstruction::EndInstr(it.by_ref().collect()),
 
             _ => Err("Unknown meta-keyword")?,
         };
@@ -47,6 +41,32 @@ impl MetaInstruction {
             Err("Unexpected token after end of meta-instruction")?
         }
         Ok(ret)
+    }
+
+    /// Expands this meta-instruction: given the current cycle body,
+    /// the meta-instruction may return 0 to many cycles and the next
+    /// "current" instruction body.
+    ///
+    /// Some meta-instrucions may not return complete cycles, and simply append to
+    /// the token stream passed as input. Others may consume the current token stream
+    /// and return it in a new cycle, and optionnally add more cycles.
+    /// It is also possible that a meta-instruction both expands to 1 or more cycles
+    /// and returns the body of the following (net yet complete) cycle
+    fn expand(self, current_cyc_body: TokenStream) -> (Vec<Cycle>, TokenStream) {
+        let cycles;
+        let ts;
+
+        match self {
+            Self::EndCycle(cyctype) => {
+                cycles = vec![Cycle::new(current_cyc_body, cyctype)];
+                ts = TokenStream::new();
+            }
+            Self::EndInstr(cyctype) => {
+                cycles = vec![Cycle::new(current_cyc_body, cyctype)];
+                ts = TokenStream::new();
+            }
+        }
+        (cycles, ts)
     }
 }
 
@@ -81,10 +101,12 @@ impl TryFrom<TokenStream> for Instr {
 
         let mut it = body.stream().into_iter().peekable();
         let mut ret = Instr::new(name);
+        let mut current_cyc_body = TokenStream::new();
         loop {
             let it = it.by_ref();
-            let cycle_body = it.take_while(|token| token.to_string() != "meta");
-            let body_tok_stream = TokenStream::from_iter(cycle_body);
+
+            current_cyc_body.extend(it.take_while(|token| token.to_string() != "meta"));
+
             let meta_instr = MetaInstruction::try_from(it.take_while(|token| {
                 let TokenTree::Punct(p) = token else {
                     return true;
@@ -96,10 +118,10 @@ impl TryFrom<TokenStream> for Instr {
                 Err("Instructions must end by an END_INSTR meta instruction")?
             }
 
-            match meta_instr {
-                MetaInstruction::EndCycle(c) => ret.cycles.push(Cycle::new(body_tok_stream, c)),
-                MetaInstruction::EndInstr(c) => ret.cycles.push(Cycle::new(body_tok_stream, c)),
-            }
+            let (cycs, new_body) = meta_instr.expand(current_cyc_body);
+
+            ret.cycles.extend(cycs);
+            current_cyc_body = new_body;
 
             if it.peek().is_none() {
                 break;
@@ -107,6 +129,7 @@ impl TryFrom<TokenStream> for Instr {
         }
         Ok(ret)
     }
+
     type Error = &'static str;
 }
 
