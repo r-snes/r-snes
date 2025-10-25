@@ -44,18 +44,12 @@ impl Wram {
                 if addr.addr < 0x2000 {
                     return addr.addr as usize;
                 } else {
-                    Self::panic_invalid_addr(addr);
+                    Self::panic_invalid_addr(addr)
                 }
             }
-            0x7E => {
-                return addr.addr as usize;
-            }
-            0x7F => {
-                return addr.addr as usize + 0x10000;
-            }
-            _ => {
-                Self::panic_invalid_addr(addr);
-            }
+            0x7E => return addr.addr as usize,
+            0x7F => return addr.addr as usize + 0x10000,
+            _ => Self::panic_invalid_addr(addr),
         }
     }
 }
