@@ -169,43 +169,57 @@ pub fn write(&mut self, addr: u16, value: u8) {
             }
         }
 
-        // 0x28..=0x2F: ADSR1 (Attack, Decay, ADSR mode enable)
-        // This controls how quickly the envelope rises and how fast it decays.
-        // Bit 7 enables ADSR mode, bits 4–6 are attack rate, bits 0–3 are decay rate.
+        // 0x28..=0x2F: Key Off
+        // Writing a nonzero value releases the corresponding voice.
         0x28..=0x2F => {
             let voice_idx = index - 0x28;
-            let v = &mut self.voices[voice_idx];
-            v.adsr_mode = (value & 0x80) != 0;
-            v.attack_rate = (value >> 4) & 0x0F;
-            v.decay_rate = value & 0x0F;
+            if value != 0 {
+                let v = &mut self.voices[voice_idx];
+                v.envelope_phase = EnvelopePhase::Release;
+            }
         }
 
-        // 0x30..=0x37: ADSR2 (Sustain and Release)
-        // Sets sustain level (bits 5–7) and release rate (bits 0–4).
+        // 0x30..=0x37: Sample Start (low byte)
+        // Sets the low 8 bits of the sample start address.
         0x30..=0x37 => {
             let voice_idx = index - 0x30;
-            let v = &mut self.voices[voice_idx];
-            v.sustain_level = (value >> 5) & 0x07;
-            v.release_rate = value & 0x1F;
-        }
-
-        // 0x38..=0x3F: Sample Start (low byte)
-        // Sets the low 8 bits of the sample start address.
-        0x38..=0x3F => {
-            let voice_idx = index - 0x38;
             self.voices[voice_idx].sample_start =
                 (self.voices[voice_idx].sample_start & 0xFF00) | value as u16;
         }
 
-        // 0x40..=0x47: Sample End (low byte)
+        // 0x38..=0x3F: Sample End (low byte)
         // Sets the low 8 bits of the sample end address.
-        0x40..=0x47 => {
-            let voice_idx = index - 0x40;
+        0x38..=0x3F => {
+            let voice_idx = index - 0x38;
             self.voices[voice_idx].sample_end =
                 (self.voices[voice_idx].sample_end & 0xFF00) | value as u16;
         }
 
-        _ => {} // Other registers (echo, ADSR, etc.) not implemented yet
+        // 0x50..=0x57: ADSR1 (Attack, Decay, ADSR enable)
+        // Bits:
+        // 7 - ADSR enable
+        // 6–4 - Attack rate (0–15)
+        // 3–0 - Decay rate (0–15)
+        0x50..=0x57 => {
+            let voice_idx = index - 0x50;
+            let v = &mut self.voices[voice_idx];
+            v.adsr_mode = (value & 0x80) != 0; // Bit 7 enables ADSR
+            v.attack_rate = (value >> 4) & 0x0F; // Bits 6–4
+            v.decay_rate = value & 0x0F;         // Bits 3–0
+        }
+
+        // 0x60..=0x67: ADSR2 (Sustain level + Release rate)
+        // Bits:
+        // 7–5 - Sustain level (0–7)
+        // 4–0 - Release rate (0–31)
+        0x60..=0x67 => {
+            let voice_idx = index - 0x60;
+            let v = &mut self.voices[voice_idx];
+            v.sustain_level = (value >> 5) & 0x07; // Bits 7–5
+            v.release_rate = value & 0x1F;         // Bits 4–0
+        }
+
+        _ => {} // Other registers (echo, gain, FIR, etc.) not implemented yet
     }
 }
 
