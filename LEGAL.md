@@ -103,7 +103,7 @@ By following clean-room principles and respecting interoperability and private-c
 
 - **French Intellectual Property Code**, Art. L122-5 (*exception de copie privée*)  
 - **Directive 2009/24/EC** on the legal protection of computer programs  
-- **Copie Privée** official explanations – [copieprivee.culture.gouv.fr](https://www.copieprivee.culture.gouv.fr)  
+- **Copie Privée** official explanations– [culture.gouv.fr](https://www.culture.gouv.fr/nous-connaitre/organisation-du-ministere/commission-pour-la-remuneration-de-la-copie-privee?)  
 - **Case law and enforcement**: Nintendo vs. ROM sites (France, EU)  
 - **Open test ROMs / homebrew projects**: [Blargg SNES Test ROMs], [Public-domain SNES demos]
 
