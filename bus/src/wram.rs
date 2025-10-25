@@ -58,10 +58,9 @@ impl MemoryRegion for Wram {
     fn read(&self, addr: SnesAddress) -> u8 {
         let offset = Self::to_offset(addr);
 
-        // TODO: Just print with usize when SnesAddress PR is merged
-        return self.data.get(offset as usize).copied().expect(&format!(
-            "ERROR: Couldn't extract value from RAM at address: {:02X}{:04X}",
-            addr.bank, addr.addr
+        return self.data.get(offset).copied().expect(&format!(
+            "ERROR: Couldn't extract value from RAM at address: {:06X}",
+            usize::from(addr)
         ));
     }
 

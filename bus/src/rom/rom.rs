@@ -170,8 +170,8 @@ impl MemoryRegion for Rom {
         let offset = self.to_offset(addr);
 
         return self.data.get(offset).copied().expect(&format!(
-            "ERROR: Couldn't extract value from ROM at address: {:02X}{:04X}",
-            addr.bank, addr.addr
+            "ERROR: Couldn't extract value from ROM at address: {:06X}",
+            usize::from(addr)
         ));
     }
 
