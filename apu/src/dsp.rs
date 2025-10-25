@@ -252,23 +252,28 @@ pub fn write(&mut self, addr: u16, value: u8) {
     }    
 
     /// Mix all voices into a stereo output buffer
-    pub fn render_audio(&self, num_samples: usize) -> Vec<(i16, i16)> {
-        let mut buffer = vec![(0i16, 0i16); num_samples];
+pub fn render_audio(&self, num_samples: usize) -> Vec<(i16, i16)> {
+    let mut buffer = vec![(0i16, 0i16); num_samples];
 
-        for voice in &self.voices {
-            if voice.key_on {
-                let left_vol = voice.left_vol as i32;
-                let right_vol = voice.right_vol as i32;
-                let sample_val = voice.current_sample as i32;
+    for voice in &self.voices {
+        if voice.key_on {
+            let left_vol = voice.left_vol as i32;
+            let right_vol = voice.right_vol as i32;
+            let sample_val = voice.current_sample as i32;
 
-                for sample in &mut buffer {
-                    sample.0 = (sample.0 as i32 + sample_val * left_vol)
-                        .clamp(i16::MIN as i32, i16::MAX as i32) as i16;
-                    sample.1 = (sample.1 as i32 + sample_val * right_vol)
-                        .clamp(i16::MIN as i32, i16::MAX as i32) as i16;
-                }
+            // Normalize envelope level to range 0.0–1.0 (since max is 0x7FF)
+            let env = voice.envelope_level as f32 / 0x7FF as f32;
+
+            for sample in &mut buffer {
+                let env_sample = (sample_val as f32 * env) as i32;
+
+                sample.0 = (sample.0 as i32 + env_sample * left_vol)
+                    .clamp(i16::MIN as i32, i16::MAX as i32) as i16;
+                sample.1 = (sample.1 as i32 + env_sample * right_vol)
+                    .clamp(i16::MIN as i32, i16::MAX as i32) as i16;
             }
         }
-        buffer
     }
+    buffer
+}
 }
