@@ -30,7 +30,7 @@ pub(crate) fn cpu_instr2(input: TokenStream) -> TokenStream {
                 pub(crate) fn #func_name(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
                     #body
 
-                    (CycleResult::#cyc_type, InstrCycle(#next_func_name))
+                    (#cyc_type, InstrCycle(#next_func_name))
                 }
             }
         });
@@ -116,7 +116,7 @@ mod test {
                     cpu.registers.P.Z = cpu.registers.X == 0;
                     cpu.registers.P.N = cpu.registers.X > 0x7fff;
 
-                    (CycleResult::Internal, InstrCycle(opcode_fetch))
+                    (Internal, InstrCycle(opcode_fetch))
                 }
             ),
         );
@@ -139,17 +139,37 @@ mod test {
                 pub(crate) fn some_instr_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
                     some_function1(cpu);
 
-                    (CycleResult::Internal, InstrCycle(some_instr_cyc2))
+                    (Internal, InstrCycle(some_instr_cyc2))
                 }
                 pub(crate) fn some_instr_cyc2(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
                     some_function2(cpu);
 
-                    (CycleResult::Read, InstrCycle(some_instr_cyc3))
+                    (Read, InstrCycle(some_instr_cyc3))
                 }
                 pub(crate) fn some_instr_cyc3(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
                     some_function3(cpu);
 
-                    (CycleResult::Write, InstrCycle(opcode_fetch))
+                    (Write, InstrCycle(opcode_fetch))
+                }
+            ),
+        );
+    }
+
+    #[test]
+    fn conditional_cycle_type() {
+        assert_macro_produces(
+            quote!(test_instr {
+                meta END_CYCLE if 1 == 0 { Internal } else { Read };
+
+                meta END_INSTR some_func_which_determines_cyc_type();
+            }),
+            quote!(
+                pub(crate) fn test_instr_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
+                    (if 1 == 0 { Internal } else { Read }, InstrCycle(test_instr_cyc2))
+                }
+
+                pub(crate) fn test_instr_cyc2(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
+                    (some_func_which_determines_cyc_type(), InstrCycle(opcode_fetch))
                 }
             ),
         );
