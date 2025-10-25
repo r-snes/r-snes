@@ -53,71 +53,12 @@ impl Bus {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
-    use tempfile::tempdir;
-
-    /// Helper: create a temporary 128 KiB ROM file filled with 0x00
-    fn create_temp_rom(vec: Vec<u8>) -> std::path::PathBuf {
-        let dir = tempdir().unwrap();
-        let rom_path = dir.path().join("test_rom.sfc");
-        let mut f = std::fs::File::create(&rom_path).unwrap();
-
-        f.write_all(&vec).unwrap();
-
-        // Prevent the temp directory from being deleted before tests finish
-        std::mem::forget(dir);
-        rom_path
-    }
-
-    fn create_valid_lorom(size: usize) -> Vec<u8> {
-        assert!(size >= 0x8000, "ROM must be at least 32KiB");
-        let mut rom = vec![0u8; size];
-
-        // --- Minimal internal header (LoROM) ---
-        let base = 0x7FC0;
-        // Title: 21 bytes padded with spaces
-        let title = b"TEST ROM            "; // exactly 21 bytes
-        rom[base..base + title.len()].copy_from_slice(title);
-
-        // Map mode: LoROM
-        rom[0x7FD5] = 0x20;
-        // Cartridge type: plain
-        rom[0x7FD6] = 0x00;
-        // ROM size: 0x08 => 256 KiB (2^8 * 2 KiB)
-        // use log2(size/2KiB)
-        let rom_size_code = (size as f64 / 2048.0).log2().round() as u8;
-        rom[0x7FD7] = rom_size_code;
-        // SRAM size
-        rom[0x7FD8] = 0x00;
-        // Country
-        rom[0x7FD9] = 0x01;
-        // License
-        rom[0x7FDA] = 0x33;
-        // Version
-        rom[0x7FDB] = 0x00;
-
-        // Compute checksum and complement
-        let sum: u16 = rom
-            .iter()
-            .enumerate()
-            .filter(|(i, _)| !matches!(*i, 0x7FDC | 0x7FDD | 0x7FDE | 0x7FDF))
-            .map(|(_, &b)| b as u32)
-            .sum::<u32>() as u16;
-        let checksum = sum;
-        let complement = !checksum;
-
-        rom[0x7FDC] = (complement & 0xFF) as u8;
-        rom[0x7FDD] = (complement >> 8) as u8;
-        rom[0x7FDE] = (checksum & 0xFF) as u8;
-        rom[0x7FDF] = (checksum >> 8) as u8;
-
-        rom
-    }
+    use crate::rom::test_rom::*;
 
     #[test]
     fn test_wram_read_write_through_bus() {
         let rom_data = create_valid_lorom(0x20000);
-        let rom_path = create_temp_rom(rom_data);
+        let rom_path = create_temp_rom(&rom_data);
         let mut bus = Bus::new(&rom_path).unwrap();
 
         let addr = SnesAddress {
@@ -149,7 +90,7 @@ mod tests {
     #[test]
     fn test_io_read_write_through_bus() {
         let rom_data = create_valid_lorom(0x20000);
-        let rom_path = create_temp_rom(rom_data);
+        let rom_path = create_temp_rom(&rom_data);
         let mut bus = Bus::new(&rom_path).unwrap();
 
         let addr = SnesAddress {
@@ -171,7 +112,7 @@ mod tests {
     fn test_rom_read_write_through_bus() {
         let mut rom_data = create_valid_lorom(0x100000 * 0x40);
         rom_data[0x0001] = 0x42;
-        let rom_path = create_temp_rom(rom_data);
+        let rom_path = create_temp_rom(&rom_data);
         let mut bus = Bus::new(&rom_path).unwrap();
 
         let addr = SnesAddress {
@@ -195,7 +136,7 @@ mod tests {
     #[should_panic(expected = "ERROR: Couldn't extract value from ROM")]
     fn test_rom_read_out_of_range_panics() {
         let rom_data = create_valid_lorom(0x20000);
-        let rom_path = create_temp_rom(rom_data);
+        let rom_path = create_temp_rom(&rom_data);
         let bus = Bus::new(&rom_path).unwrap();
 
         // Create an address mapped to an offset beyond the 128 KiB dummy ROM.
