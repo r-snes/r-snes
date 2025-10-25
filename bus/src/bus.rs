@@ -6,6 +6,8 @@ use common::snes_address::SnesAddress;
 use std::error::Error;
 use std::path::Path;
 
+use duplicate::duplicate;
+
 pub struct Bus {
     pub wram: Wram,
     pub rom: Rom,
@@ -21,29 +23,23 @@ impl Bus {
         })
     }
 
-    pub fn read(&self, addr: SnesAddress) -> u8 {
-        match addr.bank {
-            0x00..=0x3F | 0x80..=0xBF => match addr.addr {
-                0x0000..0x2000 => self.wram.read(addr),
-                0x2000..0x6000 => self.io.read(addr),
-                0x6000..0x8000 => self.rom.read(addr), // TODO : Expansion port
-                0x8000..=0xFFFF => self.rom.read(addr),
-            },
-            0x7E..=0x7F => self.wram.read(addr),
-            0x40..=0x7D | 0xC0..=0xFF => self.rom.read(addr),
-        }
-    }
-
-    pub fn write(&mut self, addr: SnesAddress, value: u8) {
-        match addr.bank {
-            0x00..=0x3F | 0x80..=0xBF => match addr.addr {
-                0x0000..0x2000 => self.wram.write(addr, value),
-                0x2000..0x6000 => self.io.write(addr, value),
-                0x6000..0x8000 => self.rom.write(addr, value), // TODO : Expansion port
-                0x8000..=0xFFFF => self.rom.write(addr, value), // ROM no writes handled in `rom`
-            },
-            0x7E..=0x7F => self.wram.write(addr, value),
-            0x40..=0x7D | 0xC0..=0xFF => self.rom.write(addr, value),
+    duplicate! {
+        [
+            DUP_method  DUP_parameters                                  DUP_return_t    DUP_method_param;
+            [ read ]    [ &self, addr: SnesAddress ]                    [ u8 ]          [ addr ];
+            [ write ]   [ &mut self, addr: SnesAddress, value: u8 ]     [ () ]          [ addr, value ];
+        ]
+        pub fn DUP_method(DUP_parameters) -> DUP_return_t {
+            match addr.bank {
+                0x00..=0x3F | 0x80..=0xBF => match addr.addr {
+                    0x0000..0x2000 => self.wram.DUP_method(DUP_method_param),
+                    0x2000..0x6000 => self.io.DUP_method(DUP_method_param),
+                    0x6000..0x8000 => self.rom.DUP_method(DUP_method_param), // TODO : Expansion port
+                    0x8000..=0xFFFF => self.rom.DUP_method(DUP_method_param),
+                },
+                0x7E..=0x7F => self.wram.DUP_method(DUP_method_param),
+                0x40..=0x7D | 0xC0..=0xFF => self.rom.DUP_method(DUP_method_param),
+            }
         }
     }
 }
