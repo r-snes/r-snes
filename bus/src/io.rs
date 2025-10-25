@@ -97,8 +97,8 @@ mod tests {
         for bank in (0x00..=0x3F).chain(0x80..=0xBF) {
             for addr in IO_START_ADDRESS..IO_END_ADDRESS {
                 let address: SnesAddress = SnesAddress {
-                    bank: (bank),
-                    addr: (addr),
+                    bank: bank,
+                    addr: addr,
                 };
                 assert_eq!(Io::to_offset(address), addr as usize);
             }
@@ -109,8 +109,8 @@ mod tests {
     #[should_panic]
     fn test_bad_map_addr_panics() {
         Io::to_offset(SnesAddress {
-            bank: (0x00),
-            addr: (IO_START_ADDRESS - 0x0321),
+            bank: 0x00,
+            addr: IO_START_ADDRESS - 0x0321,
         });
     }
 
@@ -118,8 +118,8 @@ mod tests {
     #[should_panic]
     fn test_bad_map_addr_panics2() {
         Io::to_offset(SnesAddress {
-            bank: (0x0F),
-            addr: (IO_END_ADDRESS + 0x34EF),
+            bank: 0x0F,
+            addr: IO_END_ADDRESS + 0x34EF,
         });
     }
 
@@ -129,8 +129,8 @@ mod tests {
         let io = Io::new();
 
         io.read(SnesAddress {
-            bank: (0xE3),
-            addr: (0x2345),
+            bank: 0xE3,
+            addr: 0x2345,
         });
     }
 
@@ -141,8 +141,8 @@ mod tests {
 
         io.write(
             SnesAddress {
-                bank: (0xE3),
-                addr: (0x2345),
+                bank: 0xE3,
+                addr: 0x2345,
             },
             0x43,
         );
@@ -152,12 +152,12 @@ mod tests {
     fn test_simple_read_write() {
         let mut wram = Io::new();
         let first_addr = SnesAddress {
-            bank: (0x00),
-            addr: (IO_START_ADDRESS),
+            bank: 0x00,
+            addr: IO_START_ADDRESS,
         };
         let second_addr = SnesAddress {
-            bank: (0x9F),
-            addr: (IO_START_ADDRESS),
+            bank: 0x9F,
+            addr: IO_START_ADDRESS,
         };
 
         wram.write(first_addr, 0x43);

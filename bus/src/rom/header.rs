@@ -61,14 +61,12 @@ impl Rom {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::constants::HIROM_BANK_SIZE;
+    use crate::rom::test_rom::*;
 
     #[test]
     fn test_print_rom_header_hirom_with_title() {
-        let mut data = vec![0; 0x10000];
-        // Remplissons le header avec "FINAL FANTASY 6 " comme attendu
-        let title = b"FINAL FANTASY 6 ";
-        data[HIROM_HEADER_OFFSET..HIROM_HEADER_OFFSET + title.len()].copy_from_slice(title);
-
+        let data = create_valid_hirom(HIROM_BANK_SIZE);
         let rom = Rom {
             data: data,
             map: MappingMode::HiRom,
@@ -79,7 +77,7 @@ mod tests {
 
     #[test]
     fn test_print_rom_header_hirom() {
-        let data = vec![0; 0x10000]; // pas assez pour contenir HEADER_SIZE
+        let data = vec![0; 0x10000];
         let rom = Rom {
             data: data,
             map: MappingMode::HiRom,
@@ -90,7 +88,7 @@ mod tests {
 
     #[test]
     fn test_print_rom_header_lorom() {
-        let data = vec![0; 0x10000]; // pas assez pour contenir HEADER_SIZE
+        let data = vec![0; 0x10000];
         let rom = Rom {
             data: data,
             map: MappingMode::LoRom,
@@ -101,7 +99,7 @@ mod tests {
 
     #[test]
     fn test_print_rom_header_unknown() {
-        let data = vec![0; 0x10000]; // pas assez pour contenir HEADER_SIZE
+        let data = vec![0; 0x10000];
         let rom = Rom {
             data: data,
             map: MappingMode::Unknown,
@@ -112,7 +110,7 @@ mod tests {
 
     #[test]
     fn test_print_rom_header_lorom_too_small() {
-        let data = vec![0; LOROM_HEADER_OFFSET]; // pas assez pour contenir HEADER_SIZE
+        let data = vec![0; LOROM_HEADER_OFFSET];
         let rom = Rom {
             data: data,
             map: MappingMode::LoRom,

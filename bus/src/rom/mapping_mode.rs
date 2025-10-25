@@ -66,29 +66,11 @@ impl MappingMode {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// Helper: create a ROM buffer with a fake header at the given offset
-    fn make_rom_with_header(offset: usize) -> Vec<u8> {
-        let mut rom = vec![0; HIROM_BANK_SIZE]; // at least one HiROM bank
-
-        let title = b"FAKE GAME TITLE      ";
-        rom[offset..offset + HEADER_TITLE_LEN].copy_from_slice(title);
-
-        let checksum: u16 = 0x1234;
-        let complement: u16 = !checksum;
-
-        rom[offset + HEADER_CHECKSUM_OFFSET] = (checksum & 0xFF) as u8;
-        rom[offset + HEADER_CHECKSUM_OFFSET + 1] = (checksum >> 8) as u8;
-
-        rom[offset + HEADER_CHECKSUM_COMPLEMENT_OFFSET] = (complement & 0xFF) as u8;
-        rom[offset + HEADER_CHECKSUM_COMPLEMENT_OFFSET + 1] = (complement >> 8) as u8;
-
-        rom
-    }
+    use crate::rom::test_rom::*;
 
     #[test]
     fn detect_lorom() {
-        let rom = make_rom_with_header(LOROM_HEADER_OFFSET);
+        let rom = create_valid_lorom(HIROM_BANK_SIZE);
         let mode = MappingMode::detect_rom_mapping(&rom);
 
         assert_eq!(mode, MappingMode::LoRom);
@@ -96,7 +78,7 @@ mod tests {
 
     #[test]
     fn detect_hirom() {
-        let rom = make_rom_with_header(HIROM_HEADER_OFFSET);
+        let rom = create_valid_hirom(HIROM_BANK_SIZE);
         let mode = MappingMode::detect_rom_mapping(&rom);
 
         assert_eq!(mode, MappingMode::HiRom);

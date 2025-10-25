@@ -103,8 +103,8 @@ mod tests {
         for bank in (0x00..=0x3F).chain(0x80..=0xBF) {
             for addr in 0..0x2000 {
                 let address: SnesAddress = SnesAddress {
-                    bank: (bank),
-                    addr: (addr),
+                    bank: bank,
+                    addr: addr,
                 };
                 assert_eq!(Wram::to_offset(address), addr as usize);
             }
@@ -124,8 +124,8 @@ mod tests {
     #[should_panic]
     fn test_bad_map_addr_panics2() {
         Wram::to_offset(SnesAddress {
-            bank: (0x0F),
-            addr: (0x2000),
+            bank: 0x0F,
+            addr: 0x2000,
         });
     }
 
@@ -135,8 +135,8 @@ mod tests {
         let wram = Wram::new();
 
         wram.read(SnesAddress {
-            bank: (0xE3),
-            addr: (0x2345),
+            bank: 0xE3,
+            addr: 0x2345,
         });
     }
 
@@ -147,8 +147,8 @@ mod tests {
 
         wram.write(
             SnesAddress {
-                bank: (0xE3),
-                addr: (0x2345),
+                bank: 0xE3,
+                addr: 0x2345,
             },
             0x43,
         );
@@ -158,16 +158,16 @@ mod tests {
     fn test_simple_read_write() {
         let mut wram = Wram::new();
         let mirrored_addr = SnesAddress {
-            bank: (0x20),
-            addr: (0x1456),
+            bank: 0x20,
+            addr: 0x1456,
         };
         let first_full_bank_addr = SnesAddress {
-            bank: (0x7E),
-            addr: (0x4444),
+            bank: 0x7E,
+            addr: 0x4444,
         };
         let second_full_bank_addr = SnesAddress {
-            bank: (0x7F),
-            addr: (0x3E58),
+            bank: 0x7F,
+            addr: 0x3E58,
         };
 
         wram.write(mirrored_addr, 0x43);
@@ -184,16 +184,16 @@ mod tests {
     fn test_full_bank_edges() {
         let mut wram = Wram::new();
         let first_bank_end = SnesAddress {
-            bank: (0x7E),
-            addr: (0xFFFF),
+            bank: 0x7E,
+            addr: 0xFFFF,
         };
         let second_bank_start = SnesAddress {
-            bank: (0x7F),
-            addr: (0x0000),
+            bank: 0x7F,
+            addr: 0x0000,
         };
         let second_bank_end = SnesAddress {
-            bank: (0x7F),
-            addr: (0x0000),
+            bank: 0x7F,
+            addr: 0x0000,
         };
 
         wram.write(first_bank_end, 0xF3);

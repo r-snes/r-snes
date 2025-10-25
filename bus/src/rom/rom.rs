@@ -222,8 +222,8 @@ mod tests {
         assert_eq!(rom.map, MappingMode::LoRom);
         assert_eq!(
             rom.read(SnesAddress {
-                bank: (0x00),
-                addr: (0x8000)
+                bank: 0x00,
+                addr: 0x8000
             }),
             0
         );
@@ -238,8 +238,8 @@ mod tests {
         assert_eq!(rom.map, MappingMode::HiRom);
         assert_eq!(
             rom.read(SnesAddress {
-                bank: (0x00),
-                addr: (0x8000)
+                bank: 0x00,
+                addr: 0x8000
             }),
             0
         );
@@ -258,14 +258,14 @@ mod tests {
     #[test]
     fn test_load_rom_with_copier_header() {
         let mut data = create_valid_lorom(LOROM_BANK_SIZE + COPIER_HEADER_SIZE);
-        // Simule header inutile devant
+        // Simulate copier header at beginning of rom
         for b in &mut data[..COPIER_HEADER_SIZE] {
             *b = 0xFF;
         }
         let path = create_temp_rom(&data);
 
         let rom = Rom::load_from_file(&path).unwrap();
-        // Vérifie qu'on a bien retiré le header
+        // Check copier header removed
         assert_eq!(rom.data.len(), LOROM_BANK_SIZE);
         assert_eq!(rom.data[0], 0);
     }
