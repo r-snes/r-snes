@@ -40,6 +40,33 @@ This approach ensures compliance with French and EU law by keeping a clear bound
 
 ---
 
+### 3.3 Commissioned Plug-ins and Extensions
+In the future, the project may allow **third-party plugin development** as a form of **commissioned work**, following models used by open-source artists and developers.
+
+#### Concept
+- Developers can offer to **create plug-ins or extensions** (e.g., debugging tools, visual filters, or front-end interfaces) in exchange for **commission payments**.  
+- These plug-ins will extend the emulator but remain **separate, optional add-ons**.  
+- This model compensates contributors for **creative or technical labor**, not for access to or ownership of the emulator itself.
+
+#### Ownership Models
+Two ownership structures will be allowed:
+1. **Public release:**  
+   - After completion, the commissioned plug-in is **released publicly** under an open-source license.  
+   - The commissioner effectively funds the creation for community benefit.
+
+2. **Exclusive release:**  
+   - For a higher agreed-upon price, the **rights to the plug-in** may be **transferred to the commissioner**.  
+   - The developer forfeits further distribution rights, and the commissioner decides how to use it (within legal and ethical limits).
+
+#### Compliance and Restrictions
+- Plug-ins must be **independent** of copyrighted SNES content and must **not include or rely on proprietary ROMs or BIOS files**.  
+- All transactions for commissioned work occur **outside the main project’s financial structure**.  
+- The emulator core remains **non-commercial**, and **no official endorsement or profit-sharing** will be involved.
+
+This model supports sustainable open-source development while maintaining **strict legal compliance** and **ethical transparency**.
+
+---
+
 ## 4. Expenses and Resource Use
 
 The project’s estimated expenses are minimal and relate only to lawful research and testing.
@@ -61,7 +88,8 @@ All expenditures relate to **testing, research, and documentation** — not to t
 If donations are accepted:
 - All funds will be **publicly accounted for** through the donation platform’s history.  
 - No private or hidden funding channels will be used.  
-- The project maintainer(s) may publish **annual or periodic updates** summarizing the use of funds (optional but recommended for transparency).
+- The project maintainer(s) may publish **annual or periodic updates** summarizing the use of funds (optional but recommended for transparency).  
+- **Commissioned plug-ins** remain the responsibility of the **individual developer and client**, with **no financial overlap** with project funds.
 
 ---
 
@@ -71,6 +99,7 @@ If donations are accepted:
 |--------|---------|------------------|
 | Commercial sales | None | ✅ Fully compliant |
 | Donations | Allowed, voluntary only | ✅ Fully compliant |
+| Commissioned plug-ins | Allowed under conditions | ✅ Legally distinct |
 | Copyrighted content | Not included or monetized | ✅ Fully compliant |
 | Testing materials | Legally purchased cartridges | ✅ Fully compliant |
 | Transparency | Public accounting and disclaimers | ✅ Fully compliant |
@@ -80,9 +109,9 @@ If donations are accepted:
 ## 7. Disclaimer
 > This financial plan is designed to align with **French and European law**.  
 > The project maintains a **non-commercial, open-source** status to avoid any copyright or licensing conflicts.  
-> Donations, if accepted, are purely voluntary and do **not** imply sale, licensing, or endorsement by Nintendo or any third party.  
+> Donations and commissioned plug-in work are purely voluntary and do **not** imply sale, licensing, or endorsement by Nintendo or any third party.  
 > This document does not constitute legal or financial advice; it reflects the project’s internal compliance and transparency goals.
 
 ---
 
-*Last updated: October 2025*  
+*Last updated: October 2025*
