@@ -39,16 +39,12 @@ impl Io {
     /// Panics if the address is outside the valid I/O memory zone range.
     fn to_offset(addr: SnesAddress) -> usize {
         match addr.bank {
-            0x00..=0x3F | 0x80..=0xBF => {
-                if addr.addr >= IO_START_ADDRESS && addr.addr < IO_END_ADDRESS {
-                    return addr.addr as usize;
-                } else {
-                    Self::panic_invalid_addr(addr);
-                }
+            0x00..=0x3F | 0x80..=0xBF
+                if addr.addr >= IO_START_ADDRESS && addr.addr < IO_END_ADDRESS =>
+            {
+                addr.addr as usize
             }
-            _ => {
-                Self::panic_invalid_addr(addr);
-            }
+            _ => Self::panic_invalid_addr(addr),
         }
     }
 }

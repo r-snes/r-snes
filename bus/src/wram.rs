@@ -40,15 +40,9 @@ impl Wram {
     /// Panics if the given address does not correspond to a valid WRAM location.
     fn to_offset(addr: SnesAddress) -> usize {
         match addr.bank {
-            0x00..=0x3F | 0x80..=0xBF => {
-                if addr.addr < 0x2000 {
-                    return addr.addr as usize;
-                } else {
-                    Self::panic_invalid_addr(addr)
-                }
-            }
-            0x7E => return addr.addr as usize,
-            0x7F => return addr.addr as usize + 0x10000,
+            0x00..=0x3F | 0x80..=0xBF if addr.addr < 0x2000 => addr.addr as usize,
+            0x7E => addr.addr as usize,
+            0x7F => addr.addr as usize + 0x10000,
             _ => Self::panic_invalid_addr(addr),
         }
     }

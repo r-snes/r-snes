@@ -70,13 +70,9 @@ impl Rom {
     /// Panics if the given address does not correspond to a valid LoROM location.
     pub fn get_lorom_offset(addr: SnesAddress) -> usize {
         match addr.bank {
-            0x00..=0x3F => {
-                if addr.addr >= 0x8000 {
-                    let bank_offset = (addr.addr - 0x8000) as usize;
-                    return addr.bank as usize * 0x8000 + bank_offset;
-                } else {
-                    Self::panic_invalid_addr(addr);
-                }
+            0x00..=0x3F if addr.addr >= 0x8000 => {
+                let bank_offset = (addr.addr - 0x8000) as usize;
+                return addr.bank as usize * 0x8000 + bank_offset;
             }
             0x40..=0x7D => {
                 if addr.addr < 0x8000 {
@@ -89,13 +85,9 @@ impl Rom {
                     return addr.bank as usize * 0x8000 + bank_offset;
                 }
             }
-            0x80..=0xBF => {
-                if addr.addr >= 0x8000 {
-                    let bank_offset = (addr.addr - 0x8000) as usize;
-                    return (addr.bank as usize - 0x80) * 0x8000 + bank_offset;
-                } else {
-                    Self::panic_invalid_addr(addr);
-                }
+            0x80..=0xBF if addr.addr >= 0x8000 => {
+                let bank_offset = (addr.addr - 0x8000) as usize;
+                return (addr.bank as usize - 0x80) * 0x8000 + bank_offset;
             }
             0xC0..=0xFF => {
                 if addr.addr < 0x8000 {
@@ -108,9 +100,7 @@ impl Rom {
                     return (addr.bank as usize - 0x80) * 0x8000 + bank_offset;
                 }
             }
-            _ => {
-                Self::panic_invalid_addr(addr);
-            }
+            _ => Self::panic_invalid_addr(addr),
         }
     }
 
@@ -135,30 +125,18 @@ impl Rom {
                 let bank_index = addr.bank as usize - 0xC0;
                 return bank_index * BANK_SIZE + addr.addr as usize;
             }
-
             // Mirror Banks
-            0x00..=0x3F => {
-                if addr.addr >= 0x8000 {
-                    let bank_index = addr.bank as usize - 0x00;
-                    let bank_offset = addr.addr as usize;
-                    return bank_index * BANK_SIZE + bank_offset;
-                } else {
-                    Self::panic_invalid_addr(addr);
-                }
+            0x00..=0x3F if addr.addr >= 0x8000 => {
+                let bank_index = addr.bank as usize - 0x00;
+                let bank_offset = addr.addr as usize;
+                return bank_index * BANK_SIZE + bank_offset;
             }
-            0x80..=0xBF => {
-                if addr.addr >= 0x8000 {
-                    let bank_index = addr.bank as usize - 0x80;
-                    let bank_offset = addr.addr as usize;
-                    return bank_index * BANK_SIZE + bank_offset;
-                } else {
-                    Self::panic_invalid_addr(addr);
-                }
+            0x80..=0xBF if addr.addr >= 0x8000 => {
+                let bank_index = addr.bank as usize - 0x80;
+                let bank_offset = addr.addr as usize;
+                return bank_index * BANK_SIZE + bank_offset;
             }
-
-            _ => {
-                Self::panic_invalid_addr(addr);
-            }
+            _ => Self::panic_invalid_addr(addr),
         }
     }
 
