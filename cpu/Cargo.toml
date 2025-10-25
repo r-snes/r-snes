@@ -5,3 +5,5 @@ edition = "2024"
 
 [dependencies]
 common = { version = "0.1.0", path = "../common"}
+instr_metalang_procmacro = { path = "./instr_metalang_procmacro" }
+duplicate = "2.0.0"
