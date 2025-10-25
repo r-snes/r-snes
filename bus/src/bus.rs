@@ -56,7 +56,7 @@ mod tests {
     #[test]
     fn test_wram_read_write_through_bus() {
         let rom_data = create_valid_lorom(0x20000);
-        let rom_path = create_temp_rom(&rom_data);
+        let (rom_path, _dir) = create_temp_rom(&rom_data);
         let mut bus = Bus::new(&rom_path).unwrap();
 
         let addr = SnesAddress {
@@ -88,7 +88,7 @@ mod tests {
     #[test]
     fn test_io_read_write_through_bus() {
         let rom_data = create_valid_lorom(0x20000);
-        let rom_path = create_temp_rom(&rom_data);
+        let (rom_path, _dir) = create_temp_rom(&rom_data);
         let mut bus = Bus::new(&rom_path).unwrap();
 
         let addr = SnesAddress {
@@ -110,7 +110,7 @@ mod tests {
     fn test_rom_read_write_through_bus() {
         let mut rom_data = create_valid_lorom(0x100000 * 0x40);
         rom_data[0x0001] = 0x42;
-        let rom_path = create_temp_rom(&rom_data);
+        let (rom_path, _dir) = create_temp_rom(&rom_data);
         let mut bus = Bus::new(&rom_path).unwrap();
 
         let addr = SnesAddress {
@@ -134,7 +134,7 @@ mod tests {
     #[should_panic(expected = "ERROR: Couldn't extract value from ROM")]
     fn test_rom_read_out_of_range_panics() {
         let rom_data = create_valid_lorom(0x20000);
-        let rom_path = create_temp_rom(&rom_data);
+        let (rom_path, _dir) = create_temp_rom(&rom_data);
         let bus = Bus::new(&rom_path).unwrap();
 
         // Create an address mapped to an offset beyond the 128 KiB dummy ROM.

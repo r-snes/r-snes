@@ -63,11 +63,11 @@ pub(crate) fn create_valid_hirom(size: usize) -> Vec<u8> {
     rom
 }
 
-pub(crate) fn create_temp_rom(data: &[u8]) -> std::path::PathBuf {
+pub(crate) fn create_temp_rom(data: &[u8]) -> (std::path::PathBuf, tempfile::TempDir) {
     let dir = tempdir().unwrap();
     let rom_path = dir.path().join("test_rom.sfc");
     let mut f = std::fs::File::create(&rom_path).unwrap();
     f.write_all(data).unwrap();
-    std::mem::forget(dir); // Avoid directory deletion
-    rom_path
+
+    (rom_path, dir)
 }

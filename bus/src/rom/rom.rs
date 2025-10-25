@@ -216,7 +216,7 @@ mod tests {
     #[test]
     fn test_detect_lorom() {
         let data = create_valid_lorom(0x10000);
-        let path = create_temp_rom(&data);
+        let (path, _dir) = create_temp_rom(&data);
 
         let rom = Rom::load_from_file(path).unwrap();
         assert_eq!(rom.map, MappingMode::LoRom);
@@ -232,7 +232,7 @@ mod tests {
     #[test]
     fn test_detect_hirom() {
         let data = create_valid_hirom(0x10000);
-        let path = create_temp_rom(&data);
+        let (path, _dir) = create_temp_rom(&data);
 
         let rom = Rom::load_from_file(path).unwrap();
         assert_eq!(rom.map, MappingMode::HiRom);
@@ -248,7 +248,7 @@ mod tests {
     #[test]
     fn test_load_rom_success() {
         let data = create_valid_lorom(0x10000);
-        let path = create_temp_rom(&data);
+        let (path, _dir) = create_temp_rom(&data);
 
         let rom = Rom::load_from_file(&path).unwrap();
         assert_eq!(rom.data.len(), data.len());
@@ -262,7 +262,7 @@ mod tests {
         for b in &mut data[..COPIER_HEADER_SIZE] {
             *b = 0xFF;
         }
-        let path = create_temp_rom(&data);
+        let (path, _dir) = create_temp_rom(&data);
 
         let rom = Rom::load_from_file(&path).unwrap();
         // Check copier header removed
@@ -273,7 +273,7 @@ mod tests {
     #[test]
     fn test_load_rom_too_small() {
         let data = vec![0x00; LOROM_BANK_SIZE - 1];
-        let path = create_temp_rom(&data);
+        let (path, _dir) = create_temp_rom(&data);
         let result = Rom::load_from_file(&path);
         assert!(matches!(result, Err(RomError::FileTooSmall)));
     }
@@ -295,7 +295,7 @@ mod tests {
     #[test]
     fn test_write_is_ignored() {
         let data = create_valid_lorom(0x10000);
-        let path = create_temp_rom(&data);
+        let (path, _dir) = create_temp_rom(&data);
         let mut rom = Rom::load_from_file(&path).unwrap();
 
         let addr = SnesAddress {
