@@ -4,6 +4,7 @@ use std::fmt;
 pub enum RomError {
     IoError(std::io::Error),
     FileTooSmall,
+    IncorrectMapping,
 }
 
 impl std::error::Error for RomError {}
@@ -12,6 +13,7 @@ impl fmt::Display for RomError {
         match self {
             RomError::IoError(e) => write!(f, "I/O error: {}", e),
             RomError::FileTooSmall => write!(f, "ROM file too small to be valid."),
+            RomError::IncorrectMapping => write!(f, "ROM Mapping unknown"),
         }
     }
 }
@@ -37,6 +39,14 @@ mod tests {
 
         let msg = format!("{}", rom_err);
         assert_eq!(msg, "ROM file too small to be valid.");
+    }
+
+    #[test]
+    fn test_display_incorrect_mapping() {
+        let rom_err = RomError::IncorrectMapping;
+
+        let msg = format!("{}", rom_err);
+        assert_eq!(msg, "ROM Mapping unknown");
     }
 
     #[test]

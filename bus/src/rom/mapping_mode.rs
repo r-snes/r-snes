@@ -8,13 +8,12 @@ use std::cmp::Ordering;
 pub enum MappingMode {
     LoRom,
     HiRom,
-    Unknown, // Error case, can't continue execution if we don't know mapping mode
 }
 
 impl MappingMode {
-    pub fn detect_rom_mapping(rom_data: &[u8]) -> MappingMode {
+    pub fn detect_rom_mapping(rom_data: &[u8]) -> Option<MappingMode> {
         if rom_data.len() < HIROM_BANK_SIZE {
-            return MappingMode::Unknown;
+            return None;
         }
 
         // Try LoROM header
@@ -23,9 +22,9 @@ impl MappingMode {
         let hirom_score = Self::score_header(rom_data, HIROM_HEADER_OFFSET);
 
         match lorom_score.cmp(&hirom_score) {
-            Ordering::Greater => MappingMode::LoRom,
-            Ordering::Less => MappingMode::HiRom,
-            Ordering::Equal => MappingMode::Unknown,
+            Ordering::Greater => Some(MappingMode::LoRom),
+            Ordering::Less => Some(MappingMode::HiRom),
+            Ordering::Equal => None,
         }
     }
 
@@ -73,7 +72,7 @@ mod tests {
         let rom = create_valid_lorom(HIROM_BANK_SIZE);
         let mode = MappingMode::detect_rom_mapping(&rom);
 
-        assert_eq!(mode, MappingMode::LoRom);
+        assert_eq!(mode, Some(MappingMode::LoRom));
     }
 
     #[test]
@@ -81,7 +80,7 @@ mod tests {
         let rom = create_valid_hirom(HIROM_BANK_SIZE);
         let mode = MappingMode::detect_rom_mapping(&rom);
 
-        assert_eq!(mode, MappingMode::HiRom);
+        assert_eq!(mode, Some(MappingMode::HiRom));
     }
 
     #[test]
@@ -89,7 +88,7 @@ mod tests {
         let rom = vec![0; HIROM_BANK_SIZE - 1];
         let mode = MappingMode::detect_rom_mapping(&rom);
 
-        assert_eq!(mode, MappingMode::Unknown);
+        assert_eq!(mode, None);
     }
 
     #[test]
@@ -97,6 +96,6 @@ mod tests {
         let rom = vec![0; HIROM_BANK_SIZE];
         let mode = MappingMode::detect_rom_mapping(&rom);
 
-        assert_eq!(mode, MappingMode::Unknown);
+        assert_eq!(mode, None);
     }
 }

@@ -20,7 +20,6 @@ pub(crate) fn create_valid_header(map: MappingMode) -> Vec<u8> {
     header[21] = match map {
         MappingMode::LoRom => 0x20, // FastROM + LoROM
         MappingMode::HiRom => 0x30, // FastROM + HiROM
-        _ => 0x00,
     };
     header[22] = 0x00; // Cartridge type (no co-processor)
     header[23] = 0x08; // ROM size exponent (8 => 256 KB)
@@ -46,7 +45,7 @@ pub(crate) fn create_valid_header(map: MappingMode) -> Vec<u8> {
 
 pub(crate) fn create_valid_lorom(size: usize) -> Vec<u8> {
     assert!(size >= LOROM_BANK_SIZE, "ROM must be at least 32KiB");
-    let mut rom = vec![0u8; size];
+    let mut rom = vec![0; size];
 
     let header = create_valid_header(MappingMode::LoRom);
     rom[LOROM_HEADER_OFFSET..LOROM_HEADER_OFFSET + header.len()].copy_from_slice(&header);
@@ -56,7 +55,7 @@ pub(crate) fn create_valid_lorom(size: usize) -> Vec<u8> {
 
 pub(crate) fn create_valid_hirom(size: usize) -> Vec<u8> {
     assert!(size >= HIROM_BANK_SIZE, "ROM must be at least 64KiB");
-    let mut rom = vec![0u8; size];
+    let mut rom = vec![0; size];
 
     let header = create_valid_header(MappingMode::HiRom);
     rom[HIROM_HEADER_OFFSET..HIROM_HEADER_OFFSET + header.len()].copy_from_slice(&header);

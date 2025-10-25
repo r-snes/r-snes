@@ -13,10 +13,6 @@ impl Rom {
                 println!("hiRom Mode");
                 HIROM_HEADER_OFFSET
             }
-            MappingMode::Unknown => {
-                println!("Cannot print ROM header: unknown ROM mapping.");
-                return;
-            }
         };
 
         if self.data.len() < header_offset + HEADER_SIZE {
@@ -92,17 +88,6 @@ mod tests {
         let rom = Rom {
             data: data,
             map: MappingMode::LoRom,
-        };
-
-        rom.print_rom_header();
-    }
-
-    #[test]
-    fn test_print_rom_header_unknown() {
-        let data = vec![0; 0x10000];
-        let rom = Rom {
-            data: data,
-            map: MappingMode::Unknown,
         };
 
         rom.print_rom_header();

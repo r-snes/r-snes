@@ -43,7 +43,8 @@ impl Rom {
         };
 
         // Check map mode
-        let map_mode = MappingMode::detect_rom_mapping(&rom_data);
+        let map_mode =
+            MappingMode::detect_rom_mapping(&rom_data).ok_or(RomError::IncorrectMapping)?;
 
         Ok(Rom {
             data: rom_data,
@@ -152,7 +153,6 @@ impl Rom {
         match self.map {
             MappingMode::HiRom => Self::get_hirom_offset(addr),
             MappingMode::LoRom => Self::get_lorom_offset(addr),
-            MappingMode::Unknown => panic!("ROM mapping mode is Unknown, cannot compute offset"),
         }
     }
 }
@@ -185,7 +185,7 @@ impl MemoryRegion for Rom {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::constants::{COPIER_HEADER_SIZE, LOROM_BANK_SIZE};
+    use crate::constants::{COPIER_HEADER_SIZE, HIROM_BANK_SIZE, LOROM_BANK_SIZE};
     use crate::rom::mapping_mode::MappingMode;
     use crate::rom::test_rom::*;
 
@@ -232,16 +232,15 @@ mod tests {
 
     #[test]
     fn test_load_rom_with_copier_header() {
-        let mut data = create_valid_lorom(LOROM_BANK_SIZE + COPIER_HEADER_SIZE);
-        // Simulate copier header at beginning of rom
-        for b in &mut data[..COPIER_HEADER_SIZE] {
-            *b = 0xFF;
-        }
-        let (path, _dir) = create_temp_rom(&data);
+        let data = create_valid_lorom(HIROM_BANK_SIZE);
+        let mut copier_header_data: Vec<u8> = vec![0xFF; COPIER_HEADER_SIZE];
+        copier_header_data.extend_from_slice(&data);
 
+        let (path, _dir) = create_temp_rom(&copier_header_data);
         let rom = Rom::load_from_file(&path).unwrap();
+
         // Check copier header removed
-        assert_eq!(rom.data.len(), LOROM_BANK_SIZE);
+        assert_eq!(rom.data.len(), HIROM_BANK_SIZE);
         assert_eq!(rom.data[0], 0);
     }
 
@@ -251,20 +250,6 @@ mod tests {
         let (path, _dir) = create_temp_rom(&data);
         let result = Rom::load_from_file(&path);
         assert!(matches!(result, Err(RomError::FileTooSmall)));
-    }
-
-    #[test]
-    #[should_panic(expected = "ROM mapping mode is Unknown")]
-    fn test_to_offset_unknown_panics() {
-        let rom = Rom {
-            data: vec![0; LOROM_BANK_SIZE],
-            map: MappingMode::Unknown,
-        };
-
-        rom.to_offset(SnesAddress {
-            bank: 0x00,
-            addr: 0x8000,
-        });
     }
 
     #[test]
