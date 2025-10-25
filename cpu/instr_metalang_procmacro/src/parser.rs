@@ -4,8 +4,8 @@ use proc_macro2 as pm2;
 /// Enum for all the meta instructions implemented for the CPU
 /// meta-language.
 pub(crate) enum MetaInstruction {
-    EndCycle(Ident),
-    EndInstr(Ident),
+    EndCycle(TokenStream),
+    EndInstr(TokenStream),
 }
 
 impl MetaInstruction {
@@ -19,7 +19,11 @@ impl MetaInstruction {
 }
 
 impl MetaInstruction {
-    /// Conversion from a Token iterator
+    /// Conversion from a Token iterator  
+    ///
+    /// The input [`value`] contains all tokens between (excluding)
+    /// the `meta` identifier (which indicates the start of a meta-instruction)
+    /// and the semicolon (which indicates the end of the meta-instruction)
     ///
     /// For some reason can't be implemented as a TryFrom trait
     fn try_from<I: IntoIterator<Item = TokenTree>>(value: I) -> Result<Self, &'static str> {
@@ -30,17 +34,11 @@ impl MetaInstruction {
         };
         let ret = match meta_kw.to_string().as_str() {
             "END_CYCLE" => {
-                let Some(TokenTree::Ident(cyc_type)) = it.next() else {
-                    Err("END_CYCLE expects an identifier operand (cycle type)")?
-                };
-                MetaInstruction::EndCycle(cyc_type)
+                MetaInstruction::EndCycle(it.by_ref().collect())
             }
 
             "END_INSTR" => {
-                let Some(TokenTree::Ident(cyc_type)) = it.next() else {
-                    Err("INSTR expects an identifier operand (cycle type)")?
-                };
-                MetaInstruction::EndInstr(cyc_type)
+                MetaInstruction::EndInstr(it.by_ref().collect())
             }
 
             _ => Err("Unknown meta-keyword")?,
@@ -119,11 +117,11 @@ pub(crate) struct Cycle {
     pub body: TokenStream,
     /// Cycle type (part of the function return value; should evaluate
     /// to something of type `CycleResult`)
-    pub cyc_type: Ident,
+    pub cyc_type: TokenStream,
 }
 
 impl Cycle {
-    fn new(body: TokenStream, cyc_type: Ident) -> Self {
+    fn new(body: TokenStream, cyc_type: TokenStream) -> Self {
         Self { body, cyc_type }
     }
 }
