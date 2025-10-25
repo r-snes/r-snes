@@ -91,10 +91,7 @@ mod tests {
     fn test_good_map_addr() {
         for bank in (0x00..=0x3F).chain(0x80..=0xBF) {
             for addr in IO_START_ADDRESS..IO_END_ADDRESS {
-                let address: SnesAddress = SnesAddress {
-                    bank: bank,
-                    addr: addr,
-                };
+                let address: SnesAddress = SnesAddress { bank, addr };
                 assert_eq!(Io::to_offset(address), addr as usize);
             }
         }

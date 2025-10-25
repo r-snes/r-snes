@@ -152,9 +152,7 @@ impl Rom {
         match self.map {
             MappingMode::HiRom => Self::get_hirom_offset(addr),
             MappingMode::LoRom => Self::get_lorom_offset(addr),
-            MappingMode::Unknown => {
-                panic!("ROM mapping mode is Unknown, cannot compute offset");
-            }
+            MappingMode::Unknown => panic!("ROM mapping mode is Unknown, cannot compute offset"),
         }
     }
 }
@@ -230,7 +228,6 @@ mod tests {
 
         let rom = Rom::load_from_file(&path).unwrap();
         assert_eq!(rom.data.len(), data.len());
-        // assert_ne!(rom.map, MappingMode::Unknown);
     }
 
     #[test]
