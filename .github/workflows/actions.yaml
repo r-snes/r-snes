@@ -9,51 +9,72 @@ on:
       - 'ga-ignore-*'
 env:
   MIRROR_URL: "git@github.com:EpitechPromo2027/G-EIP-600-NAN-6-1-eip-florent.charpentier.git"
-  COVERAGE_MINIMUM_PERCENTAGE: 80
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
 
 jobs:
   check_program_compilation:
     runs-on: ubuntu-latest
-    container:
-      image: rust:1.86.0-slim-bookworm
 
     steps:
       - name: Checkout fetch
-        uses: actions/checkout@v4.2.2
-      - name: Install g++
-        run: apt-get update && apt-get install -y g++
-      - name: Check program compilation
-        timeout-minutes: 2
-        run: cargo build --workspace
+        uses: actions/checkout@v5.0.0
 
-  run_tests:
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@1.90.0
+
+      - name: Check program compilation
+        timeout-minutes: 3
+        run: cargo check --workspace
+
+  coverage:
     needs: [check_program_compilation]
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout fetch
-        uses: actions/checkout@v4.2.2
-      - name: Update apt repositories
-        run: sudo apt update
-      - name: Install cargo
-        run: sudo apt install cargo -y
-      - name: Install openssl dev lib (necessary for cargo-tarpaulin)
-        run: sudo apt install libssl-dev pkg-config -y
-      - name: Install cargo tarpaulin
-        timeout-minutes: 5
-        run: cargo install cargo-tarpaulin
-      - name: Check for failing unit test and coverage < COVERAGE_MINIMUM_PERCENTAGE
-        timeout-minutes: 2
-        run: cargo tarpaulin
+        uses: actions/checkout@v5.0.0
+
+      - name: Cache/Uncache cargo tarpaulin
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin
+          key: ${{ runner.os }}-cargo-tarpaulin
+
+      - name: Install rust
+        uses: dtolnay/rust-toolchain@1.90.0
+
+      - name: Install cargo-tarpaulin if not cached
+        run: |
+          if ! command -v cargo-tarpaulin &> /dev/null; then
+            cargo install cargo-tarpaulin
+          fi
+
+      - name: Run coverage
+        run: cargo tarpaulin --out html
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report-${{ github.head_ref || github.ref_name }}
+          path: ./tarpaulin-report.html
+
 
   push_to_mirror:
-    needs: [run_tests]
+    needs: [coverage]
     runs-on: ubuntu-latest
     if: ${{ github.event_name == 'push' }}
 
     steps:
       - name: Checkout fetch
-        uses: actions/checkout@v4.2.2
+        uses: actions/checkout@v5.0.0
         with:
           fetch-depth: 0
 
@@ -61,3 +82,34 @@ jobs:
         with:
           target_repo_url: ${{ env.MIRROR_URL }}
           ssh_private_key: ${{ secrets.GIT_SSH_PRIVATE_KEY }}
+
+  build_site:
+    needs: [push_to_mirror]
+    if: github.ref == 'refs/heads/main'
+
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5.0.0
+
+      - name: Download main branch coverage report
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-report-${{ github.ref_name }}
+          path: ./site/
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/
+
+  deploy_site:
+    needs: [build_site]
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
