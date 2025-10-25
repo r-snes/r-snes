@@ -10,6 +10,15 @@ on:
 env:
   MIRROR_URL: "git@github.com:EpitechPromo2027/G-EIP-600-NAN-6-1-eip-florent.charpentier.git"
 
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
 jobs:
   check_program_compilation:
     runs-on: ubuntu-latest
@@ -36,8 +45,7 @@ jobs:
       - name: Cache/Uncache cargo tarpaulin
         uses: actions/cache@v4
         with:
-          path: |
-            ~/.cargo/bin
+          path: ~/.cargo/bin
           key: ${{ runner.os }}-cargo-tarpaulin
 
       - name: Install rust
@@ -50,7 +58,13 @@ jobs:
           fi
 
       - name: Run coverage
-        run: cargo tarpaulin
+        run: cargo tarpaulin --out html
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report-${{ github.head_ref || github.ref_name }}
+          path: ./tarpaulin-report.html
 
 
   push_to_mirror:
@@ -68,3 +82,34 @@ jobs:
         with:
           target_repo_url: ${{ env.MIRROR_URL }}
           ssh_private_key: ${{ secrets.GIT_SSH_PRIVATE_KEY }}
+
+  build_site:
+    needs: [push_to_mirror]
+    if: github.ref == 'refs/heads/main'
+
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5.0.0
+
+      - name: Download main branch coverage report
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-report-${{ github.ref_name }}
+          path: ./site/
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/
+
+  deploy_site:
+    needs: [build_site]
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
