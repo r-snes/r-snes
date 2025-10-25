@@ -1,86 +1,73 @@
 //! Module which contains utility functions for
 //! writing unit tests needing ROM objects
 
+use crate::constants::{
+    HEADER_SIZE, HIROM_BANK_SIZE, HIROM_HEADER_OFFSET, LOROM_BANK_SIZE, LOROM_HEADER_OFFSET,
+};
+use crate::rom::mapping_mode::MappingMode;
 use std::io::Write;
 use tempfile::tempdir;
 
+pub(crate) fn create_valid_header(map: MappingMode) -> Vec<u8> {
+    let mut header = vec![0u8; HEADER_SIZE];
+
+    let title = b"TEST LOROM           "; // 21 bytes
+    debug_assert!(title.len() == 21);
+    header[0..21].copy_from_slice(title);
+
+    // ROM Speed + Map Mode
+    header[21] = match map {
+        MappingMode::LoRom => 0x20, // FastROM + LoROM
+        MappingMode::HiRom => 0x30, // FastROM + HiROM
+        _ => 0x00,
+    };
+    header[22] = 0x00; // Cartridge type (no co-processor)
+    header[23] = 0x08; // ROM size exponent (8 => 256 KB)
+    header[24] = 0x00; // SRAM size (none)
+    header[25] = 0x01; // Country (01 = USA NTSC)
+    header[26] = 0x33; // Licensee code (Nintendo standard)
+    header[27] = 0x00; // Version (0 => original release)
+
+    // Checksum (dummy values for now)
+    let checksum: u16 = 0xFFFF;
+    let complement: u16 = !checksum;
+
+    header[28] = (complement & 0xFF) as u8;
+    header[29] = (complement >> 8) as u8;
+    header[30] = (checksum & 0xFF) as u8;
+    header[31] = (checksum >> 8) as u8;
+
+    // Interruption Vectors (empty)
+    header[32..HEADER_SIZE - 1].fill(0);
+
+    header
+}
+
 pub(crate) fn create_valid_lorom(size: usize) -> Vec<u8> {
-    assert!(size >= 0x8000, "ROM must be at least 32KiB");
+    assert!(size >= LOROM_BANK_SIZE, "ROM must be at least 32KiB");
     let mut rom = vec![0u8; size];
 
-    let base = 0x7FC0;
-    let title = b"TEST LOROM          "; // 21 bytes
-    rom[base..base + title.len()].copy_from_slice(title);
-
-    // LoROM mode
-    rom[0x7FD5] = 0x20;
-    rom[0x7FD6] = 0x00; // Cartridge type
-    let rom_size_code = (size as f64 / 2048.0).log2().round() as u8;
-    rom[0x7FD7] = rom_size_code;
-    rom[0x7FD8] = 0x00; // SRAM size
-    rom[0x7FD9] = 0x01; // Country
-    rom[0x7FDA] = 0x33; // License
-    rom[0x7FDB] = 0x00; // Version
-
-    // Checksum
-    let sum: u16 = rom
-        .iter()
-        .enumerate()
-        .filter(|(i, _)| !matches!(*i, 0x7FDC | 0x7FDD | 0x7FDE | 0x7FDF))
-        .map(|(_, &b)| b as u32)
-        .sum::<u32>() as u16;
-    let checksum = sum;
-    let complement = !checksum;
-
-    rom[0x7FDC] = (complement & 0xFF) as u8;
-    rom[0x7FDD] = (complement >> 8) as u8;
-    rom[0x7FDE] = (checksum & 0xFF) as u8;
-    rom[0x7FDF] = (checksum >> 8) as u8;
+    let header = create_valid_header(MappingMode::LoRom);
+    rom[LOROM_HEADER_OFFSET..LOROM_HEADER_OFFSET + header.len()].copy_from_slice(&header);
 
     rom
 }
 
 pub(crate) fn create_valid_hirom(size: usize) -> Vec<u8> {
-    assert!(size >= 0x10000, "ROM must be at least 64KiB");
+    assert!(size >= HIROM_BANK_SIZE, "ROM must be at least 64KiB");
     let mut rom = vec![0u8; size];
 
-    let base = 0xFFC0;
-    let title = b"TEST HIROM          "; // 21 bytes
-    rom[base..base + title.len()].copy_from_slice(title);
-
-    // HiROM mode
-    rom[0xFFD5] = 0x21; // HiROM mapping
-    rom[0xFFD6] = 0x00;
-    let rom_size_code = (size as f64 / 2048.0).log2().round() as u8;
-    rom[0xFFD7] = rom_size_code;
-    rom[0xFFD8] = 0x00;
-    rom[0xFFD9] = 0x01;
-    rom[0xFFDA] = 0x33;
-    rom[0xFFDB] = 0x00;
-
-    let sum: u16 = rom
-        .iter()
-        .enumerate()
-        .filter(|(i, _)| !matches!(*i, 0xFFDC | 0xFFDD | 0xFFDE | 0xFFDF))
-        .map(|(_, &b)| b as u32)
-        .sum::<u32>() as u16;
-    let checksum = sum;
-    let complement = !checksum;
-
-    rom[0xFFDC] = (complement & 0xFF) as u8;
-    rom[0xFFDD] = (complement >> 8) as u8;
-    rom[0xFFDE] = (checksum & 0xFF) as u8;
-    rom[0xFFDF] = (checksum >> 8) as u8;
+    let header = create_valid_header(MappingMode::HiRom);
+    rom[HIROM_HEADER_OFFSET..HIROM_HEADER_OFFSET + header.len()].copy_from_slice(&header);
 
     rom
 }
 
-/// Helper: crée un fichier ROM temporaire avec des données arbitraires
 pub(crate) fn create_temp_rom(data: &[u8]) -> std::path::PathBuf {
     let dir = tempdir().unwrap();
     let rom_path = dir.path().join("test_rom.sfc");
     let mut f = std::fs::File::create(&rom_path).unwrap();
     f.write_all(data).unwrap();
-    std::mem::forget(dir); // éviter suppression du répertoire
+    std::mem::forget(dir); // Avoid directory deletion
     rom_path
 }
