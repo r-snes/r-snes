@@ -62,10 +62,6 @@ impl Rom {
 mod tests {
     use super::*;
 
-    fn make_rom(data: Vec<u8>, map: MappingMode) -> Rom {
-        Rom { data, map }
-    }
-
     #[test]
     fn test_print_rom_header_hirom_with_title() {
         let mut data = vec![0; 0x10000];
@@ -73,7 +69,10 @@ mod tests {
         let title = b"FINAL FANTASY 6 ";
         data[HIROM_HEADER_OFFSET..HIROM_HEADER_OFFSET + title.len()].copy_from_slice(title);
 
-        let rom = make_rom(data, MappingMode::HiRom);
+        let rom = Rom {
+            data: data,
+            map: MappingMode::HiRom,
+        };
 
         rom.print_rom_header();
     }
@@ -81,7 +80,10 @@ mod tests {
     #[test]
     fn test_print_rom_header_hirom() {
         let data = vec![0; 0x10000]; // pas assez pour contenir HEADER_SIZE
-        let rom = make_rom(data, MappingMode::HiRom);
+        let rom = Rom {
+            data: data,
+            map: MappingMode::HiRom,
+        };
 
         rom.print_rom_header();
     }
@@ -89,7 +91,10 @@ mod tests {
     #[test]
     fn test_print_rom_header_lorom() {
         let data = vec![0; 0x10000]; // pas assez pour contenir HEADER_SIZE
-        let rom = make_rom(data, MappingMode::LoRom);
+        let rom = Rom {
+            data: data,
+            map: MappingMode::LoRom,
+        };
 
         rom.print_rom_header();
     }
@@ -97,7 +102,10 @@ mod tests {
     #[test]
     fn test_print_rom_header_unknown() {
         let data = vec![0; 0x10000]; // pas assez pour contenir HEADER_SIZE
-        let rom = make_rom(data, MappingMode::Unknown);
+        let rom = Rom {
+            data: data,
+            map: MappingMode::Unknown,
+        };
 
         rom.print_rom_header();
     }
@@ -105,7 +113,10 @@ mod tests {
     #[test]
     fn test_print_rom_header_lorom_too_small() {
         let data = vec![0; LOROM_HEADER_OFFSET]; // pas assez pour contenir HEADER_SIZE
-        let rom = make_rom(data, MappingMode::LoRom);
+        let rom = Rom {
+            data: data,
+            map: MappingMode::LoRom,
+        };
 
         rom.print_rom_header();
     }

@@ -51,11 +51,6 @@ impl Rom {
         })
     }
 
-    #[allow(dead_code)]
-    pub fn new(data: Vec<u8>, map: MappingMode) -> Self {
-        Self { data, map }
-    }
-
     fn panic_invalid_addr(addr: SnesAddress) -> ! {
         panic!(
             "Incorrect access to the ROM at address: {:02X}{:04X}",
@@ -368,7 +363,11 @@ mod tests {
     #[test]
     #[should_panic(expected = "ROM mapping mode is Unknown")]
     fn test_to_offset_unknown_panics() {
-        let rom = Rom::new(vec![0; LOROM_BANK_SIZE], MappingMode::Unknown);
+        let rom = Rom {
+            data: vec![0; LOROM_BANK_SIZE],
+            map: MappingMode::Unknown,
+        };
+
         rom.to_offset(SnesAddress {
             bank: 0x00,
             addr: 0x8000,
