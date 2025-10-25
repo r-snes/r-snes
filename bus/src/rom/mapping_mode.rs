@@ -4,9 +4,22 @@ use crate::constants::{
 };
 use std::cmp::Ordering;
 
+/// Represents the memory mapping mode of a SNES ROM.
+///  
+/// SNES cartridges can be mapped in different ways depending on how the
+/// ROM is organized. This affects how the CPU addresses the ROM contents.
 #[derive(PartialEq, Debug)]
 pub enum MappingMode {
+    /// LoROM (Low ROM) mapping mode.
+    ///
+    /// In LoROM, the CPU accesses the ROM in 32 KiB chunks starting at
+    /// $8000 in each banks from $00–$7D and $80–$FF
     LoRom,
+
+    /// HiROM (High ROM) mapping mode.
+    ///
+    /// In HiROM, the CPU can access the ROM in 64 KiB banks starting
+    /// at $0000 of banks from $4–$7D and $C0–$FF.
     HiRom,
 }
 
