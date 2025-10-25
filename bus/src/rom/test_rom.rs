@@ -5,6 +5,7 @@ use crate::constants::{
     HEADER_SIZE, HIROM_BANK_SIZE, HIROM_HEADER_OFFSET, LOROM_BANK_SIZE, LOROM_HEADER_OFFSET,
 };
 use crate::rom::mapping_mode::MappingMode;
+use common::u16_split::*;
 use std::io::Write;
 use tempfile::tempdir;
 
@@ -32,10 +33,10 @@ pub(crate) fn create_valid_header(map: MappingMode) -> Vec<u8> {
     let checksum: u16 = 0xFFFF;
     let complement: u16 = !checksum;
 
-    header[28] = (complement & 0xFF) as u8;
-    header[29] = (complement >> 8) as u8;
-    header[30] = (checksum & 0xFF) as u8;
-    header[31] = (checksum >> 8) as u8;
+    header[28] = *complement.lo();
+    header[29] = *complement.hi();
+    header[30] = *checksum.lo();
+    header[31] = *checksum.hi();
 
     // Interruption Vectors (empty)
     header[32..HEADER_SIZE - 1].fill(0);
