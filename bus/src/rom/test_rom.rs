@@ -12,7 +12,7 @@ use tempfile::tempdir;
 pub(crate) fn create_valid_header(map: MappingMode) -> Vec<u8> {
     let mut header = vec![0u8; HEADER_SIZE];
 
-    let title = b"TEST LOROM           "; // 21 bytes
+    let title: &[u8; 21] = b"TEST LOROM           "; // 21 bytes
     debug_assert!(title.len() == 21);
     header[0..21].copy_from_slice(title);
 
