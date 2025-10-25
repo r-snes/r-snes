@@ -23,10 +23,9 @@ impl Io {
     }
 
     fn panic_invalid_addr(addr: SnesAddress) -> ! {
-        // TODO: Just print with usize when SnesAddress PR is merged
         panic!(
-            "Incorrect access to the IO at address: {:02X}{:04X}",
-            addr.bank, addr.addr
+            "Incorrect access to the IO at address: {:06X}",
+            usize::from(addr)
         );
     }
 
@@ -59,7 +58,7 @@ impl MemoryRegion for Io {
     fn read(&self, addr: SnesAddress) -> u8 {
         let offset = Self::to_offset(addr);
 
-        return self.data.get(offset).copied().expect(&format!(
+        return *self.data.get(offset).expect(&format!(
             "ERROR: Couldn't extract value from IO at address: {:06X}",
             usize::from(addr)
         ));

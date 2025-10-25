@@ -54,8 +54,8 @@ impl Rom {
 
     fn panic_invalid_addr(addr: SnesAddress) -> ! {
         panic!(
-            "Incorrect access to the ROM at address: {:02X}{:04X}",
-            addr.bank, addr.addr
+            "Incorrect access to the ROM at address: {:06X}",
+            usize::from(addr)
         );
     }
 
@@ -167,7 +167,7 @@ impl MemoryRegion for Rom {
     fn read(&self, addr: SnesAddress) -> u8 {
         let offset = self.to_offset(addr);
 
-        return self.data.get(offset).copied().expect(&format!(
+        return *self.data.get(offset).expect(&format!(
             "ERROR: Couldn't extract value from ROM at address: {:06X}",
             usize::from(addr)
         ));
