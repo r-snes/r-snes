@@ -4,7 +4,12 @@ use proc_macro2 as pm2;
 /// Enum for all the meta instructions implemented for the CPU
 /// meta-language.
 pub(crate) enum MetaInstruction {
+    /// Manually delimit the end of a cycle,
+    /// with the CycleResult (cycle type) produced by the token stream
     EndCycle(TokenStream),
+
+    /// Manually delimit the end of an instruction. Also adds a cycle boundary,
+    /// with the CycleResult (cycle type) produced by the token stream
     EndInstr(TokenStream),
 }
 
@@ -48,7 +53,10 @@ impl MetaInstruction {
 /// Type resulting from the parsing of the token stream passed
 /// as parameter to the [`cpu_instr`] proc macro.
 pub(crate) struct Instr {
+    /// Name of the instruction (e.g. clv, inx, ldx_imm, jmp_abs)
     pub name: Ident,
+
+    /// Cycles of the instruction (does not include the opcode fetch cycle)
     pub cycles: Vec<Cycle>,
 }
 
@@ -102,6 +110,7 @@ impl TryFrom<TokenStream> for Instr {
         }
         Ok(ret)
     }
+
     type Error = &'static str;
 }
 
