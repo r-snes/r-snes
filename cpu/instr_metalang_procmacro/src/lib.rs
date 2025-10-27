@@ -2,7 +2,7 @@ mod parser;
 
 use parser::{Cycle, Instr};
 use proc_macro2::TokenStream;
-use quote::{format_ident, quote};
+use quote::{format_ident, quote, ToTokens};
 
 /// Function that actually implements all the logic for the proc macro,
 /// using the types provided by the `proc_macro2` crate, which have the
@@ -10,7 +10,7 @@ use quote::{format_ident, quote};
 /// have more utilities built around them, which makes unit-testing easier,
 /// among many other things.
 pub(crate) fn cpu_instr2(input: TokenStream) -> TokenStream {
-    let Instr { name, cycles } = match parser::Instr::try_from(input) {
+    let Instr { name, cycles, post_instr} = match parser::Instr::try_from(input) {
         Ok(instr) => instr,
         Err(msg) => panic!("{}", msg),
     };
@@ -20,10 +20,21 @@ pub(crate) fn cpu_instr2(input: TokenStream) -> TokenStream {
         .enumerate()
         .map(|(i, Cycle { body, cyc_type })| {
             let func_name = format_ident!("{}_cyc{}", name, i + 1);
-            let next_func_name = if i != cycles.len() - 1 {
-                format_ident!("{}_cyc{}", name, i + 2)
+            let next_func_name: TokenStream = if i != cycles.len() - 1 {
+                format_ident!("{}_cyc{}", name, i + 2).into_token_stream()
             } else {
-                format_ident!("opcode_fetch")
+                if post_instr.is_empty() {
+                    format_ident!("opcode_fetch").into_token_stream()
+                } else {
+                    // inject the post-instr code in closure before returning to
+                    // the opcode fetch.
+                    quote! {
+                        |cpu| {
+                            #post_instr
+                            opcode_fetch(cpu)
+                        }
+                    }
+                }
             };
 
             quote! {

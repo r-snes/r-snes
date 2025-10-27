@@ -65,6 +65,17 @@ pub(crate) struct Instr {
 
     /// Cycles of the instruction (does not include the opcode fetch cycle)
     pub cycles: Vec<Cycle>,
+
+    /// "Post-instruction" code: some code related to this instruction
+    /// which needs to be run at the start of the next instruction.
+    ///
+    /// This is typically required when the last cycle of an
+    /// instruction is a Read cycle, but the instruction needs to do
+    /// something with the read value (e.g. placing it in a register).
+    /// The problem is that the value will be injected between cycles, and
+    /// will only be available at the start of the next cycle. So this code
+    /// will be run at the beginning of the next opcode fetch cycle.
+    pub post_instr: TokenStream,
 }
 
 impl Instr {
@@ -72,6 +83,7 @@ impl Instr {
         Self {
             name,
             cycles: vec![],
+            post_instr: TokenStream::new(),
         }
     }
 }
@@ -97,6 +109,10 @@ impl TryFrom<TokenStream> for Instr {
 
             current_cyc_body.extend(it.take_while(|token| token.to_string() != "meta"));
 
+            if it.peek().is_none() {
+                break;
+            }
+
             let meta_instr = MetaInstruction::try_from(it.take_while(|token| {
                 let TokenTree::Punct(p) = token else {
                     return true;
@@ -108,11 +124,8 @@ impl TryFrom<TokenStream> for Instr {
 
             ret.cycles.extend(cycs);
             current_cyc_body = new_body;
-
-            if it.peek().is_none() {
-                break;
-            }
         }
+        ret.post_instr = current_cyc_body;
         Ok(ret)
     }
 
