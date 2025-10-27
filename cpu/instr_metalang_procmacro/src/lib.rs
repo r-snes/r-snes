@@ -62,8 +62,8 @@ pub(crate) fn cpu_instr2(input: TokenStream) -> TokenStream {
 /// followed by a meta-instruction name (usually in all uppercase),
 /// followed by operands and then a semicolon.
 ///
-/// The two basic meta-instructions are `END_CYCLE` and `END_INSTR`,
-/// which both an cycle type as parameter, and act as cycle delimiters;
+/// The most fundamental meta-instruction is `END_CYCLE`,
+/// which taks a cycle type as parameter, and act as a cycle delimiter;
 /// resulting in a separate function for each cycle.
 ///
 /// For a reference of the available meta-instructions
@@ -108,7 +108,7 @@ mod test {
                 cpu.registers.P.Z = cpu.registers.X == 0;
                 cpu.registers.P.N = cpu.registers.X > 0x7fff;
 
-                meta END_INSTR Internal;
+                meta END_CYCLE Internal;
             }),
             quote!(
                 pub(crate) fn instr_inx_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
@@ -133,7 +133,7 @@ mod test {
                 meta END_CYCLE Read;
 
                 some_function3(cpu);
-                meta END_INSTR Write;
+                meta END_CYCLE Write;
             }),
             quote!(
                 pub(crate) fn some_instr_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
@@ -161,7 +161,7 @@ mod test {
             quote!(test_instr {
                 meta END_CYCLE if 1 == 0 { Internal } else { Read };
 
-                meta END_INSTR some_func_which_determines_cyc_type();
+                meta END_CYCLE some_func_which_determines_cyc_type();
             }),
             quote!(
                 pub(crate) fn test_instr_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {

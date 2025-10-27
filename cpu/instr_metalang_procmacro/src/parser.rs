@@ -7,21 +7,9 @@ pub(crate) enum MetaInstruction {
     /// Manually delimit the end of a cycle,
     /// with the CycleResult (cycle type) produced by the token stream
     EndCycle(TokenStream),
-
-    /// Manually delimit the end of an instruction. Also adds a cycle boundary,
-    /// with the CycleResult (cycle type) produced by the token stream
-    EndInstr(TokenStream),
 }
 
 impl MetaInstruction {
-    /// Method which checks if this instr is a `EndInstr`
-    fn is_end_instr(&self) -> bool {
-        match self {
-            Self::EndInstr(_) => true,
-            _ => false,
-        }
-    }
-
     /// Conversion from a Token iterator  
     ///
     /// The input [`value`] contains all tokens between (excluding)
@@ -37,7 +25,6 @@ impl MetaInstruction {
         };
         let ret = match meta_kw.to_string().as_str() {
             "END_CYCLE" => MetaInstruction::EndCycle(it.by_ref().collect()),
-            "END_INSTR" => MetaInstruction::EndInstr(it.by_ref().collect()),
 
             _ => Err("Unknown meta-keyword")?,
         };
@@ -62,10 +49,6 @@ impl MetaInstruction {
 
         match self {
             Self::EndCycle(cyctype) => {
-                cycles = vec![Cycle::new(current_cyc_body, cyctype)];
-                ts = TokenStream::new();
-            }
-            Self::EndInstr(cyctype) => {
                 cycles = vec![Cycle::new(current_cyc_body, cyctype)];
                 ts = TokenStream::new();
             }
@@ -120,10 +103,6 @@ impl TryFrom<TokenStream> for Instr {
                 };
                 return p.as_char() != ';';
             }))?;
-
-            if it.peek().is_none() && !meta_instr.is_end_instr() {
-                Err("Instructions must end by an END_INSTR meta instruction")?
-            }
 
             let (cycs, new_body) = meta_instr.expand(current_cyc_body);
 
