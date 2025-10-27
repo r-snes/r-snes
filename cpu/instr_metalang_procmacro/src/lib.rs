@@ -185,4 +185,24 @@ mod test {
             ),
         );
     }
+
+    #[test]
+    fn post_cycle_code() {
+        assert_macro_produces(
+            quote!(test_instr {
+                meta END_CYCLE Read;
+
+                cpu.registers.X = cpu.data_bus as u16;
+            }),
+            quote!(
+                pub(crate) fn test_instr_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
+                    (Read, InstrCycle(|cpu| {
+                        cpu.registers.X = cpu.data_bus as u16;
+
+                        opcode_fetch(cpu)
+                    }))
+                }
+            ),
+        );
+    }
 }
