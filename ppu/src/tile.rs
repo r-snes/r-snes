@@ -2,7 +2,7 @@ use image::{Rgba};
 use crate::ppu::PPU;
 use crate::utils::{TILE_SIZE};
 
-pub fn load_and_split_image(path: &str) -> (Vec<Vec<Rgba<u8>>>, usize) {
+pub fn load_and_split_image(path: &str) -> Vec<Vec<Rgba<u8>>> {
     let img = image::open(path).expect("[ERR::ImageLoad] Failed to load image file.");
     let img = img.to_rgba8();
     let width = img.width() as usize;
@@ -35,7 +35,7 @@ pub fn load_and_split_image(path: &str) -> (Vec<Vec<Rgba<u8>>>, usize) {
         }
     }
 
-    (tiles, width)
+    tiles
 }
 
 pub fn load_tiles_into_vram(ppu: &mut PPU, tiles: &Vec<Vec<Rgba<u8>>>) {
@@ -65,6 +65,7 @@ pub fn load_tiles_into_vram(ppu: &mut PPU, tiles: &Vec<Vec<Rgba<u8>>>) {
     }
 }
 
+#[allow(dead_code)] // Will be used when VRAM/memory is linked (may need changes later)
 pub fn get_tile_from_vram(ppu: &PPU, tile_index: usize) -> Vec<u32> {
     let mut tile_pixels = Vec::new();
     let base_addr = tile_index * TILE_SIZE * TILE_SIZE;
@@ -74,11 +75,25 @@ pub fn get_tile_from_vram(ppu: &PPU, tile_index: usize) -> Vec<u32> {
             let addr = base_addr + y * TILE_SIZE + x;
             let palette_index = ppu.read_vram(addr);
 
-            // Get color from CGRAM
             let argb = ppu.read_cgram(palette_index);
             tile_pixels.push(argb);
         }
     }
 
     tile_pixels
+}
+
+pub fn get_tile_indices_from_vram(ppu: &PPU, tile_index: usize) -> Vec<u8> {
+    let mut indices = Vec::with_capacity(TILE_SIZE * TILE_SIZE);
+    let base_addr = tile_index * TILE_SIZE * TILE_SIZE;
+
+    for y in 0..TILE_SIZE {
+        for x in 0..TILE_SIZE {
+            let addr = base_addr + y * TILE_SIZE + x;
+            let palette_index = ppu.read_vram(addr);
+            indices.push(palette_index);
+        }
+    }
+
+    indices
 }
