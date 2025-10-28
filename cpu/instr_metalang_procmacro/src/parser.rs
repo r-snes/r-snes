@@ -43,17 +43,15 @@ impl MetaInstruction {
     /// and return it in a new cycle, and optionnally add more cycles.
     /// It is also possible that a meta-instruction both expands to 1 or more cycles
     /// and returns the body of the following (net yet complete) cycle
-    fn expand(self, current_cyc_body: TokenStream) -> (Vec<Cycle>, TokenStream) {
-        let cycles;
-        let ts;
+    fn expand(self) -> InstrBody {
+        let mut ret = InstrBody::default();
 
         match self {
             Self::EndCycle(cyctype) => {
-                cycles = vec![Cycle::new(current_cyc_body, cyctype)];
-                ts = TokenStream::new();
+                ret.cycles = vec![Cycle::new(TokenStream::new(), cyctype)];
             }
         }
-        (cycles, ts)
+        ret
     }
 }
 
@@ -88,11 +86,10 @@ impl TryFrom<TokenStream> for Instr {
 
         let mut it = body.stream().into_iter().peekable();
         let mut ret = Instr::new(name);
-        let mut current_cyc_body = TokenStream::new();
         loop {
             let it = it.by_ref();
 
-            current_cyc_body.extend(it.take_while(|token| token.to_string() != "meta"));
+            ret.body.post_instr.extend(it.take_while(|token| token.to_string() != "meta"));
 
             if it.peek().is_none() {
                 break;
@@ -105,12 +102,8 @@ impl TryFrom<TokenStream> for Instr {
                 return p.as_char() != ';';
             }))?;
 
-            let (cycs, new_body) = meta_instr.expand(current_cyc_body);
-
-            ret.body.cycles.extend(cycs);
-            current_cyc_body = new_body;
+            ret.body += meta_instr.expand();
         }
-        ret.body.post_instr = current_cyc_body;
         Ok(ret)
     }
 
@@ -134,6 +127,34 @@ pub(crate) struct InstrBody {
     /// will only be available at the start of the next cycle. So this code
     /// will be run at the beginning of the next opcode fetch cycle.
     pub post_instr: TokenStream,
+}
+
+// impl which allows us to use +=
+impl std::ops::AddAssign for InstrBody {
+    /// Concatenates an InstrBody to [`self`].
+    /// [`self`] remains first after concatenation. [`self.post_instr`] will be
+    /// prepended to the RHS's first cycle, or to the RHS's post_instr
+    /// if it doesn't have any cycles.
+    fn add_assign(&mut self, mut other: Self) {
+        if other.cycles.is_empty() {
+            // simple case: no cycle vec to merge, just join the post_instrs
+            self.post_instr.extend(other.post_instr);
+            return;
+        }
+
+        // swap out self.post_instr with other.post_instr, such that
+        // self.post_instr can be worked with later, and placing
+        // other.post_instr already where it needs to be in the end
+        let old_postinstr = std::mem::replace(&mut self.post_instr, other.post_instr);
+
+        // swap out the first cycle body of the other InstrBody for our current
+        // post_instr, and then glue it back *after* our current post_instr
+        let second_firstcycle = std::mem::replace(&mut other.cycles[0].body, old_postinstr);
+        other.cycles[0].body.extend(second_firstcycle);
+
+        // finally merge the two cycle vectors
+        self.cycles.extend(other.cycles);
+    }
 }
 
 /// Data structure which contains the info required to build
