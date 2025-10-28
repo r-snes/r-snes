@@ -1,6 +1,6 @@
 mod parser;
 
-use parser::{Cycle, Instr};
+use parser::{Cycle, Instr, InstrBody};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote, ToTokens};
 
@@ -10,7 +10,7 @@ use quote::{format_ident, quote, ToTokens};
 /// have more utilities built around them, which makes unit-testing easier,
 /// among many other things.
 pub(crate) fn cpu_instr2(input: TokenStream) -> TokenStream {
-    let Instr { name, cycles, post_instr} = match parser::Instr::try_from(input) {
+    let Instr { name, body: InstrBody { cycles, post_instr } } = match parser::Instr::try_from(input) {
         Ok(instr) => instr,
         Err(msg) => panic!("{}", msg),
     };
