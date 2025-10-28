@@ -6,4 +6,4 @@
 
 pub(crate) use instr_metalang_procmacro::cpu_instr;
 pub(crate) use crate::instrs::instr_tab::{InstrCycle, opcode_fetch};
-pub(crate) use crate::cpu::{CPU, CycleResult};
+pub(crate) use crate::cpu::{CPU, CycleResult, CycleResult::*};
