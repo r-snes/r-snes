@@ -63,28 +63,13 @@ pub(crate) struct Instr {
     /// Name of the instruction (e.g. clv, inx, ldx_imm, jmp_abs)
     pub name: Ident,
 
-    /// Cycles of the instruction (does not include the opcode fetch cycle)
-    pub cycles: Vec<Cycle>,
-
-    /// "Post-instruction" code: some code related to this instruction
-    /// which needs to be run at the start of the next instruction.
-    ///
-    /// This is typically required when the last cycle of an
-    /// instruction is a Read cycle, but the instruction needs to do
-    /// something with the read value (e.g. placing it in a register).
-    /// The problem is that the value will be injected between cycles, and
-    /// will only be available at the start of the next cycle. So this code
-    /// will be run at the beginning of the next opcode fetch cycle.
-    pub post_instr: TokenStream,
+    /// Body of the instruction, incuding potential post-instr code
+    pub body: InstrBody,
 }
 
 impl Instr {
     fn new(name: Ident) -> Self {
-        Self {
-            name,
-            cycles: vec![],
-            post_instr: TokenStream::new(),
-        }
+        Self { name, body: InstrBody::default() }
     }
 }
 
@@ -122,14 +107,33 @@ impl TryFrom<TokenStream> for Instr {
 
             let (cycs, new_body) = meta_instr.expand(current_cyc_body);
 
-            ret.cycles.extend(cycs);
+            ret.body.cycles.extend(cycs);
             current_cyc_body = new_body;
         }
-        ret.post_instr = current_cyc_body;
+        ret.body.post_instr = current_cyc_body;
         Ok(ret)
     }
 
     type Error = &'static str;
+}
+
+/// Body of an instruction: one or more cycles and potential
+/// post-instruction code
+#[derive(Default)]
+pub(crate) struct InstrBody {
+    /// Cycles of the instruction (does not include the opcode fetch cycle)
+    pub cycles: Vec<Cycle>,
+
+    /// "Post-instruction" code: some code related to this instruction
+    /// which needs to be run at the start of the next instruction.
+    ///
+    /// This is typically required when the last cycle of an
+    /// instruction is a Read cycle, but the instruction needs to do
+    /// something with the read value (e.g. placing it in a register).
+    /// The problem is that the value will be injected between cycles, and
+    /// will only be available at the start of the next cycle. So this code
+    /// will be run at the beginning of the next opcode fetch cycle.
+    pub post_instr: TokenStream,
 }
 
 /// Data structure which contains the info required to build
