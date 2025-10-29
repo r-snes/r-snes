@@ -1,5 +1,6 @@
 use pm2::{Ident, TokenStream, TokenTree};
 use proc_macro2 as pm2;
+use quote::quote;
 
 /// Enum for all the meta instructions implemented for the CPU
 /// meta-language.
@@ -7,6 +8,41 @@ pub(crate) enum MetaInstruction {
     /// Manually delimit the end of a cycle,
     /// with the CycleResult (cycle type) produced by the token stream
     EndCycle(TokenStream),
+
+    /// Creates a read cycle at the current address bus
+    /// and assigns the value set in the data into the token
+    /// stream passed as parameter in the next cycle.
+    ///
+    /// `meta FETCH8_INTO <tokstream>;` is strictly equivalent to
+    /// `meta END_CYCLE Read; <tokstream> = cpu.data_bus;`
+    Fetch8Into(TokenStream),
+
+    /// Fetch a byte from the address at PB:PC
+    Fetch8ImmNoIncPC,
+
+    /// Fetch a byte from the address at PB:PC, and increment PC
+    Fetch8Imm,
+
+    /// Fetch a byte from the address at PB:PC,
+    /// and assign into <tokstream>, similar to [`Fetch8Into`]
+    Fetch8ImmNoIncPCInto(TokenStream),
+
+    /// Fetch a byte from the address at PB:PC, and increment PC,
+    /// and assign into <tokstream>, similar to [`Fetch8Into`]
+    Fetch8ImmInto(TokenStream),
+
+    /// Fetch two bytes from the current address bus
+    /// (and the current address bus + 1) into the u16
+    /// contained in <tokstream>
+    Fetch16Into(TokenStream),
+
+    /// Fetch two bytes at PB:PC (and PB:PC + 1) into
+    /// the u16 contained in <tokstream>
+    Fetch16ImmNoIncPCInto(TokenStream),
+
+    /// Fetch two bytes at PB:PC (and PB:PC + 1) into
+    /// the u16 contained in <tokstream>, and increment PC by two
+    Fetch16ImmInto(TokenStream),
 }
 
 impl MetaInstruction {
@@ -25,6 +61,14 @@ impl MetaInstruction {
         };
         let ret = match meta_kw.to_string().as_str() {
             "END_CYCLE" => MetaInstruction::EndCycle(it.by_ref().collect()),
+            "FETCH8_INTO" => MetaInstruction::Fetch8Into(it.by_ref().collect()),
+            "FETCH8_IMM_NOINCPC" => MetaInstruction::Fetch8ImmNoIncPC,
+            "FETCH8_IMM" => MetaInstruction::Fetch8Imm,
+            "FETCH8_IMM_NOINCPC_INTO" => MetaInstruction::Fetch8ImmNoIncPCInto(it.by_ref().collect()),
+            "FETCH8_IMM_INTO" => MetaInstruction::Fetch8ImmInto(it.by_ref().collect()),
+            "FETCH16_INTO" => MetaInstruction::Fetch16Into(it.by_ref().collect()),
+            "FETCH16_IMM_NOINCPC_INTO" => MetaInstruction::Fetch16ImmNoIncPCInto(it.by_ref().collect()),
+            "FETCH16_IMM_INTO" => MetaInstruction::Fetch16ImmInto(it.by_ref().collect()),
 
             _ => Err("Unknown meta-keyword")?,
         };
@@ -49,6 +93,57 @@ impl MetaInstruction {
         match self {
             Self::EndCycle(cyctype) => {
                 ret.cycles = vec![Cycle::new(TokenStream::new(), cyctype)];
+            }
+            Self::Fetch8Into(dest) => {
+                ret.cycles = vec![Cycle::new(TokenStream::new(), quote! { Read })];
+                ret.post_instr = quote!{ #dest = cpu.data_bus; };
+            }
+            Self::Fetch8ImmNoIncPC => {
+                ret.cycles = vec![Cycle::new(
+                    quote! {
+                        cpu.addr_bus.bank = cpu.registers.PB;
+                        cpu.addr_bus.addr = cpu.registers.PC;
+                    },
+                    quote! { Read },
+                )];
+            }
+            Self::Fetch8Imm => {
+                ret = Self::Fetch8ImmNoIncPC.expand();
+                ret.cycles[0].body.extend(quote! {
+                    cpu.registers.PC = cpu.registers.wrapping_add(1);
+                });
+            }
+            Self::Fetch8ImmNoIncPCInto(into) => {
+                ret = Self::Fetch8ImmNoIncPC.expand();
+                ret += InstrBody::post(quote! {
+                    #into = cpu.data_bus;
+                });
+            }
+            Self::Fetch8ImmInto(into) => {
+                ret = Self::Fetch8Imm.expand();
+                ret += InstrBody::post(quote! {
+                    #into = cpu.data_bus;
+                });
+            }
+            Self::Fetch16Into(into) => {
+                ret = Self::Fetch8Into(quote! { *#into.lo_mut() }).expand();
+                ret += InstrBody::post(quote! {
+                    cpu.addr_bus.addr = cpu.addr_bus.addr.wrapping_add(1);
+                });
+                ret += Self::Fetch8Into(quote! { *#into.hi_mut() }).expand();
+            }
+            Self::Fetch16ImmNoIncPCInto(into) => {
+                ret.post_instr = quote! {
+                    cpu.addr_bus.bank = cpu.registers.PB;
+                    cpu.addr_bus.addr = cpu.registers.PC;
+                };
+                ret += Self::Fetch16Into(into).expand();
+            }
+            Self::Fetch16ImmInto(into) => {
+                ret = Self::Fetch16ImmNoIncPCInto(into).expand();
+                ret += InstrBody::post(quote! {
+                    cpu.registers.PC = cpu.registers.PC.wrapping_add(2);
+                });
             }
         }
         ret
@@ -154,6 +249,20 @@ impl std::ops::AddAssign for InstrBody {
 
         // finally merge the two cycle vectors
         self.cycles.extend(other.cycles);
+    }
+}
+
+impl InstrBody {
+    pub fn new(cycles: Vec<Cycle>, post_instr: TokenStream) -> Self {
+        Self { cycles, post_instr }
+    }
+
+    pub fn cycles(cycles: Vec<Cycle>) -> Self {
+        Self::new(cycles, TokenStream::new())
+    }
+
+    pub fn post(post_instr: TokenStream) -> Self {
+        Self::new(vec![], post_instr)
     }
 }
 
