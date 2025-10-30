@@ -2,6 +2,18 @@ use image::Rgba;
 use crate::ppu::PPU;
 use crate::constants::*;
 
+/// Loads an image from a file and splits it into tiles of size TILE_SIZE x TILE_SIZE
+///
+/// This function reads the image at the given path, converts it to RGBA format,
+/// and splits it into a vector of tiles. Each tile is a `Vec<Rgba<u8>>` containing
+/// the pixel colors in row-major order
+///
+/// # Parameters
+/// - `path`: Path to the image file (supports any format supported by the `image` crate)
+///
+/// # Returns
+/// A `Vec<Vec<Rgba<u8>>>` containing all tiles extracted from the image
+/// Each inner vector contains TILE_SIZE * TILE_SIZE pixels
 pub fn load_and_split_image(path: &str) -> Vec<Vec<Rgba<u8>>> {
     let img = image::open(path).expect("[ERR::ImageLoad] Failed to load image file.");
     let img = img.to_rgba8();
@@ -30,6 +42,17 @@ pub fn load_and_split_image(path: &str) -> Vec<Vec<Rgba<u8>>> {
     tiles
 }
 
+/// Loads a list of tiles into the PPU's VRAM
+///
+/// This function takes each tile (as returned by `load_and_split_image`) and writes
+/// its pixel data into VRAM. The pixel's red channel is used as a temporary palette index
+///
+/// # Parameters
+/// - `ppu`: Mutable reference to the PPU instance, where the tiles will be loaded
+/// - `tiles`: A vector of tiles, each containing TILE_SIZE * TILE_SIZE pixels in RGBA format
+///
+/// # Notes
+/// - Currently only the red channel of each pixel is used as a fake palette index
 pub fn load_tiles_into_vram(ppu: &mut PPU, tiles: &Vec<Vec<Rgba<u8>>>) {
     for (tile_index, tile) in tiles.iter().enumerate() {
         let base_addr = tile_index * TILE_SIZE * TILE_SIZE;
@@ -46,7 +69,7 @@ pub fn load_tiles_into_vram(ppu: &mut PPU, tiles: &Vec<Vec<Rgba<u8>>>) {
         for y in 0..TILE_SIZE {
             for x in 0..TILE_SIZE {
                 let pixel = &tile[y * TILE_SIZE + x];
-                let value = pixel[0] >> 2;
+                let value = pixel[0] >> 2; // Red channel as palette index
                 let addr = base_addr + y * TILE_SIZE + x;
                 ppu.write_vram(addr, value);
             }
