@@ -2,6 +2,18 @@ use pm2::{Ident, TokenStream, TokenTree};
 use proc_macro2 as pm2;
 use quote::quote;
 
+/// Data describing the status of the parser at any point in parsing
+#[derive(Copy, Clone, Debug)]
+pub(crate) struct ParserStatus {
+}
+
+impl Default for ParserStatus {
+    fn default() -> Self {
+        Self {
+        }
+    }
+}
+
 /// Enum for all the meta instructions implemented for the CPU
 /// meta-language.
 pub(crate) enum MetaInstruction {
@@ -92,7 +104,7 @@ impl MetaInstruction {
     /// and return it in a new cycle, and optionnally add more cycles.
     /// It is also possible that a meta-instruction both expands to 1 or more cycles
     /// and returns the body of the following (net yet complete) cycle
-    fn expand(self) -> InstrBody {
+    fn expand(self, pstatus: &mut ParserStatus) -> InstrBody {
         let mut ret = InstrBody::default();
 
         match self {
@@ -110,40 +122,40 @@ impl MetaInstruction {
                 ret.post_instr = quote!{ #dest = cpu.data_bus; };
             }
             Self::Fetch8ImmNoIncPC => {
-                ret = Self::SetAddrModeImmediate.expand();
+                ret = Self::SetAddrModeImmediate.expand(pstatus);
                 ret += InstrBody::cycles(vec![Cycle::new( quote! {}, quote! { Read })]);
             }
             Self::Fetch8Imm => {
-                ret = Self::Fetch8ImmNoIncPC.expand();
+                ret = Self::Fetch8ImmNoIncPC.expand(pstatus);
                 ret.cycles[0].body.extend(quote! {
                     cpu.registers.PC = cpu.registers.wrapping_add(1);
                 });
             }
             Self::Fetch8ImmNoIncPCInto(into) => {
-                ret = Self::Fetch8ImmNoIncPC.expand();
+                ret = Self::Fetch8ImmNoIncPC.expand(pstatus);
                 ret += InstrBody::post(quote! {
                     #into = cpu.data_bus;
                 });
             }
             Self::Fetch8ImmInto(into) => {
-                ret = Self::Fetch8Imm.expand();
+                ret = Self::Fetch8Imm.expand(pstatus);
                 ret += InstrBody::post(quote! {
                     #into = cpu.data_bus;
                 });
             }
             Self::Fetch16Into(into) => {
-                ret = Self::Fetch8Into(quote! { *#into.lo_mut() }).expand();
+                ret = Self::Fetch8Into(quote! { *#into.lo_mut() }).expand(pstatus);
                 ret += InstrBody::post(quote! {
                     cpu.addr_bus.addr = cpu.addr_bus.addr.wrapping_add(1);
                 });
-                ret += Self::Fetch8Into(quote! { *#into.hi_mut() }).expand();
+                ret += Self::Fetch8Into(quote! { *#into.hi_mut() }).expand(pstatus);
             }
             Self::Fetch16ImmNoIncPCInto(into) => {
-                ret = Self::SetAddrModeImmediate.expand();
-                ret += Self::Fetch16Into(into).expand();
+                ret = Self::SetAddrModeImmediate.expand(pstatus);
+                ret += Self::Fetch16Into(into).expand(pstatus);
             }
             Self::Fetch16ImmInto(into) => {
-                ret = Self::Fetch16ImmNoIncPCInto(into).expand();
+                ret = Self::Fetch16ImmNoIncPCInto(into).expand(pstatus);
                 ret += InstrBody::post(quote! {
                     cpu.registers.PC = cpu.registers.PC.wrapping_add(2);
                 });
@@ -167,10 +179,10 @@ impl Instr {
     fn new(name: Ident) -> Self {
         Self { name, body: InstrBody::default() }
     }
-}
 
-impl TryFrom<TokenStream> for Instr {
-    fn try_from(stream: TokenStream) -> Result<Self, Self::Error> {
+    pub fn parse(stream: TokenStream) -> Result<Self, &'static str> {
+        let mut pstatus = ParserStatus::default();
+
         let mut it = stream.into_iter();
         let Some(TokenTree::Ident(name)) = it.next() else {
             Err("Expecting the instruction name")?
@@ -200,12 +212,10 @@ impl TryFrom<TokenStream> for Instr {
                 return p.as_char() != ';';
             }))?;
 
-            ret.body += meta_instr.expand();
+            ret.body += meta_instr.expand(&mut pstatus);
         }
         Ok(ret)
     }
-
-    type Error = &'static str;
 }
 
 /// Body of an instruction: one or more cycles and potential
