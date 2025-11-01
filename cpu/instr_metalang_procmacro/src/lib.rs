@@ -10,7 +10,7 @@ use quote::{format_ident, quote, ToTokens};
 /// have more utilities built around them, which makes unit-testing easier,
 /// among many other things.
 pub(crate) fn cpu_instr2(input: TokenStream) -> TokenStream {
-    let Instr { name, body: InstrBody { cycles, post_instr } } = match parser::Instr::try_from(input) {
+    let Instr { name, body: InstrBody { cycles, post_instr } } = match parser::Instr::parse(input) {
         Ok(instr) => instr,
         Err(msg) => panic!("{}", msg),
     };
