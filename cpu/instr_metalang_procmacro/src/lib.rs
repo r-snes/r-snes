@@ -233,7 +233,7 @@ mod test {
             }),
             quote!(
                 pub(crate) fn test_instr_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
-                    cpu.registers.PC = cpu.registers.PC.wrapping_add(1);
+                    cpu.registers.PC = cpu.registers.PC.wrapping_add(1u16);
                     call_func1();
 
                     (Internal, InstrCycle(test_instr_cyc2))
