@@ -47,3 +47,205 @@ cpu_instr_no_inc_pc!(jml {
     cpu.addr_bus.addr = cpu.addr_bus.addr.wrapping_add(1);
     meta FETCH8_INTO cpu.registers.PB;
 });
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::instrs::test_prelude::*;
+
+    #[test]
+    fn test_jump_absolute() {
+        let mut regs = Registers::default();
+        regs.PB = 0x12;
+        regs.PC = 0x3456;
+        let mut expected_regs = regs.clone();
+
+        let mut cpu = CPU::new(regs);
+
+        expect_opcode_fetch(&mut cpu, 0x4c);
+        expect_read_cycle(
+            &mut cpu,
+            SnesAddress {
+                bank: 0x12,
+                addr: 0x3457,
+            },
+            0xcd,
+            "jump address (low)",
+        );
+        expect_read_cycle(
+            &mut cpu,
+            SnesAddress {
+                bank: 0x12,
+                addr: 0x3458,
+            },
+            0xab,
+            "jump address (high)",
+        );
+
+        expect_opcode_fetch_cycle(&mut cpu);
+
+        expected_regs.PC = 0xabcd;
+        assert_eq!(*cpu.regs(), expected_regs);
+    }
+
+    #[test]
+    fn test_jump_absolute_long() {
+        let mut regs = Registers::default();
+        regs.PB = 0x12;
+        regs.PC = 0x3456;
+        let mut expected_regs = regs.clone();
+
+        let mut cpu = CPU::new(regs);
+
+        expect_opcode_fetch(&mut cpu, 0x5c);
+        expect_read_cycle(
+            &mut cpu,
+            SnesAddress {
+                bank: 0x12,
+                addr: 0x3457,
+            },
+            0xef,
+            "jump address (PC low)",
+        );
+        expect_read_cycle(
+            &mut cpu,
+            SnesAddress {
+                bank: 0x12,
+                addr: 0x3458,
+            },
+            0xcd,
+            "jump address (PC high)",
+        );
+        expect_read_cycle(
+            &mut cpu,
+            SnesAddress {
+                bank: 0x12,
+                addr: 0x3459,
+            },
+            0xab,
+            "jump address (PB)",
+        );
+
+        expect_opcode_fetch_cycle(&mut cpu);
+
+        expected_regs.PB = 0xab;
+        expected_regs.PC = 0xcdef;
+        assert_eq!(*cpu.regs(), expected_regs);
+    }
+
+    #[test]
+    fn test_jmp_abs_ind() {
+        let mut regs = Registers::default();
+        regs.PB = 0x12;
+        regs.PC = 0x3456;
+        let mut expected_regs = regs.clone();
+
+        let mut cpu = CPU::new(regs);
+
+        expect_opcode_fetch(&mut cpu, 0x6c);
+        expect_read_cycle(
+            &mut cpu,
+            SnesAddress {
+                bank: 0x12,
+                addr: 0x3457,
+            },
+            0x00,
+            "operand address (low)",
+        );
+        expect_read_cycle(
+            &mut cpu,
+            SnesAddress {
+                bank: 0x12,
+                addr: 0x3458,
+            },
+            0x22,
+            "operand address (high)",
+        );
+        expect_read_cycle(
+            &mut cpu,
+            SnesAddress {
+                bank: 0x00,
+                addr: 0x2200,
+            },
+            0x89,
+            "jump address (PC low)",
+        );
+        expect_read_cycle(
+            &mut cpu,
+            SnesAddress {
+                bank: 0x00,
+                addr: 0x2201,
+            },
+            0x67,
+            "jump address (PC high)",
+        );
+
+        expect_opcode_fetch_cycle(&mut cpu);
+
+        expected_regs.PC = 0x6789;
+        assert_eq!(*cpu.regs(), expected_regs);
+    }
+
+    #[test]
+    fn test_jump_long() {
+        let mut regs = Registers::default();
+        regs.PB = 0x12;
+        regs.PC = 0x3456;
+        let mut expected_regs = regs.clone();
+
+        let mut cpu = CPU::new(regs);
+
+        expect_opcode_fetch(&mut cpu, 0xdc);
+        expect_read_cycle(
+            &mut cpu,
+            SnesAddress {
+                bank: 0x12,
+                addr: 0x3457,
+            },
+            0x77,
+            "operand address (low)",
+        );
+        expect_read_cycle(
+            &mut cpu,
+            SnesAddress {
+                bank: 0x12,
+                addr: 0x3458,
+            },
+            0x88,
+            "operand address (high)",
+        );
+        expect_read_cycle(
+            &mut cpu,
+            SnesAddress {
+                bank: 0x00,
+                addr: 0x8877,
+            },
+            0xef,
+            "jump address (PC low)",
+        );
+        expect_read_cycle(
+            &mut cpu,
+            SnesAddress {
+                bank: 0x00,
+                addr: 0x8878,
+            },
+            0xcd,
+            "jump address (PC high)",
+        );
+        expect_read_cycle(
+            &mut cpu,
+            SnesAddress {
+                bank: 0x00,
+                addr: 0x8879,
+            },
+            0xab,
+            "jump address (PB)",
+        );
+
+        expect_opcode_fetch_cycle(&mut cpu);
+
+        expected_regs.PB = 0xab;
+        expected_regs.PC = 0xcdef;
+        assert_eq!(*cpu.regs(), expected_regs);
+    }
+}
