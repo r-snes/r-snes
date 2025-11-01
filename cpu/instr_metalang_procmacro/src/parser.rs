@@ -73,6 +73,7 @@ impl MetaInstruction {
     /// and the semicolon (which indicates the end of the meta-instruction)
     ///
     /// For some reason can't be implemented as a TryFrom trait
+    #[cfg(not(tarpaulin_include))]
     fn try_from<I: IntoIterator<Item = TokenTree>>(value: I) -> Result<Self, &'static str> {
         let mut it = value.into_iter();
 
@@ -105,6 +106,7 @@ impl MetaInstruction {
     /// and return it in a new cycle, and optionnally add more cycles.
     /// It is also possible that a meta-instruction both expands to 1 or more cycles
     /// and returns the body of the following (net yet complete) cycle
+    #[cfg(not(tarpaulin_include))]
     fn expand(self, pstatus: &mut ParserStatus) -> InstrBody {
         let mut ret = InstrBody::default();
 
