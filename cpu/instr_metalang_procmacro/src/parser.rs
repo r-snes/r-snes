@@ -17,6 +17,18 @@ impl Default for ParserStatus {
     }
 }
 
+impl ParserStatus {
+    fn conditionally_inc_pc(&self, inc: u16) -> TokenStream {
+        if self.inc_pc {
+            quote! {
+                cpu.registers.PC = cpu.registers.PC.wrapping_add(#inc);
+            }
+        } else {
+            quote! {}
+        }
+    }
+}
+
 /// Enum for all the meta instructions implemented for the CPU
 /// meta-language.
 pub(crate) enum MetaInstruction {
@@ -36,17 +48,10 @@ pub(crate) enum MetaInstruction {
     /// `meta END_CYCLE Read; <tokstream> = cpu.data_bus;`
     Fetch8Into(TokenStream),
 
-    /// Fetch a byte from the address at PB:PC
-    Fetch8ImmNoIncPC,
-
-    /// Fetch a byte from the address at PB:PC, and increment PC
+    /// Fetch a byte from the address at PB:PC+1, and conditionally increment PC
     Fetch8Imm,
 
-    /// Fetch a byte from the address at PB:PC,
-    /// and assign into <tokstream>, similar to [`Fetch8Into`]
-    Fetch8ImmNoIncPCInto(TokenStream),
-
-    /// Fetch a byte from the address at PB:PC, and increment PC,
+    /// Fetch a byte from the address at PB:PC+1, and conditionally increment PC,
     /// and assign into <tokstream>, similar to [`Fetch8Into`]
     Fetch8ImmInto(TokenStream),
 
@@ -55,12 +60,8 @@ pub(crate) enum MetaInstruction {
     /// contained in <tokstream>
     Fetch16Into(TokenStream),
 
-    /// Fetch two bytes at PB:PC (and PB:PC + 1) into
-    /// the u16 contained in <tokstream>
-    Fetch16ImmNoIncPCInto(TokenStream),
-
-    /// Fetch two bytes at PB:PC (and PB:PC + 1) into
-    /// the u16 contained in <tokstream>, and increment PC by two
+    /// Fetch two bytes at PB:PC+1 (and PB:PC+2) into the u16 contained
+    /// in <tokstream>, and conditionally increment PC by two
     Fetch16ImmInto(TokenStream),
 }
 
@@ -82,12 +83,9 @@ impl MetaInstruction {
             "END_CYCLE" => MetaInstruction::EndCycle(it.by_ref().collect()),
             "SET_ADDRMODE_IMM" => MetaInstruction::SetAddrModeImmediate,
             "FETCH8_INTO" => MetaInstruction::Fetch8Into(it.by_ref().collect()),
-            "FETCH8_IMM_NOINCPC" => MetaInstruction::Fetch8ImmNoIncPC,
             "FETCH8_IMM" => MetaInstruction::Fetch8Imm,
-            "FETCH8_IMM_NOINCPC_INTO" => MetaInstruction::Fetch8ImmNoIncPCInto(it.by_ref().collect()),
             "FETCH8_IMM_INTO" => MetaInstruction::Fetch8ImmInto(it.by_ref().collect()),
             "FETCH16_INTO" => MetaInstruction::Fetch16Into(it.by_ref().collect()),
-            "FETCH16_IMM_NOINCPC_INTO" => MetaInstruction::Fetch16ImmNoIncPCInto(it.by_ref().collect()),
             "FETCH16_IMM_INTO" => MetaInstruction::Fetch16ImmInto(it.by_ref().collect()),
 
             _ => Err("Unknown meta-keyword")?,
@@ -132,21 +130,12 @@ impl MetaInstruction {
                 ret.cycles = vec![Cycle::new(TokenStream::new(), quote! { Read })];
                 ret.post_instr = quote!{ #dest = cpu.data_bus; };
             }
-            Self::Fetch8ImmNoIncPC => {
-                ret = Self::SetAddrModeImmediate.expand(pstatus);
-                ret += InstrBody::cycles(vec![Cycle::new( quote! {}, quote! { Read })]);
-            }
             Self::Fetch8Imm => {
-                ret = Self::Fetch8ImmNoIncPC.expand(pstatus);
-                ret.cycles[0].body.extend(quote! {
-                    cpu.registers.PC = cpu.registers.wrapping_add(1);
-                });
-            }
-            Self::Fetch8ImmNoIncPCInto(into) => {
-                ret = Self::Fetch8ImmNoIncPC.expand(pstatus);
-                ret += InstrBody::post(quote! {
-                    #into = cpu.data_bus;
-                });
+                ret = Self::SetAddrModeImmediate.expand(pstatus);
+                ret += InstrBody::cycles(vec![Cycle::new(
+                    pstatus.conditionally_inc_pc(1),
+                    quote! { Read },
+                )]);
             }
             Self::Fetch8ImmInto(into) => {
                 ret = Self::Fetch8Imm.expand(pstatus);
@@ -161,15 +150,10 @@ impl MetaInstruction {
                 });
                 ret += Self::Fetch8Into(quote! { *#into.hi_mut() }).expand(pstatus);
             }
-            Self::Fetch16ImmNoIncPCInto(into) => {
-                ret = Self::SetAddrModeImmediate.expand(pstatus);
-                ret += Self::Fetch16Into(into).expand(pstatus);
-            }
             Self::Fetch16ImmInto(into) => {
-                ret = Self::Fetch16ImmNoIncPCInto(into).expand(pstatus);
-                ret += InstrBody::post(quote! {
-                    cpu.registers.PC = cpu.registers.PC.wrapping_add(2);
-                });
+                ret = Self::SetAddrModeImmediate.expand(pstatus);
+                ret += InstrBody::post(pstatus.conditionally_inc_pc(2));
+                ret += Self::Fetch16Into(into).expand(pstatus);
             }
         }
         ret
@@ -209,11 +193,7 @@ impl Instr {
         let mut it = body.stream().into_iter().peekable();
         let mut ret = Instr::new(name);
 
-        if pstatus.inc_pc {
-            ret.body += InstrBody::post(quote! {
-                cpu.registers.PC = cpu.registers.PC.wrapping_add(1);
-            });
-        }
+        ret.body += InstrBody::post(pstatus.conditionally_inc_pc(1));
         loop {
             let it = it.by_ref();
 
