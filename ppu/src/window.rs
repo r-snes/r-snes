@@ -23,3 +23,32 @@ pub fn update_window(window: &mut Window, framebuffer: &Vec<u32>) {
         .update_with_buffer(framebuffer, WIDTH, HEIGHT)
         .expect("[ERR::Render] Framebuffer refused to cooperate.");
 }
+
+#[cfg(test)]
+mod tests_window {
+    use super::*;
+    use minifb::{Window, WindowOptions};
+
+    #[test] // Creating a window should succeed without errors
+    fn test_create_window_success() {
+        let window = create_window();
+        assert!(window.is_open());
+        assert_eq!(window.get_size(), (SCREEN_WIDTH, SCREEN_HEIGHT));
+    }
+
+    #[test] // Updating the window should not panic with a valid framebuffer
+    fn test_update_window_with_valid_buffer() {
+        let mut window = create_window();
+        let framebuffer = vec![0xFF00FF00; WIDTH * HEIGHT]; // Green pixels
+        update_window(&mut window, &framebuffer);
+        assert!(window.is_open());
+    }
+
+    #[test] // Updating the window with an incorrect buffer size should panic
+    #[should_panic(expected = "[ERR::Render] Framebuffer refused to cooperate.")]
+    fn test_update_window_with_invalid_buffer_size() {
+        let mut window = create_window();
+        let framebuffer = vec![0xFF0000FF; (WIDTH * HEIGHT) / 2]; // Too small
+        update_window(&mut window, &framebuffer);
+    }
+}

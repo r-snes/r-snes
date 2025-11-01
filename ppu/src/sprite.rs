@@ -3,7 +3,7 @@
 /// Each sprite has a position (`x`, `y`), a tile index pointing into VRAM,
 /// attribute flags (`attr`) for palette selection and flipping, and a `filed`
 /// boolean indicating whether the sprite is active or not
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Sprite {
     pub x: i16,
     pub y: i16,

@@ -103,3 +103,193 @@ fn draw_sprite_line(
         }
     }
 }
+
+#[cfg(test)]
+mod tests_utils {
+    use super::*;
+    use crate::sprite::Sprite;
+
+    fn create_test_ppu() -> PPU {
+        let mut ppu = PPU::new();
+
+        // Fill framebuffer with black
+        for pixel in ppu.framebuffer.iter_mut() {
+            *pixel = 0xFF000000;
+        }
+
+        // Fill VRAM with 0 for predictable tile indices
+        for byte in ppu.vram.iter_mut() {
+            *byte = 0;
+        }
+
+        // Fill CGRAM with a simple gradient
+        for i in 0..CGRAM_SIZE {
+            ppu.cgram[i] = (i as u16) | ((i as u16) << 5) | ((i as u16) << 10);
+        }
+
+        ppu
+    }
+
+    #[test] // Rendering a scanline outside screen height should do nothing
+    fn test_render_scanline_out_of_bounds() {
+        let mut ppu = create_test_ppu();
+        render_scanline(&mut ppu, HEIGHT + 10);
+        // Framebuffer should remain all black (0xFF000000)
+        assert!(ppu.framebuffer.iter().all(|&v| v == 0xFF000000));
+    }
+
+    #[test] // Clearing a scanline should fill the correct row with black
+    fn test_clear_scanline() {
+        let mut ppu = create_test_ppu();
+        for i in 0..ppu.framebuffer.len() {
+            ppu.framebuffer[i] = 0xFFFFFFFF; // White before clear
+        }
+        clear_scanline(&mut ppu, 0);
+        for x in 0..WIDTH {
+            assert_eq!(ppu.framebuffer[x], 0xFF000000);
+        }
+    }
+
+    #[test] // A sprite not intersecting the scanline should not draw anything
+    fn test_sprite_not_on_scanline() {
+        let mut ppu = create_test_ppu();
+
+        let sprite = Sprite {
+            x: 5,
+            y: 20,
+            tile: 0,
+            attr: 0x00,
+            filed: true,
+        };
+        ppu.set_oam_sprite(0, sprite);
+
+        render_scanline(&mut ppu, 0); // Scanline 0 is far above y=20
+
+        // All pixels should still be black
+        assert!(ppu.framebuffer.iter().all(|&v| v == 0xFF000000));
+    }
+
+    #[test] // A sprite overlapping the scanline should write colors to framebuffer
+    fn test_sprite_draws_on_scanline() {
+        let mut ppu = create_test_ppu();
+
+        // Fill VRAM tile 0 with non-zero indices
+        for i in 0..(TILE_SIZE * TILE_SIZE) {
+            ppu.vram[i] = (i % 8) as u8;
+        }
+
+        let sprite = Sprite {
+            x: 0,
+            y: 0,
+            tile: 0,
+            attr: 0x00,
+            filed: true,
+        };
+        ppu.set_oam_sprite(0, sprite);
+
+        render_scanline(&mut ppu, 0);
+
+        // Some pixels in first row should have changed color (non-black)
+        assert!(ppu.framebuffer[0..TILE_SIZE]
+            .iter()
+            .any(|&v| v != 0xFF000000));
+    }
+
+    #[test] // Horizontally flipped sprites should draw reversed pixels
+    fn test_sprite_horizontal_flip() {
+        let mut ppu = create_test_ppu();
+
+        // Left to right increasing values
+        for i in 0..(TILE_SIZE * TILE_SIZE) {
+            ppu.vram[i] = (i % TILE_SIZE) as u8;
+        }
+
+        let sprite = Sprite {
+            x: 0,
+            y: 0,
+            tile: 0,
+            attr: 0x40, // HFLIP flag
+            filed: true,
+        };
+        ppu.set_oam_sprite(0, sprite);
+
+        render_scanline(&mut ppu, 0);
+
+        let normal_first_pixel = ppu.read_cgram(7); // last pixel in reversed order
+        assert_eq!(ppu.framebuffer[0], normal_first_pixel);
+    }
+
+    #[test] // Vertically flipped sprites should draw mirrored vertically
+    fn test_sprite_vertical_flip() {
+        let mut ppu = create_test_ppu();
+
+        for i in 0..(TILE_SIZE * TILE_SIZE) {
+            ppu.vram[i] = (i / TILE_SIZE) as u8; // Each row has a different color index
+        }
+
+        let sprite = Sprite {
+            x: 0,
+            y: 0,
+            tile: 0,
+            attr: 0x80, // VFLIP flag
+            filed: true,
+        };
+        ppu.set_oam_sprite(0, sprite);
+
+        // Normally, first line (y=0) would use first row of indices (0)
+        // With vertical flip, it should use the last row instead (index=7)
+        render_scanline(&mut ppu, 0);
+        let expected_color = ppu.read_cgram(7);
+        assert_eq!(ppu.framebuffer[0], expected_color);
+    }
+
+    #[test] // Drawing with palette index 0 should skip transparent pixels
+    fn test_skip_transparent_pixels() {
+        let mut ppu = create_test_ppu();
+
+        // Fill tile with all zeros (transparent)
+        for i in 0..(TILE_SIZE * TILE_SIZE) {
+            ppu.vram[i] = 0;
+        }
+
+        let sprite = Sprite {
+            x: 0,
+            y: 0,
+            tile: 0,
+            attr: 0,
+            filed: true,
+        };
+        ppu.set_oam_sprite(0, sprite);
+
+        render_scanline(&mut ppu, 0);
+
+        // All framebuffer should stay black
+        assert!(ppu.framebuffer[0..TILE_SIZE]
+            .iter()
+            .all(|&v| v == 0xFF000000));
+    }
+
+    #[test] // Sprites partially off-screen should not cause out-of-bounds writes
+    fn test_sprite_partially_offscreen() {
+        let mut ppu = create_test_ppu();
+
+        for i in 0..(TILE_SIZE * TILE_SIZE) {
+            ppu.vram[i] = 1;
+        }
+
+        // Sprite starting partially off left side
+        let sprite = Sprite {
+            x: -3,
+            y: 0,
+            tile: 0,
+            attr: 0,
+            filed: true,
+        };
+        ppu.set_oam_sprite(0, sprite);
+
+        render_scanline(&mut ppu, 0);
+
+        // Ensure at least one visible pixel drawn
+        assert!(ppu.framebuffer.iter().any(|&v| v != 0xFF000000));
+    }
+}
