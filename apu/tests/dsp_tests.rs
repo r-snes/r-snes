@@ -157,3 +157,72 @@ fn test_render_audio_multiple_voices_mixed_and_clamped() {
     // 100*2 + 120*2 = 440 -> clamped to 32767 (but here it's still in range)
     assert_eq!(buffer[0], (440, 440));
 }
+
+#[test]
+fn test_adsr_attack_phase() {
+    let mut voice = Voice::default();
+    voice.envelope_phase = EnvelopePhase::Attack;
+    voice.attack_rate = 4;
+
+    // Simulate multiple ticks
+    for _ in 0..50 {
+        voice.update_envelope();
+    }
+
+    // Envelope should be non-zero and phase should be Decay
+    assert!(voice.envelope_level > 0);
+    assert_eq!(voice.envelope_phase, EnvelopePhase::Decay);
+    assert_eq!(voice.envelope_level, 0x7FF); // capped at max
+}
+
+#[test]
+fn test_adsr_decay_phase() {
+    let mut voice = Voice::default();
+    voice.envelope_phase = EnvelopePhase::Decay;
+    voice.envelope_level = 0x7FF; // start from max
+    voice.decay_rate = 8;
+    voice.sustain_level = 4; // mid-level sustain
+
+    // Simulate multiple ticks
+    for _ in 0..100 {
+        voice.update_envelope();
+    }
+
+    // Should have reached sustain and changed phase
+    let target = (voice.sustain_level as u16) * 0x100 / 8;
+    assert!(voice.envelope_level <= target);
+    assert_eq!(voice.envelope_phase, EnvelopePhase::Sustain);
+}
+
+#[test]
+fn test_adsr_sustain_phase() {
+    let mut voice = Voice::default();
+    voice.envelope_phase = EnvelopePhase::Sustain;
+    voice.envelope_level = 0x400;
+
+    // Update several times
+    for _ in 0..20 {
+        voice.update_envelope();
+    }
+
+    // Should remain unchanged
+    assert_eq!(voice.envelope_level, 0x400);
+    assert_eq!(voice.envelope_phase, EnvelopePhase::Sustain);
+}
+
+#[test]
+fn test_adsr_release_phase() {
+    let mut voice = Voice::default();
+    voice.envelope_phase = EnvelopePhase::Release;
+    voice.envelope_level = 0x400;
+    voice.release_rate = 8;
+
+    // Simulate multiple ticks
+    for _ in 0..100 {
+        voice.update_envelope();
+    }
+
+    // Should reach zero and switch to Off
+    assert_eq!(voice.envelope_level, 0);
+    assert_eq!(voice.envelope_phase, EnvelopePhase::Off);
+}
