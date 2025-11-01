@@ -5,4 +5,5 @@ mod prelude;
 mod test_prelude;
 
 mod flags;
+mod jumps;
 mod uncategorised;
