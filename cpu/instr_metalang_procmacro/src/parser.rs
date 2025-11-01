@@ -5,11 +5,14 @@ use quote::quote;
 /// Data describing the status of the parser at any point in parsing
 #[derive(Copy, Clone, Debug)]
 pub(crate) struct ParserStatus {
+    /// Whether PC should be automatically incremented
+    pub inc_pc: bool
 }
 
 impl Default for ParserStatus {
     fn default() -> Self {
         Self {
+            inc_pc: true,
         }
     }
 }
@@ -112,9 +115,17 @@ impl MetaInstruction {
                 ret.cycles = vec![Cycle::new(TokenStream::new(), cyctype)];
             }
             Self::SetAddrModeImmediate => {
+                let conditional_incpc = if !pstatus.inc_pc {
+                    // we need to look at PC+1 if it wasn't auto-incremented
+                    // to go to the operand
+                    quote! { .wrapping_add(1) }
+                } else {
+                    quote! {}
+                };
+
                 ret.post_instr = quote!{
                     cpu.addr_bus.bank = cpu.registers.PB;
-                    cpu.addr_bus.addr = cpu.registers.PC;
+                    cpu.addr_bus.addr = cpu.registers.PC #conditional_incpc;
                 }
             }
             Self::Fetch8Into(dest) => {
@@ -180,8 +191,9 @@ impl Instr {
         Self { name, body: InstrBody::default() }
     }
 
-    pub fn parse(stream: TokenStream) -> Result<Self, &'static str> {
+    pub fn parse(stream: TokenStream, inc_pc: bool) -> Result<Self, &'static str> {
         let mut pstatus = ParserStatus::default();
+        pstatus.inc_pc = inc_pc;
 
         let mut it = stream.into_iter();
         let Some(TokenTree::Ident(name)) = it.next() else {
@@ -196,6 +208,12 @@ impl Instr {
 
         let mut it = body.stream().into_iter().peekable();
         let mut ret = Instr::new(name);
+
+        if pstatus.inc_pc {
+            ret.body += InstrBody::post(quote! {
+                cpu.registers.PC = cpu.registers.PC.wrapping_add(1);
+            });
+        }
         loop {
             let it = it.by_ref();
 
