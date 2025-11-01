@@ -40,6 +40,8 @@ mod tests {
         expect_internal_cycle(&mut cpu, "register increment");
 
         assert_eq!(cpu.regs().X, 2, "Expecting value 2 in X register");
+
+        expect_opcode_fetch_cycle(&mut cpu);
     }
 
     #[test]
@@ -56,5 +58,7 @@ mod tests {
 
         expected_regs.PC = expected_regs.PC + 1;
         assert_eq!(cpu.registers, expected_regs, "Only PC should have been touched");
+
+        expect_opcode_fetch_cycle(&mut cpu);
     }
 }
