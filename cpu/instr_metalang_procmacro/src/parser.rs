@@ -9,6 +9,10 @@ pub(crate) enum MetaInstruction {
     /// with the CycleResult (cycle type) produced by the token stream
     EndCycle(TokenStream),
 
+    /// Sets the address bus to point at an immediate operand
+    /// (right after the opcode)
+    SetAddrModeImmediate,
+
     /// Creates a read cycle at the current address bus
     /// and assigns the value set in the data into the token
     /// stream passed as parameter in the next cycle.
@@ -61,6 +65,7 @@ impl MetaInstruction {
         };
         let ret = match meta_kw.to_string().as_str() {
             "END_CYCLE" => MetaInstruction::EndCycle(it.by_ref().collect()),
+            "SET_ADDRMODE_IMM" => MetaInstruction::SetAddrModeImmediate,
             "FETCH8_INTO" => MetaInstruction::Fetch8Into(it.by_ref().collect()),
             "FETCH8_IMM_NOINCPC" => MetaInstruction::Fetch8ImmNoIncPC,
             "FETCH8_IMM" => MetaInstruction::Fetch8Imm,
@@ -94,18 +99,19 @@ impl MetaInstruction {
             Self::EndCycle(cyctype) => {
                 ret.cycles = vec![Cycle::new(TokenStream::new(), cyctype)];
             }
+            Self::SetAddrModeImmediate => {
+                ret.post_instr = quote!{
+                    cpu.addr_bus.bank = cpu.registers.PB;
+                    cpu.addr_bus.addr = cpu.registers.PC;
+                }
+            }
             Self::Fetch8Into(dest) => {
                 ret.cycles = vec![Cycle::new(TokenStream::new(), quote! { Read })];
                 ret.post_instr = quote!{ #dest = cpu.data_bus; };
             }
             Self::Fetch8ImmNoIncPC => {
-                ret.cycles = vec![Cycle::new(
-                    quote! {
-                        cpu.addr_bus.bank = cpu.registers.PB;
-                        cpu.addr_bus.addr = cpu.registers.PC;
-                    },
-                    quote! { Read },
-                )];
+                ret = Self::SetAddrModeImmediate.expand();
+                ret += InstrBody::cycles(vec![Cycle::new( quote! {}, quote! { Read })]);
             }
             Self::Fetch8Imm => {
                 ret = Self::Fetch8ImmNoIncPC.expand();
@@ -133,10 +139,7 @@ impl MetaInstruction {
                 ret += Self::Fetch8Into(quote! { *#into.hi_mut() }).expand();
             }
             Self::Fetch16ImmNoIncPCInto(into) => {
-                ret.post_instr = quote! {
-                    cpu.addr_bus.bank = cpu.registers.PB;
-                    cpu.addr_bus.addr = cpu.registers.PC;
-                };
+                ret = Self::SetAddrModeImmediate.expand();
                 ret += Self::Fetch16Into(into).expand();
             }
             Self::Fetch16ImmInto(into) => {
