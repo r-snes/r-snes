@@ -8,8 +8,8 @@ use crate::constants::{
 };
 use crate::rom::header::cartridge_hardware::{CartridgeHardware, Coprocessor};
 use crate::rom::header::country::{Country, VideoStandard};
+use crate::rom::header::mapping_mode::MappingMode;
 use crate::rom::header::rom_speed::RomSpeed;
-use crate::rom::mapping_mode::MappingMode;
 
 #[derive(PartialEq)]
 pub struct RomHeader {

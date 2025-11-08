@@ -2,7 +2,7 @@ use crate::constants::{BANK_SIZE, COPIER_HEADER_SIZE, LOROM_BANK_SIZE};
 use crate::memory_region::MemoryRegion;
 use crate::rom::error::RomError;
 use crate::rom::header::RomHeader;
-use crate::rom::mapping_mode::MappingMode;
+use crate::rom::header::mapping_mode::MappingMode;
 use common::snes_address::SnesAddress;
 use std::fs::File;
 use std::io::Read;
@@ -189,7 +189,7 @@ impl MemoryRegion for Rom {
 mod tests {
     use super::*;
     use crate::constants::{COPIER_HEADER_SIZE, HIROM_BANK_SIZE, LOROM_BANK_SIZE};
-    use crate::rom::mapping_mode::MappingMode;
+    use crate::rom::header::mapping_mode::MappingMode;
     use crate::rom::test_rom::*;
     use common::snes_address::snes_addr;
 
