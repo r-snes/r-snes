@@ -3,6 +3,7 @@ use common::snes_address::SnesAddress;
 
 use crate::instrs::{
     flags::*,
+    jumps::*,
     uncategorised::*,
 };
 
@@ -103,7 +104,7 @@ const INSTR_CYC1: [InstrCycle; 256] = [
     /* 49 */ InstrCycle(opcode_fetch),
     /* 4a */ InstrCycle(opcode_fetch),
     /* 4b */ InstrCycle(opcode_fetch),
-    /* 4c */ InstrCycle(opcode_fetch),
+    /* 4c */ InstrCycle(jmp_abs_cyc1),
     /* 4d */ InstrCycle(opcode_fetch),
     /* 4e */ InstrCycle(opcode_fetch),
     /* 4f */ InstrCycle(opcode_fetch),
@@ -119,7 +120,7 @@ const INSTR_CYC1: [InstrCycle; 256] = [
     /* 59 */ InstrCycle(opcode_fetch),
     /* 5a */ InstrCycle(opcode_fetch),
     /* 5b */ InstrCycle(opcode_fetch),
-    /* 5c */ InstrCycle(opcode_fetch),
+    /* 5c */ InstrCycle(jmp_absl_cyc1),
     /* 5d */ InstrCycle(opcode_fetch),
     /* 5e */ InstrCycle(opcode_fetch),
     /* 5f */ InstrCycle(opcode_fetch),
@@ -135,7 +136,7 @@ const INSTR_CYC1: [InstrCycle; 256] = [
     /* 69 */ InstrCycle(opcode_fetch),
     /* 6a */ InstrCycle(opcode_fetch),
     /* 6b */ InstrCycle(opcode_fetch),
-    /* 6c */ InstrCycle(opcode_fetch),
+    /* 6c */ InstrCycle(jmp_abs_ind_cyc1),
     /* 6d */ InstrCycle(opcode_fetch),
     /* 6e */ InstrCycle(opcode_fetch),
     /* 6f */ InstrCycle(opcode_fetch),
@@ -151,7 +152,7 @@ const INSTR_CYC1: [InstrCycle; 256] = [
     /* 79 */ InstrCycle(opcode_fetch),
     /* 7a */ InstrCycle(opcode_fetch),
     /* 7b */ InstrCycle(opcode_fetch),
-    /* 7c */ InstrCycle(opcode_fetch),
+    /* 7c */ InstrCycle(jmp_abs_ind_indx_cyc1),
     /* 7d */ InstrCycle(opcode_fetch),
     /* 7e */ InstrCycle(opcode_fetch),
     /* 7f */ InstrCycle(opcode_fetch),
@@ -247,7 +248,7 @@ const INSTR_CYC1: [InstrCycle; 256] = [
     /* d9 */ InstrCycle(opcode_fetch),
     /* da */ InstrCycle(opcode_fetch),
     /* db */ InstrCycle(opcode_fetch),
-    /* dc */ InstrCycle(opcode_fetch),
+    /* dc */ InstrCycle(jml_cyc1),
     /* dd */ InstrCycle(opcode_fetch),
     /* de */ InstrCycle(opcode_fetch),
     /* df */ InstrCycle(opcode_fetch),

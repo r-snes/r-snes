@@ -82,6 +82,8 @@ mod tests {
 
         expected_regs.PC = expected_regs.PC + 1; // PC should be incremented once again
         assert_eq!(cpu.registers, expected_regs, "Flag should stay cleared");
+
+        expect_opcode_fetch_cycle(&mut cpu);
     }
 
     #[duplicate_item(
@@ -114,5 +116,7 @@ mod tests {
 
         expected_regs.PC = expected_regs.PC + 1; // PC should be incremented once again
         assert_eq!(cpu.registers, expected_regs, "Flag should stay set");
+
+        expect_opcode_fetch_cycle(&mut cpu);
     }
 }
