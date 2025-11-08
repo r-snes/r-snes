@@ -2,7 +2,7 @@ use crate::constants::{
     HEADER_CHECKSUM_COMPLEMENT_OFFSET, HEADER_CHECKSUM_OFFSET, HEADER_MIN_LEN, HEADER_TITLE_LEN,
     HIROM_BANK_SIZE, HIROM_HEADER_OFFSET, LOROM_HEADER_OFFSET,
 };
-use std::cmp::Ordering;
+use std::{cmp::Ordering, fmt};
 
 /// Represents the memory mapping mode of a SNES ROM.
 ///  
@@ -48,6 +48,21 @@ impl MappingMode {
         }
     }
 
+    pub fn from_byte(byte: u8) -> MappingMode {
+        let map_value = byte & 0x0F;
+
+        match map_value {
+            // Commented values are mapping mode not currently implemented and rarely used
+            0x0 => MappingMode::LoRom,
+            0x1 => MappingMode::HiRom,
+            // 0x2 => MappingMode::LoRomSdd1,
+            // 0x3 => MappingMode::LoRomSa1,
+            // 0x5 => MappingMode::ExHiRom,
+            // 0xA => MappingMode::HiRomSpc7110,
+            _ => panic!("ERROR: Could not identify mapping of ROM"),
+        }
+    }
+
     fn score_header(rom_data: &[u8], header_offset: usize) -> u32 {
         if header_offset + HEADER_MIN_LEN > rom_data.len() {
             return 0;
@@ -79,6 +94,15 @@ impl MappingMode {
         }
 
         score
+    }
+}
+
+impl fmt::Display for MappingMode {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            MappingMode::LoRom => write!(f, "LoRom"),
+            MappingMode::HiRom => write!(f, "HiRom"),
+        }
     }
 }
 

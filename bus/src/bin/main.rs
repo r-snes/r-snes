@@ -10,6 +10,7 @@ fn main() {
 fn run() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = env::args().collect();
     let bus = Bus::new(&args[1])?;
-    bus.rom.print_rom_header();
+    bus.rom.header.print_header_bytes();
+    println!("{}", bus.rom.header);
     Ok(())
 }

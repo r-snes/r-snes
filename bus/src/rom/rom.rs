@@ -1,7 +1,7 @@
 use crate::constants::{BANK_SIZE, COPIER_HEADER_SIZE, LOROM_BANK_SIZE};
 use crate::memory_region::MemoryRegion;
 use crate::rom::error::RomError;
-use crate::rom::header::{self, *};
+use crate::rom::header::RomHeader;
 use crate::rom::mapping_mode::MappingMode;
 use common::snes_address::SnesAddress;
 use std::fs::File;
@@ -20,7 +20,7 @@ use std::path::Path;
 /// Some cartridges may contain a 512-byte copier header at the start of the file,
 /// which is removed on load.
 /// ROM data is read-only and any write attempts are ignored.
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq)]
 pub struct Rom {
     pub data: Vec<u8>,
     pub map: MappingMode,
