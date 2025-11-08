@@ -5,7 +5,7 @@ use crate::constants::{
 use std::{cmp::Ordering, fmt};
 
 /// Represents the memory mapping mode of a SNES ROM.
-///  
+///
 /// SNES cartridges can be mapped in different ways depending on how the
 /// ROM is organized. This affects how the CPU addresses the ROM contents.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -13,7 +13,7 @@ pub enum MappingMode {
     /// LoROM (Low ROM) mapping mode.
     ///
     /// In LoROM, the CPU accesses the ROM in 32 KiB chunks starting at
-    /// $8000 in each banks from $00–$7D and $80–$FF
+    /// $8000 in each bank from $00–$7D and $80–$FF.
     LoRom,
 
     /// HiROM (High ROM) mapping mode.
@@ -24,6 +24,14 @@ pub enum MappingMode {
 }
 
 impl MappingMode {
+    /// Detects the mapping mode of a ROM by scoring LoROM and HiROM headers.
+    ///
+    /// Args:
+    ///     rom_data: Byte slice containing the full ROM data.
+    ///
+    /// Returns:
+    ///     `Some(MappingMode)` if one mapping mode scores higher.
+    ///     `None` if the mapping is ambiguous or the ROM is too small.
     pub fn detect_rom_mapping(rom_data: &[u8]) -> Option<MappingMode> {
         if rom_data.len() < HIROM_BANK_SIZE {
             return None;
@@ -41,6 +49,10 @@ impl MappingMode {
         }
     }
 
+    /// Returns the offset in the ROM where the header for this mapping mode is stored.
+    ///
+    /// Returns:
+    ///     The header offset as `usize`.
     pub fn get_corresponding_header_offset(&self) -> usize {
         match self {
             MappingMode::HiRom => HIROM_HEADER_OFFSET,
@@ -48,21 +60,32 @@ impl MappingMode {
         }
     }
 
+    /// Creates a `MappingMode` from a byte in the ROM header.
+    ///
+    /// Args:
+    ///     byte: Byte from the ROM header representing mapping mode.
+    ///
+    /// Returns:
+    ///     A `MappingMode` enum corresponding to the header value.
     pub fn from_byte(byte: u8) -> MappingMode {
         let map_value = byte & 0x0F;
 
         match map_value {
-            // Commented values are mapping mode not currently implemented and rarely used
             0x0 => MappingMode::LoRom,
             0x1 => MappingMode::HiRom,
-            // 0x2 => MappingMode::LoRomSdd1,
-            // 0x3 => MappingMode::LoRomSa1,
-            // 0x5 => MappingMode::ExHiRom,
-            // 0xA => MappingMode::HiRomSpc7110,
             _ => panic!("ERROR: Could not identify mapping of ROM"),
         }
     }
 
+    /// Scores a header at a given offset for validity.
+    ///
+    /// Args:
+    ///     rom_data: Byte slice containing the full ROM data.
+    ///     header_offset: Offset in the ROM where the header starts.
+    ///
+    /// Returns:
+    ///     A score (`u32`) indicating how valid the header looks.
+    ///     Higher scores indicate more likely correct mapping.
     fn score_header(rom_data: &[u8], header_offset: usize) -> u32 {
         if header_offset + HEADER_MIN_LEN > rom_data.len() {
             return 0;
@@ -98,6 +121,11 @@ impl MappingMode {
 }
 
 impl fmt::Display for MappingMode {
+    /// Formats the mapping mode as a human-readable string.
+    ///
+    /// Examples:
+    /// - `LoRom` -> "LoRom"
+    /// - `HiRom` -> "HiRom"
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             MappingMode::LoRom => write!(f, "LoRom"),

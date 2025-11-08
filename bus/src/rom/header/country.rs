@@ -1,5 +1,8 @@
 use std::fmt;
 
+/// Represents the country or region code of a SNES ROM.
+///
+/// Covers official regions and some miscellaneous/other codes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Country {
     International,
@@ -26,6 +29,9 @@ pub enum Country {
     OtherZ,
 }
 
+/// Represents the video standard used by a SNES ROM.
+///
+/// Mainly NTSC or PAL, with an "Other" option for unknown/unsupported regions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VideoStandard {
     NTSC,
@@ -34,6 +40,13 @@ pub enum VideoStandard {
 }
 
 impl Country {
+    /// Creates a `Country` value from a byte extracted from the ROM header.
+    ///
+    /// Args:
+    ///     byte: Byte from the ROM header representing the country/region code.
+    ///
+    /// Returns:
+    ///     A `Country` enum corresponding to the ROM's region.
     pub fn from_byte(byte: u8) -> Country {
         match byte {
             0x00 => Country::Japan, // "0x00" sometimes means Japan or "International"
@@ -63,6 +76,13 @@ impl Country {
 }
 
 impl VideoStandard {
+    /// Determines the video standard (NTSC/PAL/Other) based on a given `Country`.
+    ///
+    /// Args:
+    ///     country: The country/region of the ROM.
+    ///
+    /// Returns:
+    ///     A `VideoStandard` enum corresponding to the country's standard.
     pub fn from_country(country: Country) -> VideoStandard {
         match country {
             Country::Japan
@@ -90,6 +110,11 @@ impl VideoStandard {
 }
 
 impl fmt::Display for Country {
+    /// Formats the country as a human-readable string.
+    ///
+    /// Examples:
+    /// - `Japan` -> "Japan"
+    /// - `Europe` -> "Europe"
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Country::International => write!(f, "International"),
@@ -119,6 +144,12 @@ impl fmt::Display for Country {
 }
 
 impl fmt::Display for VideoStandard {
+    /// Formats the video standard as a human-readable string.
+    ///
+    /// Examples:
+    /// - `NTSC` -> "NTSC"
+    /// - `PAL` -> "PAL"
+    /// - `Other` -> "Other"
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             VideoStandard::NTSC => write!(f, "NTSC"),

@@ -1,5 +1,8 @@
 use std::fmt;
 
+/// Represents the type of cartridge hardware used by a SNES ROM.
+///
+/// Includes combinations of ROM, RAM, Battery backup, and Coprocessor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CartridgeHardware {
     RomOnly,
@@ -11,6 +14,9 @@ pub enum CartridgeHardware {
     RomCoprocessorBattery,
 }
 
+/// Represents optional coprocessors present in a SNES cartridge.
+///
+/// Some coprocessors have additional identifiers (e.g., DSP number).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Coprocessor {
     DSP(u8),
@@ -24,6 +30,13 @@ pub enum Coprocessor {
 }
 
 impl CartridgeHardware {
+    /// Creates a `CartridgeHardware` value from a byte extracted from the ROM header.
+    ///
+    /// Args:
+    ///     byte: Byte from the ROM header representing hardware configuration.
+    ///
+    /// Returns:
+    ///     A `CartridgeHardware` enum corresponding to the ROM's hardware.
     pub fn from_byte(byte: u8) -> CartridgeHardware {
         let hardware_value = byte & 0x0F;
 
@@ -41,6 +54,14 @@ impl CartridgeHardware {
 }
 
 impl Coprocessor {
+    /// Creates an optional `Coprocessor` from a byte extracted from the ROM header.
+    ///
+    /// Args:
+    ///     byte: Byte from the ROM header representing coprocessor configuration.
+    ///
+    /// Returns:
+    ///     `Some(Coprocessor)` if the coprocessor can be identified.
+    ///     `None` if no coprocessor is present or the value is unrecognized.
     pub fn from_byte(byte: u8) -> Option<Coprocessor> {
         let coprocessor = (byte & 0xF0) >> 4;
 
@@ -59,6 +80,11 @@ impl Coprocessor {
 }
 
 impl fmt::Display for CartridgeHardware {
+    /// Formats the cartridge hardware as a human-readable string.
+    ///
+    /// Examples:
+    /// - `RomOnly` -> "Rom"
+    /// - `RomCoprocessorRamBattery` -> "Rom + Coprocessor + Ram + Battery"
     #[rustfmt::skip]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -74,6 +100,11 @@ impl fmt::Display for CartridgeHardware {
 }
 
 impl fmt::Display for Coprocessor {
+    /// Formats the coprocessor as a human-readable string.
+    ///
+    /// Examples:
+    /// - `DSP(1)` -> "DSP-1"
+    /// - `GSU` -> "GSU"
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Coprocessor::DSP(nb) => write!(f, "DSP-{}", nb),
