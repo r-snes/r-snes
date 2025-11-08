@@ -19,7 +19,6 @@ pub(crate) fn opcode_fetch(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
         bank: cpu.registers.PB,
         addr: cpu.registers.PC,
     };
-    cpu.registers.PC = cpu.registers.PC.wrapping_add(1);
 
     (
         CycleResult::Read,

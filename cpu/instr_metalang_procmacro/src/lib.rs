@@ -1,6 +1,6 @@
 mod parser;
 
-use parser::{Cycle, Instr};
+use parser::{Cycle, Instr, InstrBody};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote, ToTokens};
 
@@ -9,8 +9,8 @@ use quote::{format_ident, quote, ToTokens};
 /// advantage of also existing outside of proc macro crates; and therefore
 /// have more utilities built around them, which makes unit-testing easier,
 /// among many other things.
-pub(crate) fn cpu_instr2(input: TokenStream) -> TokenStream {
-    let Instr { name, cycles, post_instr} = match parser::Instr::try_from(input) {
+pub(crate) fn cpu_instr2(input: TokenStream, inc_pc: bool) -> TokenStream {
+    let Instr { name, body: InstrBody { cycles, post_instr } } = match parser::Instr::parse(input, inc_pc) {
         Ok(instr) => instr,
         Err(msg) => panic!("{}", msg),
     };
@@ -83,7 +83,18 @@ pub(crate) fn cpu_instr2(input: TokenStream) -> TokenStream {
 /// documentation.
 #[proc_macro]
 pub fn cpu_instr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    cpu_instr2(input.into()).into()
+    cpu_instr2(input.into(), true).into()
+}
+
+/// Same as `cpu_instr` but disables all PC increments that would
+/// automatically be generated in the instruction code
+///
+/// This is especially useful for instructions which assign a value to PC,
+/// (e.g. jumps and returns) because the automatically-generated PC increments
+/// would conflict with what the instruction is trying to do to set the PC.
+#[proc_macro]
+pub fn cpu_instr_no_inc_pc(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    cpu_instr2(input.into(), false).into()
 }
 
 #[cfg(test)]
@@ -108,7 +119,11 @@ mod test {
     }
 
     fn assert_macro_produces(macro_input: TokenStream, exp_output: TokenStream) {
-        assert_tokstream_eq(cpu_instr2(macro_input), exp_output)
+        assert_tokstream_eq(cpu_instr2(macro_input, false), exp_output)
+    }
+
+    fn assert_macro_incpc_produces(macro_input: TokenStream, exp_output: TokenStream) {
+        assert_tokstream_eq(cpu_instr2(macro_input, true), exp_output)
     }
 
     #[test]
@@ -201,6 +216,32 @@ mod test {
 
                         opcode_fetch(cpu)
                     }))
+                }
+            ),
+        );
+    }
+
+    #[test]
+    fn auto_inc_PC() {
+        assert_macro_incpc_produces(
+            quote!(test_instr {
+                call_func1();
+                meta END_CYCLE Internal;
+
+                call_func2();
+                meta END_CYCLE Internal;
+            }),
+            quote!(
+                pub(crate) fn test_instr_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
+                    cpu.registers.PC = cpu.registers.PC.wrapping_add(1u16);
+                    call_func1();
+
+                    (Internal, InstrCycle(test_instr_cyc2))
+                }
+                pub(crate) fn test_instr_cyc2(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
+                    call_func2();
+
+                    (Internal, InstrCycle(opcode_fetch))
                 }
             ),
         );

@@ -1,5 +1,33 @@
 use pm2::{Ident, TokenStream, TokenTree};
 use proc_macro2 as pm2;
+use quote::quote;
+
+/// Data describing the status of the parser at any point in parsing
+#[derive(Copy, Clone, Debug)]
+pub(crate) struct ParserStatus {
+    /// Whether PC should be automatically incremented
+    pub inc_pc: bool
+}
+
+impl Default for ParserStatus {
+    fn default() -> Self {
+        Self {
+            inc_pc: true,
+        }
+    }
+}
+
+impl ParserStatus {
+    fn conditionally_inc_pc(&self, inc: u16) -> TokenStream {
+        if self.inc_pc {
+            quote! {
+                cpu.registers.PC = cpu.registers.PC.wrapping_add(#inc);
+            }
+        } else {
+            quote! {}
+        }
+    }
+}
 
 /// Enum for all the meta instructions implemented for the CPU
 /// meta-language.
@@ -7,6 +35,34 @@ pub(crate) enum MetaInstruction {
     /// Manually delimit the end of a cycle,
     /// with the CycleResult (cycle type) produced by the token stream
     EndCycle(TokenStream),
+
+    /// Sets the address bus to point at an immediate operand
+    /// (right after the opcode)
+    SetAddrModeImmediate,
+
+    /// Creates a read cycle at the current address bus
+    /// and assigns the value set in the data into the token
+    /// stream passed as parameter in the next cycle.
+    ///
+    /// `meta FETCH8_INTO <tokstream>;` is strictly equivalent to
+    /// `meta END_CYCLE Read; <tokstream> = cpu.data_bus;`
+    Fetch8Into(TokenStream),
+
+    /// Fetch a byte from the address at PB:PC+1, and conditionally increment PC
+    Fetch8Imm,
+
+    /// Fetch a byte from the address at PB:PC+1, and conditionally increment PC,
+    /// and assign into <tokstream>, similar to [`Fetch8Into`]
+    Fetch8ImmInto(TokenStream),
+
+    /// Fetch two bytes from the current address bus
+    /// (and the current address bus + 1) into the u16
+    /// contained in <tokstream>
+    Fetch16Into(TokenStream),
+
+    /// Fetch two bytes at PB:PC+1 (and PB:PC+2) into the u16 contained
+    /// in <tokstream>, and conditionally increment PC by two
+    Fetch16ImmInto(TokenStream),
 }
 
 impl MetaInstruction {
@@ -17,6 +73,7 @@ impl MetaInstruction {
     /// and the semicolon (which indicates the end of the meta-instruction)
     ///
     /// For some reason can't be implemented as a TryFrom trait
+    #[cfg(not(tarpaulin_include))]
     fn try_from<I: IntoIterator<Item = TokenTree>>(value: I) -> Result<Self, &'static str> {
         let mut it = value.into_iter();
 
@@ -25,6 +82,12 @@ impl MetaInstruction {
         };
         let ret = match meta_kw.to_string().as_str() {
             "END_CYCLE" => MetaInstruction::EndCycle(it.by_ref().collect()),
+            "SET_ADDRMODE_IMM" => MetaInstruction::SetAddrModeImmediate,
+            "FETCH8_INTO" => MetaInstruction::Fetch8Into(it.by_ref().collect()),
+            "FETCH8_IMM" => MetaInstruction::Fetch8Imm,
+            "FETCH8_IMM_INTO" => MetaInstruction::Fetch8ImmInto(it.by_ref().collect()),
+            "FETCH16_INTO" => MetaInstruction::Fetch16Into(it.by_ref().collect()),
+            "FETCH16_IMM_INTO" => MetaInstruction::Fetch16ImmInto(it.by_ref().collect()),
 
             _ => Err("Unknown meta-keyword")?,
         };
@@ -43,17 +106,59 @@ impl MetaInstruction {
     /// and return it in a new cycle, and optionnally add more cycles.
     /// It is also possible that a meta-instruction both expands to 1 or more cycles
     /// and returns the body of the following (net yet complete) cycle
-    fn expand(self, current_cyc_body: TokenStream) -> (Vec<Cycle>, TokenStream) {
-        let cycles;
-        let ts;
+    #[cfg(not(tarpaulin_include))]
+    fn expand(self, pstatus: &mut ParserStatus) -> InstrBody {
+        let mut ret = InstrBody::default();
 
         match self {
             Self::EndCycle(cyctype) => {
-                cycles = vec![Cycle::new(current_cyc_body, cyctype)];
-                ts = TokenStream::new();
+                ret.cycles = vec![Cycle::new(TokenStream::new(), cyctype)];
+            }
+            Self::SetAddrModeImmediate => {
+                let conditional_incpc = if !pstatus.inc_pc {
+                    // we need to look at PC+1 if it wasn't auto-incremented
+                    // to go to the operand
+                    quote! { .wrapping_add(1) }
+                } else {
+                    quote! {}
+                };
+
+                ret.post_instr = quote!{
+                    cpu.addr_bus.bank = cpu.registers.PB;
+                    cpu.addr_bus.addr = cpu.registers.PC #conditional_incpc;
+                }
+            }
+            Self::Fetch8Into(dest) => {
+                ret.cycles = vec![Cycle::new(TokenStream::new(), quote! { Read })];
+                ret.post_instr = quote!{ #dest = cpu.data_bus; };
+            }
+            Self::Fetch8Imm => {
+                ret = Self::SetAddrModeImmediate.expand(pstatus);
+                ret += InstrBody::cycles(vec![Cycle::new(
+                    pstatus.conditionally_inc_pc(1),
+                    quote! { Read },
+                )]);
+            }
+            Self::Fetch8ImmInto(into) => {
+                ret = Self::Fetch8Imm.expand(pstatus);
+                ret += InstrBody::post(quote! {
+                    #into = cpu.data_bus;
+                });
+            }
+            Self::Fetch16Into(into) => {
+                ret = Self::Fetch8Into(quote! { *#into.lo_mut() }).expand(pstatus);
+                ret += InstrBody::post(quote! {
+                    cpu.addr_bus.addr = cpu.addr_bus.addr.wrapping_add(1);
+                });
+                ret += Self::Fetch8Into(quote! { *#into.hi_mut() }).expand(pstatus);
+            }
+            Self::Fetch16ImmInto(into) => {
+                ret = Self::SetAddrModeImmediate.expand(pstatus);
+                ret += InstrBody::post(pstatus.conditionally_inc_pc(2));
+                ret += Self::Fetch16Into(into).expand(pstatus);
             }
         }
-        (cycles, ts)
+        ret
     }
 }
 
@@ -63,6 +168,60 @@ pub(crate) struct Instr {
     /// Name of the instruction (e.g. clv, inx, ldx_imm, jmp_abs)
     pub name: Ident,
 
+    /// Body of the instruction, incuding potential post-instr code
+    pub body: InstrBody,
+}
+
+impl Instr {
+    fn new(name: Ident) -> Self {
+        Self { name, body: InstrBody::default() }
+    }
+
+    pub fn parse(stream: TokenStream, inc_pc: bool) -> Result<Self, &'static str> {
+        let mut pstatus = ParserStatus::default();
+        pstatus.inc_pc = inc_pc;
+
+        let mut it = stream.into_iter();
+        let Some(TokenTree::Ident(name)) = it.next() else {
+            Err("Expecting the instruction name")?
+        };
+        let Some(TokenTree::Group(body)) = it.next() else {
+            Err("Expecting the instruction body")?
+        };
+        if it.next().is_some() {
+            Err("Unexpected token after the instruction body")?
+        }
+
+        let mut it = body.stream().into_iter().peekable();
+        let mut ret = Instr::new(name);
+
+        ret.body += InstrBody::post(pstatus.conditionally_inc_pc(1));
+        loop {
+            let it = it.by_ref();
+
+            ret.body.post_instr.extend(it.take_while(|token| token.to_string() != "meta"));
+
+            if it.peek().is_none() {
+                break;
+            }
+
+            let meta_instr = MetaInstruction::try_from(it.take_while(|token| {
+                let TokenTree::Punct(p) = token else {
+                    return true;
+                };
+                return p.as_char() != ';';
+            }))?;
+
+            ret.body += meta_instr.expand(&mut pstatus);
+        }
+        Ok(ret)
+    }
+}
+
+/// Body of an instruction: one or more cycles and potential
+/// post-instruction code
+#[derive(Default)]
+pub(crate) struct InstrBody {
     /// Cycles of the instruction (does not include the opcode fetch cycle)
     pub cycles: Vec<Cycle>,
 
@@ -78,58 +237,46 @@ pub(crate) struct Instr {
     pub post_instr: TokenStream,
 }
 
-impl Instr {
-    fn new(name: Ident) -> Self {
-        Self {
-            name,
-            cycles: vec![],
-            post_instr: TokenStream::new(),
+// impl which allows us to use +=
+impl std::ops::AddAssign for InstrBody {
+    /// Concatenates an InstrBody to [`self`].
+    /// [`self`] remains first after concatenation. [`self.post_instr`] will be
+    /// prepended to the RHS's first cycle, or to the RHS's post_instr
+    /// if it doesn't have any cycles.
+    fn add_assign(&mut self, mut other: Self) {
+        if other.cycles.is_empty() {
+            // simple case: no cycle vec to merge, just join the post_instrs
+            self.post_instr.extend(other.post_instr);
+            return;
         }
+
+        // swap out self.post_instr with other.post_instr, such that
+        // self.post_instr can be worked with later, and placing
+        // other.post_instr already where it needs to be in the end
+        let old_postinstr = std::mem::replace(&mut self.post_instr, other.post_instr);
+
+        // swap out the first cycle body of the other InstrBody for our current
+        // post_instr, and then glue it back *after* our current post_instr
+        let second_firstcycle = std::mem::replace(&mut other.cycles[0].body, old_postinstr);
+        other.cycles[0].body.extend(second_firstcycle);
+
+        // finally merge the two cycle vectors
+        self.cycles.extend(other.cycles);
     }
 }
 
-impl TryFrom<TokenStream> for Instr {
-    fn try_from(stream: TokenStream) -> Result<Self, Self::Error> {
-        let mut it = stream.into_iter();
-        let Some(TokenTree::Ident(name)) = it.next() else {
-            Err("Expecting the instruction name")?
-        };
-        let Some(TokenTree::Group(body)) = it.next() else {
-            Err("Expecting the instruction body")?
-        };
-        if it.next().is_some() {
-            Err("Unexpected token after the instruction body")?
-        }
-
-        let mut it = body.stream().into_iter().peekable();
-        let mut ret = Instr::new(name);
-        let mut current_cyc_body = TokenStream::new();
-        loop {
-            let it = it.by_ref();
-
-            current_cyc_body.extend(it.take_while(|token| token.to_string() != "meta"));
-
-            if it.peek().is_none() {
-                break;
-            }
-
-            let meta_instr = MetaInstruction::try_from(it.take_while(|token| {
-                let TokenTree::Punct(p) = token else {
-                    return true;
-                };
-                return p.as_char() != ';';
-            }))?;
-
-            let (cycs, new_body) = meta_instr.expand(current_cyc_body);
-
-            ret.cycles.extend(cycs);
-            current_cyc_body = new_body;
-        }
-        ret.post_instr = current_cyc_body;
-        Ok(ret)
+impl InstrBody {
+    pub fn new(cycles: Vec<Cycle>, post_instr: TokenStream) -> Self {
+        Self { cycles, post_instr }
     }
 
-    type Error = &'static str;
+    pub fn cycles(cycles: Vec<Cycle>) -> Self {
+        Self::new(cycles, TokenStream::new())
+    }
+
+    pub fn post(post_instr: TokenStream) -> Self {
+        Self::new(vec![], post_instr)
+    }
 }
 
 /// Data structure which contains the info required to build
