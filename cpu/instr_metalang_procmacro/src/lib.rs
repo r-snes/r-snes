@@ -2,7 +2,7 @@ mod parser;
 
 use parser::{Cycle, Instr};
 use proc_macro2::TokenStream;
-use quote::{format_ident, quote};
+use quote::{format_ident, quote, ToTokens};
 
 /// Function that actually implements all the logic for the proc macro,
 /// using the types provided by the `proc_macro2` crate, which have the
@@ -10,7 +10,7 @@ use quote::{format_ident, quote};
 /// have more utilities built around them, which makes unit-testing easier,
 /// among many other things.
 pub(crate) fn cpu_instr2(input: TokenStream) -> TokenStream {
-    let Instr { name, cycles } = match parser::Instr::try_from(input) {
+    let Instr { name, cycles, post_instr} = match parser::Instr::try_from(input) {
         Ok(instr) => instr,
         Err(msg) => panic!("{}", msg),
     };
@@ -20,17 +20,28 @@ pub(crate) fn cpu_instr2(input: TokenStream) -> TokenStream {
         .enumerate()
         .map(|(i, Cycle { body, cyc_type })| {
             let func_name = format_ident!("{}_cyc{}", name, i + 1);
-            let next_func_name = if i != cycles.len() - 1 {
-                format_ident!("{}_cyc{}", name, i + 2)
+            let next_func_name: TokenStream = if i != cycles.len() - 1 {
+                format_ident!("{}_cyc{}", name, i + 2).into_token_stream()
             } else {
-                format_ident!("opcode_fetch")
+                if post_instr.is_empty() {
+                    format_ident!("opcode_fetch").into_token_stream()
+                } else {
+                    // inject the post-instr code in closure before returning to
+                    // the opcode fetch.
+                    quote! {
+                        |cpu| {
+                            #post_instr
+                            opcode_fetch(cpu)
+                        }
+                    }
+                }
             };
 
             quote! {
                 pub(crate) fn #func_name(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
                     #body
 
-                    (CycleResult::#cyc_type, InstrCycle(#next_func_name))
+                    (#cyc_type, InstrCycle(#next_func_name))
                 }
             }
         });
@@ -62,8 +73,8 @@ pub(crate) fn cpu_instr2(input: TokenStream) -> TokenStream {
 /// followed by a meta-instruction name (usually in all uppercase),
 /// followed by operands and then a semicolon.
 ///
-/// The two basic meta-instructions are `END_CYCLE` and `END_INSTR`,
-/// which both an cycle type as parameter, and act as cycle delimiters;
+/// The most fundamental meta-instruction is `END_CYCLE`,
+/// which taks a cycle type as parameter, and act as a cycle delimiter;
 /// resulting in a separate function for each cycle.
 ///
 /// For a reference of the available meta-instructions
@@ -108,7 +119,7 @@ mod test {
                 cpu.registers.P.Z = cpu.registers.X == 0;
                 cpu.registers.P.N = cpu.registers.X > 0x7fff;
 
-                meta END_INSTR Internal;
+                meta END_CYCLE Internal;
             }),
             quote!(
                 pub(crate) fn instr_inx_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
@@ -116,7 +127,7 @@ mod test {
                     cpu.registers.P.Z = cpu.registers.X == 0;
                     cpu.registers.P.N = cpu.registers.X > 0x7fff;
 
-                    (CycleResult::Internal, InstrCycle(opcode_fetch))
+                    (Internal, InstrCycle(opcode_fetch))
                 }
             ),
         );
@@ -133,23 +144,63 @@ mod test {
                 meta END_CYCLE Read;
 
                 some_function3(cpu);
-                meta END_INSTR Write;
+                meta END_CYCLE Write;
             }),
             quote!(
                 pub(crate) fn some_instr_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
                     some_function1(cpu);
 
-                    (CycleResult::Internal, InstrCycle(some_instr_cyc2))
+                    (Internal, InstrCycle(some_instr_cyc2))
                 }
                 pub(crate) fn some_instr_cyc2(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
                     some_function2(cpu);
 
-                    (CycleResult::Read, InstrCycle(some_instr_cyc3))
+                    (Read, InstrCycle(some_instr_cyc3))
                 }
                 pub(crate) fn some_instr_cyc3(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
                     some_function3(cpu);
 
-                    (CycleResult::Write, InstrCycle(opcode_fetch))
+                    (Write, InstrCycle(opcode_fetch))
+                }
+            ),
+        );
+    }
+
+    #[test]
+    fn conditional_cycle_type() {
+        assert_macro_produces(
+            quote!(test_instr {
+                meta END_CYCLE if 1 == 0 { Internal } else { Read };
+
+                meta END_CYCLE some_func_which_determines_cyc_type();
+            }),
+            quote!(
+                pub(crate) fn test_instr_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
+                    (if 1 == 0 { Internal } else { Read }, InstrCycle(test_instr_cyc2))
+                }
+
+                pub(crate) fn test_instr_cyc2(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
+                    (some_func_which_determines_cyc_type(), InstrCycle(opcode_fetch))
+                }
+            ),
+        );
+    }
+
+    #[test]
+    fn post_cycle_code() {
+        assert_macro_produces(
+            quote!(test_instr {
+                meta END_CYCLE Read;
+
+                cpu.registers.X = cpu.data_bus as u16;
+            }),
+            quote!(
+                pub(crate) fn test_instr_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
+                    (Read, InstrCycle(|cpu| {
+                        cpu.registers.X = cpu.data_bus as u16;
+
+                        opcode_fetch(cpu)
+                    }))
                 }
             ),
         );

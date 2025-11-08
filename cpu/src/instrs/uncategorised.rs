@@ -14,12 +14,12 @@ cpu_instr!(inx {
     cpu.registers.P.Z = cpu.registers.X == 0;
     cpu.registers.P.N = cpu.registers.X > 0x7fff;
 
-    meta END_INSTR Internal;
+    meta END_CYCLE Internal;
 });
 
 // `NOP`: "no-op" (no operation). Literally does nothing
 cpu_instr!(nop {
-    meta END_INSTR Internal;
+    meta END_CYCLE Internal;
 });
 
 #[cfg(test)]

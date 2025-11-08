@@ -5,43 +5,43 @@ use crate::instrs::prelude::*;
 // `CLV`: clear overflow flag
 cpu_instr!(clv {
     cpu.registers.P.V = false;
-    meta END_INSTR Internal;
+    meta END_CYCLE Internal;
 });
 
 // `CLC`: clear carry flag
 cpu_instr!(clc {
     cpu.registers.P.C = false;
-    meta END_INSTR Internal;
+    meta END_CYCLE Internal;
 });
 
 // `CLI`: clear Interrupt Disable bit
 cpu_instr!(cli {
     cpu.registers.P.I = false;
-    meta END_INSTR Internal;
+    meta END_CYCLE Internal;
 });
 
 // `CLD`: clear decimal flag
 cpu_instr!(cld {
     cpu.registers.P.D = false;
-    meta END_INSTR Internal;
+    meta END_CYCLE Internal;
 });
 
 // `SEC`: SEt Carry flag
 cpu_instr!(sec {
     cpu.registers.P.C = true;
-    meta END_INSTR Internal;
+    meta END_CYCLE Internal;
 });
 
 // `SEI`: SEt Interrupt disable bit
 cpu_instr!(sei {
     cpu.registers.P.I = true;
-    meta END_INSTR Internal;
+    meta END_CYCLE Internal;
 });
 
 // `SED`: SEt Decimal flag
 cpu_instr!(sed {
     cpu.registers.P.D = true;
-    meta END_INSTR Internal;
+    meta END_CYCLE Internal;
 });
 
 #[cfg(test)]

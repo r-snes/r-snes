@@ -4,22 +4,17 @@ use proc_macro2 as pm2;
 /// Enum for all the meta instructions implemented for the CPU
 /// meta-language.
 pub(crate) enum MetaInstruction {
-    EndCycle(Ident),
-    EndInstr(Ident),
+    /// Manually delimit the end of a cycle,
+    /// with the CycleResult (cycle type) produced by the token stream
+    EndCycle(TokenStream),
 }
 
 impl MetaInstruction {
-    /// Method which checks if this instr is a `EndInstr`
-    fn is_end_instr(&self) -> bool {
-        match self {
-            Self::EndInstr(_) => true,
-            _ => false,
-        }
-    }
-}
-
-impl MetaInstruction {
-    /// Conversion from a Token iterator
+    /// Conversion from a Token iterator  
+    ///
+    /// The input [`value`] contains all tokens between (excluding)
+    /// the `meta` identifier (which indicates the start of a meta-instruction)
+    /// and the semicolon (which indicates the end of the meta-instruction)
     ///
     /// For some reason can't be implemented as a TryFrom trait
     fn try_from<I: IntoIterator<Item = TokenTree>>(value: I) -> Result<Self, &'static str> {
@@ -29,19 +24,7 @@ impl MetaInstruction {
             Err("Expecting a meta-keyword")?
         };
         let ret = match meta_kw.to_string().as_str() {
-            "END_CYCLE" => {
-                let Some(TokenTree::Ident(cyc_type)) = it.next() else {
-                    Err("END_CYCLE expects an identifier operand (cycle type)")?
-                };
-                MetaInstruction::EndCycle(cyc_type)
-            }
-
-            "END_INSTR" => {
-                let Some(TokenTree::Ident(cyc_type)) = it.next() else {
-                    Err("INSTR expects an identifier operand (cycle type)")?
-                };
-                MetaInstruction::EndInstr(cyc_type)
-            }
+            "END_CYCLE" => MetaInstruction::EndCycle(it.by_ref().collect()),
 
             _ => Err("Unknown meta-keyword")?,
         };
@@ -50,13 +33,49 @@ impl MetaInstruction {
         }
         Ok(ret)
     }
+
+    /// Expands this meta-instruction: given the current cycle body,
+    /// the meta-instruction may return 0 to many cycles and the next
+    /// "current" instruction body.
+    ///
+    /// Some meta-instrucions may not return complete cycles, and simply append to
+    /// the token stream passed as input. Others may consume the current token stream
+    /// and return it in a new cycle, and optionnally add more cycles.
+    /// It is also possible that a meta-instruction both expands to 1 or more cycles
+    /// and returns the body of the following (net yet complete) cycle
+    fn expand(self, current_cyc_body: TokenStream) -> (Vec<Cycle>, TokenStream) {
+        let cycles;
+        let ts;
+
+        match self {
+            Self::EndCycle(cyctype) => {
+                cycles = vec![Cycle::new(current_cyc_body, cyctype)];
+                ts = TokenStream::new();
+            }
+        }
+        (cycles, ts)
+    }
 }
 
 /// Type resulting from the parsing of the token stream passed
 /// as parameter to the [`cpu_instr`] proc macro.
 pub(crate) struct Instr {
+    /// Name of the instruction (e.g. clv, inx, ldx_imm, jmp_abs)
     pub name: Ident,
+
+    /// Cycles of the instruction (does not include the opcode fetch cycle)
     pub cycles: Vec<Cycle>,
+
+    /// "Post-instruction" code: some code related to this instruction
+    /// which needs to be run at the start of the next instruction.
+    ///
+    /// This is typically required when the last cycle of an
+    /// instruction is a Read cycle, but the instruction needs to do
+    /// something with the read value (e.g. placing it in a register).
+    /// The problem is that the value will be injected between cycles, and
+    /// will only be available at the start of the next cycle. So this code
+    /// will be run at the beginning of the next opcode fetch cycle.
+    pub post_instr: TokenStream,
 }
 
 impl Instr {
@@ -64,6 +83,7 @@ impl Instr {
         Self {
             name,
             cycles: vec![],
+            post_instr: TokenStream::new(),
         }
     }
 }
@@ -83,10 +103,16 @@ impl TryFrom<TokenStream> for Instr {
 
         let mut it = body.stream().into_iter().peekable();
         let mut ret = Instr::new(name);
+        let mut current_cyc_body = TokenStream::new();
         loop {
             let it = it.by_ref();
-            let cycle_body = it.take_while(|token| token.to_string() != "meta");
-            let body_tok_stream = TokenStream::from_iter(cycle_body);
+
+            current_cyc_body.extend(it.take_while(|token| token.to_string() != "meta"));
+
+            if it.peek().is_none() {
+                break;
+            }
+
             let meta_instr = MetaInstruction::try_from(it.take_while(|token| {
                 let TokenTree::Punct(p) = token else {
                     return true;
@@ -94,21 +120,15 @@ impl TryFrom<TokenStream> for Instr {
                 return p.as_char() != ';';
             }))?;
 
-            if it.peek().is_none() && !meta_instr.is_end_instr() {
-                Err("Instructions must end by an END_INSTR meta instruction")?
-            }
+            let (cycs, new_body) = meta_instr.expand(current_cyc_body);
 
-            match meta_instr {
-                MetaInstruction::EndCycle(c) => ret.cycles.push(Cycle::new(body_tok_stream, c)),
-                MetaInstruction::EndInstr(c) => ret.cycles.push(Cycle::new(body_tok_stream, c)),
-            }
-
-            if it.peek().is_none() {
-                break;
-            }
+            ret.cycles.extend(cycs);
+            current_cyc_body = new_body;
         }
+        ret.post_instr = current_cyc_body;
         Ok(ret)
     }
+
     type Error = &'static str;
 }
 
@@ -119,11 +139,11 @@ pub(crate) struct Cycle {
     pub body: TokenStream,
     /// Cycle type (part of the function return value; should evaluate
     /// to something of type `CycleResult`)
-    pub cyc_type: Ident,
+    pub cyc_type: TokenStream,
 }
 
 impl Cycle {
-    fn new(body: TokenStream, cyc_type: Ident) -> Self {
+    fn new(body: TokenStream, cyc_type: TokenStream) -> Self {
         Self { body, cyc_type }
     }
 }
