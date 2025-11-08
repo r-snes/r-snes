@@ -8,7 +8,7 @@ use std::cmp::Ordering;
 ///  
 /// SNES cartridges can be mapped in different ways depending on how the
 /// ROM is organized. This affects how the CPU addresses the ROM contents.
-#[derive(PartialEq, Debug)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum MappingMode {
     /// LoROM (Low ROM) mapping mode.
     ///
@@ -38,6 +38,13 @@ impl MappingMode {
             Ordering::Greater => Some(MappingMode::LoRom),
             Ordering::Less => Some(MappingMode::HiRom),
             Ordering::Equal => None,
+        }
+    }
+
+    pub fn get_corresponding_header_offset(&self) -> usize {
+        match self {
+            MappingMode::HiRom => HIROM_HEADER_OFFSET,
+            MappingMode::LoRom => LOROM_HEADER_OFFSET,
         }
     }
 

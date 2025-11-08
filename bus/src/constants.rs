@@ -14,8 +14,17 @@ pub const WRAM_SIZE: usize = BANK_SIZE * WRAM_BANK_NB;
 pub const LOROM_HEADER_OFFSET: usize = 0x7FC0;
 pub const HIROM_HEADER_OFFSET: usize = 0xFFC0;
 pub const HEADER_TITLE_LEN: usize = 21;
-pub const HEADER_CHECKSUM_OFFSET: usize = 0x1E;
+
+pub const HEADER_SPEED_MAP_OFFSET: usize = 0x15;
+pub const HEADER_ROM_HARDWARE_OFFSET: usize = 0x16;
+pub const HEADER_ROM_SIZE_OFFSET: usize = 0x17;
+pub const HEADER_RAM_SIZE_OFFSET: usize = 0x18;
+pub const HEADER_COUNTRY_OFFSET: usize = 0x19;
+pub const HEADER_DEVELOPER_ID_OFFSET: usize = 0x1A;
+pub const HEADER_ROM_VERSION_OFFSET: usize = 0x1B;
 pub const HEADER_CHECKSUM_COMPLEMENT_OFFSET: usize = 0x1C;
+pub const HEADER_CHECKSUM_OFFSET: usize = 0x1E;
+
 pub const HEADER_MIN_LEN: usize = 0x20; // Minimum number of bytes needed for scoring
 pub const HEADER_SIZE: usize = 64;
 

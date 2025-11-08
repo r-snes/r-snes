@@ -1,6 +1,7 @@
 use crate::constants::{BANK_SIZE, COPIER_HEADER_SIZE, LOROM_BANK_SIZE};
 use crate::memory_region::MemoryRegion;
 use crate::rom::error::RomError;
+use crate::rom::header::{self, *};
 use crate::rom::mapping_mode::MappingMode;
 use common::snes_address::SnesAddress;
 use std::fs::File;
@@ -23,6 +24,7 @@ use std::path::Path;
 pub struct Rom {
     pub data: Vec<u8>,
     pub map: MappingMode,
+    pub header: RomHeader,
 }
 
 impl Rom {
@@ -47,6 +49,7 @@ impl Rom {
             MappingMode::detect_rom_mapping(&rom_data).ok_or(RomError::IncorrectMapping)?;
 
         Ok(Rom {
+            header: RomHeader::load_header(&rom_data, map_mode),
             data: rom_data,
             map: map_mode,
         })
