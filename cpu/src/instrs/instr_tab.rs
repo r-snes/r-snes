@@ -152,7 +152,7 @@ const INSTR_CYC1: [InstrCycle; 256] = [
     /* 79 */ InstrCycle(opcode_fetch),
     /* 7a */ InstrCycle(opcode_fetch),
     /* 7b */ InstrCycle(opcode_fetch),
-    /* 7c */ InstrCycle(opcode_fetch),
+    /* 7c */ InstrCycle(jmp_abs_ind_indx_cyc1),
     /* 7d */ InstrCycle(opcode_fetch),
     /* 7e */ InstrCycle(opcode_fetch),
     /* 7f */ InstrCycle(opcode_fetch),
