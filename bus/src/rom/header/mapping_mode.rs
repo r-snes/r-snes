@@ -170,4 +170,39 @@ mod tests {
 
         assert_eq!(mode, None);
     }
+
+    #[test]
+    fn test_get_corresponding_header_offset() {
+        assert_eq!(
+            MappingMode::LoRom.get_corresponding_header_offset(),
+            LOROM_HEADER_OFFSET
+        );
+        assert_eq!(
+            MappingMode::HiRom.get_corresponding_header_offset(),
+            HIROM_HEADER_OFFSET
+        );
+    }
+
+    #[test]
+    fn test_from_byte_valid() {
+        assert_eq!(MappingMode::from_byte(0x00), MappingMode::LoRom);
+        assert_eq!(MappingMode::from_byte(0x01), MappingMode::HiRom);
+        assert_eq!(MappingMode::from_byte(0x10), MappingMode::LoRom);
+        assert_eq!(MappingMode::from_byte(0x11), MappingMode::HiRom);
+    }
+
+    #[test]
+    #[should_panic(expected = "ERROR: Could not identify mapping of ROM")]
+    fn test_from_byte_invalid() {
+        MappingMode::from_byte(0x02);
+    }
+
+    #[test]
+    fn test_mapping_mode_display() {
+        let mappings = [(MappingMode::LoRom, "LoRom"), (MappingMode::HiRom, "HiRom")];
+
+        for (mapping, expected) in mappings {
+            assert_eq!(format!("{}", mapping), expected);
+        }
+    }
 }

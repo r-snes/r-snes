@@ -118,3 +118,102 @@ impl fmt::Display for Coprocessor {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_cartridge_hardware_from_byte_valid() {
+        let mappings = [
+            (0x0, CartridgeHardware::RomOnly),
+            (0x1, CartridgeHardware::RomRam),
+            (0x2, CartridgeHardware::RomRamBattery),
+            (0x3, CartridgeHardware::RomCoprocessor),
+            (0x4, CartridgeHardware::RomCoprocessorRam),
+            (0x5, CartridgeHardware::RomCoprocessorRamBattery),
+            (0x6, CartridgeHardware::RomCoprocessorBattery),
+        ];
+
+        for (byte, expected) in mappings {
+            assert_eq!(CartridgeHardware::from_byte(byte), expected);
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "ERROR: Could not identify hardware of ROM")]
+    fn test_cartridge_hardware_from_byte_invalid() {
+        CartridgeHardware::from_byte(0x7);
+    }
+
+    #[test]
+    fn test_coprocessor_from_byte_valid() {
+        let mappings = [
+            (0x00, Some(Coprocessor::DSP(1))),
+            (0x10, Some(Coprocessor::GSU)),
+            (0x20, Some(Coprocessor::OBC1)),
+            (0x30, Some(Coprocessor::SA1)),
+            (0x40, Some(Coprocessor::SDD1)),
+            (0x50, Some(Coprocessor::SRTC)),
+            (0xE0, Some(Coprocessor::Other)),
+            (0xF0, Some(Coprocessor::Custom)),
+            // Tens digit changed
+            (0x07, Some(Coprocessor::DSP(1))),
+            (0x17, Some(Coprocessor::GSU)),
+            (0x27, Some(Coprocessor::OBC1)),
+            (0x37, Some(Coprocessor::SA1)),
+            (0x47, Some(Coprocessor::SDD1)),
+            (0x57, Some(Coprocessor::SRTC)),
+            (0xE7, Some(Coprocessor::Other)),
+            (0xF7, Some(Coprocessor::Custom)),
+        ];
+
+        for (byte, expected) in mappings {
+            assert_eq!(Coprocessor::from_byte(byte), expected);
+        }
+    }
+
+    #[test]
+    fn test_coprocessor_from_byte_none() {
+        let invalid_bytes = [0x60, 0x70, 0x80, 0x90, 0xA0, 0xB0, 0xC0, 0xD0];
+        for &byte in &invalid_bytes {
+            assert_eq!(Coprocessor::from_byte(byte), None);
+        }
+    }
+
+    #[rustfmt::skip]
+    #[test]
+    fn test_cartridge_hardware_display() {
+        let mappings = [
+            (CartridgeHardware::RomOnly, "Rom"),
+            (CartridgeHardware::RomRam, "Rom + Ram"),
+            (CartridgeHardware::RomRamBattery, "Rom + Ram + Battery"),
+            (CartridgeHardware::RomCoprocessor, "Rom + Coprocessor"),
+            (CartridgeHardware::RomCoprocessorRam, "Rom + Coprocessor + Ram"),
+            (CartridgeHardware::RomCoprocessorRamBattery, "Rom + Coprocessor + Ram + Battery"),
+            (CartridgeHardware::RomCoprocessorBattery, "Rom + Coprocessor + Battery"),
+        ];
+
+        for (hardware, expected) in mappings {
+            assert_eq!(format!("{}", hardware), expected);
+        }
+    }
+
+    #[test]
+    fn test_coprocessor_display() {
+        let mappings = [
+            (Coprocessor::DSP(1), "DSP-1"),
+            (Coprocessor::GSU, "GSU"),
+            (Coprocessor::OBC1, "OBC1"),
+            (Coprocessor::SA1, "SA1"),
+            (Coprocessor::SDD1, "SDD1"),
+            (Coprocessor::SRTC, "SRTC"),
+            (Coprocessor::Other, "Other"),
+            (Coprocessor::Custom, "Custom"),
+        ];
+
+        for (coproc, expected) in mappings {
+            assert_eq!(format!("{}", coproc), expected);
+        }
+    }
+}

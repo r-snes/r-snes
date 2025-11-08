@@ -42,3 +42,46 @@ impl fmt::Display for RomSpeed {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_rom_speed_from_byte_slow() {
+        let bytes = [0x00, 0x01, 0x02, 0x0F];
+        for &b in &bytes {
+            assert_eq!(RomSpeed::from_byte(b), RomSpeed::Slow);
+        }
+    }
+
+    #[test]
+    fn test_rom_speed_from_byte_fast() {
+        let bytes = [0x10, 0x11, 0x12, 0x1F];
+        for &b in &bytes {
+            assert_eq!(RomSpeed::from_byte(b), RomSpeed::Fast);
+        }
+    }
+
+    #[test]
+    fn test_rom_speed_display() {
+        let mappings = [(RomSpeed::Slow, "Slow"), (RomSpeed::Fast, "Fast")];
+
+        for (speed, expected) in mappings {
+            assert_eq!(format!("{}", speed), expected);
+        }
+    }
+
+    #[test]
+    fn test_rom_speed_bits_ignored() {
+        // Make sure only the 5th bit is used
+        for b in 0x00..=0xFF {
+            let expected = if (b >> 4) & 1 == 0 {
+                RomSpeed::Slow
+            } else {
+                RomSpeed::Fast
+            };
+            assert_eq!(RomSpeed::from_byte(b), expected);
+        }
+    }
+}

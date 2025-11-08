@@ -138,4 +138,78 @@ impl fmt::Display for RomHeader {
 }
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use crate::constants::HIROM_BANK_SIZE;
+
+    use super::*;
+    use common::u16_split::*;
+
+    fn create_custom_header() -> Vec<u8> {
+        let mut header = vec![0u8; HEADER_SIZE];
+
+        let title: &[u8; 21] = b"ABABABABABABABABABABA"; // 21 bytes
+        header[0..21].copy_from_slice(title);
+
+        header[21] = 0x00; // ROM Speed + Map Mode
+        header[22] = 0x00; // Cartridge type (no co-processor)
+        header[23] = 0x00; // ROM size exponent (8 => 256 KB)
+        header[24] = 0x00; // SRAM size (none)
+        header[25] = 0x00; // Country (01 = USA NTSC)
+        header[26] = 0x00; // Licensee code (Nintendo standard)
+        header[27] = 0x00; // Version (0 => original release)
+
+        // Checksum (dummy values for now)
+        let checksum: u16 = 0x0000;
+        let complement: u16 = 0x0000;
+
+        header[28] = *complement.lo();
+        header[29] = *complement.hi();
+        header[30] = *checksum.lo();
+        header[31] = *checksum.hi();
+
+        header
+    }
+
+    fn create_minimalist_rom(map: MappingMode) -> Vec<u8> {
+        let mut fake_rom = vec![0; HIROM_BANK_SIZE];
+        let header = create_custom_header();
+
+        let header_offset = map.get_corresponding_header_offset();
+        // let end = header_offset + header.len();
+
+        // copy the header into the ROM at the proper offset
+        fake_rom[header_offset..header_offset + HEADER_SIZE].copy_from_slice(&header);
+
+        fake_rom
+    }
+
+    #[test]
+    fn test_call_print_for_coverage() {
+        let fake_rom = create_minimalist_rom(MappingMode::LoRom);
+        let rom_header = RomHeader::load_header(&fake_rom, MappingMode::LoRom);
+
+        rom_header.print_header_bytes();
+    }
+
+    #[test]
+    fn test_rom_header_format() {
+        let fake_rom = create_minimalist_rom(MappingMode::LoRom);
+        let rom_header = RomHeader::load_header(&fake_rom, MappingMode::LoRom);
+        let expected = "Title: 'ABABABABABABABABABABA'
+Rom Speed: Slow
+MappingMode: LoRom
+CartridgeHardware: Rom
+Coprocessor: DSP-1
+Rom size: 0
+Ram size: 0
+Country: Japan
+VideoStandard: NTSC
+Developer ID: 0
+Rom Version: 0
+Checksum Complement: 0
+Checksum: 0
+";
+
+        assert_eq!(format!("{}", rom_header), expected);
+    }
+}
