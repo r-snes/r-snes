@@ -6,7 +6,7 @@ use quote::quote;
 #[derive(Copy, Clone, Debug)]
 pub(crate) struct ParserStatus {
     /// Whether PC should be automatically incremented
-    pub inc_pc: bool
+    pub inc_pc: bool,
 }
 
 impl Default for ParserStatus {
@@ -48,17 +48,17 @@ pub(crate) enum MetaInstruction {
     /// `meta END_CYCLE Read; <tokstream> = cpu.data_bus;`
     Fetch8Into(TokenStream),
 
+    /// Fetch two bytes from the current address bus
+    /// (and the current address bus + 1) into the u16
+    /// contained in <tokstream>
+    Fetch16Into(TokenStream),
+
     /// Fetch a byte from the address at PB:PC+1, and conditionally increment PC
     Fetch8Imm,
 
     /// Fetch a byte from the address at PB:PC+1, and conditionally increment PC,
     /// and assign into <tokstream>, similar to [`Fetch8Into`]
     Fetch8ImmInto(TokenStream),
-
-    /// Fetch two bytes from the current address bus
-    /// (and the current address bus + 1) into the u16
-    /// contained in <tokstream>
-    Fetch16Into(TokenStream),
 
     /// Fetch two bytes at PB:PC+1 (and PB:PC+2) into the u16 contained
     /// in <tokstream>, and conditionally increment PC by two
@@ -82,11 +82,14 @@ impl MetaInstruction {
         };
         let ret = match meta_kw.to_string().as_str() {
             "END_CYCLE" => MetaInstruction::EndCycle(it.by_ref().collect()),
+
             "SET_ADDRMODE_IMM" => MetaInstruction::SetAddrModeImmediate,
+
             "FETCH8_INTO" => MetaInstruction::Fetch8Into(it.by_ref().collect()),
+            "FETCH16_INTO" => MetaInstruction::Fetch16Into(it.by_ref().collect()),
+
             "FETCH8_IMM" => MetaInstruction::Fetch8Imm,
             "FETCH8_IMM_INTO" => MetaInstruction::Fetch8ImmInto(it.by_ref().collect()),
-            "FETCH16_INTO" => MetaInstruction::Fetch16Into(it.by_ref().collect()),
             "FETCH16_IMM_INTO" => MetaInstruction::Fetch16ImmInto(it.by_ref().collect()),
 
             _ => Err("Unknown meta-keyword")?,
@@ -114,6 +117,7 @@ impl MetaInstruction {
             Self::EndCycle(cyctype) => {
                 ret.cycles = vec![Cycle::new(TokenStream::new(), cyctype)];
             }
+
             Self::SetAddrModeImmediate => {
                 let conditional_incpc = if !pstatus.inc_pc {
                     // we need to look at PC+1 if it wasn't auto-incremented
@@ -123,15 +127,24 @@ impl MetaInstruction {
                     quote! {}
                 };
 
-                ret.post_instr = quote!{
+                ret.post_instr = quote! {
                     cpu.addr_bus.bank = cpu.registers.PB;
                     cpu.addr_bus.addr = cpu.registers.PC #conditional_incpc;
                 }
             }
+
             Self::Fetch8Into(dest) => {
-                ret.cycles = vec![Cycle::new(TokenStream::new(), quote! { Read })];
-                ret.post_instr = quote!{ #dest = cpu.data_bus; };
+                ret = Self::EndCycle(quote! { Read }).expand(pstatus);
+                ret.post_instr = quote! { #dest = cpu.data_bus; };
             }
+            Self::Fetch16Into(into) => {
+                ret = Self::Fetch8Into(quote! { *#into.lo_mut() }).expand(pstatus);
+                ret += InstrBody::post(quote! {
+                    cpu.addr_bus.addr = cpu.addr_bus.addr.wrapping_add(1);
+                });
+                ret += Self::Fetch8Into(quote! { *#into.hi_mut() }).expand(pstatus);
+            }
+
             Self::Fetch8Imm => {
                 ret = Self::SetAddrModeImmediate.expand(pstatus);
                 ret += InstrBody::cycles(vec![Cycle::new(
@@ -141,16 +154,7 @@ impl MetaInstruction {
             }
             Self::Fetch8ImmInto(into) => {
                 ret = Self::Fetch8Imm.expand(pstatus);
-                ret += InstrBody::post(quote! {
-                    #into = cpu.data_bus;
-                });
-            }
-            Self::Fetch16Into(into) => {
-                ret = Self::Fetch8Into(quote! { *#into.lo_mut() }).expand(pstatus);
-                ret += InstrBody::post(quote! {
-                    cpu.addr_bus.addr = cpu.addr_bus.addr.wrapping_add(1);
-                });
-                ret += Self::Fetch8Into(quote! { *#into.hi_mut() }).expand(pstatus);
+                ret += InstrBody::post(quote! { #into = cpu.data_bus; });
             }
             Self::Fetch16ImmInto(into) => {
                 ret = Self::SetAddrModeImmediate.expand(pstatus);
@@ -174,7 +178,10 @@ pub(crate) struct Instr {
 
 impl Instr {
     fn new(name: Ident) -> Self {
-        Self { name, body: InstrBody::default() }
+        Self {
+            name,
+            body: InstrBody::default(),
+        }
     }
 
     pub fn parse(stream: TokenStream, inc_pc: bool) -> Result<Self, &'static str> {
@@ -199,7 +206,9 @@ impl Instr {
         loop {
             let it = it.by_ref();
 
-            ret.body.post_instr.extend(it.take_while(|token| token.to_string() != "meta"));
+            ret.body
+                .post_instr
+                .extend(it.take_while(|token| token.to_string() != "meta"));
 
             if it.peek().is_none() {
                 break;

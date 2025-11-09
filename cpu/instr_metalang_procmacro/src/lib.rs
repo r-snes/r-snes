@@ -222,7 +222,7 @@ mod test {
     }
 
     #[test]
-    fn auto_inc_PC() {
+    fn auto_inc_pc() {
         assert_macro_incpc_produces(
             quote!(test_instr {
                 call_func1();
