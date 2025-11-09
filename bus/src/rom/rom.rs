@@ -47,11 +47,17 @@ impl Rom {
         // Check map mode
         let map_mode =
             MappingMode::detect_rom_mapping(&rom_data).ok_or(RomError::IncorrectMapping)?;
+        let header = RomHeader::load_header(&rom_data, map_mode);
+
+        // Detect if found mapping and header mapping are different
+        if map_mode != header.mapping_mode {
+            return Err(RomError::IncorrectMapping);
+        }
 
         Ok(Rom {
-            header: RomHeader::load_header(&rom_data, map_mode),
             data: rom_data,
             map: map_mode,
+            header: header,
         })
     }
 

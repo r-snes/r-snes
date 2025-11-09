@@ -19,7 +19,7 @@ pub(crate) fn create_valid_header(map: MappingMode) -> Vec<u8> {
     // ROM Speed + Map Mode
     header[21] = match map {
         MappingMode::LoRom => 0x20, // FastROM + LoROM
-        MappingMode::HiRom => 0x30, // FastROM + HiROM
+        MappingMode::HiRom => 0x21, // FastROM + HiROM
     };
     header[22] = 0x00; // Cartridge type (no co-processor)
     header[23] = 0x08; // ROM size exponent (8 => 256 KB)
