@@ -58,7 +58,7 @@ impl RomHeader {
 
         RomHeader {
             bytes: (header_bytes),
-            title: Self::read_title(&header_bytes),
+            title: String::from_utf8_lossy(&header_bytes[0..HEADER_TITLE_LEN]).to_string(),
             rom_speed: RomSpeed::from_byte(header_bytes[HEADER_SPEED_MAP_OFFSET]),
             mapping_mode: MappingMode::from_byte(header_bytes[HEADER_SPEED_MAP_OFFSET]),
             hardware: hardware,
@@ -78,18 +78,6 @@ impl RomHeader {
                 header_bytes[HEADER_CHECKSUM_OFFSET + 1],
             ]),
         }
-    }
-
-    /// Reads the title of the ROM from the header bytes.
-    ///
-    /// Args:
-    ///     header_bytes: byte array containing the ROM header
-    ///
-    /// Returns:
-    ///     The ROM title as a `String`, converting invalid UTF-8 safely.
-    fn read_title(header_bytes: &[u8; HEADER_SIZE]) -> String {
-        // Convert to String and ignoring invalid UTF-8 safely
-        String::from_utf8_lossy(&header_bytes[0..HEADER_TITLE_LEN]).to_string()
     }
 
     /// Prints the raw header bytes to the console in hexadecimal format.
