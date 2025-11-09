@@ -61,7 +61,7 @@ impl Coprocessor {
     ///
     /// Returns:
     ///     `Some(Coprocessor)` if the coprocessor can be identified.
-    ///     `None` if no coprocessor is present or the value is unrecognized.
+    ///     `None` if value is unrecognized.
     pub fn from_byte(byte: u8) -> Option<Coprocessor> {
         let coprocessor = (byte & 0xF0) >> 4;
 

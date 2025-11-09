@@ -16,33 +16,19 @@ use crate::rom::header::rom_speed::RomSpeed;
 /// Contains all metadata extracted from the ROM header.
 #[derive(PartialEq)]
 pub struct RomHeader {
-    /// Raw bytes of the ROM header
-    pub bytes: [u8; HEADER_SIZE],
-    /// Game title
+    pub bytes: [u8; HEADER_SIZE], // Raw bytes of the ROM header
     pub title: String,
-    /// ROM speed (fast/slow)
-    pub rom_speed: RomSpeed,
-    /// Mapping mode of the ROM
-    pub mapping_mode: MappingMode,
-    /// Type of cartridge hardware used by the ROM
-    pub hardware: CartridgeHardware,
-    /// Optional coprocessor present in the cartridge
-    pub coprocessor: Option<Coprocessor>,
-    /// Size of the ROM
+    pub rom_speed: RomSpeed,              // ROM speed : fast or slow
+    pub mapping_mode: MappingMode,        // Mapping mode specified in the header
+    pub hardware: CartridgeHardware, // Type of hardware in cartridge (Coprocessor, RAM, etc...)
+    pub coprocessor: Option<Coprocessor>, // Optional coprocessor present in the cartridge
     pub rom_size: u8,
-    /// Size of the RAM
     pub ram_size: u8,
-    /// Country/region code of the ROM
-    pub country: Country,
-    /// Video standard based on the country (NTSC/PAL/Other)
-    pub video_standard: VideoStandard,
-    /// Developer ID
+    pub country: Country,              // Country/region code of the ROM
+    pub video_standard: VideoStandard, // based on the country (NTSC/PAL/Other)
     pub developer_id: u8,
-    /// Version of the ROM
     pub rom_version: u8,
-    /// Checksum complement of the ROM
     pub checksum_complement: u16,
-    /// Checksum of the ROM
     pub checksum: u16,
 }
 
