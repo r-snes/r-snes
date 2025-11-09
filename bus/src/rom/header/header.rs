@@ -44,18 +44,25 @@ impl RomHeader {
     pub fn load_header(rom_data: &[u8], mapping_mode: MappingMode) -> RomHeader {
         let h_offset = mapping_mode.get_corresponding_header_offset();
         let slice = &rom_data[h_offset..h_offset + HEADER_SIZE];
+
         let header_bytes: [u8; HEADER_SIZE] = slice
             .try_into()
             .expect("ERROR: Couldn't extract the header from the ROM"); // Should be safe since multiple verification before
         let country = Country::from_byte(header_bytes[HEADER_COUNTRY_OFFSET]);
+        let hardware = CartridgeHardware::from_byte(header_bytes[HEADER_ROM_HARDWARE_OFFSET]);
+        let coprocessor = if hardware.has_ram() {
+            Coprocessor::from_byte(header_bytes[HEADER_ROM_HARDWARE_OFFSET])
+        } else {
+            None
+        };
 
         RomHeader {
             bytes: (header_bytes),
             title: Self::read_title(&header_bytes),
             rom_speed: RomSpeed::from_byte(header_bytes[HEADER_SPEED_MAP_OFFSET]),
             mapping_mode: MappingMode::from_byte(header_bytes[HEADER_SPEED_MAP_OFFSET]),
-            hardware: CartridgeHardware::from_byte(header_bytes[HEADER_ROM_HARDWARE_OFFSET]),
-            coprocessor: Coprocessor::from_byte(header_bytes[HEADER_ROM_HARDWARE_OFFSET]),
+            hardware: hardware,
+            coprocessor: coprocessor,
             rom_size: header_bytes[HEADER_ROM_SIZE_OFFSET],
             ram_size: header_bytes[HEADER_RAM_SIZE_OFFSET],
             country: country,
@@ -110,7 +117,7 @@ impl fmt::Display for RomHeader {
         if let Some(coproc) = &self.coprocessor {
             write!(f, "Coprocessor: {}\n", coproc)?;
         } else {
-            write!(f, "Coprocessor: None")?;
+            write!(f, "Coprocessor: None\n")?;
         }
         write!(f, "Rom size: {}\n", self.rom_size)?;
         write!(f, "Ram size: {}\n", self.ram_size)?;
@@ -185,7 +192,7 @@ mod tests {
 Rom Speed: Slow
 MappingMode: LoRom
 CartridgeHardware: Rom
-Coprocessor: DSP-1
+Coprocessor: None
 Rom size: 0
 Ram size: 0
 Country: Japan

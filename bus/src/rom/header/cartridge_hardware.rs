@@ -51,6 +51,38 @@ impl CartridgeHardware {
             _ => panic!("ERROR: Could not identify hardware of ROM"),
         }
     }
+
+    /// Returns true if this cartridge has RAM
+    pub fn has_ram(&self) -> bool {
+        matches!(
+            self,
+            CartridgeHardware::RomRam
+                | CartridgeHardware::RomRamBattery
+                | CartridgeHardware::RomCoprocessorRam
+                | CartridgeHardware::RomCoprocessorRamBattery
+        )
+    }
+
+    /// Returns true if this cartridge has a battery
+    pub fn has_battery(&self) -> bool {
+        matches!(
+            self,
+            CartridgeHardware::RomRamBattery
+                | CartridgeHardware::RomCoprocessorRamBattery
+                | CartridgeHardware::RomCoprocessorBattery
+        )
+    }
+
+    /// Returns true if this cartridge contains a coprocessor
+    pub fn has_coprocessor(&self) -> bool {
+        matches!(
+            self,
+            CartridgeHardware::RomCoprocessor
+                | CartridgeHardware::RomCoprocessorRam
+                | CartridgeHardware::RomCoprocessorRamBattery
+                | CartridgeHardware::RomCoprocessorBattery
+        )
+    }
 }
 
 impl Coprocessor {
