@@ -1,16 +1,30 @@
 use std::fmt;
+use strum_macros::Display;
 
 /// Represents the type of cartridge hardware used by a SNES ROM.
 ///
-/// Includes combinations of ROM, RAM, Battery backup, and Coprocessor.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Includes combinations of ROM, RAM, Battery and Coprocessor.
+#[derive(Display, Debug, Clone, Copy, PartialEq)]
 pub enum CartridgeHardware {
+    #[strum(serialize = "Rom")]
     RomOnly,
+
+    #[strum(serialize = "Rom + Ram")]
     RomRam,
+
+    #[strum(serialize = "Rom + Ram + Battery")]
     RomRamBattery,
+
+    #[strum(serialize = "Rom + Coprocessor")]
     RomCoprocessor,
+
+    #[strum(serialize = "Rom + Coprocessor + Ram")]
     RomCoprocessorRam,
+
+    #[strum(serialize = "Rom + Coprocessor + Ram + Battery")]
     RomCoprocessorRamBattery,
+
+    #[strum(serialize = "Rom + Coprocessor + Battery")]
     RomCoprocessorBattery,
 }
 
@@ -111,32 +125,8 @@ impl Coprocessor {
     }
 }
 
-impl fmt::Display for CartridgeHardware {
-    /// Formats the cartridge hardware as a human-readable string.
-    ///
-    /// Examples:
-    /// - `RomOnly` -> "Rom"
-    /// - `RomCoprocessorRamBattery` -> "Rom + Coprocessor + Ram + Battery"
-    #[rustfmt::skip]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            CartridgeHardware::RomOnly => write!(f, "Rom"),
-            CartridgeHardware::RomRam => write!(f, "Rom + Ram"),
-            CartridgeHardware::RomRamBattery => write!(f, "Rom + Ram + Battery"),
-            CartridgeHardware::RomCoprocessor => write!(f, "Rom + Coprocessor"),
-            CartridgeHardware::RomCoprocessorRam => write!(f, "Rom + Coprocessor + Ram"),
-            CartridgeHardware::RomCoprocessorRamBattery => write!(f, "Rom + Coprocessor + Ram + Battery"),
-            CartridgeHardware::RomCoprocessorBattery => write!(f, "Rom + Coprocessor + Battery"),
-        }
-    }
-}
-
 impl fmt::Display for Coprocessor {
-    /// Formats the coprocessor as a human-readable string.
-    ///
-    /// Examples:
-    /// - `DSP(1)` -> "DSP-1"
-    /// - `GSU` -> "GSU"
+    // Needed because `strum` can't format enum with parameters
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Coprocessor::DSP(nb) => write!(f, "DSP-{}", nb),

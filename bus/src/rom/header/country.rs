@@ -1,9 +1,9 @@
-use std::fmt;
+use strum_macros::Display;
 
 /// Represents the country or region code of a SNES ROM.
 ///
 /// Covers official regions and some miscellaneous/other codes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Display, Debug, Clone, Copy, PartialEq)]
 pub enum Country {
     International,
     Japan,
@@ -32,7 +32,7 @@ pub enum Country {
 /// Represents the video standard used by a SNES ROM.
 ///
 /// Mainly NTSC or PAL, with an "Other" option for unknown/unsupported regions.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Display, Debug, Clone, Copy, PartialEq)]
 pub enum VideoStandard {
     NTSC,
     PAL,
@@ -105,56 +105,6 @@ impl VideoStandard {
             | Country::Australia => VideoStandard::PAL,
 
             _ => VideoStandard::Other,
-        }
-    }
-}
-
-impl fmt::Display for Country {
-    /// Formats the country as a human-readable string.
-    ///
-    /// Examples:
-    /// - `Japan` -> "Japan"
-    /// - `Europe` -> "Europe"
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Country::International => write!(f, "International"),
-            Country::Japan => write!(f, "Japan"),
-            Country::USA => write!(f, "USA"),
-            Country::Europe => write!(f, "Europe"),
-            Country::Scandinavia => write!(f, "Scandinavia"),
-            Country::Finland => write!(f, "Finland"),
-            Country::Denmark => write!(f, "Denmark"),
-            Country::France => write!(f, "France"),
-            Country::Holland => write!(f, "Holland"),
-            Country::Spain => write!(f, "Spain"),
-            Country::Germany => write!(f, "Germany"),
-            Country::Italy => write!(f, "Italy"),
-            Country::China => write!(f, "China"),
-            Country::Indonesia => write!(f, "Indonesia"),
-            Country::SouthKorea => write!(f, "SouthKorea"),
-            Country::Common => write!(f, "Common"),
-            Country::Canada => write!(f, "Canada"),
-            Country::Brazil => write!(f, "Brazil"),
-            Country::Australia => write!(f, "Australia"),
-            Country::OtherX => write!(f, "OtherX"),
-            Country::OtherY => write!(f, "OtherY"),
-            Country::OtherZ => write!(f, "OtherZ"),
-        }
-    }
-}
-
-impl fmt::Display for VideoStandard {
-    /// Formats the video standard as a human-readable string.
-    ///
-    /// Examples:
-    /// - `NTSC` -> "NTSC"
-    /// - `PAL` -> "PAL"
-    /// - `Other` -> "Other"
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            VideoStandard::NTSC => write!(f, "NTSC"),
-            VideoStandard::PAL => write!(f, "PAL"),
-            VideoStandard::Other => write!(f, "Other"),
         }
     }
 }

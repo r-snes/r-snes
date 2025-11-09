@@ -4,12 +4,13 @@ use crate::constants::{
     LOROM_HEADER_OFFSET,
 };
 use std::{cmp::Ordering, fmt};
+use strum_macros::Display;
 
 /// Represents the memory mapping mode of a SNES ROM.
 ///
 /// SNES cartridges can be mapped in different ways depending on how the
 /// ROM is organized. This affects how the CPU addresses the ROM contents.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Display, Debug, Clone, Copy, PartialEq)]
 pub enum MappingMode {
     /// LoROM (Low ROM) mapping mode.
     ///
@@ -121,20 +122,6 @@ impl MappingMode {
         }
 
         score
-    }
-}
-
-impl fmt::Display for MappingMode {
-    /// Formats the mapping mode as a human-readable string.
-    ///
-    /// Examples:
-    /// - `LoRom` -> "LoRom"
-    /// - `HiRom` -> "HiRom"
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            MappingMode::LoRom => write!(f, "LoRom"),
-            MappingMode::HiRom => write!(f, "HiRom"),
-        }
     }
 }
 

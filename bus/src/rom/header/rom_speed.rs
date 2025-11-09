@@ -1,9 +1,9 @@
-use std::fmt;
+use strum_macros::Display;
 
 /// Represents the speed of a SNES ROM.
 ///
 /// Can be either Slow or Fast
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Display, Debug, Clone, Copy, PartialEq)]
 pub enum RomSpeed {
     Slow,
     Fast,
@@ -25,20 +25,6 @@ impl RomSpeed {
             0 => RomSpeed::Slow,
             1 => RomSpeed::Fast,
             _ => panic!("ERROR: Could not identify speed of ROM"),
-        }
-    }
-}
-
-impl fmt::Display for RomSpeed {
-    /// Formats the ROM speed as a human-readable string.
-    ///
-    /// Examples:
-    /// - `Slow` -> "Slow"
-    /// - `Fast` -> "Fast"
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            RomSpeed::Slow => write!(f, "Slow"),
-            RomSpeed::Fast => write!(f, "Fast"),
         }
     }
 }
