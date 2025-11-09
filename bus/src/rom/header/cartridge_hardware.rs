@@ -162,6 +162,26 @@ mod tests {
         }
     }
 
+    #[rustfmt::skip]
+    #[test]
+    fn test_cartridge_components_availability() {
+        let mappings = [
+            (CartridgeHardware::RomOnly, false, false, false),
+            (CartridgeHardware::RomRam, true, false, false),
+            (CartridgeHardware::RomRamBattery, true, true, false),
+            (CartridgeHardware::RomCoprocessor, false, false, true),
+            (CartridgeHardware::RomCoprocessorRam, true, false, true),
+            (CartridgeHardware::RomCoprocessorBattery, false, true, true),
+            (CartridgeHardware::RomCoprocessorRamBattery, true, true, true),
+        ];
+
+        for (hardware, has_ram, has_battery, has_coprocessor) in mappings {
+            assert_eq!(hardware.has_ram(), has_ram);
+            assert_eq!(hardware.has_battery(), has_battery);
+            assert_eq!(hardware.has_coprocessor(), has_coprocessor);
+        }
+    }
+
     #[test]
     #[should_panic(expected = "ERROR: Could not identify hardware of ROM")]
     fn test_cartridge_hardware_from_byte_invalid() {

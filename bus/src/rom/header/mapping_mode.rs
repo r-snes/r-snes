@@ -3,7 +3,7 @@ use crate::constants::{
     HEADER_SPEED_MAP_OFFSET, HEADER_TITLE_LEN, HIROM_BANK_SIZE, HIROM_HEADER_OFFSET,
     LOROM_HEADER_OFFSET,
 };
-use std::{cmp::Ordering, fmt};
+use std::cmp::Ordering;
 use strum_macros::Display;
 
 /// Represents the memory mapping mode of a SNES ROM.
