@@ -31,6 +31,10 @@ impl ParserStatus {
 
 /// Enum for all the meta instructions implemented for the CPU
 /// meta-language.
+///
+/// Notes shared by several meta-instructions:
+/// 1. Meta-instrs that have "8" or "16" in their name indicate that
+///    they are a variant of an operation on 8-bits/16-bits operands
 pub(crate) enum MetaInstruction {
     /// Manually delimit the end of a cycle,
     /// with the CycleResult (cycle type) produced by the token stream
@@ -71,6 +75,12 @@ pub(crate) enum MetaInstruction {
     /// Fetch two bytes at PB:PC+1 (and PB:PC+2) into the u16 contained
     /// in <tokstream>, and conditionally increment PC by two
     Fetch16ImmInto(TokenStream),
+
+    /// Write the u8 stored in <tokstream> at the current address bus
+    Write8(TokenStream),
+
+    /// Write the u16 stored in <tokstream> at the current address bus
+    Write16(TokenStream),
 }
 
 impl MetaInstruction {
@@ -101,6 +111,9 @@ impl MetaInstruction {
             "FETCH8_IMM" => MetaInstruction::Fetch8Imm,
             "FETCH8_IMM_INTO" => MetaInstruction::Fetch8ImmInto(it.by_ref().collect()),
             "FETCH16_IMM_INTO" => MetaInstruction::Fetch16ImmInto(it.by_ref().collect()),
+
+            "WRITE8" => MetaInstruction::Write8(it.by_ref().collect()),
+            "WRITE16" => MetaInstruction::Write16(it.by_ref().collect()),
 
             _ => Err("Unknown meta-keyword")?,
         };
@@ -185,6 +198,22 @@ impl MetaInstruction {
                 ret = Self::SetAddrModeImmediate.expand(pstatus);
                 ret += InstrBody::post(pstatus.conditionally_inc_pc(2));
                 ret += Self::Fetch16Into(into).expand(pstatus);
+            }
+
+            Self::Write8(data) => {
+                ret.cycles = vec![Cycle::new(
+                    quote! {
+                        cpu.data_bus = #data;
+                    },
+                    quote! { Write }
+                )];
+            }
+            Self::Write16(data) => {
+                ret += Self::Write8(quote! { *#data.lo() }).expand(pstatus);
+                ret += InstrBody::post(quote! {
+                    cpu.addr_bus.addr = cpu.addr_bus.addr.wrapping_add(1);
+                });
+                ret += Self::Write8(quote! { *#data.hi() }).expand(pstatus);
             }
         }
         ret
