@@ -40,6 +40,14 @@ pub(crate) enum MetaInstruction {
     /// (right after the opcode)
     SetAddrModeImmediate,
 
+    /// Sets the address bus to point at an absolute operand
+    /// (read an address after the opcode and set the addr bus
+    /// to point at that address in DB)
+    SetAddrModeAbsolute,
+
+    /// Sets the address bus to point at the top of the stack
+    SetAddrModeStack,
+
     /// Creates a read cycle at the current address bus
     /// and assigns the value set in the data into the token
     /// stream passed as parameter in the next cycle.
@@ -84,6 +92,8 @@ impl MetaInstruction {
             "END_CYCLE" => MetaInstruction::EndCycle(it.by_ref().collect()),
 
             "SET_ADDRMODE_IMM" => MetaInstruction::SetAddrModeImmediate,
+            "SET_ADDRMODE_ABS" => MetaInstruction::SetAddrModeAbsolute,
+            "SET_ADDRMODE_STACK" => MetaInstruction::SetAddrModeStack,
 
             "FETCH8_INTO" => MetaInstruction::Fetch8Into(it.by_ref().collect()),
             "FETCH16_INTO" => MetaInstruction::Fetch16Into(it.by_ref().collect()),
@@ -131,6 +141,21 @@ impl MetaInstruction {
                     cpu.addr_bus.bank = cpu.registers.PB;
                     cpu.addr_bus.addr = cpu.registers.PC #conditional_incpc;
                 }
+            }
+            Self::SetAddrModeAbsolute => {
+                // start by fetching the address at which we'll be reading/writing
+                ret = Self::Fetch16ImmInto(quote! { cpu.internal_data_bus }).expand(pstatus);
+                // then set the addr bus accordingly
+                ret += InstrBody::post(quote! {
+                    cpu.addr_bus.addr = cpu.internal_data_bus;
+                    cpu.addr_bus.bank = cpu.registers.DB;
+                });
+            }
+            Self::SetAddrModeStack => {
+                ret = InstrBody::post(quote! {
+                    cpu.addr_bus.addr = cpu.registers.S;
+                    cpu.addr_bus.bank = 0;
+                });
             }
 
             Self::Fetch8Into(dest) => {
