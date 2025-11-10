@@ -35,6 +35,23 @@ impl ParserStatus {
 /// Notes shared by several meta-instructions:
 /// 1. Meta-instrs that have "8" or "16" in their name indicate that
 ///    they are a variant of an operation on 8-bits/16-bits operands
+/// 2. Meta-instructions that read or write to the stack (Pull and Push
+///    meta-instructions) all have an "N" (native) variant. This is to
+///    account for a weird quirk of pushing/pulling to/from the stack with
+///    the 65816: by default (in native mode) the S (stack pointer, points
+///    to the current top of the stack) register is 16-bits wide, but in
+///    emulation mode it's "generally" only 8-bits wide, with the high-order
+///    byte "forced" to 0x01. The high order byte is only set to 0x01 when
+///    switching to emulation mode, it is not constantly (nor repeatedly)
+///    reset to 0x01. Most instructions that interact with the stack will thus
+///    only increment/decrement the low-order byte of S when in emulation
+///    mode to "preserve" the forced high byte (note that they would just as
+///    well preserve the high byte even it isn't currently 0x01).
+///    This is what Pull/Push meta-instructions do by default.
+///    However, a few instructions may increment or decrement S past its
+///    "forced" 0x01. PullN and PushN meta-instructions allow this behaviour:
+///    they will always push/pull as in native mode, (without preserving the
+///    high order byte of S in emulation mode)
 pub(crate) enum MetaInstruction {
     /// Manually delimit the end of a cycle,
     /// with the CycleResult (cycle type) produced by the token stream
@@ -76,11 +93,59 @@ pub(crate) enum MetaInstruction {
     /// in <tokstream>, and conditionally increment PC by two
     Fetch16ImmInto(TokenStream),
 
+    /// Read a byte from the top of the stack, and update the stack pointer
+    Pull8,
+
+    /// Read a byte from the top of the stack, and update the stack pointer
+    ///
+    /// See note 2 for differences with Pull8
+    PullN8,
+
+    /// Read a u8 from the top of the stack, store it in the token
+    /// stream pointed to by <tokstream>, and update the stack pointer
+    Pull8Into(TokenStream),
+
+    /// Read a u8 from the top of the stack, store it in the token
+    /// stream pointed to by <tokstream>, and update the stack pointer
+    ///
+    /// See note 2 for differences with Pull8Into
+    PullN8Into(TokenStream),
+
+    /// Read a u16 from the top of the stack, store it in the token
+    /// stream pointed to by <tokstream>, and update the stack pointer
+    Pull16Into(TokenStream),
+
+    /// Read a u16 from the top of the stack, store it in the token
+    /// stream pointed to by <tokstream>, and update the stack pointer
+    ///
+    /// See note 2 for differences with Pull16Into
+    PullN16Into(TokenStream),
+
     /// Write the u8 stored in <tokstream> at the current address bus
     Write8(TokenStream),
 
     /// Write the u16 stored in <tokstream> at the current address bus
     Write16(TokenStream),
+
+    /// Write the u8 stored in <tokenstream> at the top of the stack,
+    /// and update the stack pointer
+    Push8(TokenStream),
+
+    /// Write the u8 stored in <tokenstream> at the top of the stack,
+    /// and update the stack pointer
+    ///
+    /// See note 2 for differences with Push8
+    PushN8(TokenStream),
+
+    /// Write the u16 stored in <tokenstream> at the top of the stack,
+    /// and update the stack pointer
+    Push16(TokenStream),
+
+    /// Write the u16 stored in <tokenstream> at the top of the stack,
+    /// and update the stack pointer
+    ///
+    /// See note 2 for differences with Push16
+    PushN16(TokenStream),
 }
 
 impl MetaInstruction {
@@ -112,8 +177,20 @@ impl MetaInstruction {
             "FETCH8_IMM_INTO" => MetaInstruction::Fetch8ImmInto(it.by_ref().collect()),
             "FETCH16_IMM_INTO" => MetaInstruction::Fetch16ImmInto(it.by_ref().collect()),
 
+            "PULL8" => MetaInstruction::Pull8,
+            "PULLN8" => MetaInstruction::PullN8,
+            "PULL8_INTO" => MetaInstruction::Pull8Into(it.by_ref().collect()),
+            "PULLN8_INTO" => MetaInstruction::PullN8Into(it.by_ref().collect()),
+            "PULL16_INTO" => MetaInstruction::Pull16Into(it.by_ref().collect()),
+            "PULLN16_INTO" => MetaInstruction::PullN16Into(it.by_ref().collect()),
+
             "WRITE8" => MetaInstruction::Write8(it.by_ref().collect()),
             "WRITE16" => MetaInstruction::Write16(it.by_ref().collect()),
+
+            "PUSH8" => MetaInstruction::Push8(it.by_ref().collect()),
+            "PUSHN8" => MetaInstruction::PushN8(it.by_ref().collect()),
+            "PUSH16" => MetaInstruction::Push16(it.by_ref().collect()),
+            "PUSHN16" => MetaInstruction::PushN16(it.by_ref().collect()),
 
             _ => Err("Unknown meta-keyword")?,
         };
@@ -200,6 +277,45 @@ impl MetaInstruction {
                 ret += Self::Fetch16Into(into).expand(pstatus);
             }
 
+            Self::Pull8 => {
+                ret = InstrBody::post(quote! {
+                    // stack grows downwards; only set low byte in emu mode
+                    if cpu.registers.P.E {
+                        *cpu.registers.S.lo_mut() = cpu.registers.S.lo().wrapping_add(1);
+                    } else {
+                        cpu.registers.S = cpu.registers.S.wrapping_add(1);
+                    }
+                });
+                ret += Self::SetAddrModeStack.expand(pstatus);
+                ret += Self::EndCycle(quote! { Read }).expand(pstatus);
+            }
+            Self::PullN8 => {
+                ret = InstrBody::post(quote! {
+                    // stack grows downwards
+                    cpu.registers.S = cpu.registers.S.wrapping_add(1);
+                });
+                ret += Self::SetAddrModeStack.expand(pstatus);
+                ret += Self::EndCycle(quote! { Read }).expand(pstatus);
+            }
+            Self::Pull8Into(into) => {
+                ret = Self::Pull8.expand(pstatus);
+                ret += InstrBody::post(quote! { #into = cpu.data_bus; });
+            }
+            Self::PullN8Into(into) => {
+                ret = Self::PullN8.expand(pstatus);
+                ret += InstrBody::post(quote! { #into = cpu.data_bus; });
+            }
+            Self::Pull16Into(into) => {
+                // pulls read the low byte first
+                ret = Self::Pull8Into(quote! { *#into.lo_mut() }).expand(pstatus);
+                ret += Self::Pull8Into(quote! { *#into.hi_mut() }).expand(pstatus);
+            }
+            Self::PullN16Into(into) => {
+                // pulls read the low byte first
+                ret = Self::PullN8Into(quote! { *#into.lo_mut() }).expand(pstatus);
+                ret += Self::PullN8Into(quote! { *#into.hi_mut() }).expand(pstatus);
+            }
+
             Self::Write8(data) => {
                 ret.cycles = vec![Cycle::new(
                     quote! {
@@ -214,6 +330,38 @@ impl MetaInstruction {
                     cpu.addr_bus.addr = cpu.addr_bus.addr.wrapping_add(1);
                 });
                 ret += Self::Write8(quote! { *#data.hi() }).expand(pstatus);
+            }
+
+            Self::Push8(data) => {
+                ret = Self::SetAddrModeStack.expand(pstatus);
+                ret += InstrBody::post(quote! {
+                    // stack grows downwards; only set low byte in emu mode
+                    if cpu.registers.P.E {
+                        *cpu.registers.S.lo_mut() = cpu.registers.S.lo().wrapping_sub(1);
+                    } else {
+                        cpu.registers.S = cpu.registers.S.wrapping_sub(1);
+                    }
+                });
+                ret += Self::Write8(data).expand(pstatus);
+            }
+            Self::PushN8(data) => {
+                ret = Self::SetAddrModeStack.expand(pstatus);
+                // stack grows downwards
+                ret += InstrBody::post(quote! {
+                    cpu.registers.S = cpu.registers.S.wrapping_sub(1);
+                });
+
+                ret += Self::Write8(data).expand(pstatus);
+            }
+            Self::Push16(data) => {
+                // pushes write the high byte first
+                ret = Self::Push8(quote! { *#data.hi() }).expand(pstatus);
+                ret += Self::Push8(quote! { *#data.lo() }).expand(pstatus);
+            }
+            Self::PushN16(data) => {
+                // pushes write the high byte first
+                ret = Self::PushN8(quote! { *#data.hi() }).expand(pstatus);
+                ret += Self::PushN8(quote! { *#data.lo() }).expand(pstatus);
             }
         }
         ret
