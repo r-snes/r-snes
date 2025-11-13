@@ -2,8 +2,6 @@
 //! instructions which inconditionnaly make the execution
 //! address (i.e. PC:PB) jump to another location
 
-use crate::instrs::prelude::*;
-use common::u16_split::*;
 use instr_metalang_procmacro::cpu_instr_no_inc_pc;
 
 // JMP absolute: jump program execution to the
@@ -129,7 +127,6 @@ cpu_instr_no_inc_pc!(jsl {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::instrs::test_prelude::*;
 
     #[test]
