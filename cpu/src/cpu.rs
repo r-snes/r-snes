@@ -28,7 +28,6 @@ pub struct CPU {
 
     /// Internal data bus used to store 16-bits operands before doing
     /// operations on them.
-    #[expect(dead_code, reason = "not used by any of the currently impl'd instrs")]
     pub(crate) internal_data_bus: u16,
 
     /// Member variable that holds a function pointer that will be called the next
