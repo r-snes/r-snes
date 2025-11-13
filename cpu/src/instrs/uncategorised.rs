@@ -2,7 +2,7 @@
 //! a bigger category, at least don't *yet* fit into a category with other
 //! currently implemented instructions.
 
-use crate::instrs::prelude::*;
+use instr_metalang_procmacro::cpu_instr;
 
 // `INX` instruction: increment register X
 //
@@ -24,7 +24,6 @@ cpu_instr!(nop {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::instrs::test_prelude::*;
 
     #[test]
