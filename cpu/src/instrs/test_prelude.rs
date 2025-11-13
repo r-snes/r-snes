@@ -5,9 +5,7 @@
 
 pub(crate) use crate::registers::Registers;
 pub(crate) use common::snes_address::{SnesAddress,snes_addr};
-
-use crate::cpu::CPU;
-use crate::cpu::CycleResult;
+pub(crate) use crate::cpu::{CPU, CycleResult};
 
 /// Same as [`expect_opcode_fetch`], but doesn't require providing an
 /// opcode to inject for the next cycle. This only checks that the CPU

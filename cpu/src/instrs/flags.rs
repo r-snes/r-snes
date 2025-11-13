@@ -1,6 +1,6 @@
 //! Module which defines all instructions which mainly affect CPU flags
 
-use crate::instrs::prelude::*;
+use instr_metalang_procmacro::cpu_instr;
 
 // `CLV`: clear overflow flag
 cpu_instr!(clv {
@@ -46,7 +46,6 @@ cpu_instr!(sed {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::instrs::test_prelude::*;
 
     use duplicate::duplicate_item;

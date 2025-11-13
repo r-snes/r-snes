@@ -44,9 +44,18 @@ pub(crate) fn cpu_instr2(input: TokenStream, inc_pc: bool) -> TokenStream {
                     (#cyc_type, InstrCycle(#next_func_name))
                 }
             }
-        });
+        }).collect::<TokenStream>();
 
-    TokenStream::from_iter(cycle_funcs)
+    // wrap the generated instruction in a submodule for it to be easier
+    // to expand using cargo_expand
+    quote! {
+        pub(crate) use #name::*;
+        pub(crate) mod #name {
+            use crate::instrs::prelude::*;
+
+            #cycle_funcs
+        }
+    }
 }
 
 /// The main proc macro of this crate.
@@ -137,12 +146,17 @@ mod test {
                 meta END_CYCLE Internal;
             }),
             quote!(
-                pub(crate) fn instr_inx_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
-                    cpu.registers.X = cpu.registers.X.wrapping_add(1);
-                    cpu.registers.P.Z = cpu.registers.X == 0;
-                    cpu.registers.P.N = cpu.registers.X > 0x7fff;
+                pub(crate) use instr_inx::*;
+                pub(crate) mod instr_inx {
+                    use crate::instrs::prelude::*;
 
-                    (Internal, InstrCycle(opcode_fetch))
+                    pub(crate) fn instr_inx_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
+                        cpu.registers.X = cpu.registers.X.wrapping_add(1);
+                        cpu.registers.P.Z = cpu.registers.X == 0;
+                        cpu.registers.P.N = cpu.registers.X > 0x7fff;
+
+                        (Internal, InstrCycle(opcode_fetch))
+                    }
                 }
             ),
         );
@@ -162,20 +176,25 @@ mod test {
                 meta END_CYCLE Write;
             }),
             quote!(
-                pub(crate) fn some_instr_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
-                    some_function1(cpu);
+                pub(crate) use some_instr::*;
+                pub(crate) mod some_instr {
+                    use crate::instrs::prelude::*;
 
-                    (Internal, InstrCycle(some_instr_cyc2))
-                }
-                pub(crate) fn some_instr_cyc2(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
-                    some_function2(cpu);
+                    pub(crate) fn some_instr_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
+                        some_function1(cpu);
 
-                    (Read, InstrCycle(some_instr_cyc3))
-                }
-                pub(crate) fn some_instr_cyc3(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
-                    some_function3(cpu);
+                        (Internal, InstrCycle(some_instr_cyc2))
+                    }
+                    pub(crate) fn some_instr_cyc2(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
+                        some_function2(cpu);
 
-                    (Write, InstrCycle(opcode_fetch))
+                        (Read, InstrCycle(some_instr_cyc3))
+                    }
+                    pub(crate) fn some_instr_cyc3(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
+                        some_function3(cpu);
+
+                        (Write, InstrCycle(opcode_fetch))
+                    }
                 }
             ),
         );
@@ -190,12 +209,17 @@ mod test {
                 meta END_CYCLE some_func_which_determines_cyc_type();
             }),
             quote!(
-                pub(crate) fn test_instr_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
-                    (if 1 == 0 { Internal } else { Read }, InstrCycle(test_instr_cyc2))
-                }
+                pub(crate) use test_instr::*;
+                pub(crate) mod test_instr {
+                    use crate::instrs::prelude::*;
 
-                pub(crate) fn test_instr_cyc2(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
-                    (some_func_which_determines_cyc_type(), InstrCycle(opcode_fetch))
+                    pub(crate) fn test_instr_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
+                        (if 1 == 0 { Internal } else { Read }, InstrCycle(test_instr_cyc2))
+                    }
+
+                    pub(crate) fn test_instr_cyc2(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
+                        (some_func_which_determines_cyc_type(), InstrCycle(opcode_fetch))
+                    }
                 }
             ),
         );
@@ -210,12 +234,17 @@ mod test {
                 cpu.registers.X = cpu.data_bus as u16;
             }),
             quote!(
-                pub(crate) fn test_instr_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
-                    (Read, InstrCycle(|cpu| {
-                        cpu.registers.X = cpu.data_bus as u16;
+                pub(crate) use test_instr::*;
+                pub(crate) mod test_instr {
+                    use crate::instrs::prelude::*;
 
-                        opcode_fetch(cpu)
-                    }))
+                    pub(crate) fn test_instr_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
+                        (Read, InstrCycle(|cpu| {
+                            cpu.registers.X = cpu.data_bus as u16;
+
+                            opcode_fetch(cpu)
+                        }))
+                    }
                 }
             ),
         );
@@ -232,16 +261,21 @@ mod test {
                 meta END_CYCLE Internal;
             }),
             quote!(
-                pub(crate) fn test_instr_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
-                    cpu.registers.PC = cpu.registers.PC.wrapping_add(1u16);
-                    call_func1();
+                pub(crate) use test_instr::*;
+                pub(crate) mod test_instr {
+                    use crate::instrs::prelude::*;
 
-                    (Internal, InstrCycle(test_instr_cyc2))
-                }
-                pub(crate) fn test_instr_cyc2(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
-                    call_func2();
+                    pub(crate) fn test_instr_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
+                        cpu.registers.PC = cpu.registers.PC.wrapping_add(1u16);
+                        call_func1();
 
-                    (Internal, InstrCycle(opcode_fetch))
+                        (Internal, InstrCycle(test_instr_cyc2))
+                    }
+                    pub(crate) fn test_instr_cyc2(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
+                        call_func2();
+
+                        (Internal, InstrCycle(opcode_fetch))
+                    }
                 }
             ),
         );
