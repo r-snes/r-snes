@@ -61,6 +61,68 @@ cpu_instr_no_inc_pc!(jml {
     meta FETCH8_INTO cpu.registers.PB;
 });
 
+// JSR absolute: jump stack relative absolute
+// same as JMP absolute, but pushes PC to the stack before jumping
+cpu_instr_no_inc_pc!(jsr_abs {
+    meta FETCH16_IMM_INTO cpu.internal_data_bus;
+
+    // artificial internal cycle to reproduce hardware behaviour
+    meta END_CYCLE Internal;
+
+    // push a PC that is 1 byte before the next opcode
+    meta PUSH16 cpu.registers.PC.wrapping_add(2);
+
+    cpu.registers.PC = cpu.internal_data_bus;
+});
+
+// JSR absolute indirect X-indexed: same as JMP (a,x) but also push PC
+// cycle layout exceptionally weird: R AAL; W PC; R AAH; I; R PC
+cpu_instr_no_inc_pc!(jsr_abs_ind_xind {
+    meta FETCH8_IMM_INTO *cpu.internal_data_bus.lo_mut();
+
+    // adjust pushed PC to next opcode - 1
+    meta PUSHN16 cpu.registers.PC.wrapping_add(2);
+
+    // we need to readjust the addr bus manually to read immediate values again
+    cpu.addr_bus = SnesAddress {
+        bank: cpu.registers.PB,
+        addr: cpu.registers.PC.wrapping_add(1),
+    };
+    meta FETCH8_INTO *cpu.internal_data_bus.hi_mut();
+    // now cpu.internal_bus finally has the address at which we'll read PC
+
+    meta END_CYCLE Internal; // internal cycle to reproduce hardware behaviour
+
+    // set the addr bus to read PC.
+    // We intentionally don't set the bank, keep reading in PB
+    cpu.addr_bus.addr = cpu.internal_data_bus.wrapping_add(cpu.registers.X);
+
+    meta FETCH16_INTO cpu.registers.PC;
+
+    // *cpu.registers.S.hi_mut() = 0x01;
+    // We may or may not to uncomment the above, I don't know for now
+    // See https://github.com/bsnes-emu/bsnes/issues/374 for info
+});
+
+// JSL: jump stack relative long
+// same as JSR abs, but also read/write PB
+// cycle layout is a bit weird: R PC; W PB; I; R PB; W PC
+cpu_instr_no_inc_pc!(jsl {
+    meta FETCH16_IMM_INTO cpu.internal_data_bus;
+    meta PUSHN8 cpu.registers.PB;
+
+    meta END_CYCLE Internal;
+
+    meta FETCH8_IMM_INTO cpu.registers.PB;
+    // adjust pushed PC to next opcode - 1
+    meta PUSHN16 cpu.registers.PC.wrapping_add(3);
+
+    cpu.registers.PC = cpu.internal_data_bus;
+
+    // *cpu.registers.S.hi_mut() = 0x01;
+    // see https://github.com/bsnes-emu/bsnes/issues/374
+});
+
 #[cfg(test)]
 mod tests {
     use super::*;
