@@ -1,6 +1,8 @@
+use std::fmt;
+
 /// A struct which represents the WDC 65C816's registers
 #[allow(non_snake_case, reason = "We are naming register in all caps")]
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub struct Registers {
     /// The accumulator register: stores the result of most operations
     pub A: u16,
@@ -30,7 +32,7 @@ pub struct Registers {
 }
 
 #[allow(non_snake_case, reason = "We are naming register in all caps")]
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub struct RegisterP {
     /// Carry flag: typically set when an arithmetic operation "carries out"
     pub C: bool,
@@ -110,5 +112,44 @@ impl Default for RegisterP {
             E: false,
             B: false,
         }
+    }
+}
+
+impl fmt::Debug for Registers {
+    #[cfg(not(tarpaulin_include))]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        std::write!(
+            f,
+            "{{ A: {:#06x}, X: {:#06x}, Y: {:#06x}, DB: {:#04x}, D: {:#06x}, S: {:#06x}, PB: {:#04x}, PC: {:#06x}, P: ({:?}) }}",
+            self.A,
+            self.X,
+            self.Y,
+            self.DB,
+            self.D,
+            self.S,
+            self.PB,
+            self.PC,
+            self.P,
+        )
+    }
+}
+
+impl fmt::Debug for RegisterP {
+    #[cfg(not(tarpaulin_include))]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        std::write!(f, "{} ", if self.E { "Emu" } else { "Nat" })?;
+        for (flag, c) in [
+            (self.N, 'N'),
+            (self.V, 'V'),
+            (self.M, 'M'),
+            (self.X, 'X'),
+            (self.D, 'D'),
+            (self.I, 'I'),
+            (self.Z, 'Z'),
+            (self.C, 'C'),
+        ] {
+            std::write!(f, "{}", if flag { c } else { '-' })?;
+        };
+        Ok(())
     }
 }
