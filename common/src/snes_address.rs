@@ -4,7 +4,7 @@ use std::convert::From;
 /// SNES adddress space.
 ///
 /// The address space is split in 256 64Ko banks.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Default)]
+#[derive(Copy, Clone, Eq, PartialEq, Default)]
 pub struct SnesAddress {
     /// The bank number of the address
     pub bank: u8,
@@ -27,6 +27,13 @@ impl From<usize> for SnesAddress {
             bank: ((value >> 16) & 0xFF) as u8,
             addr: (value & 0xFFFF) as u16,
         }
+    }
+}
+
+impl std::fmt::Debug for SnesAddress {
+    #[cfg(not(tarpaulin_include))]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::write!(f, "SnesAddress {{ ${:x}:{:x} }}", self.bank, self.addr)
     }
 }
 
