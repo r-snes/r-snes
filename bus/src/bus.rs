@@ -48,6 +48,7 @@ impl Bus {
 mod tests {
     use super::*;
     use crate::rom::test_rom::*;
+    use common::snes_address::snes_addr;
 
     #[test]
     fn test_wram_read_write_through_bus() {
@@ -55,24 +56,15 @@ mod tests {
         let (rom_path, _dir) = create_temp_rom(&rom_data);
         let mut bus = Bus::new(&rom_path).unwrap();
 
-        let addr = SnesAddress {
-            bank: 0x00,
-            addr: 0x0010,
-        };
+        let addr = snes_addr!(0x00:0x0010);
         bus.write(addr, 0x42);
         assert_eq!(bus.read(addr), 0x42);
 
-        let addr_mirror = SnesAddress {
-            bank: 0x80,
-            addr: 0x0010,
-        };
+        let addr_mirror = snes_addr!(0x80:0x0010);
         assert_eq!(bus.read(addr), 0x42);
         assert_eq!(bus.read(addr_mirror), 0x42);
 
-        let real_addr = SnesAddress {
-            bank: 0x7E,
-            addr: 0x0010,
-        };
+        let real_addr = snes_addr!(0x7E:0x0010);
         assert_eq!(bus.read(real_addr), 0x42);
 
         bus.write(real_addr, 0x21);
@@ -87,17 +79,11 @@ mod tests {
         let (rom_path, _dir) = create_temp_rom(&rom_data);
         let mut bus = Bus::new(&rom_path).unwrap();
 
-        let addr = SnesAddress {
-            bank: 0x00,
-            addr: 0x2345,
-        };
+        let addr = snes_addr!(0x00:0x2345);
         bus.write(addr, 0x77);
         assert_eq!(bus.read(addr), 0x77);
 
-        let addr_mirror = SnesAddress {
-            bank: 0x9E,
-            addr: 0x2345,
-        };
+        let addr_mirror = snes_addr!(0x9E:0x2345);
         assert_eq!(bus.read(addr), 0x77);
         assert_eq!(bus.read(addr_mirror), 0x77);
     }
@@ -109,18 +95,12 @@ mod tests {
         let (rom_path, _dir) = create_temp_rom(&rom_data);
         let mut bus = Bus::new(&rom_path).unwrap();
 
-        let addr = SnesAddress {
-            bank: 0x00,
-            addr: 0x8001,
-        };
+        let addr = snes_addr!(0x00:0x8001);
         assert_eq!(bus.read(addr), 0x42);
         bus.write(addr, 0x21);
         assert_eq!(bus.read(addr), 0x42);
 
-        let other_addr = SnesAddress {
-            bank: 0x40,
-            addr: 0x8001,
-        };
+        let other_addr = snes_addr!(0x40:0x8001);
         assert_eq!(bus.read(other_addr), 0);
         bus.write(other_addr, 0x21);
         assert_eq!(bus.read(other_addr), 0);
@@ -134,10 +114,7 @@ mod tests {
         let bus = Bus::new(&rom_path).unwrap();
 
         // Create an address mapped to an offset beyond the 128 KiB dummy ROM.
-        let addr = SnesAddress {
-            bank: 0x7D,
-            addr: 0xFFFF,
-        };
+        let addr = snes_addr!(0x7D:0xFFFF);
         bus.rom.read(addr);
     }
 }
