@@ -59,6 +59,11 @@ impl SnesAddress {
 }
 
 #[macro_export]
+/// Shorthand for constructing SnesAddress structs.
+///
+/// The bank number and address are separated by a colon (:).
+/// The bank number may need to be parenthesised if it is not a simple
+/// token (a direct variable name or number).
 macro_rules! snes_addr {
     ( $bank:tt : $addr:expr ) => {
             SnesAddress {
