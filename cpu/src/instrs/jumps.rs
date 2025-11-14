@@ -84,7 +84,7 @@ cpu_instr_no_inc_pc!(jsr_abs_ind_xind {
     // we need to readjust the addr bus manually to read immediate values again
     cpu.addr_bus = SnesAddress {
         bank: cpu.registers.PB,
-        addr: cpu.registers.PC.wrapping_add(1),
+        addr: cpu.registers.PC.wrapping_add(2),
     };
     meta FETCH8_INTO *cpu.internal_data_bus.hi_mut();
     // now cpu.internal_bus finally has the address at which we'll read PC
@@ -111,7 +111,11 @@ cpu_instr_no_inc_pc!(jsl {
 
     meta END_CYCLE Internal;
 
-    meta FETCH8_IMM_INTO cpu.registers.PB;
+    cpu.addr_bus = SnesAddress { // readjust addrbus to read immediate again
+        bank: cpu.registers.PB,
+        addr: cpu.registers.PC.wrapping_add(3),
+    };
+    meta FETCH8_INTO cpu.registers.PB;
     // adjust pushed PC to next opcode - 1
     meta PUSHN16 cpu.registers.PC.wrapping_add(3);
 
