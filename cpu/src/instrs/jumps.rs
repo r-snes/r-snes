@@ -364,4 +364,158 @@ mod tests {
         expected_regs.PC = 0xcdef;
         assert_eq!(*cpu.regs(), expected_regs);
     }
+
+    #[test]
+    fn test_jsr_abs() {
+        let mut regs = Registers::default();
+        regs.PB = 0x12;
+        regs.PC = 0x3456;
+        regs.S = 0x0188; // set the stack pointer in page 1
+        let mut expected_regs = regs.clone();
+
+        let mut cpu = CPU::new(regs);
+
+        expect_opcode_fetch(&mut cpu, 0x20);
+        expect_read_cycle(
+            &mut cpu,
+            snes_addr!(0x12:0x3457),
+            0xcd,
+            "jump address (PC high)",
+        );
+        expect_read_cycle(
+            &mut cpu,
+            snes_addr!(0x12:0x3458),
+            0xab,
+            "jump address (PC high)",
+        );
+        expect_internal_cycle(&mut cpu, "stall between fetch and push");
+        expect_write_cycle(
+            &mut cpu,
+            snes_addr!(0:0x0188),
+            0x34,
+            "push PC high",
+        );
+        expect_write_cycle(
+            &mut cpu,
+            snes_addr!(0:0x0187),
+            0x58, // PC points to the last byte of this instruction
+            "push PC high",
+        );
+        expect_opcode_fetch_cycle(&mut cpu);
+
+        expected_regs.PC = 0xabcd; // PC has been read
+        expected_regs.S = 0x0186; // stack pointer decreased by 2
+        assert_eq!(*cpu.regs(), expected_regs);
+    }
+
+    #[test]
+    fn test_jsr_abs_ind_xind() {
+        let mut regs = Registers::default();
+        regs.PB = 0x12;
+        regs.S = 0x0122;
+        regs.X = 0x0120;
+        regs.PC = 0x3456;
+        let mut expected_regs = regs.clone();
+
+        let mut cpu = CPU::new(regs);
+
+        expect_opcode_fetch(&mut cpu, 0xfc);
+        expect_read_cycle(
+            &mut cpu,
+            snes_addr!(0x12:0x3457),
+            0x77,
+            "operand address high",
+        );
+        expect_write_cycle(
+            &mut cpu,
+            snes_addr!(0:0x0122),
+            0x34,
+            "push PCH"
+        );
+        expect_write_cycle(
+            &mut cpu,
+            snes_addr!(0:0x0121),
+            0x58, // PC points the last byte of this instruction
+            "push PCL"
+        );
+        expect_read_cycle(
+            &mut cpu,
+            snes_addr!(0x12:0x3458),
+            0x88,
+            "operand address low",
+        );
+        expect_internal_cycle(&mut cpu, "X-indexing");
+        expect_read_cycle(
+            &mut cpu,
+            snes_addr!(0x12:0x8997), // PB:AAH+X
+            0xbb,
+            "PCL",
+        );
+        expect_read_cycle(
+            &mut cpu,
+            snes_addr!(0x12:0x8998), // PB:AAH+X+1
+            0xaa,
+            "PCH",
+        );
+        expect_opcode_fetch_cycle(&mut cpu);
+
+        expected_regs.S = 0x0120;
+        expected_regs.PC = 0xaabb;
+        assert_eq!(*cpu.regs(), expected_regs);
+    }
+
+    #[test]
+    fn test_jsl() {
+        let mut regs = Registers::default();
+        regs.PB = 0x12;
+        regs.PC = 0x3456;
+        regs.S = 0x0199;
+        let mut expected_regs = regs.clone();
+        let mut cpu = CPU::new(regs);
+
+        expect_opcode_fetch(&mut cpu, 0x22);
+        expect_read_cycle(
+            &mut cpu,
+            snes_addr!(0x12:0x3457),
+            0xef,
+            "PCL",
+        );
+        expect_read_cycle(
+            &mut cpu,
+            snes_addr!(0x12:0x3458),
+            0xcd,
+            "PCH",
+        );
+        expect_write_cycle(
+            &mut cpu,
+            snes_addr!(0:0x0199),
+            0x12,
+            "push PB",
+        );
+        expect_internal_cycle(&mut cpu, "stall between push PB and read PB");
+        expect_read_cycle(
+            &mut cpu,
+            snes_addr!(0x12:0x3459),
+            0xab,
+            "PB",
+        );
+        expect_write_cycle(
+            &mut cpu,
+            snes_addr!(0:0x0198),
+            0x34,
+            "push PCH",
+        );
+        expect_write_cycle(
+            &mut cpu,
+            snes_addr!(0:0x0197),
+            0x59, // pushed PC points the last byte of the instr
+            "push PCL",
+        );
+        expect_opcode_fetch_cycle(&mut cpu);
+
+        expected_regs.PB = 0xab;
+        expected_regs.PC = 0xcdef;
+        expected_regs.S = 0x0196;
+        assert_eq!(*cpu.regs(), expected_regs);
+    }
 }
