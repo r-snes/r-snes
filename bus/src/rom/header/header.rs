@@ -47,14 +47,16 @@ impl RomHeader {
             .try_into()
             .expect("ERROR: Couldn't extract the header from the ROM"); // Should be safe since multiple verification before
         let country = Country::from_byte(header_bytes[HEADER_COUNTRY_OFFSET]);
-        let rom_speed_and_mapping_mode =
-            SpeedAndMappingMode::from_byte(header_bytes[HEADER_SPEED_MAP_OFFSET]);
+        let SpeedAndMappingMode {
+            rom_speed,
+            mapping_mode,
+        } = SpeedAndMappingMode::from_byte(header_bytes[HEADER_SPEED_MAP_OFFSET]);
 
         RomHeader {
             bytes: header_bytes,
             title: String::from_utf8_lossy(&header_bytes[0..HEADER_TITLE_LEN]).to_string(),
-            rom_speed: rom_speed_and_mapping_mode.rom_speed,
-            mapping_mode: rom_speed_and_mapping_mode.mapping_mode,
+            rom_speed: rom_speed,
+            mapping_mode: mapping_mode,
             hardware: CartridgeHardware::from_byte(header_bytes[HEADER_ROM_HARDWARE_OFFSET]),
             rom_size: header_bytes[HEADER_ROM_SIZE_OFFSET],
             ram_size: header_bytes[HEADER_RAM_SIZE_OFFSET],
