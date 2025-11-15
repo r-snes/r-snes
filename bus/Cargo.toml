@@ -5,6 +5,9 @@ edition = "2024"
 
 [dependencies]
 common = { version = "0.1.0", path = "../common"}
+apu = { version = "0.1.0", path = "../apu"}
+ppu = { version = "0.1.0", path = "../ppu"}
+cpu = { version = "0.1.0", path = "../cpu"}
 duplicate = "2.0.0"
 
 [dev-dependencies]

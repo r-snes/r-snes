@@ -2,11 +2,15 @@ use crate::io::Io;
 use crate::memory_region::MemoryRegion;
 use crate::rom::Rom;
 use crate::wram::Wram;
+use apu::Apu;
 use common::snes_address::SnesAddress;
+use cpu::cpu::CPU;
+use duplicate::duplicate;
+use ppu::ppu::PPU;
+use std::cell::RefCell;
 use std::error::Error;
 use std::path::Path;
-
-use duplicate::duplicate;
+use std::rc::Rc;
 
 pub struct Bus {
     pub wram: Wram,
@@ -15,11 +19,16 @@ pub struct Bus {
 }
 
 impl Bus {
-    pub fn new<P: AsRef<Path>>(rom_path: P) -> Result<Self, Box<dyn Error>> {
+    pub fn new<P: AsRef<Path>>(
+        rom_path: P,
+        cpu: Rc<RefCell<CPU>>,
+        ppu: Rc<RefCell<PPU>>,
+        apu: Rc<RefCell<Apu>>,
+    ) -> Result<Self, Box<dyn Error>> {
         Ok(Self {
             rom: Rom::load_from_file(rom_path)?,
             wram: Wram::new(),
-            io: Io::new(),
+            io: Io::new(cpu, ppu, apu),
         })
     }
 
@@ -49,12 +58,21 @@ mod tests {
     use super::*;
     use crate::rom::test_rom::*;
     use common::snes_address::snes_addr;
+    use cpu::registers::Registers;
+
+    fn create_bus<P: AsRef<Path>>(rom_path: P) -> Bus {
+        let cpu = Rc::new(RefCell::new(CPU::new(Registers::default())));
+        let ppu = Rc::new(RefCell::new(PPU::new()));
+        let apu = Rc::new(RefCell::new(Apu::new()));
+
+        Bus::new(&rom_path, cpu, ppu, apu).unwrap()
+    }
 
     #[test]
     fn test_wram_read_write_through_bus() {
         let rom_data = create_valid_lorom(0x20000);
         let (rom_path, _dir) = create_temp_rom(&rom_data);
-        let mut bus = Bus::new(&rom_path).unwrap();
+        let mut bus = create_bus(&rom_path);
 
         let addr = snes_addr!(0:0x0010);
         bus.write(addr, 0x42);
@@ -77,7 +95,7 @@ mod tests {
     fn test_io_read_write_through_bus() {
         let rom_data = create_valid_lorom(0x20000);
         let (rom_path, _dir) = create_temp_rom(&rom_data);
-        let mut bus = Bus::new(&rom_path).unwrap();
+        let mut bus = create_bus(&rom_path);
 
         let addr = snes_addr!(0:0x2345);
         bus.write(addr, 0x77);
@@ -93,7 +111,7 @@ mod tests {
         let mut rom_data = create_valid_lorom(0x100000 * 0x40);
         rom_data[0x0001] = 0x42;
         let (rom_path, _dir) = create_temp_rom(&rom_data);
-        let mut bus = Bus::new(&rom_path).unwrap();
+        let mut bus = create_bus(&rom_path);
 
         let addr = snes_addr!(0:0x8001);
         assert_eq!(bus.read(addr), 0x42);
@@ -111,7 +129,7 @@ mod tests {
     fn test_rom_read_out_of_range_panics() {
         let rom_data = create_valid_lorom(0x20000);
         let (rom_path, _dir) = create_temp_rom(&rom_data);
-        let bus = Bus::new(&rom_path).unwrap();
+        let bus = create_bus(&rom_path);
 
         // Create an address mapped to an offset beyond the 128 KiB dummy ROM.
         let addr = snes_addr!(0x7D:0xFFFF);
