@@ -125,6 +125,38 @@ cpu_instr_no_inc_pc!(jsl {
     // see https://github.com/bsnes-emu/bsnes/issues/374
 });
 
+// RTS: return from subroutine (return from a JSR).
+// reads PC from the stack and jumps to that address
+cpu_instr_no_inc_pc!(rts {
+    // RTS spends two internal cycles doing nothing
+    meta END_CYCLE Internal;
+    meta END_CYCLE Internal;
+
+    meta PULL16_INTO cpu.registers.PC;
+
+    // readjust PC: the pushed value is 1 byte before the next opcode
+    cpu.registers.PC = cpu.registers.PC.wrapping_add(1);
+
+    meta END_CYCLE Internal; // and one more internal cycle for nothing
+});
+
+// RTL: return from subroutine long (return from a JSL).
+// reads PC and PB from the stack and jumps to that address
+cpu_instr_no_inc_pc!(rtl {
+    // RTL spends two internal cycles doing nothing
+    meta END_CYCLE Internal;
+    meta END_CYCLE Internal;
+
+    meta PULLN16_INTO cpu.registers.PC;
+    meta PULLN8_INTO cpu.registers.PB;
+
+    // readjust PC: the pushed value is 1 byte before the next opcode
+    cpu.registers.PC = cpu.registers.PC.wrapping_add(1);
+
+    // *cpu.registers.S.hi_mut() = 0x01;
+    // see https://github.com/bsnes-emu/bsnes/issues/374
+});
+
 #[cfg(test)]
 mod tests {
     use crate::instrs::test_prelude::*;
