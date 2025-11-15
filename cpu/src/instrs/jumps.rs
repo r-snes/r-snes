@@ -30,8 +30,7 @@ cpu_instr_no_inc_pc!(jmp_absl {
 cpu_instr_no_inc_pc!(jmp_abs_ind {
     meta FETCH16_IMM_INTO cpu.registers.PC; // use PC as a buffer
 
-    cpu.addr_bus.bank = 0;
-    cpu.addr_bus.addr = cpu.registers.PC; // read from the fetched address
+    cpu.addr_bus = snes_addr!(0:cpu.registers.PC); // read from the fetched addr
     meta FETCH16_INTO cpu.registers.PC;
 });
 
@@ -55,8 +54,7 @@ cpu_instr_no_inc_pc!(jmp_abs_ind_indx {
 cpu_instr_no_inc_pc!(jml {
     meta FETCH16_IMM_INTO cpu.registers.PC; // use PC as a buffer
 
-    cpu.addr_bus.bank = 0;
-    cpu.addr_bus.addr = cpu.registers.PC; // read from the fetched address
+    cpu.addr_bus = snes_addr!(0:cpu.registers.PC); // read from the fetched addr
     meta FETCH16_INTO cpu.registers.PC;
 
     cpu.addr_bus.addr = cpu.addr_bus.addr.wrapping_add(1);
