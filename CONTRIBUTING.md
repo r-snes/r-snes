@@ -9,7 +9,7 @@ At this stage of the project, **external contributions are temporarily restricte
 The R-SNES emulator is currently being developed as part of a **university project**, and the core systems (CPU, APU, PPU, etc.) are undergoing active, fundamental development.  
 To maintain internal consistency and meet academic requirements, **we are not yet able to accept external pull requests or direct code contributions** to the main repository.
 
-Once the project reaches a stable and useable state:
+Once the project reaches a stable and usable state:
 - A full **list of accepted contribution types** (code, documentation, plug-ins, tools, etc.) will be published.
 
 Until then, we welcome:
