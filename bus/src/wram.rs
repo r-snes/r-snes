@@ -98,7 +98,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_bad_map_addr_panics() {
-        Wram::to_offset(snes_addr!(0x00:0x2000));
+        Wram::to_offset(snes_addr!(0:0x2000));
     }
 
     #[test]

@@ -100,7 +100,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_bad_map_addr_panics() {
-        Io::to_offset(snes_addr!(0x00:IO_START_ADDRESS - 0x0321));
+        Io::to_offset(snes_addr!(0:IO_START_ADDRESS - 0x0321));
     }
 
     #[test]
@@ -128,7 +128,7 @@ mod tests {
     #[test]
     fn test_simple_read_write() {
         let mut wram = Io::new();
-        let first_addr = snes_addr!(0x00:IO_START_ADDRESS);
+        let first_addr = snes_addr!(0:IO_START_ADDRESS);
         let second_addr = snes_addr!(0x9F:IO_START_ADDRESS);
 
         wram.write(first_addr, 0x43);

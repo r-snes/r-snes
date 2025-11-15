@@ -197,7 +197,7 @@ mod tests {
 
         let rom = Rom::load_from_file(path).unwrap();
         assert_eq!(rom.map, MappingMode::LoRom);
-        assert_eq!(rom.read(snes_addr!(0x00:0x8000)), 0);
+        assert_eq!(rom.read(snes_addr!(0:0x8000)), 0);
     }
 
     #[test]
@@ -207,7 +207,7 @@ mod tests {
 
         let rom = Rom::load_from_file(path).unwrap();
         assert_eq!(rom.map, MappingMode::HiRom);
-        assert_eq!(rom.read(snes_addr!(0x00:0x8000)), 0);
+        assert_eq!(rom.read(snes_addr!(0:0x8000)), 0);
     }
 
     #[test]
@@ -247,14 +247,14 @@ mod tests {
         let (path, _dir) = create_temp_rom(&data);
         let mut rom = Rom::load_from_file(&path).unwrap();
 
-        let addr = snes_addr!(0x00:0x8000);
+        let addr = snes_addr!(0:0x8000);
         rom.write(addr, 0x99);
         assert_eq!(rom.read(addr), 0);
     }
 
     #[test]
     fn test_lorom_offset_first_quarter() {
-        let mut addr = snes_addr!(0x00:0x8000);
+        let mut addr = snes_addr!(0:0x8000);
         assert_eq!(Rom::get_lorom_offset(addr), 0);
 
         addr.addr = 0xFFFF;
@@ -369,7 +369,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "Incorrect access to the ROM at address: 004000")]
     fn test_lorom_incorrect_address() {
-        let addr = snes_addr!(0x00:0x4000);
+        let addr = snes_addr!(0:0x4000);
         assert_eq!(Rom::get_lorom_offset(addr), 0);
     }
 
@@ -390,7 +390,7 @@ mod tests {
     #[test]
     fn test_hirom_offset_first_quarter() {
         let mut addr = snes_addr!(0x40:0x8000);
-        let mut mirror_addr = snes_addr!(0x00:0x8000);
+        let mut mirror_addr = snes_addr!(0:0x8000);
 
         assert_eq!(
             Rom::get_hirom_offset(addr),
@@ -499,7 +499,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "Incorrect access to the ROM at address: 004000")]
     fn test_hirom_incorrect_address() {
-        let addr = snes_addr!(0x00:0x4000);
+        let addr = snes_addr!(0:0x4000);
         assert_eq!(Rom::get_hirom_offset(addr), 0);
     }
 

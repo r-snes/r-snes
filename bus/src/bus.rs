@@ -56,7 +56,7 @@ mod tests {
         let (rom_path, _dir) = create_temp_rom(&rom_data);
         let mut bus = Bus::new(&rom_path).unwrap();
 
-        let addr = snes_addr!(0x00:0x0010);
+        let addr = snes_addr!(0:0x0010);
         bus.write(addr, 0x42);
         assert_eq!(bus.read(addr), 0x42);
 
@@ -79,7 +79,7 @@ mod tests {
         let (rom_path, _dir) = create_temp_rom(&rom_data);
         let mut bus = Bus::new(&rom_path).unwrap();
 
-        let addr = snes_addr!(0x00:0x2345);
+        let addr = snes_addr!(0:0x2345);
         bus.write(addr, 0x77);
         assert_eq!(bus.read(addr), 0x77);
 
@@ -95,7 +95,7 @@ mod tests {
         let (rom_path, _dir) = create_temp_rom(&rom_data);
         let mut bus = Bus::new(&rom_path).unwrap();
 
-        let addr = snes_addr!(0x00:0x8001);
+        let addr = snes_addr!(0:0x8001);
         assert_eq!(bus.read(addr), 0x42);
         bus.write(addr, 0x21);
         assert_eq!(bus.read(addr), 0x42);
