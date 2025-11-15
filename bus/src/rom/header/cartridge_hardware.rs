@@ -61,8 +61,7 @@ impl CartridgeHardware {
     /// Returns:
     ///     A `CartridgeHardware` struct containing the ROM layout and an Option<Coprocessor>
     pub fn from_byte(byte: u8) -> CartridgeHardware {
-        let layout = byte & 0x0F;
-        let layout = match layout {
+        let layout = match byte & 0x0F {
             0x0 => HardwareLayout::RomOnly,
             0x1 => HardwareLayout::RomRam,
             0x2 => HardwareLayout::RomRamBattery,
@@ -73,8 +72,7 @@ impl CartridgeHardware {
             _ => panic!("ERROR: Could not identify hardware of ROM"),
         };
 
-        let coprocessor = (byte & 0xF0) >> 4;
-        let coprocessor = match coprocessor {
+        let coprocessor = match (byte & 0xF0) >> 4 {
             0x0 => Some(Coprocessor::DSP(1)),
             0x1 => Some(Coprocessor::GSU),
             0x2 => Some(Coprocessor::OBC1),

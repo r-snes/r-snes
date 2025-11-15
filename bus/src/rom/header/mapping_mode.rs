@@ -79,17 +79,13 @@ impl MappingMode {
     /// Returns:
     ///     (RomSpeed, MappingMode)
     pub fn from_byte(byte: u8) -> (RomSpeed, MappingMode) {
-        let map_mode = byte & 0x0F;
-        let map_mode = match map_mode {
+        let map_mode = match byte & 0x0F {
             0x0 => MappingMode::LoRom,
             0x1 => MappingMode::HiRom,
             _ => panic!("ERROR: Could not identify mapping of ROM"),
         };
 
-        let rom_speed = (byte >> 4) & 1;
-        println!("OIHLSDJBNGMEZJBGO¨Nùk");
-        println!("RomSpeed: {}", rom_speed);
-        let rom_speed = match rom_speed {
+        let rom_speed = match (byte >> 4) & 1 {
             0 => RomSpeed::Slow,
             1 => RomSpeed::Fast,
             _ => panic!("ERROR: Could not identify speed of ROM"),
