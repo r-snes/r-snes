@@ -6,7 +6,7 @@ use crate::constants::{
     HEADER_ROM_SIZE_OFFSET, HEADER_ROM_VERSION_OFFSET, HEADER_SIZE, HEADER_SPEED_MAP_OFFSET,
     HEADER_TITLE_LEN,
 };
-use crate::rom::header::cartridge_hardware::{CartridgeHardware, Coprocessor};
+use crate::rom::header::cartridge_hardware::CartridgeHardware;
 use crate::rom::header::country::{Country, VideoStandard};
 use crate::rom::header::mapping_mode::MappingMode;
 use crate::rom::header::rom_speed::RomSpeed;
@@ -18,10 +18,9 @@ use crate::rom::header::rom_speed::RomSpeed;
 pub struct RomHeader {
     pub bytes: [u8; HEADER_SIZE], // Raw bytes of the ROM header
     pub title: String,
-    pub rom_speed: RomSpeed,              // ROM speed : fast or slow
-    pub mapping_mode: MappingMode,        // Mapping mode specified in the header
+    pub rom_speed: RomSpeed,         // ROM speed : fast or slow
+    pub mapping_mode: MappingMode,   // Mapping mode specified in the header
     pub hardware: CartridgeHardware, // Type of hardware in cartridge (Coprocessor, RAM, etc...)
-    pub coprocessor: Option<Coprocessor>, // Optional coprocessor present in the cartridge
     pub rom_size: u8,
     pub ram_size: u8,
     pub country: Country,              // Country/region code of the ROM
@@ -49,20 +48,13 @@ impl RomHeader {
             .try_into()
             .expect("ERROR: Couldn't extract the header from the ROM"); // Should be safe since multiple verification before
         let country = Country::from_byte(header_bytes[HEADER_COUNTRY_OFFSET]);
-        let hardware = CartridgeHardware::from_byte(header_bytes[HEADER_ROM_HARDWARE_OFFSET]);
-        let coprocessor = if hardware.has_ram() {
-            Coprocessor::from_byte(header_bytes[HEADER_ROM_HARDWARE_OFFSET])
-        } else {
-            None
-        };
 
         RomHeader {
-            bytes: (header_bytes),
+            bytes: header_bytes,
             title: String::from_utf8_lossy(&header_bytes[0..HEADER_TITLE_LEN]).to_string(),
             rom_speed: RomSpeed::from_byte(header_bytes[HEADER_SPEED_MAP_OFFSET]),
             mapping_mode: MappingMode::from_byte(header_bytes[HEADER_SPEED_MAP_OFFSET]),
-            hardware: hardware,
-            coprocessor: coprocessor,
+            hardware: CartridgeHardware::from_byte(header_bytes[HEADER_ROM_HARDWARE_OFFSET]),
             rom_size: header_bytes[HEADER_ROM_SIZE_OFFSET],
             ram_size: header_bytes[HEADER_RAM_SIZE_OFFSET],
             country: country,
@@ -103,8 +95,8 @@ impl fmt::Display for RomHeader {
         write!(f, "Title: '{}'\n", self.title)?;
         write!(f, "Rom Speed: {}\n", self.rom_speed)?;
         write!(f, "MappingMode: {}\n", self.mapping_mode)?;
-        write!(f, "CartridgeHardware: {}\n", self.hardware)?;
-        if let Some(coproc) = &self.coprocessor {
+        write!(f, "CartridgeHardware: {}\n", self.hardware.layout)?;
+        if let Some(coproc) = &self.hardware.coprocessor {
             write!(f, "Coprocessor: {}\n", coproc)?;
         } else {
             write!(f, "Coprocessor: None\n")?;

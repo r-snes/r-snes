@@ -3,9 +3,18 @@ use strum_macros::Display;
 
 /// Represents the type of cartridge hardware used by a SNES ROM.
 ///
+/// Contains an HardwareLayout and an optionnal Coprocessor
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CartridgeHardware {
+    pub layout: HardwareLayout,
+    pub coprocessor: Option<Coprocessor>,
+}
+
+/// Represents which type of hardware a SNES ROM contains.
+///
 /// Includes combinations of ROM, RAM, Battery and Coprocessor.
 #[derive(Display, Debug, Clone, Copy, PartialEq)]
-pub enum CartridgeHardware {
+pub enum HardwareLayout {
     #[strum(serialize = "Rom")]
     RomOnly,
 
@@ -52,66 +61,20 @@ impl CartridgeHardware {
     /// Returns:
     ///     A `CartridgeHardware` enum corresponding to the ROM's hardware.
     pub fn from_byte(byte: u8) -> CartridgeHardware {
-        let hardware_value = byte & 0x0F;
-
-        match hardware_value {
-            0x0 => CartridgeHardware::RomOnly,
-            0x1 => CartridgeHardware::RomRam,
-            0x2 => CartridgeHardware::RomRamBattery,
-            0x3 => CartridgeHardware::RomCoprocessor,
-            0x4 => CartridgeHardware::RomCoprocessorRam,
-            0x5 => CartridgeHardware::RomCoprocessorRamBattery,
-            0x6 => CartridgeHardware::RomCoprocessorBattery,
+        let layout = byte & 0x0F;
+        let layout = match layout {
+            0x0 => HardwareLayout::RomOnly,
+            0x1 => HardwareLayout::RomRam,
+            0x2 => HardwareLayout::RomRamBattery,
+            0x3 => HardwareLayout::RomCoprocessor,
+            0x4 => HardwareLayout::RomCoprocessorRam,
+            0x5 => HardwareLayout::RomCoprocessorRamBattery,
+            0x6 => HardwareLayout::RomCoprocessorBattery,
             _ => panic!("ERROR: Could not identify hardware of ROM"),
-        }
-    }
+        };
 
-    /// Returns true if this cartridge has RAM
-    pub fn has_ram(&self) -> bool {
-        matches!(
-            self,
-            CartridgeHardware::RomRam
-                | CartridgeHardware::RomRamBattery
-                | CartridgeHardware::RomCoprocessorRam
-                | CartridgeHardware::RomCoprocessorRamBattery
-        )
-    }
-
-    /// Returns true if this cartridge has a battery
-    pub fn has_battery(&self) -> bool {
-        matches!(
-            self,
-            CartridgeHardware::RomRamBattery
-                | CartridgeHardware::RomCoprocessorRamBattery
-                | CartridgeHardware::RomCoprocessorBattery
-        )
-    }
-
-    /// Returns true if this cartridge contains a coprocessor
-    pub fn has_coprocessor(&self) -> bool {
-        matches!(
-            self,
-            CartridgeHardware::RomCoprocessor
-                | CartridgeHardware::RomCoprocessorRam
-                | CartridgeHardware::RomCoprocessorRamBattery
-                | CartridgeHardware::RomCoprocessorBattery
-        )
-    }
-}
-
-impl Coprocessor {
-    /// Creates an optional `Coprocessor` from a byte extracted from the ROM header.
-    ///
-    /// Args:
-    ///     byte: Byte from the ROM header representing coprocessor configuration.
-    ///
-    /// Returns:
-    ///     `Some(Coprocessor)` if the coprocessor can be identified.
-    ///     `None` if value is unrecognized.
-    pub fn from_byte(byte: u8) -> Option<Coprocessor> {
         let coprocessor = (byte & 0xF0) >> 4;
-
-        match coprocessor {
+        let coprocessor = match coprocessor {
             0x0 => Some(Coprocessor::DSP(1)),
             0x1 => Some(Coprocessor::GSU),
             0x2 => Some(Coprocessor::OBC1),
@@ -121,7 +84,44 @@ impl Coprocessor {
             0xE => Some(Coprocessor::Other),
             0xF => Some(Coprocessor::Custom),
             _ => None,
+        };
+
+        CartridgeHardware {
+            layout,
+            coprocessor,
         }
+    }
+
+    /// Returns true if this cartridge has RAM
+    pub fn has_ram(&self) -> bool {
+        matches!(
+            self.layout,
+            HardwareLayout::RomRam
+                | HardwareLayout::RomRamBattery
+                | HardwareLayout::RomCoprocessorRam
+                | HardwareLayout::RomCoprocessorRamBattery
+        )
+    }
+
+    /// Returns true if this cartridge has a battery
+    pub fn has_battery(&self) -> bool {
+        matches!(
+            self.layout,
+            HardwareLayout::RomRamBattery
+                | HardwareLayout::RomCoprocessorRamBattery
+                | HardwareLayout::RomCoprocessorBattery
+        )
+    }
+
+    /// Returns true if this cartridge contains a coprocessor
+    pub fn has_coprocessor(&self) -> bool {
+        matches!(
+            self.layout,
+            HardwareLayout::RomCoprocessor
+                | HardwareLayout::RomCoprocessorRam
+                | HardwareLayout::RomCoprocessorRamBattery
+                | HardwareLayout::RomCoprocessorBattery
+        )
     }
 }
 
@@ -148,17 +148,17 @@ mod tests {
     #[test]
     fn test_cartridge_hardware_from_byte_valid() {
         let mappings = [
-            (0x0, CartridgeHardware::RomOnly),
-            (0x1, CartridgeHardware::RomRam),
-            (0x2, CartridgeHardware::RomRamBattery),
-            (0x3, CartridgeHardware::RomCoprocessor),
-            (0x4, CartridgeHardware::RomCoprocessorRam),
-            (0x5, CartridgeHardware::RomCoprocessorRamBattery),
-            (0x6, CartridgeHardware::RomCoprocessorBattery),
+            (0x00, HardwareLayout::RomOnly),
+            (0x01, HardwareLayout::RomRam),
+            (0x02, HardwareLayout::RomRamBattery),
+            (0x03, HardwareLayout::RomCoprocessor),
+            (0x04, HardwareLayout::RomCoprocessorRam),
+            (0x05, HardwareLayout::RomCoprocessorRamBattery),
+            (0x06, HardwareLayout::RomCoprocessorBattery),
         ];
 
         for (byte, expected) in mappings {
-            assert_eq!(CartridgeHardware::from_byte(byte), expected);
+            assert_eq!(CartridgeHardware::from_byte(byte).layout, expected);
         }
     }
 
@@ -166,13 +166,21 @@ mod tests {
     #[test]
     fn test_cartridge_components_availability() {
         let mappings = [
-            (CartridgeHardware::RomOnly, false, false, false),
-            (CartridgeHardware::RomRam, true, false, false),
-            (CartridgeHardware::RomRamBattery, true, true, false),
-            (CartridgeHardware::RomCoprocessor, false, false, true),
-            (CartridgeHardware::RomCoprocessorRam, true, false, true),
-            (CartridgeHardware::RomCoprocessorBattery, false, true, true),
-            (CartridgeHardware::RomCoprocessorRamBattery, true, true, true),
+            (CartridgeHardware::from_byte(0x00), false, false, false),
+            (CartridgeHardware::from_byte(0x01), true, false, false),
+            (CartridgeHardware::from_byte(0x02), true, true, false),
+            (CartridgeHardware::from_byte(0x03), false, false, true),
+            (CartridgeHardware::from_byte(0x04), true, false, true),
+            (CartridgeHardware::from_byte(0x05), true, true, true),
+            (CartridgeHardware::from_byte(0x06), false, true, true),
+            // Tens digit changed
+            (CartridgeHardware::from_byte(0x10), false, false, false),
+            (CartridgeHardware::from_byte(0x11), true, false, false),
+            (CartridgeHardware::from_byte(0x12), true, true, false),
+            (CartridgeHardware::from_byte(0x13), false, false, true),
+            (CartridgeHardware::from_byte(0x14), true, false, true),
+            (CartridgeHardware::from_byte(0x15), true, true, true),
+            (CartridgeHardware::from_byte(0x16), false, true, true),
         ];
 
         for (hardware, has_ram, has_battery, has_coprocessor) in mappings {
@@ -185,7 +193,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "ERROR: Could not identify hardware of ROM")]
     fn test_cartridge_hardware_from_byte_invalid() {
-        CartridgeHardware::from_byte(0x7);
+        CartridgeHardware::from_byte(0x07);
     }
 
     #[test]
@@ -200,18 +208,18 @@ mod tests {
             (0xE0, Some(Coprocessor::Other)),
             (0xF0, Some(Coprocessor::Custom)),
             // Tens digit changed
-            (0x07, Some(Coprocessor::DSP(1))),
-            (0x17, Some(Coprocessor::GSU)),
-            (0x27, Some(Coprocessor::OBC1)),
-            (0x37, Some(Coprocessor::SA1)),
-            (0x47, Some(Coprocessor::SDD1)),
-            (0x57, Some(Coprocessor::SRTC)),
-            (0xE7, Some(Coprocessor::Other)),
-            (0xF7, Some(Coprocessor::Custom)),
+            (0x04, Some(Coprocessor::DSP(1))),
+            (0x14, Some(Coprocessor::GSU)),
+            (0x24, Some(Coprocessor::OBC1)),
+            (0x34, Some(Coprocessor::SA1)),
+            (0x44, Some(Coprocessor::SDD1)),
+            (0x54, Some(Coprocessor::SRTC)),
+            (0xE4, Some(Coprocessor::Other)),
+            (0xF4, Some(Coprocessor::Custom)),
         ];
 
         for (byte, expected) in mappings {
-            assert_eq!(Coprocessor::from_byte(byte), expected);
+            assert_eq!(CartridgeHardware::from_byte(byte).coprocessor, expected);
         }
     }
 
@@ -219,7 +227,7 @@ mod tests {
     fn test_coprocessor_from_byte_none() {
         let invalid_bytes = [0x60, 0x70, 0x80, 0x90, 0xA0, 0xB0, 0xC0, 0xD0];
         for &byte in &invalid_bytes {
-            assert_eq!(Coprocessor::from_byte(byte), None);
+            assert_eq!(CartridgeHardware::from_byte(byte).coprocessor, None);
         }
     }
 
@@ -227,13 +235,13 @@ mod tests {
     #[test]
     fn test_cartridge_hardware_display() {
         let mappings = [
-            (CartridgeHardware::RomOnly, "Rom"),
-            (CartridgeHardware::RomRam, "Rom + Ram"),
-            (CartridgeHardware::RomRamBattery, "Rom + Ram + Battery"),
-            (CartridgeHardware::RomCoprocessor, "Rom + Coprocessor"),
-            (CartridgeHardware::RomCoprocessorRam, "Rom + Coprocessor + Ram"),
-            (CartridgeHardware::RomCoprocessorRamBattery, "Rom + Coprocessor + Ram + Battery"),
-            (CartridgeHardware::RomCoprocessorBattery, "Rom + Coprocessor + Battery"),
+            (HardwareLayout::RomOnly, "Rom"),
+            (HardwareLayout::RomRam, "Rom + Ram"),
+            (HardwareLayout::RomRamBattery, "Rom + Ram + Battery"),
+            (HardwareLayout::RomCoprocessor, "Rom + Coprocessor"),
+            (HardwareLayout::RomCoprocessorRam, "Rom + Coprocessor + Ram"),
+            (HardwareLayout::RomCoprocessorRamBattery, "Rom + Coprocessor + Ram + Battery"),
+            (HardwareLayout::RomCoprocessorBattery, "Rom + Coprocessor + Battery"),
         ];
 
         for (hardware, expected) in mappings {
