@@ -554,4 +554,76 @@ mod tests {
         expected_regs.S = 0x0196;
         assert_eq!(*cpu.regs(), expected_regs);
     }
+
+    #[test]
+    fn test_rts() {
+        let mut regs = Registers::default();
+        regs.PB = 0x12;
+        regs.PC = 0x3456;
+        regs.S = 0x0155;
+        let mut expected_regs = regs.clone();
+        let mut cpu = CPU::new(regs);
+
+        expect_opcode_fetch(&mut cpu, 0x60);
+        expect_internal_cycle(&mut cpu, "first stall cycle");
+        expect_internal_cycle(&mut cpu, "second stall cycle");
+        expect_read_cycle(
+            &mut cpu,
+            snes_addr!(0:0x0156),
+            0xbb,
+            "pull PCL",
+        );
+        expect_read_cycle(
+            &mut cpu,
+            snes_addr!(0:0x0157),
+            0xaa,
+            "pull PCH",
+        );
+        expect_internal_cycle(&mut cpu, "second stall cycle");
+        expect_opcode_fetch_cycle(&mut cpu);
+
+        expected_regs.S = 0x0157;
+        // [the pulled value + 1]: jsr/jsl push [address of the next opcode - 1]
+        expected_regs.PC = 0xaabc;
+        assert_eq!(*cpu.regs(), expected_regs);
+    }
+
+    #[test]
+    fn test_rtl() {
+        let mut regs = Registers::default();
+        regs.PB = 0x12;
+        regs.PC = 0x3456;
+        regs.S = 0x0155;
+        let mut expected_regs = regs.clone();
+        let mut cpu = CPU::new(regs);
+
+        expect_opcode_fetch(&mut cpu, 0x6b);
+        expect_internal_cycle(&mut cpu, "first stall cycle");
+        expect_internal_cycle(&mut cpu, "second stall cycle");
+        expect_read_cycle(
+            &mut cpu,
+            snes_addr!(0:0x0156),
+            0xbb,
+            "pull PCL",
+        );
+        expect_read_cycle(
+            &mut cpu,
+            snes_addr!(0:0x0157),
+            0xaa,
+            "pull PCH",
+        );
+        expect_read_cycle(
+            &mut cpu,
+            snes_addr!(0:0x0158),
+            0xee,
+            "pull PB",
+        );
+        expect_opcode_fetch_cycle(&mut cpu);
+
+        expected_regs.S = 0x0158;
+        // [the pulled value + 1]: jsr/jsl push [address of the next opcode - 1]
+        expected_regs.PB = 0xee;
+        expected_regs.PC = 0xaabc;
+        assert_eq!(*cpu.regs(), expected_regs);
+    }
 }
