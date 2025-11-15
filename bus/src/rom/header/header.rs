@@ -115,7 +115,10 @@ impl fmt::Display for RomHeader {
 
 #[cfg(test)]
 mod tests {
-    use crate::constants::HIROM_BANK_SIZE;
+    use crate::{
+        constants::HIROM_BANK_SIZE,
+        rom::header::cartridge_hardware::{Coprocessor, HardwareLayout},
+    };
 
     use super::*;
     use common::u16_split::*;
@@ -126,17 +129,17 @@ mod tests {
         let title: &[u8; 21] = b"ABABABABABABABABABABA"; // 21 bytes
         header[0..21].copy_from_slice(title);
 
-        header[21] = 0x00; // ROM Speed + Map Mode
-        header[22] = 0x00; // Cartridge type (no co-processor)
-        header[23] = 0x00; // ROM size exponent (8 => 256 KB)
+        header[21] = 0x10; // Fast ROM + LoRom
+        header[22] = 0x23; // ROM + coprocessor (OBC1)
+        header[23] = 0x08; // ROM size exponent (8 => 256 KB)
         header[24] = 0x00; // SRAM size (none)
-        header[25] = 0x00; // Country (01 = USA NTSC)
-        header[26] = 0x00; // Licensee code (Nintendo standard)
-        header[27] = 0x00; // Version (0 => original release)
+        header[25] = 0x06; // Country (06 = France - PAL)
+        header[26] = 0x01; // Licensee code (Nintendo standard)
+        header[27] = 0x08; // Rom Version
 
-        // Checksum (dummy values for now)
+        // Checksum
         let checksum: u16 = 0x0000;
-        let complement: u16 = 0x0000;
+        let complement: u16 = 0xFFFF;
 
         header[28] = *complement.lo();
         header[29] = *complement.hi();
@@ -159,26 +162,23 @@ mod tests {
         fake_rom
     }
 
-    // Let the test be commented to be reminded that I have to create 1 or more test about testing global RomHeader values
-    //     #[test]
-    //     fn test_rom_header_format() {
-    //         let fake_rom = create_minimalist_rom(MappingMode::LoRom);
-    //         let rom_header = RomHeader::load_header(&fake_rom, MappingMode::LoRom);
-    //         let expected = "Title: 'ABABABABABABABABABABA'
-    // Rom Speed: Slow
-    // MappingMode: LoRom
-    // CartridgeHardware: Rom
-    // Coprocessor: None
-    // Rom size: 0
-    // Ram size: 0
-    // Country: Japan
-    // VideoStandard: NTSC
-    // Developer ID: 0
-    // Rom Version: 0
-    // Checksum Complement: 0
-    // Checksum: 0
-    // ";
+    #[test]
+    fn test_rom_header_creation() {
+        let fake_rom = create_minimalist_rom(MappingMode::LoRom);
+        let rom_header = RomHeader::load_header(&fake_rom, MappingMode::LoRom);
 
-    //         assert_eq!(format!("{}", rom_header), expected);
-    //     }
+        assert_eq!(rom_header.bytes, *create_custom_header());
+        assert_eq!(rom_header.title, "ABABABABABABABABABABA");
+        assert_eq!(rom_header.rom_speed, RomSpeed::Fast);
+        assert_eq!(rom_header.mapping_mode, MappingMode::LoRom);
+        assert_eq!(rom_header.hardware.layout, HardwareLayout::RomCoprocessor);
+        assert_eq!(rom_header.hardware.coprocessor, Some(Coprocessor::OBC1));
+        assert_eq!(rom_header.rom_size, 8);
+        assert_eq!(rom_header.ram_size, 0);
+        assert_eq!(rom_header.country, Country::France);
+        assert_eq!(rom_header.video_standard, VideoStandard::PAL);
+        assert_eq!(rom_header.developer_id, 1);
+        assert_eq!(rom_header.checksum_complement, 0xFFFF);
+        assert_eq!(rom_header.checksum, 0x0000);
+    }
 }
