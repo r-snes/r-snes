@@ -9,7 +9,8 @@ fn main() {
 
     // --- Step 1: Fill memory with a simple waveform (square wave) ---
     let sample_start = 0x1000;
-    let sample_end = 0x1080; // 128 samples
+    let sample_end   = 0x1080; // 128 samples
+
     for i in 0..(sample_end - sample_start) {
         // Alternating 127 and -128 for square wave
         let val = if i % 2 == 0 { 127u8 } else { 128u8 };
@@ -17,29 +18,43 @@ fn main() {
     }
 
     // --- Step 2: Configure the voice ---
-    dsp.voices[0].key_on = true;
-    dsp.voices[0].sample_start = sample_start;
-    dsp.voices[0].sample_end = sample_end;
-    dsp.voices[0].current_addr = sample_start;
-    dsp.voices[0].pitch = 0x100; // integer increment = 1
-    dsp.voices[0].left_vol = 50;
-    dsp.voices[0].right_vol = 50;
+    {
+        let v = &mut dsp.voices[0];
+        v.key_on        = true;
+        v.sample_start  = sample_start;
+        v.sample_end    = sample_end;
+        v.current_addr  = sample_start;
+        v.pitch         = 0x100; // increment = 1 sample per tick
+        v.left_vol      = 80;
+        v.right_vol     = 80;
 
-    // --- Step 3: Generate a short buffer ---
-    let mut audio_buffer = vec![];
-    let num_samples = 44100; // 1 second at 44.1kHz
+        // ADSR setup (example values)
+        v.adsr_mode     = true;
+        v.attack_rate   = 10;   // fast attack
+        v.decay_rate    = 5;
+        v.sustain_level = 4;    // mid sustain
+        v.release_rate  = 8;
+    }
+
+    // --- Step 3: Generate audio ---
+    let mut audio_buffer: Vec<i16> = Vec::new();
+    let sample_rate = 44100;
+    let num_samples = sample_rate * 3; // 3 seconds
+
     for _ in 0..num_samples {
-        dsp.step(&mem);
-        let mix = dsp.render_audio(1);
-        audio_buffer.push(mix[0].0); // left channel only for simplicity
+        dsp.step(&mem);                  // pitch stepping + sample fetch
+        let mut out = [(0_i16, 0_i16)]; // single-sample buffer
+        dsp.render_audio(&mut out);     // mix into out[0]
+
+        // Store only left channel for simplicity
+        audio_buffer.push(out[0].0);
     }
 
-    // --- Step 4: Save to raw PCM file (16-bit signed little-endian) ---
-    let mut file = File::create("square_wave.raw").unwrap();
+    // --- Step 4: Save to raw PCM file ---
+    let mut file = File::create("square_adsr.raw").unwrap();
     for sample in audio_buffer {
-        let bytes = sample.to_le_bytes();
-        file.write_all(&bytes).unwrap();
+        file.write_all(&sample.to_le_bytes()).unwrap();
     }
 
-    println!("Raw audio written to square_wave.raw");
+    println!("Raw audio written to square_adsr.raw");
 }

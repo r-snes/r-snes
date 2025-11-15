@@ -129,100 +129,174 @@ fn test_step_voice_advances_and_fetches_sample() {
 #[test]
 fn test_render_audio_single_voice() {
     let mut dsp = Dsp::new();
-    
-    dsp.voices[0] = Voice {
-        key_on: true,
-        current_sample: 50, // i8 value
-        sample_start: 0,
-        left_vol: 2,
-        right_vol: 3,
-        ..Default::default()
-    };
 
-    let buffer = dsp.render_audio(2);
+    let voice = &mut dsp.voices[0];
 
-    assert_eq!(buffer[0], (100, 150)); // 50*2, 50*3
-    assert_eq!(buffer[1], (100, 150));
+    voice.left_vol = 100;
+    voice.right_vol = 150;
+
+    voice.current_sample = 30; // raw sample
+    voice.envelope_level = 0x7FF; // full volume
+    voice.envelope_phase = EnvelopePhase::Sustain;
+
+    let mut out = [(0_i16, 0_i16); 1];
+
+    dsp.render_audio(&mut out);
+
+    let expected_left  = (30 * 100 / 127) as i16;
+    let expected_right = (30 * 150 / 127) as i16;
+
+    assert_eq!(out[0], (expected_left, expected_right));
 }
 
 #[test]
 fn test_render_audio_multiple_voices_mixed_and_clamped() {
     let mut dsp = Dsp::new();
 
-    dsp.voices[0] = Voice { key_on: true, current_sample: 100, sample_start: 0, left_vol: 2, right_vol: 2, ..Default::default() };
-    dsp.voices[1] = Voice { key_on: true, current_sample: 120, sample_start: 0, left_vol: 2, right_vol: 2, ..Default::default() };
+    // Voice 1
+    dsp.voices[0].left_vol = 127;
+    dsp.voices[0].right_vol = 127;
+    dsp.voices[0].current_sample = 100;
+    dsp.voices[0].envelope_level = 0x7FF;
+    dsp.voices[0].envelope_phase = EnvelopePhase::Sustain;
 
-    let buffer = dsp.render_audio(1);
+    // Voice 2 (same values → doubles output)
+    dsp.voices[1].left_vol = 127;
+    dsp.voices[1].right_vol = 127;
+    dsp.voices[1].current_sample = 100;
+    dsp.voices[1].envelope_level = 0x7FF;
+    dsp.voices[1].envelope_phase = EnvelopePhase::Sustain;
 
-    // 100*2 + 120*2 = 440 -> clamped to 32767 (but here it's still in range)
-    assert_eq!(buffer[0], (440, 440));
+    let mut out = [(0_i16, 0_i16); 1];
+
+    dsp.render_audio(&mut out);
+
+    let expected = (100 * 2).clamp(i16::MIN as i32, i16::MAX as i32) as i16;
+
+    assert_eq!(out[0], (expected, expected));
 }
 
 #[test]
 fn test_adsr_attack_phase() {
-    let mut voice = Voice::default();
-    voice.envelope_phase = EnvelopePhase::Attack;
-    voice.attack_rate = 4;
+    let mut v = Voice::default();
+    v.attack_rate = 10;
+    v.envelope_phase = EnvelopePhase::Attack;
 
-    // Simulate multiple ticks
-    for _ in 0..50 {
-        voice.update_envelope();
+    for _ in 0..30 {
+        let prev = v.envelope_level;
+        v.update_envelope();
+
+        if prev < 0x7FF {
+            // The ONLY valid phases during attack ramp-up are: Attack OR Decay (if we hit max)
+            assert!(
+                matches!(v.envelope_phase, EnvelopePhase::Attack | EnvelopePhase::Decay),
+                "Phase can only be Attack or transition to Decay when hitting max"
+            );
+            // Once we switch to Decay, we should stop testing Attack progression
+            if v.envelope_phase == EnvelopePhase::Decay {
+                assert_eq!(v.envelope_level, 0x7FF, "Decay must start exactly at max envelope");
+                return; // test passes
+            }
+        }
     }
-
-    // Envelope should be non-zero and phase should be Decay
-    assert!(voice.envelope_level > 0);
-    assert_eq!(voice.envelope_phase, EnvelopePhase::Decay);
-    assert_eq!(voice.envelope_level, 0x7FF); // capped at max
+    panic!("Attack never reached Decay within expected iterations");
 }
 
 #[test]
 fn test_adsr_decay_phase() {
     let mut voice = Voice::default();
     voice.envelope_phase = EnvelopePhase::Decay;
-    voice.envelope_level = 0x7FF; // start from max
-    voice.decay_rate = 8;
-    voice.sustain_level = 4; // mid-level sustain
 
-    // Simulate multiple ticks
-    for _ in 0..100 {
+    voice.decay_rate = 5;
+    voice.sustain_level = 8; // target = 256
+
+    voice.envelope_level = 700; // above sustain threshold
+
+    for _ in 0..50 {
         voice.update_envelope();
+        if voice.envelope_phase == EnvelopePhase::Sustain {
+            break;
+        }
     }
 
-    // Should have reached sustain and changed phase
-    let target = (voice.sustain_level as u16) * 0x100 / 8;
-    assert!(voice.envelope_level <= target);
     assert_eq!(voice.envelope_phase, EnvelopePhase::Sustain);
+    assert!(voice.envelope_level <= 256);
 }
 
 #[test]
 fn test_adsr_sustain_phase() {
     let mut voice = Voice::default();
     voice.envelope_phase = EnvelopePhase::Sustain;
-    voice.envelope_level = 0x400;
+    voice.envelope_level = 500;
 
-    // Update several times
-    for _ in 0..20 {
+    for _ in 0..10 {
         voice.update_envelope();
     }
 
-    // Should remain unchanged
-    assert_eq!(voice.envelope_level, 0x400);
     assert_eq!(voice.envelope_phase, EnvelopePhase::Sustain);
+    assert_eq!(voice.envelope_level, 500);
 }
 
 #[test]
 fn test_adsr_release_phase() {
     let mut voice = Voice::default();
     voice.envelope_phase = EnvelopePhase::Release;
-    voice.envelope_level = 0x400;
-    voice.release_rate = 8;
 
-    // Simulate multiple ticks
-    for _ in 0..100 {
+    voice.release_rate = 8;
+    voice.envelope_level = 300;
+
+    for _ in 0..50 {
         voice.update_envelope();
+        if voice.envelope_phase == EnvelopePhase::Off {
+            break;
+        }
     }
 
-    // Should reach zero and switch to Off
-    assert_eq!(voice.envelope_level, 0);
     assert_eq!(voice.envelope_phase, EnvelopePhase::Off);
+    assert_eq!(voice.envelope_level, 0);
 }
+
+#[test]
+fn test_adsr_full_cycle() {
+    let mut v = Voice::default();
+    v.attack_rate = 20;
+    v.decay_rate = 4;
+    v.sustain_level = 6;
+    v.release_rate = 8;
+
+    v.envelope_phase = EnvelopePhase::Attack;
+
+    // Attack → Decay
+    while v.envelope_phase == EnvelopePhase::Attack {
+        v.update_envelope();
+    }
+    assert_eq!(v.envelope_phase, EnvelopePhase::Decay);
+
+    // Calculate correct sustain threshold
+    let sustain_target = (v.sustain_level as u16) * 0x100 / 8;
+
+    // Decay → Sustain
+    while v.envelope_phase == EnvelopePhase::Decay {
+        v.update_envelope();
+    }
+
+    assert_eq!(v.envelope_phase, EnvelopePhase::Sustain);
+
+    // Envelope should be <= sustain target (not necessarily equal)
+    assert!(
+        v.envelope_level <= sustain_target,
+        "Envelope must be at or below computed sustain target"
+    );
+
+    // Release → Off
+    v.envelope_phase = EnvelopePhase::Release;
+
+    while v.envelope_phase == EnvelopePhase::Release {
+        v.update_envelope();
+    }
+
+    assert_eq!(v.envelope_phase, EnvelopePhase::Off);
+    assert_eq!(v.envelope_level, 0);
+}
+
+
