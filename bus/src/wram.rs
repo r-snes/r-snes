@@ -83,15 +83,13 @@ impl MemoryRegion for Wram {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use common::snes_address::snes_addr;
 
     #[test]
     fn test_good_map_addr() {
         for bank in (0x00..=0x3F).chain(0x80..=0xBF) {
             for addr in 0..0x2000 {
-                let address: SnesAddress = SnesAddress {
-                    bank: bank,
-                    addr: addr,
-                };
+                let address: SnesAddress = snes_addr!(bank:addr);
                 assert_eq!(Wram::to_offset(address), addr as usize);
             }
         }
@@ -100,19 +98,13 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_bad_map_addr_panics() {
-        Wram::to_offset(SnesAddress {
-            bank: (0x00),
-            addr: (0x2000),
-        });
+        Wram::to_offset(snes_addr!(0:0x2000));
     }
 
     #[test]
     #[should_panic]
     fn test_bad_map_addr_panics2() {
-        Wram::to_offset(SnesAddress {
-            bank: 0x0F,
-            addr: 0x2000,
-        });
+        Wram::to_offset(snes_addr!(0x0F:0x2000));
     }
 
     #[test]
@@ -120,10 +112,7 @@ mod tests {
     fn test_bad_map_addr_panic_message_read() {
         let wram = Wram::new();
 
-        wram.read(SnesAddress {
-            bank: 0xE3,
-            addr: 0x2345,
-        });
+        wram.read(snes_addr!(0xE3:0x2345));
     }
 
     #[test]
@@ -131,30 +120,15 @@ mod tests {
     fn test_bad_map_addr_panic_message_write() {
         let mut wram = Wram::new();
 
-        wram.write(
-            SnesAddress {
-                bank: 0xE3,
-                addr: 0x2345,
-            },
-            0x43,
-        );
+        wram.write(snes_addr!(0xE3:0x2345), 0x43);
     }
 
     #[test]
     fn test_simple_read_write() {
         let mut wram = Wram::new();
-        let mirrored_addr = SnesAddress {
-            bank: 0x20,
-            addr: 0x1456,
-        };
-        let first_full_bank_addr = SnesAddress {
-            bank: 0x7E,
-            addr: 0x4444,
-        };
-        let second_full_bank_addr = SnesAddress {
-            bank: 0x7F,
-            addr: 0x3E58,
-        };
+        let mirrored_addr = snes_addr!(0x20:0x1456);
+        let first_full_bank_addr = snes_addr!(0x7E:0x4444);
+        let second_full_bank_addr = snes_addr!(0x7F:0x3E58);
 
         wram.write(mirrored_addr, 0x43);
         assert_eq!(wram.read(mirrored_addr), 0x43);
@@ -169,18 +143,9 @@ mod tests {
     #[test]
     fn test_full_bank_edges() {
         let mut wram = Wram::new();
-        let first_bank_end = SnesAddress {
-            bank: 0x7E,
-            addr: 0xFFFF,
-        };
-        let second_bank_start = SnesAddress {
-            bank: 0x7F,
-            addr: 0x0000,
-        };
-        let second_bank_end = SnesAddress {
-            bank: 0x7F,
-            addr: 0x0000,
-        };
+        let first_bank_end = snes_addr!(0x7E:0xFFFF);
+        let second_bank_start = snes_addr!(0x7F:0x0000);
+        let second_bank_end = snes_addr!(0x7F:0x0000);
 
         wram.write(first_bank_end, 0xF3);
         assert_eq!(wram.read(first_bank_end), 0xF3);

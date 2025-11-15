@@ -4,7 +4,7 @@
 //! Should be used as `use some::path::to::test_prelude::*;`
 
 pub(crate) use crate::registers::Registers;
-pub(crate) use common::snes_address::SnesAddress;
+pub(crate) use common::snes_address::{SnesAddress,snes_addr};
 
 use crate::cpu::CPU;
 use crate::cpu::CycleResult;

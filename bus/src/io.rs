@@ -85,12 +85,13 @@ impl MemoryRegion for Io {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use common::snes_address::snes_addr;
 
     #[test]
     fn test_good_map_addr() {
         for bank in (0x00..=0x3F).chain(0x80..=0xBF) {
             for addr in IO_START_ADDRESS..IO_END_ADDRESS {
-                let address: SnesAddress = SnesAddress { bank, addr };
+                let address: SnesAddress = snes_addr!(bank:addr);
                 assert_eq!(Io::to_offset(address), addr as usize);
             }
         }
@@ -99,19 +100,13 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_bad_map_addr_panics() {
-        Io::to_offset(SnesAddress {
-            bank: 0x00,
-            addr: IO_START_ADDRESS - 0x0321,
-        });
+        Io::to_offset(snes_addr!(0:IO_START_ADDRESS - 0x0321));
     }
 
     #[test]
     #[should_panic]
     fn test_bad_map_addr_panics2() {
-        Io::to_offset(SnesAddress {
-            bank: 0x0F,
-            addr: IO_END_ADDRESS + 0x34EF,
-        });
+        Io::to_offset(snes_addr!(0x0F:IO_END_ADDRESS + 0x34EF));
     }
 
     #[test]
@@ -119,10 +114,7 @@ mod tests {
     fn test_bad_map_addr_panic_message_read() {
         let io = Io::new();
 
-        io.read(SnesAddress {
-            bank: 0xE3,
-            addr: 0x2345,
-        });
+        io.read(snes_addr!(0xE3:0x2345));
     }
 
     #[test]
@@ -130,26 +122,14 @@ mod tests {
     fn test_bad_map_addr_panic_message_write() {
         let mut io = Io::new();
 
-        io.write(
-            SnesAddress {
-                bank: 0xE3,
-                addr: 0x2345,
-            },
-            0x43,
-        );
+        io.write(snes_addr!(0xE3:0x2345), 0x43);
     }
 
     #[test]
     fn test_simple_read_write() {
         let mut wram = Io::new();
-        let first_addr = SnesAddress {
-            bank: 0x00,
-            addr: IO_START_ADDRESS,
-        };
-        let second_addr = SnesAddress {
-            bank: 0x9F,
-            addr: IO_START_ADDRESS,
-        };
+        let first_addr = snes_addr!(0:IO_START_ADDRESS);
+        let second_addr = snes_addr!(0x9F:IO_START_ADDRESS);
 
         wram.write(first_addr, 0x43);
         assert_eq!(wram.read(first_addr), 0x43);

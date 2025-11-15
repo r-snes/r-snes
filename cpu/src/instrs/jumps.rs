@@ -30,8 +30,7 @@ cpu_instr_no_inc_pc!(jmp_absl {
 cpu_instr_no_inc_pc!(jmp_abs_ind {
     meta FETCH16_IMM_INTO cpu.registers.PC; // use PC as a buffer
 
-    cpu.addr_bus.bank = 0;
-    cpu.addr_bus.addr = cpu.registers.PC; // read from the fetched address
+    cpu.addr_bus = snes_addr!(0:cpu.registers.PC); // read from the fetched addr
     meta FETCH16_INTO cpu.registers.PC;
 });
 
@@ -55,8 +54,7 @@ cpu_instr_no_inc_pc!(jmp_abs_ind_indx {
 cpu_instr_no_inc_pc!(jml {
     meta FETCH16_IMM_INTO cpu.registers.PC; // use PC as a buffer
 
-    cpu.addr_bus.bank = 0;
-    cpu.addr_bus.addr = cpu.registers.PC; // read from the fetched address
+    cpu.addr_bus = snes_addr!(0:cpu.registers.PC); // read from the fetched addr
     meta FETCH16_INTO cpu.registers.PC;
 
     cpu.addr_bus.addr = cpu.addr_bus.addr.wrapping_add(1);
@@ -80,19 +78,13 @@ mod tests {
         expect_opcode_fetch(&mut cpu, 0x4c);
         expect_read_cycle(
             &mut cpu,
-            SnesAddress {
-                bank: 0x12,
-                addr: 0x3457,
-            },
+            snes_addr!(0x12:0x3457),
             0xcd,
             "jump address (low)",
         );
         expect_read_cycle(
             &mut cpu,
-            SnesAddress {
-                bank: 0x12,
-                addr: 0x3458,
-            },
+            snes_addr!(0x12:0x3458),
             0xab,
             "jump address (high)",
         );
@@ -115,28 +107,19 @@ mod tests {
         expect_opcode_fetch(&mut cpu, 0x5c);
         expect_read_cycle(
             &mut cpu,
-            SnesAddress {
-                bank: 0x12,
-                addr: 0x3457,
-            },
+            snes_addr!(0x12:0x3457),
             0xef,
             "jump address (PC low)",
         );
         expect_read_cycle(
             &mut cpu,
-            SnesAddress {
-                bank: 0x12,
-                addr: 0x3458,
-            },
+            snes_addr!(0x12:0x3458),
             0xcd,
             "jump address (PC high)",
         );
         expect_read_cycle(
             &mut cpu,
-            SnesAddress {
-                bank: 0x12,
-                addr: 0x3459,
-            },
+            snes_addr!(0x12:0x3459),
             0xab,
             "jump address (PB)",
         );
@@ -160,37 +143,25 @@ mod tests {
         expect_opcode_fetch(&mut cpu, 0x6c);
         expect_read_cycle(
             &mut cpu,
-            SnesAddress {
-                bank: 0x12,
-                addr: 0x3457,
-            },
+            snes_addr!(0x12:0x3457),
             0x00,
             "operand address (low)",
         );
         expect_read_cycle(
             &mut cpu,
-            SnesAddress {
-                bank: 0x12,
-                addr: 0x3458,
-            },
+            snes_addr!(0x12:0x3458),
             0x22,
             "operand address (high)",
         );
         expect_read_cycle(
             &mut cpu,
-            SnesAddress {
-                bank: 0x00,
-                addr: 0x2200,
-            },
+            snes_addr!(0:0x2200),
             0x89,
             "jump address (PC low)",
         );
         expect_read_cycle(
             &mut cpu,
-            SnesAddress {
-                bank: 0x00,
-                addr: 0x2201,
-            },
+            snes_addr!(0:0x2201),
             0x67,
             "jump address (PC high)",
         );
@@ -214,38 +185,26 @@ mod tests {
         expect_opcode_fetch(&mut cpu, 0x7c);
         expect_read_cycle(
             &mut cpu,
-            SnesAddress {
-                bank: 0x12,
-                addr: 0x3457,
-            },
+            snes_addr!(0x12:0x3457),
             0xa0,
             "operand address (low)",
         );
         expect_read_cycle(
             &mut cpu,
-            SnesAddress {
-                bank: 0x12,
-                addr: 0x3458,
-            },
+            snes_addr!(0x12:0x3458),
             0xb0,
             "operand address (high)",
         );
         expect_internal_cycle(&mut cpu, "internal cycle for X-indexing");
         expect_read_cycle(
             &mut cpu,
-            SnesAddress {
-                bank: 0x12, // PB
-                addr: 0xc0a0, // address + X
-            },
+            snes_addr!(0x12:0xc0a0), // PB:(addr+X)
             0x89,
             "jump address (PC low)",
         );
         expect_read_cycle(
             &mut cpu,
-            SnesAddress {
-                bank: 0x12, // PB
-                addr: 0xc0a1, // address + X + 1
-            },
+            snes_addr!(0x12:0xc0a1), // PB:(addr+X+1)
             0x67,
             "jump address (PC high)",
         );
@@ -269,38 +228,26 @@ mod tests {
         expect_opcode_fetch(&mut cpu, 0x7c);
         expect_read_cycle(
             &mut cpu,
-            SnesAddress {
-                bank: 0x12,
-                addr: 0x3457,
-            },
+            snes_addr!(0x12:0x3457),
             0x30,
             "operand address (low)",
         );
         expect_read_cycle(
             &mut cpu,
-            SnesAddress {
-                bank: 0x12,
-                addr: 0x3458,
-            },
+            snes_addr!(0x12:0x3458),
             0x20,
             "operand address (high)",
         );
         expect_internal_cycle(&mut cpu, "internal cycle for X-indexing");
         expect_read_cycle(
             &mut cpu,
-            SnesAddress {
-                bank: 0x12, // PB
-                addr: 0x1030, // address + X
-            },
+            snes_addr!(0x12:0x1030), // PB:(addr+X)
             0x89,
             "jump address (PC low)",
         );
         expect_read_cycle(
             &mut cpu,
-            SnesAddress {
-                bank: 0x12, // PB
-                addr: 0x1031, // address + X + 1
-            },
+            snes_addr!(0x12:0x1031), // PB:(addr+X+1)
             0x67,
             "jump address (PC high)",
         );
@@ -323,46 +270,31 @@ mod tests {
         expect_opcode_fetch(&mut cpu, 0xdc);
         expect_read_cycle(
             &mut cpu,
-            SnesAddress {
-                bank: 0x12,
-                addr: 0x3457,
-            },
+            snes_addr!(0x12:0x3457),
             0x77,
             "operand address (low)",
         );
         expect_read_cycle(
             &mut cpu,
-            SnesAddress {
-                bank: 0x12,
-                addr: 0x3458,
-            },
+            snes_addr!(0x12:0x3458),
             0x88,
             "operand address (high)",
         );
         expect_read_cycle(
             &mut cpu,
-            SnesAddress {
-                bank: 0x00,
-                addr: 0x8877,
-            },
+            snes_addr!(0:0x8877),
             0xef,
             "jump address (PC low)",
         );
         expect_read_cycle(
             &mut cpu,
-            SnesAddress {
-                bank: 0x00,
-                addr: 0x8878,
-            },
+            snes_addr!(0:0x8878),
             0xcd,
             "jump address (PC high)",
         );
         expect_read_cycle(
             &mut cpu,
-            SnesAddress {
-                bank: 0x00,
-                addr: 0x8879,
-            },
+            snes_addr!(0:0x8879),
             0xab,
             "jump address (PB)",
         );
