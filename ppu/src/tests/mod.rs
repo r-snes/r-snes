@@ -1,3 +1,4 @@
+mod ppu_oam;
 mod ppu_cgram;
 mod ppu_vram;
 mod ppu_render;

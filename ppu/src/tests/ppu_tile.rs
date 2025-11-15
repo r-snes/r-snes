@@ -1,7 +1,7 @@
 use image::{Rgba, ImageBuffer};
 use std::path::Path;
-use crate::ppu::*;
-use crate::tile::{load_and_split_image, load_tiles_into_vram};
+use crate::ppu::PPU;
+use crate::tile::{load_and_split_image, load_tiles_into_vram, get_tile_from_vram, get_tile_indices_from_vram};
 use crate::utils::TILE_SIZE;
 
 // Helper: Creates a 16x16 image with red, green, blue, and yellow (4 different tiles)
@@ -26,6 +26,35 @@ fn create_test_image(path: &str) {
     img.save(path).unwrap();
 }
 
+#[test] // Should write complete tiles into VRAM
+fn test_load_tiles_into_vram_writes_data() {
+    let mut ppu = PPU::new();
+    let tile = vec![Rgba([64u8, 0u8, 0u8, 255u8]); TILE_SIZE * TILE_SIZE];
+    let tiles = vec![tile];
+
+    load_tiles_into_vram(&mut ppu, &tiles);
+
+    // Check VRAM first few pixels
+    for i in 0..8 {
+        let v = ppu.read_vram(i);
+        assert_eq!(v, 16); // 64 >> 2 = 16
+    }
+}
+
+#[test] // Should skip incomplete tiles and print a warning
+fn test_load_tiles_into_vram_skips_incomplete_tiles() {
+    let mut ppu = PPU::new();
+    let incomplete_tile = vec![Rgba([255u8, 0u8, 0u8, 255u8]); 4]; // smaller than 8x8
+    let tiles = vec![incomplete_tile];
+
+    load_tiles_into_vram(&mut ppu, &tiles);
+
+    // VRAM should remain untouched (default 0)
+    for i in 0..16 {
+        assert_eq!(ppu.read_vram(i), 0);
+    }
+}
+
 #[test] // Should load 4 tiles of correct size (8x8) from a 16x16 image
 fn test_tile_count_and_size() {
     let path = "./src/tests/assets/test_4_colors_in_4_tiles.png";
@@ -34,7 +63,7 @@ fn test_tile_count_and_size() {
         create_test_image(path);
     }
 
-    let (tiles, _) = load_and_split_image(path);
+    let tiles = load_and_split_image(path);
 
     assert_eq!(tiles.len(), 4);
 
@@ -51,7 +80,7 @@ fn test_tile_pixel_values() {
         create_test_image(path);
     }
 
-    let (tiles, _)  = load_and_split_image(path);
+    let tiles = load_and_split_image(path);
 
     // tile 0 : red
     for px in &tiles[0] {
@@ -93,7 +122,7 @@ fn test_image_smaller_than_tile() {
     }
     img.save(path).unwrap();
 
-    let (tiles, _)  = load_and_split_image(path);
+    let tiles = load_and_split_image(path);
 
     assert_eq!(tiles.len(), 1); // Should still create one tile
     assert_eq!(tiles[0].len(), 16); // 4x4 = 16 pixels, rest is missing
@@ -111,7 +140,7 @@ fn test_non_divisible_dimensions() {
     }
     img.save(path).unwrap();
 
-    let (tiles, _)  = load_and_split_image(path);
+    let tiles = load_and_split_image(path);
     assert_eq!(tiles.len(), 4);
     assert!(tiles[0].len() <= (TILE_SIZE * TILE_SIZE) as usize);
 }
@@ -129,7 +158,7 @@ fn test_transparent_pixels() {
 
     img.save(path).unwrap();
 
-    let (tiles, _)  = load_and_split_image(path);
+    let tiles = load_and_split_image(path);
     assert_eq!(tiles.len(), 1);
 
     for px in &tiles[0] {
@@ -153,7 +182,7 @@ fn test_2_horizontal_tiles() {
 
     img.save(path).unwrap();
 
-    let (tiles, _)  = load_and_split_image(path);
+    let tiles = load_and_split_image(path);
     assert_eq!(tiles.len(), 2);
 
     // Check tile 0 (red)
@@ -171,21 +200,32 @@ fn test_2_horizontal_tiles() {
     }
 }
 
-#[test] // Tests loading tiles from an image, writing them to VRAM, and rendering them to the framebuffer
-fn test_tile_rendering_logic() {
-    let path = "./src/tests/assets/test_10x10.png";
-
-    let (tiles, image_width) = load_and_split_image(path);
-    assert!(!tiles.is_empty(), "Tiles should not be empty");
-
+#[test] // Should return the correct tile colors from VRAM and CGRAM
+fn test_get_tile_from_vram_returns_colors() {
     let mut ppu = PPU::new();
-    load_tiles_into_vram(&mut ppu, &tiles);
 
-    let tiles_per_row = image_width / TILE_SIZE as usize;
-    assert!(tiles_per_row > 0, "tiles_per_row should be greater than 0");
+    // Fill VRAM with palette index 2
+    for i in 0..(TILE_SIZE * TILE_SIZE) {
+        ppu.write_vram(i, 2);
+    }
 
-    ppu.render(tiles_per_row);
+    let tile = get_tile_from_vram(&ppu, 0);
 
-    let non_zero_pixels = ppu.framebuffer.iter().filter(|&&px| px != 0).count();
-    assert!(non_zero_pixels > 0, "Framebuffer should not be completely empty");
+    assert_eq!(tile.len(), TILE_SIZE * TILE_SIZE);
+    assert!(tile.iter().any(|&c| c != 0xFF000000)); // not all pixels black
+}
+
+#[test] // Should return palette indices from VRAM
+fn test_get_tile_indices_from_vram_returns_indices() {
+    let mut ppu = PPU::new();
+
+    for i in 0..(TILE_SIZE * TILE_SIZE) {
+        ppu.write_vram(i, (i % 64) as u8);
+    }
+
+    let indices = get_tile_indices_from_vram(&ppu, 0);
+    assert_eq!(indices.len(), TILE_SIZE * TILE_SIZE);
+    assert_eq!(indices[0], 0);
+    assert_eq!(indices[1], 1);
+    assert_eq!(indices[7], 7);
 }
