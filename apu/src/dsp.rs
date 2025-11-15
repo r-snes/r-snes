@@ -1,17 +1,8 @@
 use crate::memory::Memory;
 
-/// Voice of the SNES APU DSP
+/// ADSR envelope state (moved out of Voice)
 #[derive(Debug, Clone, Copy)]
-pub struct Voice {
-    pub left_vol: u8,
-    pub right_vol: u8,
-    pub pitch: u16,
-    pub key_on: bool,
-    pub sample_start: u16,
-    pub sample_end: u16,
-    pub current_addr: u16,
-    pub frac: u16,          // fractional accumulator for pitch stepping
-    pub current_sample: i8, // last fetched sample
+pub struct Adsr {
     pub adsr_mode: bool,     // whether ADSR or gain mode is used
     pub attack_rate: u8,
     pub decay_rate: u8,
@@ -21,27 +12,9 @@ pub struct Voice {
     pub envelope_phase: EnvelopePhase,
 }
 
-#[derive(Copy, Clone,Debug, PartialEq)]
-pub enum EnvelopePhase {
-    Attack,
-    Decay,
-    Sustain,
-    Release,
-    Off,
-}
-
-impl Default for Voice {
+impl Default for Adsr {
     fn default() -> Self {
         Self {
-            left_vol: 0,
-            right_vol: 0,
-            pitch: 0,
-            key_on: false,
-            sample_start: 0,
-            sample_end: 0,
-            current_addr: 0,
-            frac: 0,
-            current_sample: 0,
             // ADSR defaults
             adsr_mode: false,
             attack_rate: 0,
@@ -54,7 +27,7 @@ impl Default for Voice {
     }
 }
 
-impl Voice {
+impl Adsr {
     /// Update the ADSR envelope each tick
     pub fn update_envelope(&mut self) {
         match self.envelope_phase {
@@ -93,6 +66,58 @@ impl Voice {
                 // Silence, no change
             }
         }
+    }
+}
+
+/// Voice of the SNES APU DSP
+#[derive(Debug, Clone, Copy)]
+pub struct Voice {
+    pub left_vol: u8,
+    pub right_vol: u8,
+    pub pitch: u16,
+    pub key_on: bool,
+    pub sample_start: u16,
+    pub sample_end: u16,
+    pub current_addr: u16,
+    pub frac: u16,          // fractional accumulator for pitch stepping
+    pub current_sample: i8, // last fetched sample
+
+    // ADSR moved into sub-structure
+    pub adsr: Adsr,
+}
+
+#[derive(Copy, Clone,Debug, PartialEq)]
+pub enum EnvelopePhase {
+    Attack,
+    Decay,
+    Sustain,
+    Release,
+    Off,
+}
+
+impl Default for Voice {
+    fn default() -> Self {
+        Self {
+            left_vol: 0,
+            right_vol: 0,
+            pitch: 0,
+            key_on: false,
+            sample_start: 0,
+            sample_end: 0,
+            current_addr: 0,
+            frac: 0,
+            current_sample: 0,
+
+            // ADSR defaults (unchanged comment)
+            adsr: Adsr::default(),
+        }
+    }
+}
+
+impl Voice {
+    /// Update the ADSR envelope each tick
+    pub fn update_envelope(&mut self) {
+        self.adsr.update_envelope();
     }
 }
 
@@ -164,8 +189,8 @@ impl Dsp {
                     let v = &mut self.voices[voice_idx];
                     v.current_addr = v.sample_start;
                     v.frac = 0;
-                    v.envelope_phase = EnvelopePhase::Attack;
-                    v.envelope_level = 0;
+                    v.adsr.envelope_phase = EnvelopePhase::Attack;
+                    v.adsr.envelope_level = 0;
                 }
             }
 
@@ -175,7 +200,7 @@ impl Dsp {
                 let voice_idx = index - 0x28;
                 if value != 0 {
                     let v = &mut self.voices[voice_idx];
-                    v.envelope_phase = EnvelopePhase::Release;
+                    v.adsr.envelope_phase = EnvelopePhase::Release;
                 }
             }
 
@@ -203,9 +228,9 @@ impl Dsp {
             0x50..=0x57 => {
                 let voice_idx = index - 0x50;
                 let v = &mut self.voices[voice_idx];
-                v.adsr_mode = (value & 0x80) != 0; // Bit 7 enables ADSR
-                v.attack_rate = (value >> 4) & 0x0F; // Bits 6–4
-                v.decay_rate = value & 0x0F;         // Bits 3–0
+                v.adsr.adsr_mode = (value & 0x80) != 0; // Bit 7 enables ADSR
+                v.adsr.attack_rate = (value >> 4) & 0x0F; // Bits 6–4
+                v.adsr.decay_rate = value & 0x0F;         // Bits 3–0
             }
 
             // 0x60..=0x67: ADSR2 (Sustain level + Release rate)
@@ -215,8 +240,8 @@ impl Dsp {
             0x60..=0x67 => {
                 let voice_idx = index - 0x60;
                 let v = &mut self.voices[voice_idx];
-                v.sustain_level = (value >> 5) & 0x07; // Bits 7–5
-                v.release_rate = value & 0x1F;         // Bits 4–0
+                v.adsr.sustain_level = (value >> 5) & 0x07; // Bits 7–5
+                v.adsr.release_rate = value & 0x1F;         // Bits 4–0
             }
 
             _ => {} // Other registers (echo, gain, FIR, etc.) not implemented yet
@@ -227,18 +252,18 @@ impl Dsp {
     pub fn step(&mut self, mem: &Memory) {
         for voice in self.voices.iter_mut() {
             // FIRST: Update the envelope (as long as the voice is active or releasing)
-            match voice.envelope_phase {
+            match voice.adsr.envelope_phase {
                 EnvelopePhase::Attack
                 | EnvelopePhase::Decay
                 | EnvelopePhase::Sustain
                 | EnvelopePhase::Release => {
-                    voice.update_envelope();
+                    voice.adsr.update_envelope();
                 }
                 EnvelopePhase::Off => {}
             }
 
             // If key is not active AND envelope is Off — voice is fully silent
-            if !voice.key_on && voice.envelope_phase == EnvelopePhase::Off {
+            if !voice.key_on && voice.adsr.envelope_phase == EnvelopePhase::Off {
                 continue;
             }
 
@@ -256,7 +281,7 @@ impl Dsp {
                 if voice.current_addr >= voice.sample_end {
                     // Trigger release
                     voice.key_on = false;
-                    voice.envelope_phase = EnvelopePhase::Release;
+                    voice.adsr.envelope_phase = EnvelopePhase::Release;
                 } else {
                     // Fetch new sample
                     voice.current_sample = mem.read8(voice.current_addr) as i8;
@@ -273,12 +298,12 @@ impl Dsp {
 
             for voice in self.voices.iter() {
                 // Skip silent voices
-                if voice.envelope_phase == EnvelopePhase::Off {
+                if voice.adsr.envelope_phase == EnvelopePhase::Off {
                     continue;
                 }
 
                 // Convert envelope (0 – 0x7FF) into 0.0 – 1.0
-                let env = voice.envelope_level as i32;
+                let env = voice.adsr.envelope_level as i32;
 
                 // Apply ADSR to current sample
                 let base = voice.current_sample as i32;
