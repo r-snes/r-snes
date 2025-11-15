@@ -2,6 +2,25 @@
 
 This document describes our contribution policy, guidelines to follow when making any change or addition to this repository.
 
+## Current Contribution Status
+
+At this stage of the project, **external contributions are temporarily restricted**.
+
+The R-SNES emulator is currently being developed as part of a **university project**, and the core systems (CPU, APU, PPU, etc.) are undergoing active, fundamental development.  
+To maintain internal consistency and meet academic requirements, **we are not yet able to accept external pull requests or direct code contributions** to the main repository.
+
+Once the project reaches a stable and usable state:
+- A full **list of accepted contribution types** (code, documentation, plug-ins, tools, etc.) will be published.
+
+Until then, we welcome:
+- **Feedback, suggestions, and discussions** through GitHub Issues and Discussions.
+- **External experiments** or **plug-ins** built on top of released code, as long as they are developed independently.
+
+> When contributions open officially, this document will be updated, and an announcement will be made in the repository.
+
+---
+
+
 ## Regarding pull requests
 
 Pull requests targetting the main branch will systematically be squashed and merged when validated. This will hopefully keep the commit history of the main branch simple and clear, while leaving the possibility to check a more detailed commit history by going back to the commit history of the original branch from the PR.
