@@ -8,8 +8,7 @@ use crate::constants::{
 };
 use crate::rom::header::cartridge_hardware::CartridgeHardware;
 use crate::rom::header::country::{Country, VideoStandard};
-use crate::rom::header::mapping_mode::MappingMode;
-use crate::rom::header::rom_speed::RomSpeed;
+use crate::rom::header::mapping_mode::{MappingMode, RomSpeed};
 
 /// Represents the header of a SNES ROM.
 ///
@@ -48,12 +47,14 @@ impl RomHeader {
             .try_into()
             .expect("ERROR: Couldn't extract the header from the ROM"); // Should be safe since multiple verification before
         let country = Country::from_byte(header_bytes[HEADER_COUNTRY_OFFSET]);
+        let (rom_speed, mapping_mode) =
+            MappingMode::from_byte(header_bytes[HEADER_SPEED_MAP_OFFSET]);
 
         RomHeader {
             bytes: header_bytes,
             title: String::from_utf8_lossy(&header_bytes[0..HEADER_TITLE_LEN]).to_string(),
-            rom_speed: RomSpeed::from_byte(header_bytes[HEADER_SPEED_MAP_OFFSET]),
-            mapping_mode: MappingMode::from_byte(header_bytes[HEADER_SPEED_MAP_OFFSET]),
+            rom_speed: rom_speed,
+            mapping_mode: mapping_mode,
             hardware: CartridgeHardware::from_byte(header_bytes[HEADER_ROM_HARDWARE_OFFSET]),
             rom_size: header_bytes[HEADER_ROM_SIZE_OFFSET],
             ram_size: header_bytes[HEADER_RAM_SIZE_OFFSET],

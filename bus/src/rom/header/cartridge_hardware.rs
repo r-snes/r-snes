@@ -59,7 +59,7 @@ impl CartridgeHardware {
     ///     byte: Byte from the ROM header representing hardware configuration.
     ///
     /// Returns:
-    ///     A `CartridgeHardware` enum corresponding to the ROM's hardware.
+    ///     A `CartridgeHardware` struct containing the ROM layout and an Option<Coprocessor>
     pub fn from_byte(byte: u8) -> CartridgeHardware {
         let layout = byte & 0x0F;
         let layout = match layout {

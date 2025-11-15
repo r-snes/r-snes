@@ -25,6 +25,15 @@ pub enum MappingMode {
     HiRom,
 }
 
+/// Represents the speed of a SNES ROM.
+///
+/// Can be either Slow or Fast
+#[derive(Display, Debug, Clone, Copy, PartialEq)]
+pub enum RomSpeed {
+    Slow,
+    Fast,
+}
+
 impl MappingMode {
     /// Detects the mapping mode of a ROM by scoring LoROM and HiROM headers.
     ///
@@ -62,28 +71,38 @@ impl MappingMode {
         }
     }
 
-    /// Creates a `MappingMode` from a byte in the ROM header.
+    /// Creates `RomSpeed` and `MappingMode` values from a byte extracted from the ROM header.
     ///
     /// Args:
-    ///     byte: Byte from the ROM header representing mapping mode.
+    ///     byte: Byte from the ROM header representing the ROM speed and mapping mode.
     ///
     /// Returns:
-    ///     A `MappingMode` enum corresponding to the header value.
-    pub fn from_byte(byte: u8) -> MappingMode {
-        let map_value = byte & 0x0F;
-
-        match map_value {
+    ///     (RomSpeed, MappingMode)
+    pub fn from_byte(byte: u8) -> (RomSpeed, MappingMode) {
+        let map_mode = byte & 0x0F;
+        let map_mode = match map_mode {
             0x0 => MappingMode::LoRom,
             0x1 => MappingMode::HiRom,
             _ => panic!("ERROR: Could not identify mapping of ROM"),
-        }
+        };
+
+        let rom_speed = (byte >> 4) & 1;
+        println!("OIHLSDJBNGMEZJBGO¨Nùk");
+        println!("RomSpeed: {}", rom_speed);
+        let rom_speed = match rom_speed {
+            0 => RomSpeed::Slow,
+            1 => RomSpeed::Fast,
+            _ => panic!("ERROR: Could not identify speed of ROM"),
+        };
+
+        (rom_speed, map_mode)
     }
 
     /// Scores a header at a given offset for validity.
     ///
     /// Args:
     ///     rom_data: Byte slice containing the full ROM data.
-    ///     header_offset: Offset in the ROM where the header starts.
+    ///     address: Offset in the ROM where the header starts.
     ///
     /// Returns:
     ///     A score (`u32`) indicating how valid the header looks.
@@ -95,7 +114,7 @@ impl MappingMode {
 
         let mut score: u32 = 0;
 
-        let map_mode = Self::from_byte(rom_data[address + HEADER_SPEED_MAP_OFFSET]);
+        let (_, map_mode) = Self::from_byte(rom_data[address + HEADER_SPEED_MAP_OFFSET]);
         let complement = u16::from_le_bytes([
             rom_data[address + HEADER_CHECKSUM_COMPLEMENT_OFFSET],
             rom_data[address + HEADER_CHECKSUM_COMPLEMENT_OFFSET + 1],
@@ -177,15 +196,15 @@ mod tests {
 
     #[test]
     fn test_from_byte_valid() {
-        assert_eq!(MappingMode::from_byte(0x00), MappingMode::LoRom);
-        assert_eq!(MappingMode::from_byte(0x01), MappingMode::HiRom);
-        assert_eq!(MappingMode::from_byte(0x10), MappingMode::LoRom);
-        assert_eq!(MappingMode::from_byte(0x11), MappingMode::HiRom);
+        assert_eq!(MappingMode::from_byte(0x00).1, MappingMode::LoRom);
+        assert_eq!(MappingMode::from_byte(0x01).1, MappingMode::HiRom);
+        assert_eq!(MappingMode::from_byte(0x10).1, MappingMode::LoRom);
+        assert_eq!(MappingMode::from_byte(0x11).1, MappingMode::HiRom);
     }
 
     #[test]
     #[should_panic(expected = "ERROR: Could not identify mapping of ROM")]
-    fn test_from_byte_invalid() {
+    fn test_from_byte_invalid_mapping_mode() {
         MappingMode::from_byte(0x02);
     }
 
@@ -195,6 +214,22 @@ mod tests {
 
         for (mapping, expected) in mappings {
             assert_eq!(format!("{}", mapping), expected);
+        }
+    }
+
+    #[test]
+    fn test_rom_speed_from_byte_slow() {
+        let bytes = [0x00, 0x01];
+        for &b in &bytes {
+            assert_eq!(MappingMode::from_byte(b).0, RomSpeed::Slow);
+        }
+    }
+
+    #[test]
+    fn test_rom_speed_from_byte_fast() {
+        let bytes = [0x10, 0x11];
+        for &b in &bytes {
+            assert_eq!(MappingMode::from_byte(b).0, RomSpeed::Fast);
         }
     }
 }
