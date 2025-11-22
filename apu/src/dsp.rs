@@ -229,7 +229,6 @@ impl Dsp {
                 let voice_idx = index - 0x50;
                 let v = &mut self.voices[voice_idx];
                 v.adsr.adsr_mode = (value & 0x80) != 0; // Bit 7 enables ADSR
-                v.adsr.adsr_mode     = (value & 0x80) != 0;
                 v.adsr.attack_rate   = (value >> 4) & 0x07;  // mask 3 bits
                 v.adsr.decay_rate    = value & 0x0F;
             }
