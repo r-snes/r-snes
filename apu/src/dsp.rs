@@ -297,29 +297,25 @@ impl Dsp {
             let mut right_mix: f32 = 0.0;
 
             for voice in self.voices.iter() {
-                // Skip silent voices
                 if voice.adsr.envelope_phase == EnvelopePhase::Off {
                     continue;
                 }
 
-                // Envelope (0 – 0x7FF) mapped to 0.0 – 1.0
+                // Envelope fraction 0.0 – 1.0
                 let env = voice.adsr.envelope_level as f32 / 0x7FF as f32;
 
-                // Current sample (-128..127) as float
+                // Raw sample -128..127 → convert to float
                 let base = voice.current_sample as f32;
 
                 // Apply envelope
-                let amp = base * env;     // still roughly -128..127
+                let amp = base * env;
 
-                // Scale to 16-bit audio range
-                let amp16 = amp * 256.0;  // SNES roughly outputs 12-bit -> map to 16-bit
-
-                // Apply stereo volumes (0–127 each)
-                left_mix  += amp16 * (voice.left_vol  as f32 / 127.0);
-                right_mix += amp16 * (voice.right_vol as f32 / 127.0);
+                // Apply left/right volumes (0..127)
+                left_mix  += amp * (voice.left_vol  as f32 / 127.0);
+                right_mix += amp * (voice.right_vol as f32 / 127.0);
             }
 
-            // Clamp to i16
+            // Convert float → i16 with clamping
             sample.0 = left_mix.clamp(i16::MIN as f32, i16::MAX as f32) as i16;
             sample.1 = right_mix.clamp(i16::MIN as f32, i16::MAX as f32) as i16;
         }
