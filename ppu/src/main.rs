@@ -1,47 +1,36 @@
 mod ppu;
 mod tile;
+mod tile_loader;
 mod utils;
+mod sprite;
+mod color;
+mod window;
+mod constants;
 
-use minifb::{Key, Window, WindowOptions};
+use minifb::Key;
 use crate::ppu::PPU;
-use crate::tile::{load_and_split_image, load_tiles_into_vram};
-use crate::utils::{SCREEN_WIDTH, SCREEN_HEIGHT, WIDTH, HEIGHT, TILE_SIZE};
-
-pub fn create_window() -> Window {
-    Window::new(
-        "rsnes ppu",
-        SCREEN_WIDTH,
-        SCREEN_HEIGHT,
-        WindowOptions {
-            resize: false,
-            ..WindowOptions::default()
-        },
-    )
-    .expect("[ERR::WindowInit] Unable to create display context.")
-}
-
-pub fn update_window(window: &mut Window, framebuffer: &Vec<u32>) {
-    window
-        .update_with_buffer(framebuffer, WIDTH, HEIGHT)
-        .expect("[ERR::Render] Framebuffer refused to cooperate.");
-}
-
+use crate::tile_loader::{load_and_split_image, load_tiles_into_vram};
+use crate::constants::*;
+use crate::window::*;
+use crate::sprite::Sprite;
 
 fn main() {
-    let (tiles, image_width) = load_and_split_image("./tileset.png");
-    println!("Loaded {} tiles, image width: {}", tiles.len(), image_width);
-    // hard-coded filepath => to be removed (but ok for pr #13)
+    let tiles = load_and_split_image("./tileset.png");
+    println!("Loaded {} tiles", tiles.len());
 
     let mut ppu = PPU::new();
     load_tiles_into_vram(&mut ppu, &tiles);
 
-    let tiles_per_row = image_width / TILE_SIZE as usize;
-
     let mut window = create_window();
 
-    // hard-coded display => to be removed (but ok for pr #13)
+    let test_sprite = Sprite { x: 64, y: 64, tile: 1, attr: 0x01, filed: true };
+    ppu.set_oam_sprite(0, test_sprite);
+
+    let test_sprite2 = Sprite { x: 32, y: 32, tile: 27, attr: 0x01, filed: true };
+    ppu.set_oam_sprite(1, test_sprite2);
+
     while window.is_open() && !window.is_key_down(Key::Escape) {
-        ppu.render(tiles_per_row);
+        ppu.render();
         update_window(&mut window, &ppu.framebuffer);
     }
 }
