@@ -229,8 +229,9 @@ impl Dsp {
                 let voice_idx = index - 0x50;
                 let v = &mut self.voices[voice_idx];
                 v.adsr.adsr_mode = (value & 0x80) != 0; // Bit 7 enables ADSR
-                v.adsr.attack_rate = (value >> 4) & 0x0F; // Bits 6–4
-                v.adsr.decay_rate = value & 0x0F;         // Bits 3–0
+                v.adsr.adsr_mode     = (value & 0x80) != 0;
+                v.adsr.attack_rate   = (value >> 4) & 0x07;  // mask 3 bits
+                v.adsr.decay_rate    = value & 0x0F;
             }
 
             // 0x60..=0x67: ADSR2 (Sustain level + Release rate)
@@ -293,8 +294,8 @@ impl Dsp {
     /// Mix all voices into a stereo output buffer
     pub fn render_audio(&mut self, out: &mut [(i16, i16)]) {
         for sample in out.iter_mut() {
-            let mut left_mix: i32 = 0;
-            let mut right_mix: i32 = 0;
+            let mut left_mix: f32 = 0.0;
+            let mut right_mix: f32 = 0.0;
 
             for voice in self.voices.iter() {
                 // Skip silent voices
@@ -302,23 +303,26 @@ impl Dsp {
                     continue;
                 }
 
-                // Convert envelope (0 – 0x7FF) into 0.0 – 1.0
-                let env = voice.adsr.envelope_level as i32;
+                // Envelope (0 – 0x7FF) mapped to 0.0 – 1.0
+                let env = voice.adsr.envelope_level as f32 / 0x7FF as f32;
 
-                // Apply ADSR to current sample
-                let base = voice.current_sample as i32;
+                // Current sample (-128..127) as float
+                let base = voice.current_sample as f32;
 
-                // Final sample amplitude
-                let amp = (base * env) / 0x7FF;  // 11-bit full volume
+                // Apply envelope
+                let amp = base * env;     // still roughly -128..127
+
+                // Scale to 16-bit audio range
+                let amp16 = amp * 256.0;  // SNES roughly outputs 12-bit -> map to 16-bit
 
                 // Apply stereo volumes (0–127 each)
-                left_mix  += amp * (voice.left_vol  as i32) / 127;
-                right_mix += amp * (voice.right_vol as i32) / 127;
+                left_mix  += amp16 * (voice.left_vol  as f32 / 127.0);
+                right_mix += amp16 * (voice.right_vol as f32 / 127.0);
             }
 
             // Clamp to i16
-            sample.0 = left_mix.clamp(i16::MIN as i32, i16::MAX as i32) as i16;
-            sample.1 = right_mix.clamp(i16::MIN as i32, i16::MAX as i32) as i16;
+            sample.0 = left_mix.clamp(i16::MIN as f32, i16::MAX as f32) as i16;
+            sample.1 = right_mix.clamp(i16::MIN as f32, i16::MAX as f32) as i16;
         }
     }
 }
