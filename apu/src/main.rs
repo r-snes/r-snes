@@ -13,6 +13,7 @@ fn main() {
 
     for i in 0..(sample_end - sample_start) {
         // Alternating 127 and -128 for square wave
+        // 128 as unsigned = 0x80 = -128 as signed
         let val = if i % 2 == 0 { 127u8 } else { 128u8 };
         mem.write8(sample_start + i, val);
     }
@@ -29,11 +30,11 @@ fn main() {
         v.right_vol     = 80;
 
         // ADSR setup (example values)
-        v.adsr_mode     = true;
-        v.attack_rate   = 10;   // fast attack
-        v.decay_rate    = 5;
-        v.sustain_level = 4;    // mid sustain
-        v.release_rate  = 8;
+        v.adsr.adsr_mode     = true;
+        v.adsr.attack_rate   = 10;   // fast attack
+        v.adsr.decay_rate    = 5;
+        v.adsr.sustain_level = 4;    // mid sustain
+        v.adsr.release_rate  = 8;
     }
 
     // --- Step 3: Generate audio ---
@@ -42,9 +43,11 @@ fn main() {
     let num_samples = sample_rate * 3; // 3 seconds
 
     for _ in 0..num_samples {
-        dsp.step(&mem);                  // pitch stepping + sample fetch
-        let mut out = [(0_i16, 0_i16)]; // single-sample buffer
-        dsp.render_audio(&mut out);     // mix into out[0]
+        dsp.step(&mem); // pitch stepping + sample fetch
+
+        // render_audio expects a *slice of tuples*
+        let mut out = [(0_i16, 0_i16)];
+        dsp.render_audio(&mut out);
 
         // Store only left channel for simplicity
         audio_buffer.push(out[0].0);
