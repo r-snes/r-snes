@@ -61,6 +61,72 @@ cpu_instr_no_inc_pc!(jml {
     meta FETCH8_INTO cpu.registers.PB;
 });
 
+// JSR absolute: jump stack relative absolute
+// same as JMP absolute, but pushes PC to the stack before jumping
+cpu_instr_no_inc_pc!(jsr_abs {
+    meta FETCH16_IMM_INTO cpu.internal_data_bus;
+
+    // artificial internal cycle to reproduce hardware behaviour
+    meta END_CYCLE Internal;
+
+    // push a PC that is 1 byte before the next opcode
+    meta PUSH16 cpu.registers.PC.wrapping_add(2);
+
+    cpu.registers.PC = cpu.internal_data_bus;
+});
+
+// JSR absolute indirect X-indexed: same as JMP (a,x) but also push PC
+// cycle layout exceptionally weird: R AAL; W PC; R AAH; I; R PC
+cpu_instr_no_inc_pc!(jsr_abs_ind_xind {
+    meta FETCH8_IMM_INTO *cpu.internal_data_bus.lo_mut();
+
+    // adjust pushed PC to next opcode - 1
+    meta PUSHN16 cpu.registers.PC.wrapping_add(2);
+
+    // we need to readjust the addr bus manually to read immediate values again
+    cpu.addr_bus = SnesAddress {
+        bank: cpu.registers.PB,
+        addr: cpu.registers.PC.wrapping_add(2),
+    };
+    meta FETCH8_INTO *cpu.internal_data_bus.hi_mut();
+    // now cpu.internal_bus finally has the address at which we'll read PC
+
+    meta END_CYCLE Internal; // internal cycle to reproduce hardware behaviour
+
+    // set the addr bus to read PC.
+    // We intentionally don't set the bank, keep reading in PB
+    cpu.addr_bus.addr = cpu.internal_data_bus.wrapping_add(cpu.registers.X);
+
+    meta FETCH16_INTO cpu.registers.PC;
+
+    // *cpu.registers.S.hi_mut() = 0x01;
+    // We may or may not to uncomment the above, I don't know for now
+    // See https://github.com/bsnes-emu/bsnes/issues/374 for info
+});
+
+// JSL: jump stack relative long
+// same as JSR abs, but also read/write PB
+// cycle layout is a bit weird: R PC; W PB; I; R PB; W PC
+cpu_instr_no_inc_pc!(jsl {
+    meta FETCH16_IMM_INTO cpu.internal_data_bus;
+    meta PUSHN8 cpu.registers.PB;
+
+    meta END_CYCLE Internal;
+
+    cpu.addr_bus = SnesAddress { // readjust addrbus to read immediate again
+        bank: cpu.registers.PB,
+        addr: cpu.registers.PC.wrapping_add(3),
+    };
+    meta FETCH8_INTO cpu.registers.PB;
+    // adjust pushed PC to next opcode - 1
+    meta PUSHN16 cpu.registers.PC.wrapping_add(3);
+
+    cpu.registers.PC = cpu.internal_data_bus;
+
+    // *cpu.registers.S.hi_mut() = 0x01;
+    // see https://github.com/bsnes-emu/bsnes/issues/374
+});
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -303,6 +369,160 @@ mod tests {
 
         expected_regs.PB = 0xab;
         expected_regs.PC = 0xcdef;
+        assert_eq!(*cpu.regs(), expected_regs);
+    }
+
+    #[test]
+    fn test_jsr_abs() {
+        let mut regs = Registers::default();
+        regs.PB = 0x12;
+        regs.PC = 0x3456;
+        regs.S = 0x0188; // set the stack pointer in page 1
+        let mut expected_regs = regs.clone();
+
+        let mut cpu = CPU::new(regs);
+
+        expect_opcode_fetch(&mut cpu, 0x20);
+        expect_read_cycle(
+            &mut cpu,
+            snes_addr!(0x12:0x3457),
+            0xcd,
+            "jump address (PC high)",
+        );
+        expect_read_cycle(
+            &mut cpu,
+            snes_addr!(0x12:0x3458),
+            0xab,
+            "jump address (PC high)",
+        );
+        expect_internal_cycle(&mut cpu, "stall between fetch and push");
+        expect_write_cycle(
+            &mut cpu,
+            snes_addr!(0:0x0188),
+            0x34,
+            "push PC high",
+        );
+        expect_write_cycle(
+            &mut cpu,
+            snes_addr!(0:0x0187),
+            0x58, // PC points to the last byte of this instruction
+            "push PC high",
+        );
+        expect_opcode_fetch_cycle(&mut cpu);
+
+        expected_regs.PC = 0xabcd; // PC has been read
+        expected_regs.S = 0x0186; // stack pointer decreased by 2
+        assert_eq!(*cpu.regs(), expected_regs);
+    }
+
+    #[test]
+    fn test_jsr_abs_ind_xind() {
+        let mut regs = Registers::default();
+        regs.PB = 0x12;
+        regs.S = 0x0122;
+        regs.X = 0x0120;
+        regs.PC = 0x3456;
+        let mut expected_regs = regs.clone();
+
+        let mut cpu = CPU::new(regs);
+
+        expect_opcode_fetch(&mut cpu, 0xfc);
+        expect_read_cycle(
+            &mut cpu,
+            snes_addr!(0x12:0x3457),
+            0x77,
+            "operand address high",
+        );
+        expect_write_cycle(
+            &mut cpu,
+            snes_addr!(0:0x0122),
+            0x34,
+            "push PCH"
+        );
+        expect_write_cycle(
+            &mut cpu,
+            snes_addr!(0:0x0121),
+            0x58, // PC points the last byte of this instruction
+            "push PCL"
+        );
+        expect_read_cycle(
+            &mut cpu,
+            snes_addr!(0x12:0x3458),
+            0x88,
+            "operand address low",
+        );
+        expect_internal_cycle(&mut cpu, "X-indexing");
+        expect_read_cycle(
+            &mut cpu,
+            snes_addr!(0x12:0x8997), // PB:AAH+X
+            0xbb,
+            "PCL",
+        );
+        expect_read_cycle(
+            &mut cpu,
+            snes_addr!(0x12:0x8998), // PB:AAH+X+1
+            0xaa,
+            "PCH",
+        );
+        expect_opcode_fetch_cycle(&mut cpu);
+
+        expected_regs.S = 0x0120;
+        expected_regs.PC = 0xaabb;
+        assert_eq!(*cpu.regs(), expected_regs);
+    }
+
+    #[test]
+    fn test_jsl() {
+        let mut regs = Registers::default();
+        regs.PB = 0x12;
+        regs.PC = 0x3456;
+        regs.S = 0x0199;
+        let mut expected_regs = regs.clone();
+        let mut cpu = CPU::new(regs);
+
+        expect_opcode_fetch(&mut cpu, 0x22);
+        expect_read_cycle(
+            &mut cpu,
+            snes_addr!(0x12:0x3457),
+            0xef,
+            "PCL",
+        );
+        expect_read_cycle(
+            &mut cpu,
+            snes_addr!(0x12:0x3458),
+            0xcd,
+            "PCH",
+        );
+        expect_write_cycle(
+            &mut cpu,
+            snes_addr!(0:0x0199),
+            0x12,
+            "push PB",
+        );
+        expect_internal_cycle(&mut cpu, "stall between push PB and read PB");
+        expect_read_cycle(
+            &mut cpu,
+            snes_addr!(0x12:0x3459),
+            0xab,
+            "PB",
+        );
+        expect_write_cycle(
+            &mut cpu,
+            snes_addr!(0:0x0198),
+            0x34,
+            "push PCH",
+        );
+        expect_write_cycle(
+            &mut cpu,
+            snes_addr!(0:0x0197),
+            0x59, // pushed PC points the last byte of the instr
+            "push PCL",
+        );
+        expect_opcode_fetch_cycle(&mut cpu);
+
+        expected_regs.PB = 0xab;
+        expected_regs.PC = 0xcdef;
+        expected_regs.S = 0x0196;
         assert_eq!(*cpu.regs(), expected_regs);
     }
 }
