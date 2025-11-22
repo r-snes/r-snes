@@ -57,6 +57,9 @@ fn test_voice_initialization() {
         assert_eq!(voice.sample_end, 0);
         assert_eq!(voice.current_addr, 0);
         assert_eq!(voice.current_sample, 0);
+        // ADSR is defaulted via the Adsr struct
+        assert_eq!(voice.adsr.envelope_level, 0);
+        assert_eq!(voice.adsr.envelope_phase, EnvelopePhase::Off);
     }
 }
 
@@ -81,29 +84,25 @@ fn test_voice_step_advances() {
 
     assert!(!dsp.voices[0].key_on);
 }
+
 #[test]
 fn test_step_voice_advances_and_fetches_sample() {
     let mut mem = Memory::new();
     let mut dsp = Dsp::new();
 
-    let voice = Voice {
-        key_on: true,
-        current_addr: 0,
-        sample_start: 0,
-        frac: 0,
-        pitch: 256, // step = 1 per call
-        sample_end: 3,
-        current_sample: 0,
-        left_vol: 1,
-        right_vol: 1,
-        adsr_mode: false,
-        attack_rate: 0,
-        decay_rate: 0,
-        sustain_level: 0,
-        release_rate: 0,
-        envelope_level: 0,
-        envelope_phase: EnvelopePhase::Off,
-    };
+    // Build voice using default then set fields (Adsr inside Voice)
+    let mut voice = Voice::default();
+    voice.key_on = true;
+    voice.current_addr = 0;
+    voice.sample_start = 0;
+    voice.frac = 0;
+    voice.pitch = 256; // step = 1 per call
+    voice.sample_end = 3;
+    voice.current_sample = 0;
+    voice.left_vol = 1;
+    voice.right_vol = 1;
+    // default ADSR already present; ensure envelope off (we rely on key_on test)
+    voice.adsr.envelope_phase = EnvelopePhase::Off;
 
     dsp.voices[0] = voice;
 
@@ -136,8 +135,8 @@ fn test_render_audio_single_voice() {
     voice.right_vol = 150;
 
     voice.current_sample = 30; // raw sample
-    voice.envelope_level = 0x7FF; // full volume
-    voice.envelope_phase = EnvelopePhase::Sustain;
+    voice.adsr.envelope_level = 0x7FF; // full volume
+    voice.adsr.envelope_phase = EnvelopePhase::Sustain;
 
     let mut out = [(0_i16, 0_i16); 1];
 
@@ -157,15 +156,15 @@ fn test_render_audio_multiple_voices_mixed_and_clamped() {
     dsp.voices[0].left_vol = 127;
     dsp.voices[0].right_vol = 127;
     dsp.voices[0].current_sample = 100;
-    dsp.voices[0].envelope_level = 0x7FF;
-    dsp.voices[0].envelope_phase = EnvelopePhase::Sustain;
+    dsp.voices[0].adsr.envelope_level = 0x7FF;
+    dsp.voices[0].adsr.envelope_phase = EnvelopePhase::Sustain;
 
     // Voice 2 (same values → doubles output)
     dsp.voices[1].left_vol = 127;
     dsp.voices[1].right_vol = 127;
     dsp.voices[1].current_sample = 100;
-    dsp.voices[1].envelope_level = 0x7FF;
-    dsp.voices[1].envelope_phase = EnvelopePhase::Sustain;
+    dsp.voices[1].adsr.envelope_level = 0x7FF;
+    dsp.voices[1].adsr.envelope_phase = EnvelopePhase::Sustain;
 
     let mut out = [(0_i16, 0_i16); 1];
 
@@ -179,22 +178,22 @@ fn test_render_audio_multiple_voices_mixed_and_clamped() {
 #[test]
 fn test_adsr_attack_phase() {
     let mut v = Voice::default();
-    v.attack_rate = 10;
-    v.envelope_phase = EnvelopePhase::Attack;
+    v.adsr.attack_rate = 10;
+    v.adsr.envelope_phase = EnvelopePhase::Attack;
 
     for _ in 0..30 {
-        let prev = v.envelope_level;
+        let prev = v.adsr.envelope_level;
         v.update_envelope();
 
         if prev < 0x7FF {
             // The ONLY valid phases during attack ramp-up are: Attack OR Decay (if we hit max)
             assert!(
-                matches!(v.envelope_phase, EnvelopePhase::Attack | EnvelopePhase::Decay),
+                matches!(v.adsr.envelope_phase, EnvelopePhase::Attack | EnvelopePhase::Decay),
                 "Phase can only be Attack or transition to Decay when hitting max"
             );
             // Once we switch to Decay, we should stop testing Attack progression
-            if v.envelope_phase == EnvelopePhase::Decay {
-                assert_eq!(v.envelope_level, 0x7FF, "Decay must start exactly at max envelope");
+            if v.adsr.envelope_phase == EnvelopePhase::Decay {
+                assert_eq!(v.adsr.envelope_level, 0x7FF, "Decay must start exactly at max envelope");
                 return; // test passes
             }
         }
@@ -205,98 +204,96 @@ fn test_adsr_attack_phase() {
 #[test]
 fn test_adsr_decay_phase() {
     let mut voice = Voice::default();
-    voice.envelope_phase = EnvelopePhase::Decay;
+    voice.adsr.envelope_phase = EnvelopePhase::Decay;
 
-    voice.decay_rate = 5;
-    voice.sustain_level = 8; // target = 256
+    voice.adsr.decay_rate = 5;
+    voice.adsr.sustain_level = 8; // target = 256
 
-    voice.envelope_level = 700; // above sustain threshold
+    voice.adsr.envelope_level = 700; // above sustain threshold
 
     for _ in 0..50 {
         voice.update_envelope();
-        if voice.envelope_phase == EnvelopePhase::Sustain {
+        if voice.adsr.envelope_phase == EnvelopePhase::Sustain {
             break;
         }
     }
 
-    assert_eq!(voice.envelope_phase, EnvelopePhase::Sustain);
-    assert!(voice.envelope_level <= 256);
+    assert_eq!(voice.adsr.envelope_phase, EnvelopePhase::Sustain);
+    assert!(voice.adsr.envelope_level <= 256);
 }
 
 #[test]
 fn test_adsr_sustain_phase() {
     let mut voice = Voice::default();
-    voice.envelope_phase = EnvelopePhase::Sustain;
-    voice.envelope_level = 500;
+    voice.adsr.envelope_phase = EnvelopePhase::Sustain;
+    voice.adsr.envelope_level = 500;
 
     for _ in 0..10 {
         voice.update_envelope();
     }
 
-    assert_eq!(voice.envelope_phase, EnvelopePhase::Sustain);
-    assert_eq!(voice.envelope_level, 500);
+    assert_eq!(voice.adsr.envelope_phase, EnvelopePhase::Sustain);
+    assert_eq!(voice.adsr.envelope_level, 500);
 }
 
 #[test]
 fn test_adsr_release_phase() {
     let mut voice = Voice::default();
-    voice.envelope_phase = EnvelopePhase::Release;
+    voice.adsr.envelope_phase = EnvelopePhase::Release;
 
-    voice.release_rate = 8;
-    voice.envelope_level = 300;
+    voice.adsr.release_rate = 8;
+    voice.adsr.envelope_level = 300;
 
     for _ in 0..50 {
         voice.update_envelope();
-        if voice.envelope_phase == EnvelopePhase::Off {
+        if voice.adsr.envelope_phase == EnvelopePhase::Off {
             break;
         }
     }
 
-    assert_eq!(voice.envelope_phase, EnvelopePhase::Off);
-    assert_eq!(voice.envelope_level, 0);
+    assert_eq!(voice.adsr.envelope_phase, EnvelopePhase::Off);
+    assert_eq!(voice.adsr.envelope_level, 0);
 }
 
 #[test]
 fn test_adsr_full_cycle() {
     let mut v = Voice::default();
-    v.attack_rate = 20;
-    v.decay_rate = 4;
-    v.sustain_level = 6;
-    v.release_rate = 8;
+    v.adsr.attack_rate = 20;
+    v.adsr.decay_rate = 4;
+    v.adsr.sustain_level = 6;
+    v.adsr.release_rate = 8;
 
-    v.envelope_phase = EnvelopePhase::Attack;
+    v.adsr.envelope_phase = EnvelopePhase::Attack;
 
     // Attack → Decay
-    while v.envelope_phase == EnvelopePhase::Attack {
+    while v.adsr.envelope_phase == EnvelopePhase::Attack {
         v.update_envelope();
     }
-    assert_eq!(v.envelope_phase, EnvelopePhase::Decay);
+    assert_eq!(v.adsr.envelope_phase, EnvelopePhase::Decay);
 
     // Calculate correct sustain threshold
-    let sustain_target = (v.sustain_level as u16) * 0x100 / 8;
+    let sustain_target = (v.adsr.sustain_level as u16) * 0x100 / 8;
 
     // Decay → Sustain
-    while v.envelope_phase == EnvelopePhase::Decay {
+    while v.adsr.envelope_phase == EnvelopePhase::Decay {
         v.update_envelope();
     }
 
-    assert_eq!(v.envelope_phase, EnvelopePhase::Sustain);
+    assert_eq!(v.adsr.envelope_phase, EnvelopePhase::Sustain);
 
     // Envelope should be <= sustain target (not necessarily equal)
     assert!(
-        v.envelope_level <= sustain_target,
+        v.adsr.envelope_level <= sustain_target,
         "Envelope must be at or below computed sustain target"
     );
 
     // Release → Off
-    v.envelope_phase = EnvelopePhase::Release;
+    v.adsr.envelope_phase = EnvelopePhase::Release;
 
-    while v.envelope_phase == EnvelopePhase::Release {
+    while v.adsr.envelope_phase == EnvelopePhase::Release {
         v.update_envelope();
     }
 
-    assert_eq!(v.envelope_phase, EnvelopePhase::Off);
-    assert_eq!(v.envelope_level, 0);
+    assert_eq!(v.adsr.envelope_phase, EnvelopePhase::Off);
+    assert_eq!(v.adsr.envelope_level, 0);
 }
-
-
