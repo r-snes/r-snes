@@ -2,17 +2,35 @@ use pm2::{Ident, TokenStream, TokenTree};
 use proc_macro2 as pm2;
 use quote::quote;
 
+#[derive(Eq, PartialEq, Copy, Clone, Debug)]
+pub(crate) enum OpSize {
+    /// Constant operand size
+    Constant,
+
+    /// Operand size is either 8 or 16 bits, depending
+    /// on the state of the M flag (width of the A register)
+    AccMem,
+
+    /// Operand size is either 8 or 16 bits, depending
+    /// on the state of the X flag (width of X and Y registers)
+    Index,
+}
+
 /// Data describing the status of the parser at any point in parsing
 #[derive(Copy, Clone, Debug)]
 pub(crate) struct ParserStatus {
     /// Whether PC should be automatically incremented
     pub inc_pc: bool,
+
+    /// Size of read/written operands of the instruction
+    pub operand_size: OpSize,
 }
 
 impl Default for ParserStatus {
     fn default() -> Self {
         Self {
             inc_pc: true,
+            operand_size: OpSize::Constant,
         }
     }
 }
@@ -56,6 +74,8 @@ pub(crate) enum MetaInstruction {
     /// Manually delimit the end of a cycle,
     /// with the CycleResult (cycle type) produced by the token stream
     EndCycle(TokenStream),
+
+    SetOperandSize(TokenTree),
 
     /// Sets the address bus to point at an immediate operand
     /// (right after the opcode)
@@ -166,6 +186,8 @@ impl MetaInstruction {
         let ret = match meta_kw.to_string().as_str() {
             "END_CYCLE" => MetaInstruction::EndCycle(it.by_ref().collect()),
 
+            "SET_OP_SIZE" => MetaInstruction::SetOperandSize(it.next().expect("size")),
+
             "SET_ADDRMODE_IMM" => MetaInstruction::SetAddrModeImmediate,
             "SET_ADDRMODE_ABS" => MetaInstruction::SetAddrModeAbsolute,
             "SET_ADDRMODE_STACK" => MetaInstruction::SetAddrModeStack,
@@ -216,6 +238,17 @@ impl MetaInstruction {
         match self {
             Self::EndCycle(cyctype) => {
                 ret.cycles = vec![Cycle::new(TokenStream::new(), cyctype)];
+            }
+
+            Self::SetOperandSize(arg) => {
+                if pstatus.operand_size != OpSize::Constant {
+                    panic!("Operand size can only be set once!");
+                }
+                match arg.to_string().as_str() {
+                    "AccMem" => pstatus.operand_size = OpSize::AccMem,
+                    "Index" => pstatus.operand_size = OpSize::Index,
+                    _ => panic!("Only valid operand sizes are AccMem and Index")
+                }
             }
 
             Self::SetAddrModeImmediate => {
