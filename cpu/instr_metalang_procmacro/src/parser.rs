@@ -102,6 +102,10 @@ pub(crate) enum MetaInstruction {
     /// contained in <tokstream>
     Fetch16Into(TokenStream),
 
+    /// Fetches the operand of the instruction
+    /// (variable width must be set with SetOperandSize)
+    FetchOperandInto(TokenStream),
+
     /// Fetch a byte from the address at PB:PC+1, and conditionally increment PC
     Fetch8Imm,
 
@@ -147,6 +151,10 @@ pub(crate) enum MetaInstruction {
     /// Write the u16 stored in <tokstream> at the current address bus
     Write16(TokenStream),
 
+    /// Writes the operand of the instruction
+    /// (variable width must be set with SetOperandSize)
+    WriteOperand(TokenStream),
+
     /// Write the u8 stored in <tokenstream> at the top of the stack,
     /// and update the stack pointer
     Push8(TokenStream),
@@ -166,6 +174,15 @@ pub(crate) enum MetaInstruction {
     ///
     /// See note 2 for differences with Push16
     PushN16(TokenStream),
+
+    /// Sets the CPU flags N and Z for an 8-bit value
+    SetNZ8(TokenStream),
+
+    /// Sets the CPU flags N and Z for an 16bit value
+    SetNZ16(TokenStream),
+
+    /// Sets the CPU flags N and Z for a variable width value
+    SetNZOperand(TokenStream),
 }
 
 impl MetaInstruction {
@@ -195,6 +212,8 @@ impl MetaInstruction {
             "FETCH8_INTO" => MetaInstruction::Fetch8Into(it.by_ref().collect()),
             "FETCH16_INTO" => MetaInstruction::Fetch16Into(it.by_ref().collect()),
 
+            "FETCH_OP_INTO" => MetaInstruction::FetchOperandInto(it.by_ref().collect()),
+
             "FETCH8_IMM" => MetaInstruction::Fetch8Imm,
             "FETCH8_IMM_INTO" => MetaInstruction::Fetch8ImmInto(it.by_ref().collect()),
             "FETCH16_IMM_INTO" => MetaInstruction::Fetch16ImmInto(it.by_ref().collect()),
@@ -209,12 +228,18 @@ impl MetaInstruction {
             "WRITE8" => MetaInstruction::Write8(it.by_ref().collect()),
             "WRITE16" => MetaInstruction::Write16(it.by_ref().collect()),
 
+            "WRITE_OP" => MetaInstruction::WriteOperand(it.by_ref().collect()),
+
             "PUSH8" => MetaInstruction::Push8(it.by_ref().collect()),
             "PUSHN8" => MetaInstruction::PushN8(it.by_ref().collect()),
             "PUSH16" => MetaInstruction::Push16(it.by_ref().collect()),
             "PUSHN16" => MetaInstruction::PushN16(it.by_ref().collect()),
 
-            _ => Err("Unknown meta-keyword")?,
+            "SET_NZ8" => MetaInstruction::SetNZ8(it.by_ref().collect()),
+            "SET_NZ16" => MetaInstruction::SetNZ16(it.by_ref().collect()),
+            "SET_NZ_OP" => MetaInstruction::SetNZOperand(it.by_ref().collect()),
+
+            kw => panic!("Unknown meta-keyword: {}", kw),
         };
         if it.next().is_some() {
             Err("Unexpected token after end of meta-instruction")?
@@ -293,6 +318,13 @@ impl MetaInstruction {
                 ret += Self::Fetch8Into(quote! { *#into.hi_mut() }).expand(pstatus);
             }
 
+            Self::FetchOperandInto(into) => {
+                ret += MetaInstrExpansion::VariableWidth{
+                    short: Self::Fetch8Into(quote! { *#into.lo_mut() }).expand(pstatus).body(),
+                    long: Self::Fetch16Into(into).expand(pstatus).body(),
+                };
+            }
+
             Self::Fetch8Imm => {
                 ret += Self::SetAddrModeImmediate.expand(pstatus);
                 ret += InstrBody::cycles(vec![Cycle::new(
@@ -365,6 +397,13 @@ impl MetaInstruction {
                 ret += Self::Write8(quote! { *#data.hi() }).expand(pstatus);
             }
 
+            Self::WriteOperand(op) => {
+                ret += MetaInstrExpansion::VariableWidth{
+                    short: Self::Write8(quote! { *#op.lo() }).expand(pstatus).body(),
+                    long: Self::Write16(op).expand(pstatus).body(),
+                };
+            }
+
             Self::Push8(data) => {
                 ret += Self::SetAddrModeStack.expand(pstatus);
                 ret += InstrBody::post(quote! {
@@ -396,6 +435,24 @@ impl MetaInstruction {
                 ret += Self::PushN8(quote! { *#data.hi() }).expand(pstatus);
                 ret += Self::PushN8(quote! { *#data.lo() }).expand(pstatus);
             }
+            Self::SetNZ8(data) => {
+                ret += quote! {
+                    cpu.registers.P.Z = (#data) == 0;
+                    cpu.registers.P.N = (#data) > 0x7f;
+                }
+            }
+            Self::SetNZ16(data) => {
+                ret += quote! {
+                    cpu.registers.P.Z = (#data) == 0;
+                    cpu.registers.P.N = (#data) > 0x7fff;
+                }
+            }
+            Self::SetNZOperand(op) => {
+                ret += MetaInstrExpansion::VariableWidth{
+                    short: Self::SetNZ8(op.clone()).expand(pstatus).body(),
+                    long: Self::SetNZ16(op).expand(pstatus).body(),
+                }
+            }
         }
         ret
     }
@@ -410,6 +467,15 @@ enum MetaInstrExpansion {
     /// Meta-instrs that expand to different code in 8-bit mode and
     /// in 16-bit mode
     VariableWidth{short: InstrBody, long: InstrBody},
+}
+
+impl MetaInstrExpansion {
+    fn body(self) -> InstrBody {
+        match self {
+            Self::ConstantWidth(body) => body,
+            Self::VariableWidth{..} => panic!("Unexpected variable width expansion"),
+        }
+    }
 }
 
 impl Default for MetaInstrExpansion {
@@ -531,6 +597,16 @@ impl Instr {
             }))?;
 
             ret.body += meta_instr.expand(&mut pstatus);
+        }
+
+        if let InstrCycles::VariableWidth(VarWidthInstr{ref mut condition, .. }) = ret.body {
+            match pstatus.operand_size {
+                OpSize::Constant => panic!(
+                    "Variable width instructions used without setting the operand size"
+                ),
+                OpSize::Index => *condition = quote!(!cpu.registers.P.E && !cpu.registers.P.X),
+                OpSize::AccMem => *condition = quote!(!cpu.registers.P.E && !cpu.registers.P.M),
+            }
         }
         Ok(ret)
     }
