@@ -1,21 +1,14 @@
 mod parser;
 
-use parser::{Cycle, Instr, InstrBody};
-use proc_macro2::TokenStream;
+use parser::{Cycle, Instr, InstrBody, InstrCycles, VarWidthInstr};
+use proc_macro2::{TokenStream, Ident};
 use quote::{format_ident, quote, ToTokens};
 
-/// Function that actually implements all the logic for the proc macro,
-/// using the types provided by the `proc_macro2` crate, which have the
-/// advantage of also existing outside of proc macro crates; and therefore
-/// have more utilities built around them, which makes unit-testing easier,
-/// among many other things.
-pub(crate) fn cpu_instr2(input: TokenStream, inc_pc: bool) -> TokenStream {
-    let Instr { name, body: InstrBody { cycles, post_instr } } = match parser::Instr::parse(input, inc_pc) {
-        Ok(instr) => instr,
-        Err(msg) => panic!("{}", msg),
-    };
+fn gen_cycle_functions(name: &Ident, instr_body: InstrBody) -> TokenStream {
+    let cycles = &instr_body.cycles;
+    let post_instr = &instr_body.post_instr;
 
-    let cycle_funcs = cycles
+    cycles
         .iter()
         .enumerate()
         .map(|(i, Cycle { body, cyc_type })| {
@@ -44,7 +37,48 @@ pub(crate) fn cpu_instr2(input: TokenStream, inc_pc: bool) -> TokenStream {
                     (#cyc_type, InstrCycle(#next_func_name))
                 }
             }
-        }).collect::<TokenStream>();
+        }).collect::<TokenStream>()
+}
+
+/// Function that actually implements all the logic for the proc macro,
+/// using the types provided by the `proc_macro2` crate, which have the
+/// advantage of also existing outside of proc macro crates; and therefore
+/// have more utilities built around them, which makes unit-testing easier,
+/// among many other things.
+pub(crate) fn cpu_instr2(input: TokenStream, inc_pc: bool) -> TokenStream {
+    let Instr { name, body } = match parser::Instr::parse(input, inc_pc) {
+        Ok(instr) => instr,
+        Err(msg) => panic!("{}", msg),
+    };
+
+    let cycle_funcs = match body {
+        InstrCycles::ConstantWidth(instr_body) => gen_cycle_functions(&name, instr_body),
+        InstrCycles::VariableWidth(VarWidthInstr {body_8bits, body_16bits, condition}) => {
+            let cyc_funcs8 = gen_cycle_functions(&name, body_8bits);
+            let cyc_funcs16 = gen_cycle_functions(&name, body_16bits);
+
+            let first_cyc_name = format_ident!("{}_cyc1", name);
+
+            quote! {
+                pub(crate) fn #first_cyc_name(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
+                    if #condition {
+                        self::_16::#first_cyc_name(cpu)
+                    } else {
+                        self::_8::#first_cyc_name(cpu)
+                    }
+                }
+
+                pub(crate) mod _8 {
+                    use crate::instrs::prelude::*;
+                    #cyc_funcs8
+                }
+                pub(crate) mod _16 {
+                    use crate::instrs::prelude::*;
+                    #cyc_funcs16
+                }
+            }
+        },
+    };
 
     // wrap the generated instruction in a submodule for it to be easier
     // to expand using cargo_expand
