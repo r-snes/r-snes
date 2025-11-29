@@ -77,6 +77,9 @@ pub(crate) enum MetaInstruction {
 
     SetOperandSize(TokenTree),
 
+    /// Spend an internal cycle idling if the tokenstream evaluates to true
+    IdleIf(TokenStream),
+
     /// Sets the address bus to point at an immediate operand
     /// (right after the opcode)
     SetAddrModeImmediate,
@@ -205,6 +208,8 @@ impl MetaInstruction {
 
             "SET_OP_SIZE" => MetaInstruction::SetOperandSize(it.next().expect("size")),
 
+            "IDLE_IF" => MetaInstruction::IdleIf(it.by_ref().collect()),
+
             "SET_ADDRMODE_IMM" => MetaInstruction::SetAddrModeImmediate,
             "SET_ADDRMODE_ABS" => MetaInstruction::SetAddrModeAbsolute,
             "SET_ADDRMODE_STACK" => MetaInstruction::SetAddrModeStack,
@@ -274,6 +279,10 @@ impl MetaInstruction {
                     "Index" => pstatus.operand_size = OpSize::Index,
                     _ => panic!("Only valid operand sizes are AccMem and Index")
                 }
+            }
+
+            Self::IdleIf(condition) => {
+                ret += InstrBody::cycles(vec![Cycle::conditional(condition)]);
             }
 
             Self::SetAddrModeImmediate => {
@@ -746,8 +755,8 @@ impl std::ops::AddAssign for InstrBody {
 
         // swap out the first cycle body of the other InstrBody for our current
         // post_instr, and then glue it back *after* our current post_instr
-        let second_firstcycle = std::mem::replace(&mut other.cycles[0].body, old_postinstr);
-        other.cycles[0].body.extend(second_firstcycle);
+        let second_firstcycle = std::mem::replace(other.cycles[0].body_mut(), old_postinstr);
+        other.cycles[0].body_mut().extend(second_firstcycle);
 
         // finally merge the two cycle vectors
         self.cycles.extend(other.cycles);
@@ -771,16 +780,49 @@ impl InstrBody {
 /// Data structure which contains the info required to build
 /// a cycle function body
 #[derive(Clone)]
-pub(crate) struct Cycle {
-    /// Raw function body
-    pub body: TokenStream,
-    /// Cycle type (part of the function return value; should evaluate
-    /// to something of type `CycleResult`)
-    pub cyc_type: TokenStream,
+pub(crate) enum Cycle {
+    /// An unconditional cycle: always executes
+    Unconditional{
+        /// Raw function body
+        body: TokenStream,
+        /// Cycle type (part of the function return value; should evaluate
+        /// to something of type `CycleResult`)
+        cyc_type: TokenStream,
+    },
+
+    /// A cycle during which the CPU might idle if a condition is met,
+    /// or skip to the next cycle otherwise
+    ConditionalIdle{
+        /// The condition for which the conditional cycle is idled
+        condition: TokenStream,
+
+        /// The body of this cycle's function
+        /// Usually should be empty, but may contain post-cycle code
+        /// from a previous unconditional cycle
+        body: TokenStream,
+    },
 }
 
 impl Cycle {
     fn new(body: TokenStream, cyc_type: TokenStream) -> Self {
-        Self { body, cyc_type }
+        Self::Unconditional { body, cyc_type }
+    }
+
+    fn conditional(condition: TokenStream) -> Self {
+        Self::ConditionalIdle{condition, body: quote!()}
+    }
+
+    fn body_ref(&self) -> &TokenStream {
+        match self {
+            Self::Unconditional{body, ..} => body,
+            Self::ConditionalIdle{body, ..} => body,
+        }
+    }
+
+    fn body_mut(&mut self) -> &mut TokenStream {
+        match self {
+            Self::Unconditional{body, ..} => body,
+            Self::ConditionalIdle{body, ..} => body,
+        }
     }
 }
