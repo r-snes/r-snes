@@ -11,7 +11,7 @@ fn gen_cycle_functions(name: &Ident, instr_body: InstrBody) -> TokenStream {
     cycles
         .iter()
         .enumerate()
-        .map(|(i, Cycle { body, cyc_type })| {
+        .map(|(i, cyc)| {
             let func_name = format_ident!("{}_cyc{}", name, i + 1);
             let next_func_name: TokenStream = if i != cycles.len() - 1 {
                 format_ident!("{}_cyc{}", name, i + 2).into_token_stream()
@@ -28,6 +28,20 @@ fn gen_cycle_functions(name: &Ident, instr_body: InstrBody) -> TokenStream {
                         }
                     }
                 }
+            };
+
+
+            let (body, cyc_type) = match cyc {
+                Cycle::Unconditional{body, cyc_type} => (body, cyc_type),
+                Cycle::ConditionalIdle{body, condition} => (
+                    &quote! {
+                        #body
+                        if !(#condition) {
+                            return (#next_func_name)(cpu);
+                        }
+                    },
+                    &quote!(Internal),
+                ),
             };
 
             quote! {
