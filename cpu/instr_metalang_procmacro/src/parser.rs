@@ -232,12 +232,12 @@ impl MetaInstruction {
     /// It is also possible that a meta-instruction both expands to 1 or more cycles
     /// and returns the body of the following (net yet complete) cycle
     #[cfg(not(tarpaulin_include))]
-    fn expand(self, pstatus: &mut ParserStatus) -> InstrBody {
-        let mut ret = InstrBody::default();
+    fn expand(self, pstatus: &mut ParserStatus) -> MetaInstrExpansion {
+        let mut ret = MetaInstrExpansion::default();
 
         match self {
             Self::EndCycle(cyctype) => {
-                ret.cycles = vec![Cycle::new(TokenStream::new(), cyctype)];
+                ret += InstrBody::cycles(vec![Cycle::new(TokenStream::new(), cyctype)]);
             }
 
             Self::SetOperandSize(arg) => {
@@ -260,14 +260,14 @@ impl MetaInstruction {
                     quote! {}
                 };
 
-                ret.post_instr = quote! {
+                ret += quote! {
                     cpu.addr_bus.bank = cpu.registers.PB;
                     cpu.addr_bus.addr = cpu.registers.PC #conditional_incpc;
                 }
             }
             Self::SetAddrModeAbsolute => {
                 // start by fetching the address at which we'll be reading/writing
-                ret = Self::Fetch16ImmInto(quote! { cpu.internal_data_bus }).expand(pstatus);
+                ret += Self::Fetch16ImmInto(quote! { cpu.internal_data_bus }).expand(pstatus);
                 // then set the addr bus accordingly
                 ret += InstrBody::post(quote! {
                     cpu.addr_bus.addr = cpu.internal_data_bus;
@@ -275,18 +275,18 @@ impl MetaInstruction {
                 });
             }
             Self::SetAddrModeStack => {
-                ret = InstrBody::post(quote! {
+                ret += InstrBody::post(quote! {
                     cpu.addr_bus.addr = cpu.registers.S;
                     cpu.addr_bus.bank = 0;
                 });
             }
 
             Self::Fetch8Into(dest) => {
-                ret = Self::EndCycle(quote! { Read }).expand(pstatus);
-                ret.post_instr = quote! { #dest = cpu.data_bus; };
+                ret += Self::EndCycle(quote! { Read }).expand(pstatus);
+                ret += quote! { #dest = cpu.data_bus; };
             }
             Self::Fetch16Into(into) => {
-                ret = Self::Fetch8Into(quote! { *#into.lo_mut() }).expand(pstatus);
+                ret += Self::Fetch8Into(quote! { *#into.lo_mut() }).expand(pstatus);
                 ret += InstrBody::post(quote! {
                     cpu.addr_bus.addr = cpu.addr_bus.addr.wrapping_add(1);
                 });
@@ -294,24 +294,24 @@ impl MetaInstruction {
             }
 
             Self::Fetch8Imm => {
-                ret = Self::SetAddrModeImmediate.expand(pstatus);
+                ret += Self::SetAddrModeImmediate.expand(pstatus);
                 ret += InstrBody::cycles(vec![Cycle::new(
                     pstatus.conditionally_inc_pc(1),
                     quote! { Read },
                 )]);
             }
             Self::Fetch8ImmInto(into) => {
-                ret = Self::Fetch8Imm.expand(pstatus);
+                ret += Self::Fetch8Imm.expand(pstatus);
                 ret += InstrBody::post(quote! { #into = cpu.data_bus; });
             }
             Self::Fetch16ImmInto(into) => {
-                ret = Self::SetAddrModeImmediate.expand(pstatus);
+                ret += Self::SetAddrModeImmediate.expand(pstatus);
                 ret += InstrBody::post(pstatus.conditionally_inc_pc(2));
                 ret += Self::Fetch16Into(into).expand(pstatus);
             }
 
             Self::Pull8 => {
-                ret = InstrBody::post(quote! {
+                ret += InstrBody::post(quote! {
                     // stack grows downwards; only set low byte in emu mode
                     if cpu.registers.P.E {
                         *cpu.registers.S.lo_mut() = cpu.registers.S.lo().wrapping_add(1);
@@ -323,7 +323,7 @@ impl MetaInstruction {
                 ret += Self::EndCycle(quote! { Read }).expand(pstatus);
             }
             Self::PullN8 => {
-                ret = InstrBody::post(quote! {
+                ret += InstrBody::post(quote! {
                     // stack grows downwards
                     cpu.registers.S = cpu.registers.S.wrapping_add(1);
                 });
@@ -331,31 +331,31 @@ impl MetaInstruction {
                 ret += Self::EndCycle(quote! { Read }).expand(pstatus);
             }
             Self::Pull8Into(into) => {
-                ret = Self::Pull8.expand(pstatus);
+                ret += Self::Pull8.expand(pstatus);
                 ret += InstrBody::post(quote! { #into = cpu.data_bus; });
             }
             Self::PullN8Into(into) => {
-                ret = Self::PullN8.expand(pstatus);
+                ret += Self::PullN8.expand(pstatus);
                 ret += InstrBody::post(quote! { #into = cpu.data_bus; });
             }
             Self::Pull16Into(into) => {
                 // pulls read the low byte first
-                ret = Self::Pull8Into(quote! { *#into.lo_mut() }).expand(pstatus);
+                ret += Self::Pull8Into(quote! { *#into.lo_mut() }).expand(pstatus);
                 ret += Self::Pull8Into(quote! { *#into.hi_mut() }).expand(pstatus);
             }
             Self::PullN16Into(into) => {
                 // pulls read the low byte first
-                ret = Self::PullN8Into(quote! { *#into.lo_mut() }).expand(pstatus);
+                ret += Self::PullN8Into(quote! { *#into.lo_mut() }).expand(pstatus);
                 ret += Self::PullN8Into(quote! { *#into.hi_mut() }).expand(pstatus);
             }
 
             Self::Write8(data) => {
-                ret.cycles = vec![Cycle::new(
+                ret += InstrBody::cycles(vec![Cycle::new(
                     quote! {
                         cpu.data_bus = #data;
                     },
                     quote! { Write }
-                )];
+                )]);
             }
             Self::Write16(data) => {
                 ret += Self::Write8(quote! { *#data.lo() }).expand(pstatus);
@@ -366,7 +366,7 @@ impl MetaInstruction {
             }
 
             Self::Push8(data) => {
-                ret = Self::SetAddrModeStack.expand(pstatus);
+                ret += Self::SetAddrModeStack.expand(pstatus);
                 ret += InstrBody::post(quote! {
                     // stack grows downwards; only set low byte in emu mode
                     if cpu.registers.P.E {
@@ -378,7 +378,7 @@ impl MetaInstruction {
                 ret += Self::Write8(data).expand(pstatus);
             }
             Self::PushN8(data) => {
-                ret = Self::SetAddrModeStack.expand(pstatus);
+                ret += Self::SetAddrModeStack.expand(pstatus);
                 // stack grows downwards
                 ret += InstrBody::post(quote! {
                     cpu.registers.S = cpu.registers.S.wrapping_sub(1);
@@ -388,16 +388,91 @@ impl MetaInstruction {
             }
             Self::Push16(data) => {
                 // pushes write the high byte first
-                ret = Self::Push8(quote! { *#data.hi() }).expand(pstatus);
+                ret += Self::Push8(quote! { *#data.hi() }).expand(pstatus);
                 ret += Self::Push8(quote! { *#data.lo() }).expand(pstatus);
             }
             Self::PushN16(data) => {
                 // pushes write the high byte first
-                ret = Self::PushN8(quote! { *#data.hi() }).expand(pstatus);
+                ret += Self::PushN8(quote! { *#data.hi() }).expand(pstatus);
                 ret += Self::PushN8(quote! { *#data.lo() }).expand(pstatus);
             }
         }
         ret
+    }
+}
+
+#[derive(Clone)]
+enum MetaInstrExpansion {
+    /// Meta-instrs that expand to the same code in 8-bit mode and
+    /// in 16-bit mode
+    ConstantWidth(InstrBody),
+
+    /// Meta-instrs that expand to different code in 8-bit mode and
+    /// in 16-bit mode
+    VariableWidth{short: InstrBody, long: InstrBody},
+}
+
+impl Default for MetaInstrExpansion {
+    fn default() -> Self {
+        Self::ConstantWidth(InstrBody::default())
+    }
+}
+
+impl std::ops::AddAssign for MetaInstrExpansion {
+    /// Concatenates two meta-instr expansions, useful for example
+    /// for meta-instrs defined in terms of others
+    fn add_assign(&mut self, other: Self) {
+        match (self, other) {
+            // simple case: other is constant width
+            (self_, Self::ConstantWidth(instr_body)) => *self_ += instr_body,
+
+            // both self and other are var width, add each respective part together
+            (
+                Self::VariableWidth{short: s_short, long: s_long},
+                Self::VariableWidth{short: o_short, long: o_long},
+            ) => {
+                *s_short += o_short;
+                *s_long += o_long;
+            }
+
+            // self is constant, other is variable: split self in half, then call the case above
+            (self_@Self::ConstantWidth(_), other@Self::VariableWidth{..}) => {
+                let Self::ConstantWidth(b) = self_ else { unreachable!(); };
+                *self_ = Self::VariableWidth{
+                    short: b.clone(),
+                    long: b.clone(),
+                };
+                *self_ += other;
+            }
+        }
+    }
+}
+
+impl std::ops::AddAssign<InstrBody> for MetaInstrExpansion {
+    /// Add a instr body to a meta instr expansion (adding to both
+    /// 8- and 16-bit modes the expansion is split)
+    fn add_assign(&mut self, instr_body: InstrBody) {
+        match *self {
+            Self::ConstantWidth(ref mut body) => *body += instr_body,
+            Self::VariableWidth{ref mut short, ref mut long} => {
+                *short += instr_body.clone();
+                *long += instr_body;
+            }
+        }
+    }
+}
+
+impl std::ops::AddAssign<TokenStream> for MetaInstrExpansion {
+    /// Add a token stream to a meta instr expansion (adding to both
+    /// 8- and 16-bit modes the expansion is split)
+    fn add_assign(&mut self, ts: TokenStream) {
+        match *self {
+            Self::ConstantWidth(ref mut body) => *body += ts,
+            Self::VariableWidth{ref mut short, ref mut long} => {
+                *short += ts.clone();
+                *long += ts;
+            }
+        }
     }
 }
 
@@ -407,15 +482,16 @@ pub(crate) struct Instr {
     /// Name of the instruction (e.g. clv, inx, ldx_imm, jmp_abs)
     pub name: Ident,
 
-    /// Body of the instruction, incuding potential post-instr code
-    pub body: InstrBody,
+    /// Body of the instruction, including potential post-instr code,
+    /// and 16-/8-bit disjunction
+    pub body: InstrCycles,
 }
 
 impl Instr {
     fn new(name: Ident) -> Self {
         Self {
             name,
-            body: InstrBody::default(),
+            body: InstrCycles::default(),
         }
     }
 
@@ -437,13 +513,11 @@ impl Instr {
         let mut it = body.stream().into_iter().peekable();
         let mut ret = Instr::new(name);
 
-        ret.body += InstrBody::post(pstatus.conditionally_inc_pc(1));
+        ret.body += pstatus.conditionally_inc_pc(1);
         loop {
             let it = it.by_ref();
 
-            ret.body
-                .post_instr
-                .extend(it.take_while(|token| token.to_string() != "meta"));
+            ret.body += it.take_while(|token| token.to_string() != "meta").collect::<TokenStream>();
 
             if it.peek().is_none() {
                 break;
@@ -462,9 +536,97 @@ impl Instr {
     }
 }
 
+pub(crate) enum InstrCycles {
+    ConstantWidth(InstrBody),
+    VariableWidth(VarWidthInstr),
+}
+
+impl Default for InstrCycles {
+    fn default() -> Self {
+        Self::ConstantWidth(InstrBody::default())
+    }
+}
+
+impl std::ops::AddAssign<MetaInstrExpansion> for InstrCycles {
+    /// Concatenates the expansion of a meta-instruction to instruction
+    /// cycles
+    fn add_assign(&mut self, m_instr: MetaInstrExpansion) {
+        match (self, m_instr) {
+            // simple case: both have constant width
+            (self_, MetaInstrExpansion::ConstantWidth(instr_body)) => *self_ += instr_body,
+
+            // both are var width, add each respective part together
+            (
+                Self::VariableWidth(VarWidthInstr{body_8bits: s_b8, body_16bits: s_b16, ..}),
+                MetaInstrExpansion::VariableWidth{short: o_b8, long: o_b16},
+            ) => {
+                *s_b8 += o_b8;
+                *s_b16 += o_b16;
+            }
+
+            // self is constant, other is variable: split self in half, then call the case above
+            (self_@Self::ConstantWidth(_), other@MetaInstrExpansion::VariableWidth{..}) => {
+                let Self::ConstantWidth(b) = self_ else { unreachable!(); };
+                *self_ = Self::VariableWidth(VarWidthInstr{
+                    condition: quote!(), // put empty tokstream as placeholder
+                    body_8bits: b.clone(),
+                    body_16bits: b.clone(),
+                });
+                *self_ += other;
+            }
+        }
+    }
+}
+
+impl std::ops::AddAssign<TokenStream> for InstrCycles {
+    fn add_assign(&mut self, ts: TokenStream) {
+        match *self {
+            Self::ConstantWidth(ref mut body) => *body += ts,
+            Self::VariableWidth(ref mut body) => *body += ts,
+        }
+    }
+}
+
+impl std::ops::AddAssign<InstrBody> for InstrCycles {
+    fn add_assign(&mut self, ib: InstrBody) {
+        match *self {
+            Self::ConstantWidth(ref mut body) => *body += ib,
+            Self::VariableWidth(ref mut body) => *body += ib,
+        }
+    }
+}
+
+pub(crate) struct VarWidthInstr {
+    /// A tokstream which evaluates to a boolean which is true in 16-bits case
+    pub condition: TokenStream,
+
+    /// The instruction body to execute when this instruction is in
+    /// 8-bit mode (when [`condition`] is false)
+    pub body_8bits: InstrBody,
+
+    /// The instruction body to execute when this instruction is in
+    /// 16-bit mode (when [`condition`] is true)
+    pub body_16bits: InstrBody,
+}
+
+impl std::ops::AddAssign<TokenStream> for VarWidthInstr {
+    /// Appends a token stream to the end of both bodies
+    fn add_assign(&mut self, ts: TokenStream) {
+        self.body_8bits += ts.clone();
+        self.body_16bits += ts;
+    }
+}
+
+impl std::ops::AddAssign<InstrBody> for VarWidthInstr {
+    fn add_assign(&mut self, ib: InstrBody) {
+        self.body_8bits += ib.clone();
+        self.body_16bits += ib;
+    }
+}
+
 /// Body of an instruction: one or more cycles and potential
 /// post-instruction code
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub(crate) struct InstrBody {
     /// Cycles of the instruction (does not include the opcode fetch cycle)
     pub cycles: Vec<Cycle>,
@@ -481,6 +643,13 @@ pub(crate) struct InstrBody {
     pub post_instr: TokenStream,
 }
 
+impl std::ops::AddAssign<TokenStream> for InstrBody {
+    /// Appends a token stream to the end of this InstrBody
+    fn add_assign(&mut self, ts: TokenStream) {
+        self.post_instr.extend(ts)
+    }
+}
+
 // impl which allows us to use +=
 impl std::ops::AddAssign for InstrBody {
     /// Concatenates an InstrBody to [`self`].
@@ -490,7 +659,7 @@ impl std::ops::AddAssign for InstrBody {
     fn add_assign(&mut self, mut other: Self) {
         if other.cycles.is_empty() {
             // simple case: no cycle vec to merge, just join the post_instrs
-            self.post_instr.extend(other.post_instr);
+            *self += other.post_instr;
             return;
         }
 
@@ -525,6 +694,7 @@ impl InstrBody {
 
 /// Data structure which contains the info required to build
 /// a cycle function body
+#[derive(Clone)]
 pub(crate) struct Cycle {
     /// Raw function body
     pub body: TokenStream,
