@@ -1,14 +1,8 @@
+use std::path::PathBuf;
+
 use eframe::egui;
 use egui::{Id, UiKind};
 use rfd::FileDialog;
-
-struct MyApp {}
-
-impl Default for MyApp {
-    fn default() -> Self {
-        Self {}
-    }
-}
 
 fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
@@ -20,21 +14,37 @@ fn main() -> eframe::Result {
         options,
         Box::new(|cc| {
             // egui_extras::install_image_loaders(&cc.egui_ctx);
-
             Ok(Box::<MyApp>::default())
         }),
     )
 }
 
+struct MyApp {
+    pub rom_path: Option<PathBuf>,
+}
+
+impl Default for MyApp {
+    fn default() -> Self {
+        Self { rom_path: None }
+    }
+}
+
 impl eframe::App for MyApp {
+    // This is the main update function of the window
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.top_menu_bar(ctx);
+        self.central_panel(ctx);
+    }
+}
+
+impl MyApp {
+    fn top_menu_bar(&mut self, ctx: &egui::Context) {
         egui::TopBottomPanel::top(Id::new("context_menu")).show(ctx, |ui| {
             egui::MenuBar::new().ui(ui, |ui| {
                 ui.menu_button("File", |ui| {
                     if ui.button("Load ROM").clicked() {
                         if let Some(path) = FileDialog::new().pick_file() {
-                            println!("Selected ROM: {:?}", path);
-                            // TODO: load ROM into emulator
+                            self.rom_path = Some(path)
                         }
                         ui.close_kind(UiKind::Menu);
                     }
@@ -53,9 +63,11 @@ impl eframe::App for MyApp {
                 });
             });
         });
+    }
 
+    fn central_panel(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("R-SNES Heading");
+            ui.heading("R-SNES");
         });
     }
 }
