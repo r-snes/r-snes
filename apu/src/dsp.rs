@@ -7,6 +7,7 @@ pub struct Adsr {
     pub attack_rate: u8,
     pub decay_rate: u8,
     pub sustain_level: u8,
+    pub sustain_rate: u8,
     pub release_rate: u8,
     pub envelope_level: u16, // current volume (0–0x7FF)
     pub envelope_phase: EnvelopePhase,
@@ -20,6 +21,7 @@ impl Default for Adsr {
             attack_rate: 0,
             decay_rate: 0,
             sustain_level: 0,
+            sustain_rate: 0,
             release_rate: 0,
             envelope_level: 0,
             envelope_phase: EnvelopePhase::Off,
@@ -32,8 +34,10 @@ impl Adsr {
     pub fn update_envelope(&mut self) {
         match self.envelope_phase {
             EnvelopePhase::Attack => {
+                // Attack phase: increase envelope level
                 self.envelope_level =
                     self.envelope_level.saturating_add(self.attack_rate as u16 * 8);
+
                 if self.envelope_level >= 0x7FF {
                     self.envelope_level = 0x7FF;
                     self.envelope_phase = EnvelopePhase::Decay;
@@ -41,7 +45,9 @@ impl Adsr {
             }
 
             EnvelopePhase::Decay => {
+                // Decay phase: fall toward target sustain level
                 let target = (self.sustain_level as u16) * 0x100 / 8;
+
                 if self.envelope_level > target {
                     self.envelope_level =
                         self.envelope_level.saturating_sub(self.decay_rate as u16 * 2);
@@ -51,19 +57,31 @@ impl Adsr {
             }
 
             EnvelopePhase::Sustain => {
-                // Sustain phase: hold current envelope level
+                // Sustain phase: continue decreasing using sustain_rate
+                // (this was previously "release_rate")
+                self.envelope_level =
+                    self.envelope_level.saturating_sub(self.sustain_rate as u16 * 2);
+
+                // If envelope hits zero, voice becomes silent
+                if self.envelope_level == 0 {
+                    self.envelope_phase = EnvelopePhase::Off;
+                }
             }
 
             EnvelopePhase::Release => {
+                // Release phase: decrease at *constant* slope
+                const RELEASE_RATE: u16 = 32; // example constant
+
                 self.envelope_level =
-                    self.envelope_level.saturating_sub(self.release_rate as u16 * 4);
+                    self.envelope_level.saturating_sub(RELEASE_RATE);
+
                 if self.envelope_level == 0 {
                     self.envelope_phase = EnvelopePhase::Off;
                 }
             }
 
             EnvelopePhase::Off => {
-                // Silence, no change
+                // Silence, no changes
             }
         }
     }
