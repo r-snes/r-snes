@@ -252,14 +252,8 @@ impl Dsp {
     pub fn step(&mut self, mem: &Memory) {
         for voice in self.voices.iter_mut() {
             // FIRST: Update the envelope (as long as the voice is active or releasing)
-            match voice.adsr.envelope_phase {
-                EnvelopePhase::Attack
-                | EnvelopePhase::Decay
-                | EnvelopePhase::Sustain
-                | EnvelopePhase::Release => {
-                    voice.adsr.update_envelope();
-                }
-                EnvelopePhase::Off => {}
+            if voice.adsr.envelope_phase != EnvelopePhase::Off {
+                voice.adsr.update_envelope();
             }
 
             // If key is not active AND envelope is Off — voice is fully silent
