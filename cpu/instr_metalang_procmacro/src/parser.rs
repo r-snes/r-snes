@@ -75,6 +75,7 @@ pub(crate) enum MetaInstruction {
     /// with the CycleResult (cycle type) produced by the token stream
     EndCycle(TokenStream),
 
+    /// Sets the operand size for variable width instructions
     SetOperandSize(TokenTree),
 
     /// Spend an internal cycle idling if the tokenstream evaluates to true
@@ -89,8 +90,64 @@ pub(crate) enum MetaInstruction {
     /// to point at that address in DB)
     SetAddrModeAbsolute,
 
+    /// Sets the address bus to point at an absolute long operand
+    /// (read and address and bank, set addr bus to this)
+    SetAddrModeAbsoluteLong,
+
+    /// Sets the address bus to point at an absolute long X-indexed operand
+    /// (same as abs long, but add X to the address)
+    SetAddrModeAbsLongX,
+
+    /// Sets the address bus to point at an absolute X-indexed operand
+    /// (same as absolute, but also add X to the address)
+    SetAddrModeAbsoluteX,
+
+    /// Sets the address bus to point at an absolute Y-indexed operand
+    /// (same as absolute, but also add Y to the address)
+    SetAddrModeAbsoluteY,
+
+    /// Sets the address bus to point at a direct operand
+    /// (read an offset, then set addr bus to 0:D+offset
+    SetAddrModeDirect,
+
+    /// Sets the address bus to point at a direct X-indexed indirect operand
+    /// (read direct offset, then read addr from 0:D+DO+X, then addr bus is DB:AA)
+    SetAddrModeDirectXIndirect,
+
+    /// Sets the address bus to point at a direct indirect operand
+    /// (read direct offset, then read addr from 0:D+DO; then addr bus is DB:AA)
+    SetAddrModeDirectIndirect,
+
+    /// Sets the address bus to point at a direct indirect Y-indexed operand
+    /// (read direct offset, then read addr from 0:D+DO; then addr bus is DB:AA+Y)
+    /// Contrary to X-indexing, the indexing is done on the final address, not on
+    /// the indirect one
+    SetAddrModeDirectIndirectY,
+
+    /// Same as DirectIndirectY, but also read a bank after the final address, which
+    /// is the the bank number in the final addr bus
+    SetAddrModeDirectIndirectLongY,
+
+    /// Same as DirectIndirect, but also read a bank number after the
+    /// final address
+    SetAddrModeDirectIndirectLong,
+
+    /// Same as SetAddrModeDirect, but add X to the address
+    SetAddrModeDirectX,
+
+    /// Same as SetAddrModeDirect, but add Y to the address
+    SetAddrModeDirectY,
+
     /// Sets the address bus to point at the top of the stack
     SetAddrModeStack,
+
+    /// Sets the address bus to point at a stack-relative operand
+    /// (read an immediate stack offset to add to S in bank 0)
+    SetAddrModeStackRelative,
+
+    /// Sets the address bus to point at a stack-relative operand
+    /// (same as stack relative, then deref this operand in DB, Y-indexed)
+    SetAddrModeStackRelativeIndirectY,
 
     /// Creates a read cycle at the current address bus
     /// and assigns the value set in the data into the token
@@ -212,7 +269,21 @@ impl MetaInstruction {
 
             "SET_ADDRMODE_IMM" => MetaInstruction::SetAddrModeImmediate,
             "SET_ADDRMODE_ABS" => MetaInstruction::SetAddrModeAbsolute,
+            "SET_ADDRMODE_ABSL" => MetaInstruction::SetAddrModeAbsoluteLong,
+            "SET_ADDRMODE_ABSLX" => MetaInstruction::SetAddrModeAbsLongX,
+            "SET_ADDRMODE_ABSX" => MetaInstruction::SetAddrModeAbsoluteX,
+            "SET_ADDRMODE_ABSY" => MetaInstruction::SetAddrModeAbsoluteY,
+            "SET_ADDRMODE_DIRECT" => MetaInstruction::SetAddrModeDirect,
+            "SET_ADDRMODE_DIRECTX_IND" => MetaInstruction::SetAddrModeDirectXIndirect,
+            "SET_ADDRMODE_DIRECT_IND" => MetaInstruction::SetAddrModeDirectIndirect,
+            "SET_ADDRMODE_DIRECT_INDY" => MetaInstruction::SetAddrModeDirectIndirectY,
+            "SET_ADDRMODE_DIRECT_INDLY" => MetaInstruction::SetAddrModeDirectIndirectLongY,
+            "SET_ADDRMODE_DIRECT_INDL" => MetaInstruction::SetAddrModeDirectIndirectLong,
+            "SET_ADDRMODE_DIRECTX" => MetaInstruction::SetAddrModeDirectX,
+            "SET_ADDRMODE_DIRECTY" => MetaInstruction::SetAddrModeDirectY,
             "SET_ADDRMODE_STACK" => MetaInstruction::SetAddrModeStack,
+            "SET_ADDRMODE_STACKREL" => MetaInstruction::SetAddrModeStackRelative,
+            "SET_ADDRMODE_STACKREL_INDY" => MetaInstruction::SetAddrModeStackRelativeIndirectY,
 
             "FETCH8_INTO" => MetaInstruction::Fetch8Into(it.by_ref().collect()),
             "FETCH16_INTO" => MetaInstruction::Fetch16Into(it.by_ref().collect()),
@@ -308,11 +379,140 @@ impl MetaInstruction {
                     cpu.addr_bus.bank = cpu.registers.DB;
                 });
             }
+            Self::SetAddrModeAbsoluteLong => {
+                ret += Self::Fetch16ImmInto(quote!(cpu.internal_data_bus)).expand(pstatus);
+                ret += Self::Fetch8Imm.expand(pstatus);
+
+                ret += quote! {
+                    cpu.addr_bus.addr = cpu.internal_data_bus;
+                    cpu.addr_bus.bank = cpu.data_bus;
+                }
+            }
+            Self::SetAddrModeAbsLongX => {
+                ret += Self::SetAddrModeAbsoluteLong.expand(pstatus);
+                ret += quote! {
+                    cpu.addr_bus.addr = cpu.addr_bus.addr.wrapping_add(cpu.registers.X);
+                }
+            }
+            Self::SetAddrModeAbsoluteX => {
+                ret += Self::SetAddrModeAbsolute.expand(pstatus);
+
+                let new_addr = quote!(cpu.addr_bus.addr.wrapping_add(cpu.registers.X));
+                // spend an additional cycle if indexing across page boundaries (cpu doc note 4)
+                ret += Self::IdleIf(
+                    quote!(*cpu.addr_bus.addr.hi() != *#new_addr.hi())
+                ).expand(pstatus);
+                ret += quote! {
+                    cpu.addr_bus.addr = #new_addr;
+                }
+            }
+            Self::SetAddrModeAbsoluteY => {
+                ret += Self::SetAddrModeAbsolute.expand(pstatus);
+
+                let new_addr = quote!(cpu.addr_bus.addr.wrapping_add(cpu.registers.Y));
+                // spend an additional cycle if indexing across page boundaries (cpu doc note 4)
+                ret += Self::IdleIf(
+                    quote!(*cpu.addr_bus.addr.hi() != *#new_addr.hi())
+                ).expand(pstatus);
+                ret += quote! {
+                    cpu.addr_bus.addr = #new_addr;
+                }
+            }
+            Self::SetAddrModeDirect => {
+                ret += Self::Fetch8Imm.expand(pstatus);
+                // direct indexing stalls one cycle when DL != 0 (cpu doc note 2)
+                ret += Self::IdleIf(quote!(*cpu.registers.D.lo() != 0)).expand(pstatus);
+                ret += quote! {
+                    cpu.addr_bus = snes_addr!(0:cpu.registers.D.wrapping_add(cpu.data_bus as u16));
+                };
+            }
+            Self::SetAddrModeDirectXIndirect => {
+                ret += Self::SetAddrModeDirect.expand(pstatus);
+                ret += Self::EndCycle(quote!(Internal)).expand(pstatus);
+                ret += quote! {
+                    cpu.addr_bus.addr = cpu.addr_bus.addr.wrapping_add(cpu.registers.X);
+                };
+                ret += Self::Fetch16Into(quote!(cpu.internal_data_bus)).expand(pstatus);
+                ret += quote! {
+                    cpu.addr_bus.bank = cpu.registers.DB;
+                    cpu.addr_bus.addr = cpu.internal_data_bus;
+                };
+            }
+            Self::SetAddrModeDirectIndirect => {
+                ret += Self::SetAddrModeDirect.expand(pstatus);
+                ret += Self::Fetch16Into(quote!(cpu.internal_data_bus)).expand(pstatus);
+                ret += quote! {
+                    cpu.addr_bus.bank = cpu.registers.DB;
+                    cpu.addr_bus.addr = cpu.internal_data_bus;
+                };
+            }
+            Self::SetAddrModeDirectIndirectY => {
+                ret += Self::SetAddrModeDirectIndirect.expand(pstatus);
+
+                let new_addr = quote!(cpu.addr_bus.addr.wrapping_add(cpu.registers.Y));
+                // spend an additional cycle if indexing across page boundaries (cpu doc note 4)
+                ret += Self::IdleIf(
+                    quote!(*cpu.addr_bus.addr.hi() != *#new_addr.hi())
+                ).expand(pstatus);
+                ret += quote! {
+                    cpu.addr_bus.bank = cpu.registers.DB;
+                    cpu.addr_bus.addr = #new_addr;
+                }
+            }
+            Self::SetAddrModeDirectIndirectLongY => {
+                ret += Self::SetAddrModeDirectIndirectLong.expand(pstatus);
+                ret += quote! {
+                    cpu.addr_bus.addr = cpu.addr_bus.addr.wrapping_add(cpu.registers.Y);
+                }
+            }
+            Self::SetAddrModeDirectIndirectLong => {
+                ret += Self::SetAddrModeDirect.expand(pstatus);
+                ret += Self::Fetch16Into(quote!(cpu.internal_data_bus)).expand(pstatus);
+                ret += quote! {
+                    cpu.addr_bus.addr = cpu.addr_bus.addr.wrapping_add(1);
+                };
+                ret += Self::EndCycle(quote!(Read)).expand(pstatus);
+                ret += quote! {
+                    cpu.addr_bus.bank = cpu.data_bus;
+                    cpu.addr_bus.addr = cpu.internal_data_bus;
+                }
+            }
+            Self::SetAddrModeDirectX => {
+                ret += Self::SetAddrModeDirect.expand(pstatus);
+                ret += Self::EndCycle(quote!(Internal)).expand(pstatus);
+                ret += quote! {
+                    cpu.addr_bus.addr = cpu.addr_bus.addr.wrapping_add(cpu.registers.X);
+                }
+            }
+            Self::SetAddrModeDirectY => {
+                ret += Self::SetAddrModeDirect.expand(pstatus);
+                ret += Self::EndCycle(quote!(Internal)).expand(pstatus);
+                ret += quote! {
+                    cpu.addr_bus.addr = cpu.addr_bus.addr.wrapping_add(cpu.registers.Y);
+                }
+            }
             Self::SetAddrModeStack => {
                 ret += InstrBody::post(quote! {
                     cpu.addr_bus.addr = cpu.registers.S;
                     cpu.addr_bus.bank = 0;
                 });
+            }
+            Self::SetAddrModeStackRelative => {
+                ret += Self::Fetch8Imm.expand(pstatus); // read stack offset
+                ret += Self::EndCycle(quote!(Internal)).expand(pstatus); // idle 1 cycle
+                ret += quote! {
+                    // set the addr bus to 0:S+SO
+                    cpu.addr_bus = snes_addr!(0:cpu.registers.S.wrapping_add(cpu.data_bus as u16));
+                }
+            }
+            Self::SetAddrModeStackRelativeIndirectY => {
+                ret += Self::SetAddrModeStackRelative.expand(pstatus);
+                ret += Self::Fetch16Into(quote!(cpu.internal_data_bus)).expand(pstatus);
+                ret += Self::EndCycle(quote!(Internal)).expand(pstatus);
+                ret += quote! {
+                    cpu.addr_bus.bank = cpu.registers.DB;
+                    cpu.addr_bus.addr = cpu.internal_data_bus.wrapping_add(cpu.registers.Y);
+                }
             }
 
             Self::Fetch8Into(dest) => {
