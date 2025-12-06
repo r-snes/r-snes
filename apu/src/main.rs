@@ -46,11 +46,8 @@ fn main() {
         dsp.step(&mem); // pitch stepping + sample fetch
 
         // render_audio expects a *slice of tuples*
-        let mut out = [(0_i16, 0_i16)];
-        dsp.render_audio(&mut out);
-
-        // Store only left channel for simplicity
-        audio_buffer.push(out[0].0);
+       let (left, _right) = dsp.render_audio_single();
+        audio_buffer.push(left);
     }
 
     // --- Step 4: Save to raw PCM file ---
