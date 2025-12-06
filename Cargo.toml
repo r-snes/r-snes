@@ -19,7 +19,5 @@ cpu = { version = "0.1.0", path = "./cpu"}
 ppu = { version = "0.1.0", path = "./ppu"}
 apu = { version = "0.1.0", path = "./apu"}
 
-eframe = "0.33.2"
-egui = "0.33.2"
-egui_extras = "0.33.2"
+sdl2 = "0.38.0"
 rfd = "0.14"
