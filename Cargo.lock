@@ -3082,10 +3082,13 @@ checksum = "69cdb34c158ceb288df11e18b4bd39de994f6657d83847bdffdbd7f346754b0f"
 name = "r-snes"
 version = "0.1.0"
 dependencies = [
+ "apu",
+ "bus",
+ "cpu",
  "eframe",
  "egui",
  "egui_extras",
- "minifb",
+ "ppu",
  "rfd",
 ]
 
@@ -3605,7 +3608,7 @@ dependencies = [
  "heck",
  "proc-macro2",
  "quote",
- "syn 2.0.106",
+ "syn",
 ]
 
 [[package]]
