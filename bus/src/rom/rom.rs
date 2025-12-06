@@ -1,7 +1,8 @@
 use crate::constants::{BANK_SIZE, COPIER_HEADER_SIZE, LOROM_BANK_SIZE};
 use crate::memory_region::MemoryRegion;
 use crate::rom::error::RomError;
-use crate::rom::mapping_mode::MappingMode;
+use crate::rom::header::RomHeader;
+use crate::rom::header::mapping_mode::MappingMode;
 use common::snes_address::SnesAddress;
 use std::fs::File;
 use std::io::Read;
@@ -19,10 +20,11 @@ use std::path::Path;
 /// Some cartridges may contain a 512-byte copier header at the start of the file,
 /// which is removed on load.
 /// ROM data is read-only and any write attempts are ignored.
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq)]
 pub struct Rom {
     pub data: Vec<u8>,
     pub map: MappingMode,
+    pub header: RomHeader,
 }
 
 impl Rom {
@@ -45,10 +47,17 @@ impl Rom {
         // Check map mode
         let map_mode =
             MappingMode::detect_rom_mapping(&rom_data).ok_or(RomError::IncorrectMapping)?;
+        let header = RomHeader::load_header(&rom_data, map_mode);
+
+        // Detect if found mapping and header mapping are different
+        if map_mode != header.mapping_mode {
+            return Err(RomError::IncorrectMapping);
+        }
 
         Ok(Rom {
             data: rom_data,
             map: map_mode,
+            header: header,
         })
     }
 
@@ -186,7 +195,7 @@ impl MemoryRegion for Rom {
 mod tests {
     use super::*;
     use crate::constants::{COPIER_HEADER_SIZE, HIROM_BANK_SIZE, LOROM_BANK_SIZE};
-    use crate::rom::mapping_mode::MappingMode;
+    use crate::rom::header::mapping_mode::MappingMode;
     use crate::rom::test_rom::*;
     use common::snes_address::snes_addr;
 

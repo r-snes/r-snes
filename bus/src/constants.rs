@@ -4,7 +4,7 @@ pub const BANK_SIZE: usize = 0xFFFF + 1; // 64 KiB per bank
 // IO Memory zone
 pub const IO_START_ADDRESS: u16 = 0x2000;
 pub const IO_END_ADDRESS: u16 = 0x5FFF;
-pub const IO_SIZE: usize = (IO_END_ADDRESS - IO_START_ADDRESS + 1) as usize; // Equal to 0X4000
+pub const IO_SIZE: usize = (IO_END_ADDRESS - IO_START_ADDRESS + 1) as usize; // Equal to 0x4000
 
 // WRAM Memory zone
 pub const WRAM_BANK_NB: usize = 2; // WRAM spans on 2 banks
@@ -14,10 +14,19 @@ pub const WRAM_SIZE: usize = BANK_SIZE * WRAM_BANK_NB;
 pub const LOROM_HEADER_OFFSET: usize = 0x7FC0;
 pub const HIROM_HEADER_OFFSET: usize = 0xFFC0;
 pub const HEADER_TITLE_LEN: usize = 21;
-pub const HEADER_CHECKSUM_OFFSET: usize = 0x1E;
+
+pub const HEADER_SPEED_MAP_OFFSET: usize = 0x15;
+pub const HEADER_ROM_HARDWARE_OFFSET: usize = 0x16;
+pub const HEADER_ROM_SIZE_OFFSET: usize = 0x17;
+pub const HEADER_RAM_SIZE_OFFSET: usize = 0x18;
+pub const HEADER_COUNTRY_OFFSET: usize = 0x19;
+pub const HEADER_DEVELOPER_ID_OFFSET: usize = 0x1A;
+pub const HEADER_ROM_VERSION_OFFSET: usize = 0x1B;
 pub const HEADER_CHECKSUM_COMPLEMENT_OFFSET: usize = 0x1C;
+pub const HEADER_CHECKSUM_OFFSET: usize = 0x1E;
+
 pub const HEADER_MIN_LEN: usize = 0x20; // Minimum number of bytes needed for scoring
-pub const HEADER_SIZE: usize = 64;
+pub const HEADER_SIZE: usize = 64; // Equal to 0x40
 
 // ROM Memory Zone
 pub const LOROM_BANK_SIZE: usize = 0x8000; // 32 KiB
