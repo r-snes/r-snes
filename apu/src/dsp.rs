@@ -1,6 +1,6 @@
 use crate::memory::Memory;
 
-/// ADSR envelope state (moved out of Voice)
+/// ADSR envelope state
 #[derive(Debug, Clone, Copy)]
 pub struct Adsr {
     pub adsr_mode: bool,     // whether ADSR or gain mode is used
@@ -70,7 +70,7 @@ impl Adsr {
 
             EnvelopePhase::Release => {
                 // Release phase: decrease at *constant* slope
-                const RELEASE_RATE: u16 = 32; // example constant
+                const RELEASE_RATE: u16 = 8; // example constant
 
                 self.envelope_level =
                     self.envelope_level.saturating_sub(RELEASE_RATE);
