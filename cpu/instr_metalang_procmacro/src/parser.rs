@@ -531,9 +531,10 @@ impl MetaInstruction {
             }
 
             Self::FetchOperandInto(into) => {
-                ret += MetaInstrExpansion::VariableWidth{
-                    short: Self::Fetch8Into(quote! { *#into.lo_mut() }).expand(pstatus).body(),
-                    long: Self::Fetch16Into(into).expand(pstatus).body(),
+                ret += MetaInstrExpansion::VarWidth{
+                    short: Self::Fetch8Into(quote! { *#into.lo_mut() }).expand(pstatus).expect_const(),
+                    long: Self::Fetch16Into(into).expand(pstatus).expect_const(),
+                    data: (),
                 };
             }
 
@@ -608,9 +609,10 @@ impl MetaInstruction {
             }
 
             Self::WriteOperand(op) => {
-                ret += MetaInstrExpansion::VariableWidth{
-                    short: Self::Write8(quote! { *#op.lo() }).expand(pstatus).body(),
-                    long: Self::Write16(op).expand(pstatus).body(),
+                ret += MetaInstrExpansion::VarWidth{
+                    short: Self::Write8(quote! { *#op.lo() }).expand(pstatus).expect_const(),
+                    long: Self::Write16(op).expand(pstatus).expect_const(),
+                    data: (),
                 };
             }
 
@@ -658,9 +660,10 @@ impl MetaInstruction {
                 }
             }
             Self::SetNZOperand(op) => {
-                ret += MetaInstrExpansion::VariableWidth{
-                    short: Self::SetNZ8(op.clone()).expand(pstatus).body(),
-                    long: Self::SetNZ16(op).expand(pstatus).body(),
+                ret += MetaInstrExpansion::VarWidth{
+                    short: Self::SetNZ8(op.clone()).expand(pstatus).expect_const(),
+                    long: Self::SetNZ16(op).expand(pstatus).expect_const(),
+                    data: (),
                 }
             }
         }
@@ -668,7 +671,7 @@ impl MetaInstruction {
     }
 }
 
-enum VarWidth<T, U = ()> {
+pub(crate) enum VarWidth<T, U = ()> {
     ConstWidth(T),
     VarWidth{short: T, long: T, data: U},
 }
@@ -678,6 +681,16 @@ impl<T, U> VarWidth<T, U> {
         match self {
             Self::ConstWidth(x) => x,
             _ => panic!("Unexpected variable width"),
+        }
+    }
+
+    pub fn map_mut(&mut self, mapfunc: impl Fn(&mut T)) {
+        match self {
+            Self::ConstWidth(x) => mapfunc(x),
+            Self::VarWidth{short, long, ..} => {
+                mapfunc(short);
+                mapfunc(long);
+            }
         }
     }
 }
@@ -753,89 +766,7 @@ impl<T1: Clone + std::ops::AddAssign<T2>, U1: Default, T2: Clone> std::ops::AddA
     }
 }
 
-#[derive(Clone)]
-enum MetaInstrExpansion {
-    /// Meta-instrs that expand to the same code in 8-bit mode and
-    /// in 16-bit mode
-    ConstantWidth(InstrBody),
-
-    /// Meta-instrs that expand to different code in 8-bit mode and
-    /// in 16-bit mode
-    VariableWidth{short: InstrBody, long: InstrBody},
-}
-
-impl MetaInstrExpansion {
-    fn body(self) -> InstrBody {
-        match self {
-            Self::ConstantWidth(body) => body,
-            Self::VariableWidth{..} => panic!("Unexpected variable width expansion"),
-        }
-    }
-}
-
-impl Default for MetaInstrExpansion {
-    fn default() -> Self {
-        Self::ConstantWidth(InstrBody::default())
-    }
-}
-
-impl std::ops::AddAssign for MetaInstrExpansion {
-    /// Concatenates two meta-instr expansions, useful for example
-    /// for meta-instrs defined in terms of others
-    fn add_assign(&mut self, other: Self) {
-        match (self, other) {
-            // simple case: other is constant width
-            (self_, Self::ConstantWidth(instr_body)) => *self_ += instr_body,
-
-            // both self and other are var width, add each respective part together
-            (
-                Self::VariableWidth{short: s_short, long: s_long},
-                Self::VariableWidth{short: o_short, long: o_long},
-            ) => {
-                *s_short += o_short;
-                *s_long += o_long;
-            }
-
-            // self is constant, other is variable: split self in half, then call the case above
-            (self_@Self::ConstantWidth(_), other@Self::VariableWidth{..}) => {
-                let Self::ConstantWidth(b) = self_ else { unreachable!(); };
-                *self_ = Self::VariableWidth{
-                    short: b.clone(),
-                    long: b.clone(),
-                };
-                *self_ += other;
-            }
-        }
-    }
-}
-
-impl std::ops::AddAssign<InstrBody> for MetaInstrExpansion {
-    /// Add a instr body to a meta instr expansion (adding to both
-    /// 8- and 16-bit modes the expansion is split)
-    fn add_assign(&mut self, instr_body: InstrBody) {
-        match *self {
-            Self::ConstantWidth(ref mut body) => *body += instr_body,
-            Self::VariableWidth{ref mut short, ref mut long} => {
-                *short += instr_body.clone();
-                *long += instr_body;
-            }
-        }
-    }
-}
-
-impl std::ops::AddAssign<TokenStream> for MetaInstrExpansion {
-    /// Add a token stream to a meta instr expansion (adding to both
-    /// 8- and 16-bit modes the expansion is split)
-    fn add_assign(&mut self, ts: TokenStream) {
-        match *self {
-            Self::ConstantWidth(ref mut body) => *body += ts,
-            Self::VariableWidth{ref mut short, ref mut long} => {
-                *short += ts.clone();
-                *long += ts;
-            }
-        }
-    }
-}
+type MetaInstrExpansion = VarWidth<InstrBody>;
 
 /// Type resulting from the parsing of the token stream passed
 /// as parameter to the [`cpu_instr`] proc macro.
@@ -845,14 +776,14 @@ pub(crate) struct Instr {
 
     /// Body of the instruction, including potential post-instr code,
     /// and 16-/8-bit disjunction
-    pub body: InstrCycles,
+    pub body: VarWidth<InstrBody, TokenStream>,
 }
 
 impl Instr {
     fn new(name: Ident) -> Self {
         Self {
             name,
-            body: InstrCycles::default(),
+            body: VarWidth::default(),
         }
     }
 
@@ -893,120 +824,22 @@ impl Instr {
             ret.body += meta_instr.expand(&mut pstatus);
         }
         // Set PC to point at the next opcode
-        ret.body.append_last_cycle(pstatus.conditionally_inc_pc(pstatus.imm_offset));
+        ret.body.map_mut(|b| {
+            *b.cycles.last_mut().expect("at least 1 one cycle should be generated")
+                += pstatus.conditionally_inc_pc(pstatus.imm_offset);
+        });
 
-        if let InstrCycles::VariableWidth(VarWidthInstr{ref mut condition, .. }) = ret.body {
+        // here `data` is the condition in which the instr is in 16-bit mode
+        if let VarWidth::VarWidth{ref mut data, .. } = ret.body {
             match pstatus.operand_size {
                 OpSize::Constant => panic!(
                     "Variable width instructions used without setting the operand size"
                 ),
-                OpSize::Index => *condition = quote!(!cpu.registers.P.E && !cpu.registers.P.X),
-                OpSize::AccMem => *condition = quote!(!cpu.registers.P.E && !cpu.registers.P.M),
+                OpSize::Index => *data = quote!(!cpu.registers.P.E && !cpu.registers.P.X),
+                OpSize::AccMem => *data = quote!(!cpu.registers.P.E && !cpu.registers.P.M),
             }
         }
         Ok(ret)
-    }
-}
-
-pub(crate) enum InstrCycles {
-    ConstantWidth(InstrBody),
-    VariableWidth(VarWidthInstr),
-}
-
-impl InstrCycles {
-    pub fn append_last_cycle(&mut self, ts: TokenStream) {
-        match self {
-            Self::ConstantWidth(body) => {
-                *body.cycles.last_mut().expect("at least 1 cycle") += ts;
-            }
-            Self::VariableWidth(vwi) => {
-                *vwi.body_8bits.cycles.last_mut().expect("at least 1 cycle") += ts.clone();
-                *vwi.body_16bits.cycles.last_mut().expect("at least 1 cycle") += ts;
-            }
-        }
-    }
-}
-
-impl Default for InstrCycles {
-    fn default() -> Self {
-        Self::ConstantWidth(InstrBody::default())
-    }
-}
-
-impl std::ops::AddAssign<MetaInstrExpansion> for InstrCycles {
-    /// Concatenates the expansion of a meta-instruction to instruction
-    /// cycles
-    fn add_assign(&mut self, m_instr: MetaInstrExpansion) {
-        match (self, m_instr) {
-            // simple case: both have constant width
-            (self_, MetaInstrExpansion::ConstantWidth(instr_body)) => *self_ += instr_body,
-
-            // both are var width, add each respective part together
-            (
-                Self::VariableWidth(VarWidthInstr{body_8bits: s_b8, body_16bits: s_b16, ..}),
-                MetaInstrExpansion::VariableWidth{short: o_b8, long: o_b16},
-            ) => {
-                *s_b8 += o_b8;
-                *s_b16 += o_b16;
-            }
-
-            // self is constant, other is variable: split self in half, then call the case above
-            (self_@Self::ConstantWidth(_), other@MetaInstrExpansion::VariableWidth{..}) => {
-                let Self::ConstantWidth(b) = self_ else { unreachable!(); };
-                *self_ = Self::VariableWidth(VarWidthInstr{
-                    condition: quote!(), // put empty tokstream as placeholder
-                    body_8bits: b.clone(),
-                    body_16bits: b.clone(),
-                });
-                *self_ += other;
-            }
-        }
-    }
-}
-
-impl std::ops::AddAssign<TokenStream> for InstrCycles {
-    fn add_assign(&mut self, ts: TokenStream) {
-        match *self {
-            Self::ConstantWidth(ref mut body) => *body += ts,
-            Self::VariableWidth(ref mut body) => *body += ts,
-        }
-    }
-}
-
-impl std::ops::AddAssign<InstrBody> for InstrCycles {
-    fn add_assign(&mut self, ib: InstrBody) {
-        match *self {
-            Self::ConstantWidth(ref mut body) => *body += ib,
-            Self::VariableWidth(ref mut body) => *body += ib,
-        }
-    }
-}
-
-pub(crate) struct VarWidthInstr {
-    /// A tokstream which evaluates to a boolean which is true in 16-bits case
-    pub condition: TokenStream,
-
-    /// The instruction body to execute when this instruction is in
-    /// 8-bit mode (when [`condition`] is false)
-    pub body_8bits: InstrBody,
-
-    /// The instruction body to execute when this instruction is in
-    /// 16-bit mode (when [`condition`] is true)
-    pub body_16bits: InstrBody,
-}
-
-impl std::ops::AddAssign<TokenStream> for VarWidthInstr {
-    /// Appends a token stream to the end of both bodies
-    fn add_assign(&mut self, ts: TokenStream) {
-        self.body_8bits += ts.clone();
-        self.body_16bits += ts;
-    }
-}
-
-impl std::ops::AddAssign<InstrBody> for VarWidthInstr {
-    fn add_assign(&mut self, ib: InstrBody) {
-        self.body_8bits += ib.clone();
-        self.body_16bits += ib;
     }
 }
 

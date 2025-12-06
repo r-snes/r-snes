@@ -1,6 +1,6 @@
 mod parser;
 
-use parser::{Cycle, Instr, InstrBody, InstrCycles, VarWidthInstr};
+use parser::{Cycle, Instr, InstrBody, VarWidth};
 use proc_macro2::{TokenStream, Ident};
 use quote::{format_ident, quote, ToTokens};
 
@@ -66,10 +66,11 @@ pub(crate) fn cpu_instr2(input: TokenStream, inc_pc: bool) -> TokenStream {
     };
 
     let cycle_funcs = match body {
-        InstrCycles::ConstantWidth(instr_body) => gen_cycle_functions(&name, instr_body),
-        InstrCycles::VariableWidth(VarWidthInstr {body_8bits, body_16bits, condition}) => {
-            let cyc_funcs8 = gen_cycle_functions(&name, body_8bits);
-            let cyc_funcs16 = gen_cycle_functions(&name, body_16bits);
+        VarWidth::ConstWidth(instr_body) => gen_cycle_functions(&name, instr_body),
+        VarWidth::VarWidth{short, long, data} => {
+            let cyc_funcs8 = gen_cycle_functions(&name, short);
+            let cyc_funcs16 = gen_cycle_functions(&name, long);
+            let condition = data;
 
             let first_cyc_name = format_ident!("{}_cyc1", name);
 
