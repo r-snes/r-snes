@@ -138,14 +138,13 @@ fn test_render_audio_single_voice() {
     voice.adsr.envelope_level = 0x7FF; // full volume
     voice.adsr.envelope_phase = EnvelopePhase::Sustain;
 
-    let mut out = [(0_i16, 0_i16); 1];
+    // New API: render a single sample
+    let (left, right) = dsp.render_audio_single();
 
-    dsp.render_audio(&mut out);
+    let expected_left  = (30.0 * (100.0 / 127.0)) as i16;
+    let expected_right = (30.0 * (150.0 / 127.0)) as i16;
 
-    let expected_left  = (30 * 100 / 127) as i16;
-    let expected_right = (30 * 150 / 127) as i16;
-
-    assert_eq!(out[0], (expected_left, expected_right));
+    assert_eq!((left, right), (expected_left, expected_right));
 }
 
 #[test]
@@ -166,14 +165,23 @@ fn test_render_audio_multiple_voices_mixed_and_clamped() {
     dsp.voices[1].adsr.envelope_level = 0x7FF;
     dsp.voices[1].adsr.envelope_phase = EnvelopePhase::Sustain;
 
-    let mut out = [(0_i16, 0_i16); 1];
+    let (left, right) = dsp.render_audio_single();
 
-    dsp.render_audio(&mut out);
+    // Mixed value (before clamping)
+    let mut expected = 200.0_f32;
 
-    let expected = (100 * 2).clamp(i16::MIN as i32, i16::MAX as i32) as i16;
+    // Manual clamp because clamp() is not available on primitives here
+    if expected > i16::MAX as f32 {
+        expected = i16::MAX as f32;
+    } else if expected < i16::MIN as f32 {
+        expected = i16::MIN as f32;
+    }
 
-    assert_eq!(out[0], (expected, expected));
+    let expected_i16 = expected as i16;
+
+    assert_eq!((left, right), (expected_i16, expected_i16));
 }
+
 
 #[test]
 fn test_adsr_attack_phase() {
