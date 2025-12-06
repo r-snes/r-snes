@@ -17,7 +17,6 @@ pub(crate) enum OpSize {
 }
 
 /// Data describing the status of the parser at any point in parsing
-#[derive(Copy, Clone, Debug)]
 pub(crate) struct ParserStatus {
     /// Whether PC should be automatically incremented
     pub inc_pc: bool,
@@ -28,7 +27,7 @@ pub(crate) struct ParserStatus {
     ///
     /// Also used to calculate the final PC increment to generate at the end
     /// of the instruction.
-    pub imm_offset: u16,
+    pub imm_offset: VarWidth<u16>,
 
     /// Size of read/written operands of the instruction
     pub operand_size: OpSize,
@@ -38,7 +37,7 @@ impl Default for ParserStatus {
     fn default() -> Self {
         Self {
             inc_pc: true,
-            imm_offset: 1, // at instr start, the first imm value is 1 after PC
+            imm_offset: VarWidth::constw(1), // at instr start, the first imm value is 1 after PC
             operand_size: OpSize::Constant,
         }
     }
@@ -366,12 +365,10 @@ impl MetaInstruction {
             }
 
             Self::SetAddrModeImmediate => {
-                let increment = pstatus.imm_offset;
-
-                ret += quote! {
+                ret += pstatus.imm_offset.map_into(|increment| quote! {
                     cpu.addr_bus.bank = cpu.registers.PB;
                     cpu.addr_bus.addr = cpu.registers.PC.wrapping_add(#increment);
-                };
+                });
             }
             Self::SetAddrModeAbsolute => {
                 // start by fetching the address at which we'll be reading/writing
@@ -677,6 +674,10 @@ pub(crate) enum VarWidth<T, U = ()> {
 }
 
 impl<T, U> VarWidth<T, U> {
+    pub fn constw(from: T) -> Self {
+        Self::ConstWidth(from)
+    }
+
     pub fn expect_const(self) -> T {
         match self {
             Self::ConstWidth(x) => x,
@@ -711,12 +712,40 @@ impl<T: Clone, U> VarWidth<T, U> {
     }
 }
 
+impl<T, U: Clone> VarWidth<T, U> {
+    pub fn map_into<T2>(&self, mut mapfunc: impl FnMut(&T) -> T2) -> VarWidth<T2, U> {
+        match self {
+            Self::ConstWidth(x) => VarWidth::ConstWidth(mapfunc(x)),
+            Self::VarWidth{short, long, data} => VarWidth::VarWidth {
+                short: mapfunc(short),
+                long: mapfunc(long),
+                data: data.clone(),
+            },
+        }
+    }
+}
+
 impl<T: Clone, U: Default> VarWidth<T, U> {
     /// Same as `split`, but default-constructs the associated data
     fn split_default(&mut self) {
         self.split(U::default())
     }
 }
+
+// "unofficial" clone cause otherwise we get conflicting AddAssign implementations
+impl<T: Clone, U: Clone> VarWidth<T, U> {
+    fn clone(&self) -> Self {
+        match self {
+            Self::ConstWidth(d) => Self::ConstWidth(d.clone()),
+            Self::VarWidth{short, long, data} => Self::VarWidth {
+                short: short.clone(),
+                long: long.clone(),
+                data: data.clone(),
+            },
+        }
+    }
+}
+
 
 impl<T: Default, U> Default for VarWidth<T, U> {
     fn default() -> Self {
@@ -823,11 +852,25 @@ impl Instr {
 
             ret.body += meta_instr.expand(&mut pstatus);
         }
+
         // Set PC to point at the next opcode
-        ret.body.map_mut(|b| {
-            *b.cycles.last_mut().expect("at least 1 one cycle should be generated")
-                += pstatus.conditionally_inc_pc(pstatus.imm_offset);
-        });
+        match (&mut ret.body, pstatus.imm_offset.map_into(|i| pstatus.conditionally_inc_pc(*i))) {
+            (VarWidth::ConstWidth(ib), VarWidth::ConstWidth(offs)) => {
+                *ib.cycles.last_mut().expect("at least 1 cycle") += offs;
+            }
+            (VarWidth::ConstWidth(_), VarWidth::VarWidth{..}) => panic!("var-width offset with const width instr"),
+            (VarWidth::VarWidth{short, long, ..}, VarWidth::ConstWidth(offs)) => {
+                *short.cycles.last_mut().expect("at least 1 cycle") += offs.clone();
+                *long.cycles.last_mut().expect("at least 1 cycle") += offs;
+            }
+            (
+                VarWidth::VarWidth{short: i_s, long: i_l, ..},
+                VarWidth::VarWidth{short: o_s, long: o_l, ..}
+            ) => {
+                *i_s.cycles.last_mut().expect("at least 1 cycle") += o_s;
+                *i_l.cycles.last_mut().expect("at least 1 cycle") += o_l;
+            }
+        }
 
         // here `data` is the condition in which the instr is in 16-bit mode
         if let VarWidth::VarWidth{ref mut data, .. } = ret.body {
