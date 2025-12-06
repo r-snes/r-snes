@@ -58,7 +58,6 @@ impl Adsr {
 
             EnvelopePhase::Sustain => {
                 // Sustain phase: continue decreasing using sustain_rate
-                // (this was previously "release_rate")
                 self.envelope_level =
                     self.envelope_level.saturating_sub(self.sustain_rate as u16 * 2);
 
@@ -70,7 +69,7 @@ impl Adsr {
 
             EnvelopePhase::Release => {
                 // Release phase: decrease at *constant* slope
-                const RELEASE_RATE: u16 = 8; // example constant
+                const RELEASE_RATE: u16 = 8;
 
                 self.envelope_level =
                     self.envelope_level.saturating_sub(RELEASE_RATE);
@@ -81,7 +80,7 @@ impl Adsr {
             }
 
             EnvelopePhase::Off => {
-                // Silence, no changes
+                // Silenced
             }
         }
     }
@@ -100,7 +99,7 @@ pub struct Voice {
     pub frac: u16,          // fractional accumulator for pitch stepping
     pub current_sample: i8, // last fetched sample
 
-    // ADSR moved into sub-structure
+    // ADSR sub-structure
     pub adsr: Adsr,
 }
 
@@ -126,7 +125,6 @@ impl Default for Voice {
             frac: 0,
             current_sample: 0,
 
-            // ADSR defaults (unchanged comment)
             adsr: Adsr::default(),
         }
     }
