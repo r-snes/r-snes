@@ -46,7 +46,7 @@ impl Adsr {
 
             EnvelopePhase::Decay => {
                 // Decay phase: fall toward target sustain level
-                let target = (self.sustain_level as u16) * 0x100 / 8;
+                let target = self.sustain_level as u16 * 32;
 
                 if self.envelope_level > target {
                     self.envelope_level =
@@ -302,34 +302,43 @@ impl Dsp {
         }
     }
 
-    /// Mix all voices into a stereo output buffer
-    pub fn render_audio(&mut self, out: &mut [(i16, i16)]) {
-        for sample in out.iter_mut() {
-            let mut left_mix: f32 = 0.0;
-            let mut right_mix: f32 = 0.0;
+    /// Mix all voices and return one stereo sample (left, right).
+    /// 
+    /// This is called once per DSP tick *after* `step()` has advanced
+    /// pitch, phase, ADSR, sample pointer, etc.
+    /// 
+    /// - Each voice contributes its sample, scaled by ADSR envelope
+    ///   and stereo volume.
+    /// - Mixing occurs in floating point to avoid rounding errors.
+    /// - Final output is clamped to i16.
+    pub fn render_audio_single(&self) -> (i16, i16) {
+        let mut left_mix: f32 = 0.0;
+        let mut right_mix: f32 = 0.0;
 
-            for voice in self.voices.iter() {
-                if voice.adsr.envelope_phase == EnvelopePhase::Off {
-                    continue;
-                }
-
-                // Envelope fraction 0.0 – 1.0
-                let env = voice.adsr.envelope_level as f32 / 0x7FF as f32;
-
-                // Raw sample -128..127 → convert to float
-                let base = voice.current_sample as f32;
-
-                // Apply envelope
-                let amp = base * env;
-
-                // Apply left/right volumes (0..127)
-                left_mix  += amp * (voice.left_vol  as f32 / 127.0);
-                right_mix += amp * (voice.right_vol as f32 / 127.0);
+        for voice in self.voices.iter() {
+            // Skip silent or inactive voices
+            if voice.adsr.envelope_phase == EnvelopePhase::Off {
+                continue;
             }
 
-            // Convert float → i16 with clamping
-            sample.0 = left_mix.clamp(i16::MIN as f32, i16::MAX as f32) as i16;
-            sample.1 = right_mix.clamp(i16::MIN as f32, i16::MAX as f32) as i16;
+            // Envelope fraction 0.0–1.0 (11-bit range)
+            let env = voice.adsr.envelope_level as f32 / 0x7FF as f32;
+
+            // Raw sample: -128..127 -> float
+            let base = voice.current_sample as f32;
+
+            // Envelope-amplified sample
+            let amp = base * env;
+
+            // Apply left/right volumes (0..127)
+            left_mix  += amp * (voice.left_vol  as f32 / 127.0);
+            right_mix += amp * (voice.right_vol as f32 / 127.0);
         }
+
+        // Clamp and convert to i16
+        let l = left_mix.clamp(i16::MIN as f32, i16::MAX as f32) as i16;
+        let r = right_mix.clamp(i16::MIN as f32, i16::MAX as f32) as i16;
+
+        (l, r)
     }
 }
