@@ -668,6 +668,91 @@ impl MetaInstruction {
     }
 }
 
+enum VarWidth<T, U = ()> {
+    ConstWidth(T),
+    VarWidth{short: T, long: T, data: U},
+}
+
+impl<T, U> VarWidth<T, U> {
+    pub fn expect_const(self) -> T {
+        match self {
+            Self::ConstWidth(x) => x,
+            _ => panic!("Unexpected variable width"),
+        }
+    }
+}
+
+impl<T: Clone, U> VarWidth<T, U> {
+    /// Splits this variable width data into the actual variable width
+    /// variant from the constant width variant
+    fn split(&mut self, data: U) {
+        let Self::ConstWidth(x) = self else {
+            return; // if we're already var width, early return
+        };
+
+        *self = Self::VarWidth {
+            short: x.clone(),
+            long: x.clone(),
+            data,
+        };
+    }
+}
+
+impl<T: Clone, U: Default> VarWidth<T, U> {
+    /// Same as `split`, but default-constructs the associated data
+    fn split_default(&mut self) {
+        self.split(U::default())
+    }
+}
+
+impl<T: Default, U> Default for VarWidth<T, U> {
+    fn default() -> Self {
+        Self::ConstWidth(T::default())
+    }
+}
+
+impl<T: std::ops::AddAssign<V>, U, V: Clone> std::ops::AddAssign<V> for VarWidth<T, U> {
+    fn add_assign(&mut self, x: V) {
+        match *self {
+            Self::ConstWidth(ref mut body) => *body += x,
+            Self::VarWidth{ref mut short, ref mut long, ..} => {
+                *short += x.clone();
+                *long += x;
+            }
+        }
+    }
+}
+
+impl<T1: Clone + std::ops::AddAssign<T2>, U1: Default, T2: Clone> std::ops::AddAssign<VarWidth<T2, ()>> for VarWidth<T1, U1> {
+    fn add_assign(&mut self, other: VarWidth<T2, ()>) {
+        match (self, other) {
+            // simple case: other is constant width
+            (self_, VarWidth::ConstWidth(x)) => *self_ += x,
+
+            // both self and other are var width, add each respective part together
+            (
+                Self::VarWidth{short: s_short, long: s_long, ..},
+                VarWidth::VarWidth{short: o_short, long: o_long, ..},
+            ) => {
+                *s_short += o_short;
+                *s_long += o_long;
+            }
+
+            // self is constant, other is variable: split self in half, then call the case above
+            (self_@Self::ConstWidth(_), other@VarWidth::VarWidth{..}) => {
+                let Self::ConstWidth(b) = self_ else { unreachable!(); };
+                *self_ = Self::VarWidth{
+                    short: b.clone(),
+                    long: b.clone(),
+                    data: U1::default(),
+                };
+                *self_ += other;
+            }
+        }
+
+    }
+}
+
 #[derive(Clone)]
 enum MetaInstrExpansion {
     /// Meta-instrs that expand to the same code in 8-bit mode and
