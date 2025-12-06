@@ -314,7 +314,6 @@ mod test {
                     use crate::instrs::prelude::*;
 
                     pub(crate) fn test_instr_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
-                        cpu.registers.PC = cpu.registers.PC.wrapping_add(1u16);
                         call_func1();
 
                         (Internal, InstrCycle(test_instr_cyc2))
@@ -322,6 +321,7 @@ mod test {
                     pub(crate) fn test_instr_cyc2(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
                         call_func2();
 
+                        cpu.registers.PC = cpu.registers.PC.wrapping_add(1u16);
                         (Internal, InstrCycle(opcode_fetch))
                     }
                 }

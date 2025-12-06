@@ -22,6 +22,14 @@ pub(crate) struct ParserStatus {
     /// Whether PC should be automatically incremented
     pub inc_pc: bool,
 
+    /// Offset from the PC to the next immediate operand.
+    /// Each time an immediate byte is read, increment this so that independent
+    /// calls to FetchImm can avoid reading the same byte multiple times.
+    ///
+    /// Also used to calculate the final PC increment to generate at the end
+    /// of the instruction.
+    pub imm_offset: u16,
+
     /// Size of read/written operands of the instruction
     pub operand_size: OpSize,
 }
@@ -30,6 +38,7 @@ impl Default for ParserStatus {
     fn default() -> Self {
         Self {
             inc_pc: true,
+            imm_offset: 1, // at instr start, the first imm value is 1 after PC
             operand_size: OpSize::Constant,
         }
     }
@@ -357,18 +366,12 @@ impl MetaInstruction {
             }
 
             Self::SetAddrModeImmediate => {
-                let conditional_incpc = if !pstatus.inc_pc {
-                    // we need to look at PC+1 if it wasn't auto-incremented
-                    // to go to the operand
-                    quote! { .wrapping_add(1) }
-                } else {
-                    quote! {}
-                };
+                let increment = pstatus.imm_offset;
 
                 ret += quote! {
                     cpu.addr_bus.bank = cpu.registers.PB;
-                    cpu.addr_bus.addr = cpu.registers.PC #conditional_incpc;
-                }
+                    cpu.addr_bus.addr = cpu.registers.PC.wrapping_add(#increment);
+                };
             }
             Self::SetAddrModeAbsolute => {
                 // start by fetching the address at which we'll be reading/writing
@@ -536,10 +539,8 @@ impl MetaInstruction {
 
             Self::Fetch8Imm => {
                 ret += Self::SetAddrModeImmediate.expand(pstatus);
-                ret += InstrBody::cycles(vec![Cycle::new(
-                    pstatus.conditionally_inc_pc(1),
-                    quote! { Read },
-                )]);
+                ret += Self::EndCycle(quote! { Read }).expand(pstatus);
+                pstatus.imm_offset += 1;
             }
             Self::Fetch8ImmInto(into) => {
                 ret += Self::Fetch8Imm.expand(pstatus);
@@ -547,8 +548,8 @@ impl MetaInstruction {
             }
             Self::Fetch16ImmInto(into) => {
                 ret += Self::SetAddrModeImmediate.expand(pstatus);
-                ret += InstrBody::post(pstatus.conditionally_inc_pc(2));
                 ret += Self::Fetch16Into(into).expand(pstatus);
+                pstatus.imm_offset += 2;
             }
 
             Self::Pull8 => {
@@ -788,7 +789,6 @@ impl Instr {
         let mut it = body.stream().into_iter().peekable();
         let mut ret = Instr::new(name);
 
-        ret.body += pstatus.conditionally_inc_pc(1);
         loop {
             let it = it.by_ref();
 
@@ -807,6 +807,8 @@ impl Instr {
 
             ret.body += meta_instr.expand(&mut pstatus);
         }
+        // Set PC to point at the next opcode
+        ret.body.append_last_cycle(pstatus.conditionally_inc_pc(pstatus.imm_offset));
 
         if let InstrCycles::VariableWidth(VarWidthInstr{ref mut condition, .. }) = ret.body {
             match pstatus.operand_size {
@@ -824,6 +826,20 @@ impl Instr {
 pub(crate) enum InstrCycles {
     ConstantWidth(InstrBody),
     VariableWidth(VarWidthInstr),
+}
+
+impl InstrCycles {
+    pub fn append_last_cycle(&mut self, ts: TokenStream) {
+        match self {
+            Self::ConstantWidth(body) => {
+                *body.cycles.last_mut().expect("at least 1 cycle") += ts;
+            }
+            Self::VariableWidth(vwi) => {
+                *vwi.body_8bits.cycles.last_mut().expect("at least 1 cycle") += ts.clone();
+                *vwi.body_16bits.cycles.last_mut().expect("at least 1 cycle") += ts;
+            }
+        }
+    }
 }
 
 impl Default for InstrCycles {
@@ -1024,5 +1040,11 @@ impl Cycle {
             Self::Unconditional{body, ..} => body,
             Self::ConditionalIdle{body, ..} => body,
         }
+    }
+}
+
+impl std::ops::AddAssign<TokenStream> for Cycle {
+    fn add_assign(&mut self, ts: TokenStream) {
+        self.body_mut().extend(ts);
     }
 }
