@@ -1,6 +1,7 @@
 // --- Memory sizes ---
 pub const VRAM_SIZE: usize = 64 * 1024; // 64 KB
 pub const CGRAM_SIZE: usize = 256; // 256 color palette
+pub const OAM_SIZE: usize = 544; // 512 low table + 32 high table
 pub const OAM_MAX_SPRITES: usize = 128;
 
 // --- Tile layout ---
