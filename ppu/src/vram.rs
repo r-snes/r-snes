@@ -202,31 +202,138 @@ impl Vram {
     }
 }
 
-
 #[cfg(test)]
-mod tests {
+mod vram_tests {
     use super::Vram;
 
+    /// Verifies the power-on state of VRAM.
+    ///
+    /// Ensures memory is zero-initialized and the address starts at 0x0000.
     #[test]
-    fn write_and_read_roundtrip() {
+    fn power_on_state() {
+        let v = Vram::new();
+
+        assert_eq!(v.get_addr(), 0x0000);
+        assert_eq!(v.mem.len(), 0x10000);
+    }
+
+    /// Checks that load_from_slice correctly copies data into VRAM memory.
+    #[test]
+    fn load_from_slice_copies_data() {
         let mut v = Vram::new();
-        v.set_addr(0x1000);
-        v.set_auto_increment(1);
+        let data = [0xAA, 0xBB, 0xCC, 0xDD];
 
-        // write word 0xA55A at 0x1000 via two 8-bit writes
-        v.write_data_port(0x5A); // low
-        v.write_data_port(0xA5); // high -> commit
-        // after commit, addr auto-inced to 0x1001
+        v.load_from_slice(&data);
 
-        // reset addr back to 0x1000 and read via port (buffered behavior)
-        v.set_addr(0x1000);
-        // first read returns previous buffer (0), but fills buffer with word at 0x1000 and increments VMA
+        assert_eq!(v.mem[0], 0xAA);
+        assert_eq!(v.mem[1], 0xBB);
+        assert_eq!(v.mem[2], 0xCC);
+        assert_eq!(v.mem[3], 0xDD);
+    }
+
+    /// Ensures that 16-bit direct memory writes and reads work correctly.
+    #[test]
+    fn mem_write_and_read_16bit() {
+        let mut v = Vram::new();
+
+        v.mem_write16_at(0x2000, 0xABCD);
+        let value = v.mem_read16_at(0x2000);
+
+        assert_eq!(value, 0xABCD);
+        assert_eq!(v.mem[0x2000], 0xCD); // low byte
+        assert_eq!(v.mem[0x2001], 0xAB); // high byte
+    }
+
+    /// Verifies that low and high address writes correctly form a 16-bit address.
+    #[test]
+    fn address_low_high_writes() {
+        let mut v = Vram::new();
+
+        v.write_addr_low(0x34);
+        v.write_addr_high(0x12);
+
+        assert_eq!(v.get_addr(), 0x1234);
+    }
+
+    /// Ensures that changing the address resets the internal read buffer state.
+    #[test]
+    fn set_addr_resets_buffer_state() {
+        let mut v = Vram::new();
+
+        v.mem_write16_at(0x4000, 0x1111);
+        v.set_addr(0x4000);
+
         let first = v.read_data_port_byte();
-        assert_eq!(first, 0); // delayed read
-        // next two reads return low then high of buffered word
+        assert_eq!(first, 0x00); // buffered delay
+    }
+
+    /// Verifies that the automatic address increment is applied after a write.
+    #[test]
+    fn auto_increment_is_applied_after_write() {
+        let mut v = Vram::new();
+        v.set_addr(0x3000);
+        v.set_auto_increment(2);
+
+        v.write_data_port(0xAA);
+        v.write_data_port(0xBB);
+
+        assert_eq!(v.get_addr(), 0x3002);
+    }
+
+    /// Ensures that writing through the data port produces the correct 16-bit word.
+    #[test]
+    fn write_data_port_writes_correct_word() {
+        let mut v = Vram::new();
+        v.set_addr(0x5000);
+
+        v.write_data_port(0x5A);
+        v.write_data_port(0xA5);
+
+        let value = v.mem_read16_at(0x5000);
+        assert_eq!(value, 0xA55A);
+    }
+
+    /// Verifies the buffered read behavior of the VRAM data port.
+    ///
+    /// The first read returns a delayed value, followed by low and high bytes.
+    #[test]
+    fn buffered_read_behavior() {
+        let mut v = Vram::new();
+        v.mem_write16_at(0x6000, 0xBEEF);
+        v.set_addr(0x6000);
+
+        let first = v.read_data_port_byte();
         let lo = v.read_data_port_byte();
         let hi = v.read_data_port_byte();
-        assert_eq!(lo, 0x5A);
-        assert_eq!(hi, 0xA5);
+
+        assert_eq!(first, 0x00); // delayed buffer read
+        assert_eq!(lo, 0xEF);
+        assert_eq!(hi, 0xBE);
+    }
+
+    /// Ensures that read_word_via_port returns a full 16-bit value correctly.
+    #[test]
+    fn read_word_via_port_reads_correct_value() {
+        let mut v = Vram::new();
+        v.mem_write16_at(0x7000, 0xCAFE);
+        v.set_addr(0x7000);
+
+        let _ = v.read_data_port_byte(); // discard buffered read
+        let value = v.read_word_via_port();
+
+        assert_eq!(value, 0xCAFE);
+    }
+
+    /// Verifies correct address wrapping at the 64 KiB boundary.
+    #[test]
+    fn address_wraps_around_64k() {
+        let mut v = Vram::new();
+        v.set_addr(0xFFFF);
+
+        v.write_data_port(0x11);
+        v.write_data_port(0x22);
+
+        assert_eq!(v.get_addr(), 0x0000);
+        assert_eq!(v.mem_read16_at(0xFFFF), 0x2211);
     }
 }
