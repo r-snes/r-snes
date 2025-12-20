@@ -21,6 +21,13 @@ pub(crate) struct ParserStatus {
     /// Whether PC should be automatically incremented
     pub inc_pc: bool,
 
+    /// Current position of the address bus. In some cases this can help
+    /// avoiding some recalculations when switch from common addressing modes,
+    /// for example: setting the addr mode to immediate at the start of an
+    /// instr should only require increment the addr bus by 1 since it must
+    /// point at the opcode (which is 1 before) initially.
+    pub addrmode: AddrBusPosition,
+
     /// Offset from the PC to the next immediate operand.
     /// Each time an immediate byte is read, increment this so that independent
     /// calls to FetchImm can avoid reading the same byte multiple times.
@@ -33,10 +40,23 @@ pub(crate) struct ParserStatus {
     pub operand_size: OpSize,
 }
 
+#[derive(PartialEq, Eq)]
+pub(crate) enum AddrBusPosition {
+    /// The addr bus might point at any location in memory
+    Unaligned,
+
+    /// The addr bus points at the opcode of the current instruction
+    Opcode,
+
+    /// The addr bus points at the next immediate operand
+    Immediate,
+}
+
 impl Default for ParserStatus {
     fn default() -> Self {
         Self {
             inc_pc: true,
+            addrmode: AddrBusPosition::Opcode, // at instr start, addrbus is on PC
             imm_offset: VarWidth::constw(1), // at instr start, the first imm value is 1 after PC
             operand_size: OpSize::Constant,
         }
@@ -365,10 +385,22 @@ impl MetaInstruction {
             }
 
             Self::SetAddrModeImmediate => {
-                ret += pstatus.imm_offset.map_into(|increment| quote! {
-                    cpu.addr_bus.bank = cpu.registers.PB;
-                    cpu.addr_bus.addr = cpu.registers.PC.wrapping_add(#increment);
-                });
+                match pstatus.addrmode {
+                    AddrBusPosition::Immediate => {} // already imm, nothing to do
+                    AddrBusPosition::Opcode => { // addrbus is already at PB:PC
+                        ret += pstatus.imm_offset.map_into(|increment| quote! {
+                            // in practice the increment is always 1
+                            cpu.addr_bus.addr = cpu.addr_bus.addr.wrapping_add(#increment);
+                        });
+                    }
+                    _ => { // default case, reset entire addrbus from scratch
+                        ret += pstatus.imm_offset.map_into(|increment| quote! {
+                            cpu.addr_bus.bank = cpu.registers.PB;
+                            cpu.addr_bus.addr = cpu.registers.PC.wrapping_add(#increment);
+                        });
+                    }
+                }
+                pstatus.addrmode = AddrBusPosition::Immediate;
             }
             Self::SetAddrModeAbsolute => {
                 // start by fetching the address at which we'll be reading/writing
@@ -378,6 +410,7 @@ impl MetaInstruction {
                     cpu.addr_bus.addr = cpu.internal_data_bus;
                     cpu.addr_bus.bank = cpu.registers.DB;
                 });
+                pstatus.addrmode = AddrBusPosition::Unaligned;
             }
             Self::SetAddrModeAbsoluteLong => {
                 ret += Self::Fetch16ImmInto(quote!(cpu.internal_data_bus)).expand(pstatus);
@@ -386,7 +419,8 @@ impl MetaInstruction {
                 ret += quote! {
                     cpu.addr_bus.addr = cpu.internal_data_bus;
                     cpu.addr_bus.bank = cpu.data_bus;
-                }
+                };
+                pstatus.addrmode = AddrBusPosition::Unaligned;
             }
             Self::SetAddrModeAbsLongX => {
                 ret += Self::SetAddrModeAbsoluteLong.expand(pstatus);
@@ -425,6 +459,7 @@ impl MetaInstruction {
                 ret += quote! {
                     cpu.addr_bus = snes_addr!(0:cpu.registers.D.wrapping_add(cpu.data_bus as u16));
                 };
+                pstatus.addrmode = AddrBusPosition::Unaligned;
             }
             Self::SetAddrModeDirectXIndirect => {
                 ret += Self::SetAddrModeDirect.expand(pstatus);
@@ -496,6 +531,7 @@ impl MetaInstruction {
                     cpu.addr_bus.addr = cpu.registers.S;
                     cpu.addr_bus.bank = 0;
                 });
+                pstatus.addrmode = AddrBusPosition::Unaligned;
             }
             Self::SetAddrModeStackRelative => {
                 ret += Self::Fetch8Imm.expand(pstatus); // read stack offset
@@ -503,7 +539,8 @@ impl MetaInstruction {
                 ret += quote! {
                     // set the addr bus to 0:S+SO
                     cpu.addr_bus = snes_addr!(0:cpu.registers.S.wrapping_add(cpu.data_bus as u16));
-                }
+                };
+                pstatus.addrmode = AddrBusPosition::Unaligned;
             }
             Self::SetAddrModeStackRelativeIndirectY => {
                 ret += Self::SetAddrModeStackRelative.expand(pstatus);
@@ -518,27 +555,51 @@ impl MetaInstruction {
             Self::Fetch8Into(dest) => {
                 ret += Self::EndCycle(quote! { Read }).expand(pstatus);
                 ret += quote! { #dest = cpu.data_bus; };
+                if pstatus.addrmode == AddrBusPosition::Immediate {
+                    pstatus.imm_offset += 1;
+                }
+                pstatus.addrmode = AddrBusPosition::Unaligned; // next imm is 1 further
             }
             Self::Fetch16Into(into) => {
+                let is_imm = pstatus.addrmode == AddrBusPosition::Immediate;
+
                 ret += Self::Fetch8Into(quote! { *#into.lo_mut() }).expand(pstatus);
                 ret += InstrBody::post(quote! {
                     cpu.addr_bus.addr = cpu.addr_bus.addr.wrapping_add(1);
                 });
+                if is_imm { // if we started as imm, now we are imm again
+                    pstatus.addrmode = AddrBusPosition::Immediate;
+                }
                 ret += Self::Fetch8Into(quote! { *#into.hi_mut() }).expand(pstatus);
             }
 
             Self::FetchOperandInto(into) => {
+                let is_imm = pstatus.addrmode == AddrBusPosition::Immediate;
+
+                if is_imm {
+                    // we "hide" the fact that we're reading imm when we are, otherwise
+                    // the next two following meta-instr expansions would mess
+                    // up trying to update the imm_offset, since they are expanded
+                    // *sequentially*, when in practice they end up in split
+                    // instr bodies
+                    pstatus.addrmode = AddrBusPosition::Unaligned;
+                }
                 ret += MetaInstrExpansion::VarWidth{
                     short: Self::Fetch8Into(quote! { *#into.lo_mut() }).expand(pstatus).expect_const(),
                     long: Self::Fetch16Into(into).expand(pstatus).expect_const(),
                     data: (),
                 };
+                if is_imm {
+                    // and now add the imm_offset of either 1 or 2
+                    pstatus.imm_offset += VarWidth::varw(1, 2);
+                }
             }
 
             Self::Fetch8Imm => {
                 ret += Self::SetAddrModeImmediate.expand(pstatus);
                 ret += Self::EndCycle(quote! { Read }).expand(pstatus);
                 pstatus.imm_offset += 1;
+                pstatus.addrmode = AddrBusPosition::Unaligned; // 1 off from next imm
             }
             Self::Fetch8ImmInto(into) => {
                 ret += Self::Fetch8Imm.expand(pstatus);
@@ -547,7 +608,6 @@ impl MetaInstruction {
             Self::Fetch16ImmInto(into) => {
                 ret += Self::SetAddrModeImmediate.expand(pstatus);
                 ret += Self::Fetch16Into(into).expand(pstatus);
-                pstatus.imm_offset += 2;
             }
 
             Self::Pull8 => {
@@ -729,6 +789,12 @@ impl<T: Clone, U: Default> VarWidth<T, U> {
     /// Same as `split`, but default-constructs the associated data
     fn split_default(&mut self) {
         self.split(U::default())
+    }
+}
+
+impl<T, U: Default> VarWidth<T, U> {
+    pub fn varw(short: T, long: T) -> Self {
+        Self::VarWidth{short, long, data: U::default()}
     }
 }
 
