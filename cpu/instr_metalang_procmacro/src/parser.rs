@@ -718,7 +718,7 @@ impl MetaInstruction {
             }
             Self::SetNZOperand(op) => {
                 ret += MetaInstrExpansion::VarWidth{
-                    short: Self::SetNZ8(op.clone()).expand(pstatus).expect_const(),
+                    short: Self::SetNZ8(quote!(*#op.lo())).expand(pstatus).expect_const(),
                     long: Self::SetNZ16(op).expand(pstatus).expect_const(),
                     data: (),
                 }
