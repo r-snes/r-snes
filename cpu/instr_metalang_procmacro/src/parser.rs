@@ -432,10 +432,7 @@ impl MetaInstruction {
                 ret += Self::SetAddrModeAbsolute.expand(pstatus);
 
                 let new_addr = quote!(cpu.addr_bus.addr.wrapping_add(cpu.registers.X));
-                // spend an additional cycle if indexing across page boundaries (cpu doc note 4)
-                ret += Self::IdleIf(
-                    quote!(*cpu.addr_bus.addr.hi() != *#new_addr.hi())
-                ).expand(pstatus);
+                ret += InstrBody::note4(new_addr.clone());
                 ret += quote! {
                     cpu.addr_bus.addr = #new_addr;
                 }
@@ -444,10 +441,7 @@ impl MetaInstruction {
                 ret += Self::SetAddrModeAbsolute.expand(pstatus);
 
                 let new_addr = quote!(cpu.addr_bus.addr.wrapping_add(cpu.registers.Y));
-                // spend an additional cycle if indexing across page boundaries (cpu doc note 4)
-                ret += Self::IdleIf(
-                    quote!(*cpu.addr_bus.addr.hi() != *#new_addr.hi())
-                ).expand(pstatus);
+                ret += InstrBody::note4(new_addr.clone());
                 ret += quote! {
                     cpu.addr_bus.addr = #new_addr;
                 }
@@ -485,10 +479,7 @@ impl MetaInstruction {
                 ret += Self::SetAddrModeDirectIndirect.expand(pstatus);
 
                 let new_addr = quote!(cpu.addr_bus.addr.wrapping_add(cpu.registers.Y));
-                // spend an additional cycle if indexing across page boundaries (cpu doc note 4)
-                ret += Self::IdleIf(
-                    quote!(*cpu.addr_bus.addr.hi() != *#new_addr.hi())
-                ).expand(pstatus);
+                ret += InstrBody::note4(new_addr.clone());
                 ret += quote! {
                     cpu.addr_bus.bank = cpu.registers.DB;
                     cpu.addr_bus.addr = #new_addr;
@@ -1017,6 +1008,22 @@ impl InstrBody {
 
     pub fn post(post_instr: TokenStream) -> Self {
         Self::new(vec![], post_instr)
+    }
+
+    /// Generate a conditional cycle as described by the cpu doc note 4
+    ///
+    /// Used by some indexed instructions, where 1 cycle is spent idling when
+    /// indexing crosses a page boundary. The cycle is also always idled when
+    /// the X flag is clear (when it allows index registers to be 16-bit long)
+    ///
+    /// The optional cycle happens right before the I/O cycle which uses the
+    /// indexed address.
+    ///
+    /// This should be called before setting the new address in the address bus.
+    pub fn note4(new_address: TokenStream) -> Self {
+        Self::cycles(vec![Cycle::conditional(
+            quote!(!cpu.registers.P.X || *cpu.addr_bus.addr.hi() != *#new_address.hi())
+        )])
     }
 }
 
