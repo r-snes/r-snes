@@ -481,7 +481,6 @@ impl MetaInstruction {
                 let new_addr = quote!(cpu.addr_bus.addr.wrapping_add(cpu.registers.Y));
                 ret += InstrBody::note4(new_addr.clone());
                 ret += quote! {
-                    cpu.addr_bus.bank = cpu.registers.DB;
                     cpu.addr_bus.addr = #new_addr;
                 }
             }
@@ -594,7 +593,7 @@ impl MetaInstruction {
             }
             Self::Fetch8ImmInto(into) => {
                 ret += Self::Fetch8Imm.expand(pstatus);
-                ret += InstrBody::post(quote! { #into = cpu.data_bus; });
+                ret += quote! { #into = cpu.data_bus; };
             }
             Self::Fetch16ImmInto(into) => {
                 ret += Self::SetAddrModeImmediate.expand(pstatus);
@@ -735,32 +734,6 @@ impl<T, U> VarWidth<T, U> {
             _ => panic!("Unexpected variable width"),
         }
     }
-
-    pub fn map_mut(&mut self, mapfunc: impl Fn(&mut T)) {
-        match self {
-            Self::ConstWidth(x) => mapfunc(x),
-            Self::VarWidth{short, long, ..} => {
-                mapfunc(short);
-                mapfunc(long);
-            }
-        }
-    }
-}
-
-impl<T: Clone, U> VarWidth<T, U> {
-    /// Splits this variable width data into the actual variable width
-    /// variant from the constant width variant
-    fn split(&mut self, data: U) {
-        let Self::ConstWidth(x) = self else {
-            return; // if we're already var width, early return
-        };
-
-        *self = Self::VarWidth {
-            short: x.clone(),
-            long: x.clone(),
-            data,
-        };
-    }
 }
 
 impl<T, U: Clone> VarWidth<T, U> {
@@ -776,33 +749,11 @@ impl<T, U: Clone> VarWidth<T, U> {
     }
 }
 
-impl<T: Clone, U: Default> VarWidth<T, U> {
-    /// Same as `split`, but default-constructs the associated data
-    fn split_default(&mut self) {
-        self.split(U::default())
-    }
-}
-
 impl<T, U: Default> VarWidth<T, U> {
     pub fn varw(short: T, long: T) -> Self {
         Self::VarWidth{short, long, data: U::default()}
     }
 }
-
-// "unofficial" clone cause otherwise we get conflicting AddAssign implementations
-impl<T: Clone, U: Clone> VarWidth<T, U> {
-    fn clone(&self) -> Self {
-        match self {
-            Self::ConstWidth(d) => Self::ConstWidth(d.clone()),
-            Self::VarWidth{short, long, data} => Self::VarWidth {
-                short: short.clone(),
-                long: long.clone(),
-                data: data.clone(),
-            },
-        }
-    }
-}
-
 
 impl<T: Default, U> Default for VarWidth<T, U> {
     fn default() -> Self {
@@ -1060,13 +1011,6 @@ impl Cycle {
 
     fn conditional(condition: TokenStream) -> Self {
         Self::ConditionalIdle{condition, body: quote!()}
-    }
-
-    fn body_ref(&self) -> &TokenStream {
-        match self {
-            Self::Unconditional{body, ..} => body,
-            Self::ConditionalIdle{body, ..} => body,
-        }
     }
 
     fn body_mut(&mut self) -> &mut TokenStream {

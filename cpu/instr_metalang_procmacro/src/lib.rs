@@ -329,4 +329,88 @@ mod test {
             ),
         );
     }
+
+    #[test]
+    fn conditional_cycle() {
+        assert_macro_produces(
+            quote!(cond {
+                let a = 0;
+                meta IDLE_IF some_var < 0;
+                meta END_CYCLE Internal;
+            }),
+            quote!(
+                pub(crate) use cond::*;
+                pub(crate) mod cond {
+                    use crate::instrs::prelude::*;
+
+                    pub(crate) fn cond_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
+                        let a = 0;
+
+                        if !(some_var < 0) {
+                            return (cond_cyc2)(cpu);
+                        }
+                        (Internal, InstrCycle(cond_cyc2))
+                    }
+
+                    pub(crate) fn cond_cyc2(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
+                        (Internal, InstrCycle(opcode_fetch))
+                    }
+                }
+            ),
+        )
+    }
+
+    #[test]
+    fn variable_width() {
+        assert_macro_produces(
+            quote!(varwidth {
+                meta SET_OP_SIZE AccMem;
+                meta SET_ADDRMODE_IMM;
+                meta FETCH_OP_INTO cpu.internal_data_bus;
+            }),
+            quote!(
+                pub(crate) use varwidth::*;
+                pub(crate) mod varwidth {
+                    use crate::instrs::prelude::*;
+
+                    pub(crate) fn varwidth_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
+                        if !cpu.registers.P.E && !cpu.registers.P.M {
+                            self::_16::varwidth_cyc1(cpu)
+                        } else {
+                            self::_8::varwidth_cyc1(cpu)
+                        }
+                    }
+
+                    pub(crate) mod _8 {
+                        use crate::instrs::prelude::*;
+                        pub(crate) fn varwidth_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
+                            cpu.addr_bus.addr = cpu.addr_bus.addr.wrapping_add(1u16);
+                            (Read, InstrCycle(|cpu| {
+                                *cpu.internal_data_bus.lo_mut() = cpu.data_bus;
+                                opcode_fetch(cpu)
+                            }))
+                        }
+                    }
+
+                    pub(crate) mod _16 {
+                        use crate::instrs::prelude::*;
+                        pub(crate) fn varwidth_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
+                            cpu.addr_bus.addr = cpu.addr_bus.addr.wrapping_add(1u16);
+                            (Read, InstrCycle(varwidth_cyc2))
+                        }
+
+                        pub(crate) fn varwidth_cyc2(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
+                            *cpu.internal_data_bus.lo_mut() = cpu.data_bus;
+                            cpu.addr_bus.addr = cpu.addr_bus.addr.wrapping_add(1);
+
+                            (Read, InstrCycle(|cpu| {
+                                *cpu.internal_data_bus.hi_mut() = cpu.data_bus;
+                                opcode_fetch(cpu)
+                            }))
+                        }
+                    }
+                }
+            ),
+        )
+    }
 }
