@@ -220,13 +220,6 @@ impl Vram {
         self.mem[byte_addr & 0xFFFF] = (word & 0xFF) as u8;
         self.mem[(byte_addr + 1) & 0xFFFF] = (word >> 8) as u8;
     }
-    // pub fn mem_write16_at(&mut self, addr: u16, word: u16) {
-    //     let a = addr as usize;
-    //     let lo = (word & 0xFF) as u8;
-    //     let hi = (word >> 8) as u8;
-    //     self.mem[a % 0x10000] = lo;
-    //     self.mem[(a.wrapping_add(1)) % 0x10000] = hi;
-    // }
 
     /// Reads a 16-bit word directly from VRAM memory at the given address.
     ///
