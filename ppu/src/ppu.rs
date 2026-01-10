@@ -27,15 +27,15 @@ impl Ppu {
     /// Writes to unsupported registers are ignored.
     pub fn write_register(&mut self, addr: u16, value: u8) {
         match addr {
-            // VRAM address low byte
+            // OAM data port
+            0x2104 => self.oam.write_data(value),
+
+            // VRAM address
             0x2116 => self.vram.write_addr_low(value),
-
-            // VRAM address high byte
             0x2117 => self.vram.write_addr_high(value),
-
-            // VRAM data port (low / high byte writes)
-            0x2118 => self.vram.write_data_port(value),
-            0x2119 => self.vram.write_data_port(value),
+            // VRAM data port
+            0x2118 => self.vram.write_data_low(value),
+            0x2119 => self.vram.write_data_high(value),
 
             // Unhandled registers
             _ => {}
@@ -50,9 +50,12 @@ impl Ppu {
     /// Reads from unsupported registers return 0.
     pub fn read_register(&mut self, addr: u16) -> u8 {
         match addr {
-            // VRAM data read port (low / high byte reads)
-            0x2139 => self.vram.read_data_port_byte(),
-            0x213A => self.vram.read_data_port_byte(),
+            // OAM data port
+            0x2105 => self.oam.read_data(),
+
+            // VRAM data ports
+            0x2139 => self.vram.read_data_low(),
+            0x213A => self.vram.read_data_high(),
 
             // Unhandled registers
             _ => 0,
