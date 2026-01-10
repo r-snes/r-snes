@@ -9,7 +9,8 @@
 #[derive(Debug)]
 pub struct Vram {
     mem: Vec<u8>,
-    vma_addr: u32,
+    vma_addr: u16,
+    vmain: u8, // $2115
     addr_latch_low: Option<u8>,
     read_buffer: u16,
     read_buffer_valid: bool,
@@ -27,12 +28,145 @@ impl Vram {
         Self {
             mem: vec![0; 0x10000],
             vma_addr: 0,
+            vmain: 0,
             addr_latch_low: None,
             read_buffer: 0,
             read_buffer_valid: false,
             read_byte_index: 0,
             auto_inc: 1,
         }
+    }
+
+    /// Writes a value to the VMAIN register ($2115).
+    ///
+    /// This register controls the VRAM address increment mode:
+    /// - bits 0-1: increment value selection (1, 32, 128)
+    /// - bit 7: increment on high/low byte
+    pub fn write_vmain(&mut self, value: u8) {
+        self.vmain = value;
+    }
+
+    /// Returns the increment value based on the current VMAIN setting.
+    ///
+    /// Determines how much the VRAM address should advance after a read or write
+    /// depending on bits 0-1 of VMAIN.
+    fn increment_value(&self) -> u16 {
+        match self.vmain & 0b11 {
+            0 => 1,
+            1 => 32,
+            2 => 128,
+            _ => 1,
+        }
+    }
+
+    /// Checks if the increment should occur after reading/writing the high byte.
+    ///
+    /// Controlled by bit 7 of VMAIN. Returns true if increment happens on high byte.
+    fn increment_on_high(&self) -> bool {
+        self.vmain & 0x80 != 0
+    }
+
+    /// Increments the VRAM address if the current byte (high or low) matches the VMAIN increment setting.
+    ///
+    /// `is_high` indicates whether the current operation is on the high byte.
+    /// Only increments if the VMAIN setting matches the byte being processed.
+    fn maybe_increment(&mut self, is_high: bool) {
+        if self.increment_on_high() == is_high {
+            self.vma_addr = self.vma_addr.wrapping_add(self.increment_value());
+        }
+    }
+
+    /// Writes the low byte of the VRAM address ($2116).
+    ///
+    /// This sets only the lower 8 bits of `vma_addr`.
+    /// Any buffered read state is cleared to start a new read sequence.
+    pub fn write_addr_low(&mut self, value: u8) {
+        self.vma_addr = (self.vma_addr & 0xFF00) | value as u16;
+        self.read_buffer_valid = false;
+    }
+
+    /// Writes the high byte of the VRAM address ($2117).
+    ///
+    /// This sets only the upper 8 bits of `vma_addr`.
+    /// Any buffered read state is cleared to start a new read sequence.
+    pub fn write_addr_high(&mut self, value: u8) {
+        self.vma_addr = ((value as u16) << 8) | (self.vma_addr & 0x00FF);
+        self.read_buffer_valid = false;
+    }
+
+    /// Computes the effective memory address for the current VRAM address.
+    ///
+    /// This is mainly used internally to index the `mem` vector.
+    /// The address is doubled (shifted left 1) because VRAM stores 16-bit words in little-endian.
+    fn mem_addr(&self) -> usize {
+        ((self.vma_addr as usize) << 1) & 0xFFFF
+    }
+
+    /// Reads a 16-bit word from the current VRAM address.
+    ///
+    /// Returns the word in little-endian order: low byte first, high byte second.
+    fn read_word(&self) -> u16 {
+        let a = self.mem_addr();
+        self.mem[a] as u16 | ((self.mem[(a + 1) & 0xFFFF] as u16) << 8)
+    }
+
+    /// Writes a 16-bit word to the current VRAM address.
+    ///
+    /// The word is stored in little-endian: low byte at `addr`, high byte at `addr + 1`.
+    fn write_word(&mut self, word: u16) {
+        let a = self.mem_addr();
+        self.mem[a] = word as u8;
+        self.mem[(a + 1) & 0xFFFF] = (word >> 8) as u8;
+    }
+
+    /// Writes the low byte of a 16-bit word to the VRAM data port ($2118).
+    ///
+    /// The value is temporarily stored in `addr_latch_low`.
+    /// Any buffered read state is invalidated. Address increment may occur based on VMAIN.
+    pub fn write_data_low(&mut self, value: u8) {
+        self.addr_latch_low = Some(value);
+        self.maybe_increment(false);
+        self.read_buffer_valid = false;
+    }
+
+    /// Writes the high byte of a 16-bit word to the VRAM data port ($2119).
+    ///
+    /// Combines the previously latched low byte with this high byte to form a full 16-bit word,
+    /// which is then written to VRAM. Address increment may occur based on VMAIN.
+    pub fn write_data_high(&mut self, value: u8) {
+        let low = self.addr_latch_low.take().unwrap_or(0);
+        let word = (value as u16) << 8 | low as u16;
+        self.write_word(word);
+        self.maybe_increment(true);
+        self.read_buffer_valid = false;
+    }
+
+    //  Reads $2139 / $213A/// Reads the low byte from VRAM via the data port ($2139).
+    ///
+    /// Uses the internal read buffer. If the buffer is invalid, it is loaded from VRAM.
+    /// Address increment may occur depending on VMAIN settings.
+    pub fn read_data_low(&mut self) -> u8 {
+        if !self.read_buffer_valid {
+            self.read_buffer = self.read_word();
+            self.read_buffer_valid = true;
+        }
+        let out = (self.read_buffer & 0xFF) as u8;
+        self.maybe_increment(false);
+        out
+    }
+
+    /// Reads the high byte from VRAM via the data port ($213A).
+    ///
+    /// Uses the internal read buffer. If the buffer is invalid, it is loaded from VRAM.
+    /// Address increment may occur depending on VMAIN settings.
+    pub fn read_data_high(&mut self) -> u8 {
+        if !self.read_buffer_valid {
+            self.read_buffer = self.read_word();
+            self.read_buffer_valid = true;
+        }
+        let out = (self.read_buffer >> 8) as u8;
+        self.maybe_increment(true);
+        out
     }
 
     /// Loads raw data into VRAM memory starting at address 0.
@@ -47,39 +181,13 @@ impl Vram {
         self.mem[..len].copy_from_slice(&src[..len]);
     }
 
-    /// Writes the low byte of the current VRAM address.
-    ///
-    /// This updates only the lower 8 bits of the internal address while keeping
-    /// the previously written high byte intact. Any pending read buffer state is cleared,
-    /// ensuring that subsequent reads start a new buffered sequence.
-    pub fn write_addr_low(&mut self, value: u8) {
-        let high = ((self.vma_addr >> 8) & 0xFF) as u8;
-        let new = (((high as u16) << 8) | (value as u16)) as u32;
-        self.vma_addr = new & 0xFFFF;
-        self.read_buffer_valid = false;
-        self.read_byte_index = 0;
-    }
-
-    /// Writes the high byte of the current VRAM address.
-    ///
-    /// This updates only the upper 8 bits of the internal address while keeping
-    /// the previously written low byte intact. Any pending read buffer state is cleared,
-    /// ensuring that subsequent reads start a new buffered sequence.
-    pub fn write_addr_high(&mut self, value: u8) {
-        let low = (self.vma_addr & 0xFF) as u8;
-        let new = ((((value as u16) << 8) | (low as u16)) as u32) & 0xFFFF;
-        self.vma_addr = new;
-        self.read_buffer_valid = false;
-        self.read_byte_index = 0;
-    }
-
     /// Directly sets the current VRAM address using a full 16-bit value.
     ///
     /// This bypasses the low/high write sequence and replaces the address entirely.
     /// Any buffered read state is cleared so that subsequent reads behave
     /// as if the address has just been changed.
     pub fn set_addr(&mut self, addr: u16) {
-        self.vma_addr = (addr as u32) & 0xFFFF;
+        self.vma_addr = addr;
         self.read_buffer_valid = false;
         self.read_byte_index = 0;
     }
@@ -106,13 +214,19 @@ impl Vram {
     /// - high byte at `addr + 1`
     ///
     /// Address wrapping is handled automatically within the 64 KiB space.
-    pub fn mem_write16_at(&mut self, addr: u16, word: u16) {
-        let a = addr as usize;
-        let lo = (word & 0xFF) as u8;
-        let hi = (word >> 8) as u8;
-        self.mem[a % 0x10000] = lo;
-        self.mem[(a.wrapping_add(1)) % 0x10000] = hi;
+    pub fn mem_write16_at(&mut self, addr_word: u16, word: u16) {
+        let byte_addr = (addr_word as usize) << 1;
+        
+        self.mem[byte_addr & 0xFFFF] = (word & 0xFF) as u8;
+        self.mem[(byte_addr + 1) & 0xFFFF] = (word >> 8) as u8;
     }
+    // pub fn mem_write16_at(&mut self, addr: u16, word: u16) {
+    //     let a = addr as usize;
+    //     let lo = (word & 0xFF) as u8;
+    //     let hi = (word >> 8) as u8;
+    //     self.mem[a % 0x10000] = lo;
+    //     self.mem[(a.wrapping_add(1)) % 0x10000] = hi;
+    // }
 
     /// Reads a 16-bit word directly from VRAM memory at the given address.
     ///
@@ -141,54 +255,53 @@ impl Vram {
         } else {
             let low = self.addr_latch_low.take().unwrap();
             let word = (value as u16) << 8 | (low as u16);
-            let addr = (self.vma_addr & 0xFFFF) as u16;
+
+            let addr = self.vma_addr;
             self.mem_write16_at(addr, word);
-            self.vma_addr = (self.vma_addr.wrapping_add(self.auto_inc as u32)) & 0xFFFF;
+
+            self.vma_addr = self.vma_addr.wrapping_add(self.auto_inc);
+
             self.read_buffer_valid = false;
             self.read_byte_index = 0;
         }
     }
 
-    /// Reads a single byte from the VRAM data port.
+    /// Reads the low byte of the current VRAM data port word.
     ///
-    /// Reads are buffered internally. When the buffer is not valid, the function returns the previously buffered value
-    /// (or zero initially) and immediately refills the buffer from the current address.
-    /// Subsequent reads return the low byte first, then the high byte of the buffered word.
-    ///
-    /// After the high byte is returned, the buffer is refreshed from the next
-    /// address and the address is automatically advanced.
-    pub fn read_data_port_byte(&mut self) -> u8 {
+    /// If the internal read buffer is not valid, it is first filled from the current
+    /// VRAM address. The low byte of the buffered word is then returned.
+    /// The buffer remains valid, so a subsequent call to read the high byte will return the upper byte of the same word.
+    pub fn read_data_port_low(&mut self) -> u8 {
         if !self.read_buffer_valid {
-            // First read after address change: per hardware the returned value is the previous buffer (we assume zero)
-            // But immediately fill the buffer from current VMA and set index so next read returns low byte.
-            let returned = (self.read_buffer & 0xFF) as u8; // previous buffered low (initially 0)
-            // refill buffer from current VMA
-            let addr = (self.vma_addr & 0xFFFF) as u16;
+            let addr = self.vma_addr;
             self.read_buffer = self.mem_read16_at(addr);
             self.read_buffer_valid = true;
-            self.read_byte_index = 0; // next read returns low byte from just-filled buffer
-            // On some hardware semantics the buffer refill may increment VMA immediately (we follow that)
-            self.vma_addr = (self.vma_addr.wrapping_add(self.auto_inc as u32)) & 0xFFFF;
-            return returned;
-        } else {
-            // Buffer valid: return byte depending on index
-            let out = if self.read_byte_index == 0 {
-                (self.read_buffer & 0xFF) as u8
-            } else {
-                (self.read_buffer >> 8) as u8
-            };
-
-            // advance index
-            self.read_byte_index = (self.read_byte_index + 1) & 1;
-
-            // If we've just returned the high byte (index wrapped to 0), then refill buffer from current VMA and increment VMA.
-            if self.read_byte_index == 0 {
-                let addr = (self.vma_addr & 0xFFFF) as u16;
-                self.read_buffer = self.mem_read16_at(addr);
-                self.vma_addr = (self.vma_addr.wrapping_add(self.auto_inc as u32)) & 0xFFFF;
-            }
-            return out;
         }
+
+        (self.read_buffer & 0x00FF) as u8
+    }
+
+    /// Reads the high byte of the current VRAM data port word.
+    ///
+    /// If the internal read buffer is not valid, it is first filled from the current
+    /// VRAM address. The high byte of the buffered word is then returned.
+    /// After returning the high byte, the VRAM address is automatically incremented
+    /// by the configured auto-increment value, and the buffer is invalidated.
+    pub fn read_data_port_high(&mut self) -> u8 {
+        // Si quelqu’un lit HIGH sans avoir lu LOW avant
+        if !self.read_buffer_valid {
+            let addr = self.vma_addr;
+            self.read_buffer = self.mem_read16_at(addr);
+            self.read_buffer_valid = true;
+        }
+
+        let hi = (self.read_buffer >> 8) as u8;
+
+        // Increment VRAM address after reading high byte
+        self.vma_addr = self.vma_addr.wrapping_add(self.auto_inc);
+        self.read_buffer_valid = false;
+
+        hi
     }
 
     /// Helper: read a full 16-bit word via data port sequence (two calls).
@@ -196,8 +309,8 @@ impl Vram {
     /// This method performs two consecutive byte reads and combines them into a single 16-bit value,
     /// returning the low byte first and the high byte second.
     pub fn read_word_via_port(&mut self) -> u16 {
-        let lo = self.read_data_port_byte() as u16;
-        let hi = self.read_data_port_byte() as u16;
+        let lo = self.read_data_port_low() as u16;
+        let hi = self.read_data_port_high() as u16;
         (hi << 8) | lo
     }
 }
@@ -207,7 +320,6 @@ mod vram_tests {
     use super::Vram;
 
     /// Verifies the power-on state of VRAM.
-    ///
     /// Ensures memory is zero-initialized and the address starts at 0x0000.
     #[test]
     fn power_on_state() {
@@ -263,8 +375,12 @@ mod vram_tests {
         v.mem_write16_at(0x4000, 0x1111);
         v.set_addr(0x4000);
 
-        let first = v.read_data_port_byte();
-        assert_eq!(first, 0x00); // buffered delay
+        // Read low and high via new methods
+        let lo = v.read_data_port_low();
+        let hi = v.read_data_port_high();
+
+        assert_eq!(lo, 0x11);
+        assert_eq!(hi, 0x11);
     }
 
     /// Verifies that the automatic address increment is applied after a write.
@@ -293,20 +409,16 @@ mod vram_tests {
         assert_eq!(value, 0xA55A);
     }
 
-    /// Verifies the buffered read behavior of the VRAM data port.
-    ///
-    /// The first read returns a delayed value, followed by low and high bytes.
+    /// Verifies the buffered read behavior using low/high port reads.
     #[test]
     fn buffered_read_behavior() {
         let mut v = Vram::new();
         v.mem_write16_at(0x6000, 0xBEEF);
         v.set_addr(0x6000);
 
-        let first = v.read_data_port_byte();
-        let lo = v.read_data_port_byte();
-        let hi = v.read_data_port_byte();
+        let lo = v.read_data_port_low();
+        let hi = v.read_data_port_high();
 
-        assert_eq!(first, 0x00); // delayed buffer read
         assert_eq!(lo, 0xEF);
         assert_eq!(hi, 0xBE);
     }
@@ -318,7 +430,6 @@ mod vram_tests {
         v.mem_write16_at(0x7000, 0xCAFE);
         v.set_addr(0x7000);
 
-        let _ = v.read_data_port_byte(); // discard buffered read
         let value = v.read_word_via_port();
 
         assert_eq!(value, 0xCAFE);
