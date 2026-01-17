@@ -271,6 +271,10 @@ pub(crate) enum MetaInstruction {
 
     /// Sets the CPU flags N and Z for a variable width value
     SetNZOperand(TokenStream),
+
+    /// Call a variable-width operation, as defined in the
+    /// VarWidthOp trait in the cpu crate
+    VarWidthOp(TokenTree),
 }
 
 impl MetaInstruction {
@@ -342,6 +346,8 @@ impl MetaInstruction {
             "SET_NZ8" => MetaInstruction::SetNZ8(it.by_ref().collect()),
             "SET_NZ16" => MetaInstruction::SetNZ16(it.by_ref().collect()),
             "SET_NZ_OP" => MetaInstruction::SetNZOperand(it.by_ref().collect()),
+
+            "VAR_WIDTH_OP" => MetaInstruction::VarWidthOp(it.next().expect("impl VarWidthOp")),
 
             kw => panic!("Unknown meta-keyword: {}", kw),
         };
@@ -712,6 +718,16 @@ impl MetaInstruction {
                     long: Self::SetNZ16(op).expand(pstatus).expect_const(),
                     data: (),
                 }
+            }
+            Self::VarWidthOp(op) => {
+                ret += VarWidth::varw(
+                    quote! {
+                        <#op as VarWidthOp>::op8(cpu);
+                    },
+                    quote! {
+                        <#op as VarWidthOp>::op16(cpu);
+                    },
+                );
             }
         }
         ret
