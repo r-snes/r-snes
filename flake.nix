@@ -1,8 +1,8 @@
 {
   inputs = {
     flake-utils.url = "github:numtide/flake-utils";
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-25.05";
-    rust-nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-unstable";
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-25.11";
+    rust-nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
   };
 
   outputs =

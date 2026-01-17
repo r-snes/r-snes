@@ -4,6 +4,8 @@ mod prelude;
 #[cfg(test)]
 mod test_prelude;
 
+mod arithmetic;
+
 mod branches;
 mod flags;
 mod jumps;
