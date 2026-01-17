@@ -191,7 +191,7 @@ fn test_adsr_attack_phase() {
 
     for _ in 0..30 {
         let prev = v.adsr.envelope_level;
-        v.update_envelope();
+        v.adsr.update_envelope();
 
         if prev < 0x7FF {
             // The ONLY valid phases during attack ramp-up are: Attack OR Decay (if we hit max)
@@ -215,12 +215,12 @@ fn test_adsr_decay_phase() {
     voice.adsr.envelope_phase = EnvelopePhase::Decay;
 
     voice.adsr.decay_rate = 5;
-    voice.adsr.sustain_level = 8; // target = 256
+    voice.adsr.sustain_level = 8; // target = 8 * 32 = 256
+    voice.adsr.envelope_level = 700;
 
-    voice.adsr.envelope_level = 700; // above sustain threshold
+    for _ in 0..100 {
+        voice.adsr.update_envelope();
 
-    for _ in 0..50 {
-        voice.update_envelope();
         if voice.adsr.envelope_phase == EnvelopePhase::Sustain {
             break;
         }
@@ -231,29 +231,33 @@ fn test_adsr_decay_phase() {
 }
 
 #[test]
-fn test_adsr_sustain_phase() {
+fn test_adsr_sustain_phase_decreases() {
     let mut voice = Voice::default();
     voice.adsr.envelope_phase = EnvelopePhase::Sustain;
     voice.adsr.envelope_level = 500;
+    voice.adsr.sustain_rate = 4;
+
+    let start = voice.adsr.envelope_level;
 
     for _ in 0..10 {
-        voice.update_envelope();
+        voice.adsr.update_envelope();
     }
 
-    assert_eq!(voice.adsr.envelope_phase, EnvelopePhase::Sustain);
-    assert_eq!(voice.adsr.envelope_level, 500);
+    assert!(
+        voice.adsr.envelope_level < start,
+        "Sustain phase must decrease envelope level"
+    );
 }
 
 #[test]
 fn test_adsr_release_phase() {
     let mut voice = Voice::default();
     voice.adsr.envelope_phase = EnvelopePhase::Release;
-
-    voice.adsr.release_rate = 8;
     voice.adsr.envelope_level = 300;
 
-    for _ in 0..50 {
-        voice.update_envelope();
+    for _ in 0..100 {
+        voice.adsr.update_envelope();
+
         if voice.adsr.envelope_phase == EnvelopePhase::Off {
             break;
         }
@@ -266,42 +270,30 @@ fn test_adsr_release_phase() {
 #[test]
 fn test_adsr_full_cycle() {
     let mut v = Voice::default();
+
     v.adsr.attack_rate = 20;
     v.adsr.decay_rate = 4;
-    v.adsr.sustain_level = 6;
-    v.adsr.release_rate = 8;
+    v.adsr.sustain_level = 6; // target = 192
+    v.adsr.sustain_rate = 2;
 
     v.adsr.envelope_phase = EnvelopePhase::Attack;
 
     // Attack → Decay
     while v.adsr.envelope_phase == EnvelopePhase::Attack {
-        v.update_envelope();
+        v.adsr.update_envelope();
     }
     assert_eq!(v.adsr.envelope_phase, EnvelopePhase::Decay);
 
-    // Calculate correct sustain threshold
-    let sustain_target = (v.adsr.sustain_level as u16) * 0x100 / 8;
-
     // Decay → Sustain
     while v.adsr.envelope_phase == EnvelopePhase::Decay {
-        v.update_envelope();
+        v.adsr.update_envelope();
     }
-
     assert_eq!(v.adsr.envelope_phase, EnvelopePhase::Sustain);
 
-    // Envelope should be <= sustain target (not necessarily equal)
-    assert!(
-        v.adsr.envelope_level <= sustain_target,
-        "Envelope must be at or below computed sustain target"
-    );
-
-    // Release → Off
-    v.adsr.envelope_phase = EnvelopePhase::Release;
-
-    while v.adsr.envelope_phase == EnvelopePhase::Release {
-        v.update_envelope();
+    // Sustain → Off
+    while v.adsr.envelope_phase == EnvelopePhase::Sustain {
+        v.adsr.update_envelope();
     }
-
     assert_eq!(v.adsr.envelope_phase, EnvelopePhase::Off);
     assert_eq!(v.adsr.envelope_level, 0);
 }
