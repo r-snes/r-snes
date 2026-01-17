@@ -86,6 +86,35 @@ impl Adsr {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum EnvelopePhase {
+    Attack,
+    Decay,
+    Sustain,
+    Release,
+    Off,
+}
+
+/// BRR decoding state (per voice)
+#[derive(Debug, Clone, Copy)]
+pub struct Brr {
+    pub addr: u16,   // address of current BRR block
+    pub pos: u8,     // nibble index (0..15)
+    pub prev1: i16,  // previous decoded sample
+    pub prev2: i16,  // sample before that
+}
+
+impl Default for Brr {
+    fn default() -> Self {
+        Self {
+            addr: 0,
+            pos: 0,
+            prev1: 0,
+            prev2: 0,
+        }
+    }
+}
+
 /// Voice of the SNES APU DSP
 #[derive(Debug, Clone, Copy)]
 pub struct Voice {
@@ -97,19 +126,13 @@ pub struct Voice {
     pub sample_end: u16,
     pub current_addr: u16,
     pub frac: u16,          // fractional accumulator for pitch stepping
-    pub current_sample: i8, // last fetched sample
+    pub current_sample: i8, // last fetched sample (post-BRR)
 
     // ADSR sub-structure
     pub adsr: Adsr,
-}
 
-#[derive(Copy, Clone,Debug, PartialEq)]
-pub enum EnvelopePhase {
-    Attack,
-    Decay,
-    Sustain,
-    Release,
-    Off,
+    // BRR sub-structure
+    pub brr: Brr,
 }
 
 impl Default for Voice {
@@ -124,17 +147,32 @@ impl Default for Voice {
             current_addr: 0,
             frac: 0,
             current_sample: 0,
-
             adsr: Adsr::default(),
+            brr: Brr::default(),
         }
     }
 }
 
-impl Voice {
-    /// Update the ADSR envelope each tick
-    pub fn update_envelope(&mut self) {
-        self.adsr.update_envelope();
-    }
+/// Decode a single BRR nibble into a 16-bit PCM sample
+fn decode_brr_nibble(
+    nibble: i8,
+    shift: u8,
+    filter: u8,
+    prev1: i16,
+    prev2: i16,
+) -> i16 {
+    let mut sample = (nibble as i16) << shift;
+
+    let predicted = match filter {
+        0 => 0,
+        1 => prev1 - (prev1 >> 4),
+        2 => (prev1 * 2) - ((prev1 * 3) >> 5) - prev2 + (prev2 >> 4),
+        3 => (prev1 * 2) - ((prev1 * 13) >> 6) - prev2 + ((prev2 * 3) >> 4),
+        _ => 0,
+    };
+
+    sample = sample.saturating_add(predicted);
+    sample.clamp(-32768, 32767)
 }
 
 pub struct Dsp {
@@ -158,9 +196,7 @@ impl Dsp {
 
     /// Write DSP register (memory-mapped)
     pub fn write(&mut self, addr: u16, value: u8) {
-        // Make sure addr is in the valid DSP register range
         if addr < 0xF200 || (addr as usize) >= 0xF200 + self.registers.len() {
-            // return could be used instead of panicking if more verif is added
             panic!("Invalid DSP write address: {:#X}", addr);
         }
 
@@ -168,175 +204,142 @@ impl Dsp {
         self.registers[index] = value;
 
         match index {
-            // 0x00..=0x07: Left volume for each voice
-            // Registers 0x00..0x07 directly map to the `left_vol` field of each voice.
             0x00..=0x07 => self.voices[index].left_vol = value,
-
-            // 0x08..=0x0F: Right volume for each voice
-            // Same idea as left volume, but offset by 8.
             0x08..=0x0F => self.voices[index - 0x08].right_vol = value,
 
-            // 0x10..=0x17: Pitch low byte
-            // Sets the low 8 bits of the pitch value.
-            // The high 8 bits are updated separately at 0x18..=0x1F.
             0x10..=0x17 => {
-                let voice_idx = index - 0x10;
-                let pitch = (self.voices[voice_idx].pitch & 0xFF00) | value as u16;
-                self.voices[voice_idx].pitch = pitch;
+                let v = &mut self.voices[index - 0x10];
+                v.pitch = (v.pitch & 0xFF00) | value as u16;
             }
 
-            // 0x18..=0x1F: Pitch high byte
-            // Sets the high 8 bits of the pitch value.
             0x18..=0x1F => {
-                let voice_idx = index - 0x18;
-                let pitch = ((value as u16) << 8) | (self.voices[voice_idx].pitch & 0x00FF);
-                self.voices[voice_idx].pitch = pitch;
+                let v = &mut self.voices[index - 0x18];
+                v.pitch = ((value as u16) << 8) | (v.pitch & 0x00FF);
             }
 
-            // 0x20..=0x27: Key On
-            // Writing a nonzero value starts playback for the corresponding voice.
-            // This also resets the current address to `sample_start`
-            // and clears the fractional accumulator.
-            // Writing zero turns the voice off.
             0x20..=0x27 => {
-                let voice_idx = index - 0x20;
-                self.voices[voice_idx].key_on = value != 0;
+                let v = &mut self.voices[index - 0x20];
+                v.key_on = value != 0;
                 if value != 0 {
-                    let v = &mut self.voices[voice_idx];
                     v.current_addr = v.sample_start;
                     v.frac = 0;
+                    v.brr.addr = v.sample_start;
+                    v.brr.pos = 0;
+                    v.brr.prev1 = 0;
+                    v.brr.prev2 = 0;
                     v.adsr.envelope_phase = EnvelopePhase::Attack;
                     v.adsr.envelope_level = 0;
                 }
             }
 
-            // 0x28..=0x2F: Key Off
-            // Writing a nonzero value releases the corresponding voice.
             0x28..=0x2F => {
-                let voice_idx = index - 0x28;
                 if value != 0 {
-                    let v = &mut self.voices[voice_idx];
-                    v.adsr.envelope_phase = EnvelopePhase::Release;
+                    self.voices[index - 0x28].adsr.envelope_phase = EnvelopePhase::Release;
                 }
             }
 
-            // 0x30..=0x37: Sample Start (low byte)
-            // Sets the low 8 bits of the sample start address.
             0x30..=0x37 => {
-                let voice_idx = index - 0x30;
-                self.voices[voice_idx].sample_start =
-                    (self.voices[voice_idx].sample_start & 0xFF00) | value as u16;
+                let v = &mut self.voices[index - 0x30];
+                v.sample_start = (v.sample_start & 0xFF00) | value as u16;
             }
 
-            // 0x38..=0x3F: Sample End (low byte)
-            // Sets the low 8 bits of the sample end address.
             0x38..=0x3F => {
-                let voice_idx = index - 0x38;
-                self.voices[voice_idx].sample_end =
-                    (self.voices[voice_idx].sample_end & 0xFF00) | value as u16;
+                let v = &mut self.voices[index - 0x38];
+                v.sample_end = (v.sample_end & 0xFF00) | value as u16;
             }
 
-            // 0x50..=0x57: ADSR1 (Attack, Decay, ADSR enable)
-            // Bits:
-            // 7 - ADSR enable
-            // 6–4 - Attack rate (0–15)
-            // 3–0 - Decay rate (0–15)
             0x50..=0x57 => {
-                let voice_idx = index - 0x50;
-                let v = &mut self.voices[voice_idx];
-                v.adsr.adsr_mode = (value & 0x80) != 0; // Bit 7 enables ADSR
-                v.adsr.attack_rate   = (value >> 4) & 0x07;  // mask 3 bits
-                v.adsr.decay_rate    = value & 0x0F;
+                let v = &mut self.voices[index - 0x50];
+                v.adsr.adsr_mode   = (value & 0x80) != 0;
+                v.adsr.attack_rate = (value >> 4) & 0x07;
+                v.adsr.decay_rate  = value & 0x0F;
             }
 
-            // 0x60..=0x67: ADSR2 (Sustain level + Release rate)
-            // Bits:
-            // 7–5 - Sustain level (0–7)
-            // 4–0 - Release rate (0–31)
             0x60..=0x67 => {
-                let voice_idx = index - 0x60;
-                let v = &mut self.voices[voice_idx];
-                v.adsr.sustain_level = (value >> 5) & 0x07; // Bits 7–5
-                v.adsr.release_rate = value & 0x1F;         // Bits 4–0
+                let v = &mut self.voices[index - 0x60];
+                v.adsr.sustain_level = (value >> 5) & 0x07;
+                v.adsr.sustain_rate  = value & 0x1F;
             }
 
-            _ => {} // Other registers (echo, gain, FIR, etc.) not implemented yet
+            _ => {}
         }
     }
 
-    /// Step DSP one tick (process voices + ADSR)
+    /// Step DSP one tick (process voices + ADSR + BRR)
     pub fn step(&mut self, mem: &Memory) {
         for voice in self.voices.iter_mut() {
-            // FIRST: Update the envelope (as long as the voice is active or releasing)
             if voice.adsr.envelope_phase != EnvelopePhase::Off {
                 voice.adsr.update_envelope();
             }
 
-            // If key is not active AND envelope is Off — voice is fully silent
             if !voice.key_on && voice.adsr.envelope_phase == EnvelopePhase::Off {
                 continue;
             }
 
-            // Only advance sample position if key_on is true
             if voice.key_on {
-                // Advance fractional accumulator
                 voice.frac = voice.frac.wrapping_add(voice.pitch);
-                let step = voice.frac >> 8; // integer increment
-                voice.frac &= 0xFF;         // keep fractional
+                let step = voice.frac >> 8;
+                voice.frac &= 0xFF;
 
-                // Advance sample address
-                voice.current_addr = voice.current_addr.wrapping_add(step);
+                for _ in 0..step {
+                    let header = mem.read8(voice.brr.addr);
+                    let shift = header & 0x0F;
+                    let filter = (header >> 4) & 0x03;
 
-                // Reached end of sample?
-                if voice.current_addr >= voice.sample_end {
-                    // Trigger release
-                    voice.key_on = false;
-                    voice.adsr.envelope_phase = EnvelopePhase::Release;
-                } else {
-                    // Fetch new sample
-                    voice.current_sample = mem.read8(voice.current_addr) as i8;
+                    let byte = mem.read8(voice.brr.addr + 1 + (voice.brr.pos / 2) as u16);
+                    let mut nibble = if voice.brr.pos & 1 == 0 {
+                        ((byte >> 4) & 0x0F) as i8
+                    } else {
+                        (byte & 0x0F) as i8
+                    };
+
+                    if nibble & 0x08 != 0 {
+                        nibble |= !0x0F;
+                    }
+
+                    let sample = decode_brr_nibble(
+                        nibble,
+                        shift,
+                        filter,
+                        voice.brr.prev1,
+                        voice.brr.prev2,
+                    );
+
+                    voice.brr.prev2 = voice.brr.prev1;
+                    voice.brr.prev1 = sample;
+                    voice.current_sample = (sample >> 8) as i8;
+
+                    voice.brr.pos += 1;
+                    if voice.brr.pos >= 16 {
+                        voice.brr.pos = 0;
+                        voice.brr.addr += 9;
+                    }
                 }
             }
         }
     }
 
     /// Mix all voices and return one stereo sample (left, right).
-    /// 
-    /// This is called once per DSP tick *after* `step()` has advanced
-    /// pitch, phase, ADSR, sample pointer, etc.
-    /// 
-    /// - Each voice contributes its sample, scaled by ADSR envelope
-    ///   and stereo volume.
-    /// - Mixing occurs in floating point to avoid rounding errors.
-    /// - Final output is clamped to i16.
     pub fn render_audio_single(&self) -> (i16, i16) {
         let mut left_mix: f32 = 0.0;
         let mut right_mix: f32 = 0.0;
 
         for voice in self.voices.iter() {
-            // Skip silent or inactive voices
             if voice.adsr.envelope_phase == EnvelopePhase::Off {
                 continue;
             }
 
-            // Envelope fraction 0.0–1.0 (11-bit range)
             let env = voice.adsr.envelope_level as f32 / 0x7FF as f32;
-
-            // Raw sample: -128..127 -> float
             let base = voice.current_sample as f32;
-
-            // Envelope-amplified sample
             let amp = base * env;
 
-            // Apply left/right volumes (0..127)
             left_mix  += amp * (voice.left_vol  as f32 / 127.0);
             right_mix += amp * (voice.right_vol as f32 / 127.0);
         }
 
-        // Clamp and convert to i16
-        let l = left_mix.clamp(i16::MIN as f32, i16::MAX as f32) as i16;
-        let r = right_mix.clamp(i16::MIN as f32, i16::MAX as f32) as i16;
-
-        (l, r)
+        (
+            left_mix.clamp(i16::MIN as f32, i16::MAX as f32) as i16,
+            right_mix.clamp(i16::MIN as f32, i16::MAX as f32) as i16,
+        )
     }
 }
