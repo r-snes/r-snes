@@ -179,7 +179,7 @@ impl Default for Voice {
 
 /// Decode a single BRR nibble into a 16-bit PCM sample
 /// This applies the shift and prediction filter
-fn decode_brr_nibble(
+pub fn decode_brr_nibble(
     nibble: i8,
     shift: u8,
     filter: u8,
