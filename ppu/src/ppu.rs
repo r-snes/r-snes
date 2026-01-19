@@ -1,4 +1,5 @@
 use crate::vram::Vram;
+use crate::oam::Oam;
 
 /// Represents the Picture Processing Unit (PPU).
 ///
@@ -8,6 +9,7 @@ use crate::vram::Vram;
 pub struct Ppu {
     /// Video RAM instance used for storing graphical data.
     pub vram: Vram,
+    pub oam: Oam,
 }
 
 impl Ppu {
@@ -15,6 +17,7 @@ impl Ppu {
     pub fn new() -> Self {
         Self {
             vram: Vram::new(),
+            oam: Oam::new(),
         }
     }
 
@@ -28,6 +31,8 @@ impl Ppu {
     pub fn write_register(&mut self, addr: u16, value: u8) {
         match addr {
             // OAM data port
+            0x2102 => self.oam.write_addr_low(value),
+            0x2103 => self.oam.write_addr_high(value),
             0x2104 => self.oam.write_data(value),
 
             // VRAM address
@@ -52,7 +57,7 @@ impl Ppu {
     pub fn read_register(&mut self, addr: u16) -> u8 {
         match addr {
             // OAM data port
-            0x2105 => self.oam.read_data(),
+            0x2138 => self.oam.read_data(),
 
             // VRAM data ports
             0x2139 => self.vram.read_data_low(),
