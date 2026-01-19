@@ -14,6 +14,7 @@ pub struct Rsnes {
     pub cpu: CPU,
     pub ppu: PPU,
     pub apu: Apu,
+    pub master_cycles: u64,
 }
 
 impl Rsnes {
@@ -29,6 +30,7 @@ impl Rsnes {
             cpu,
             ppu,
             apu,
+            master_cycles: 0,
         })
     }
 
