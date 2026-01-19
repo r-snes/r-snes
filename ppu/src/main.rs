@@ -1,14 +1,15 @@
 mod bus;
 mod ppu;
 mod vram;
+mod oam;
 
 use bus::Bus;
 
 fn main() {
     let mut bus = Bus::new();
 
-    // Initialize VRAM from a slice
-    // Load some known pattern for testing (first 16 bytes)
+    // ---------------- VRAM ----------------
+
     let initial_data: [u8; 16] = [
         0x00, 0x11, 0x22, 0x33,
         0x44, 0x55, 0x66, 0x77,
@@ -17,31 +18,62 @@ fn main() {
     ];
     bus.ppu.vram.load_from_slice(&initial_data);
 
-    // Set the VRAM address to 0x1234 via registers
-    bus.cpu_write(0x2116, 0x34); // low byte
-    bus.cpu_write(0x2117, 0x12); // high byte
+    // Set VRAM address ($2116/$2117)
+    bus.cpu_write(0x2116, 0x34);
+    bus.cpu_write(0x2117, 0x12);
 
-    // Write a 16-bit word to VRAM via the data port
-    bus.cpu_write(0x2118, 0xCD); // low byte
-    bus.cpu_write(0x2118, 0xAB); // high byte -> commit
+    // Write word via VRAM data ports ($2118/$2119)
+    bus.cpu_write(0x2118, 0xCD); // low
+    bus.cpu_write(0x2119, 0xAB); // high
 
-    // Set address and auto-increment directly using helper functions
-    bus.ppu.vram.set_addr(0x1234);
-    bus.ppu.vram.set_auto_increment(1);
+    // Read via VRAM read ports ($2139/$213A)
+    bus.cpu_write(0x2116, 0x34);
+    bus.cpu_write(0x2117, 0x12);
 
-    // Read back the word using the helper method read_word_via_port
-    let first_read = bus.ppu.vram.read_data_port_byte(); // dummy read due to buffer
-    let word_via_port = bus.ppu.vram.read_word_via_port(); // reads low then high byte
-    let vram_addr = bus.ppu.vram.get_addr(); // get current VRAM address
+    let first_read = bus.cpu_read(0x2139);
+    let lo = bus.cpu_read(0x2139);
+    let hi = bus.cpu_read(0x213A);
+    let word = (hi as u16) << 8 | lo as u16;
 
-    // Display the results
-    println!("First buffered read = {:02X}", first_read);
-    println!("VRAM word read via port = {:04X}", word_via_port);
-    println!("Current VRAM address = {:04X}", vram_addr);
+    println!("=== VRAM TEST ===");
+    println!("First read = {:02X}", first_read);
+    println!("Read word = {:04X}", word);
 
-    // Verify direct memory contents
-    let lo_direct = bus.ppu.vram.mem_read16_at(0x1234) & 0xFF;
-    let hi_direct = (bus.ppu.vram.mem_read16_at(0x1234) >> 8) & 0xFF;
-    println!("Direct memory read low byte = {:02X}", lo_direct);
-    println!("Direct memory read high byte = {:02X}", hi_direct);
+    // ---------------- OAM SPRITES ----------------
+
+    println!("\n=== OAM TEST (direct helpers) ===");
+
+    let sprite = [0x10, 0x20, 0x30, 0x40];
+    bus.ppu.oam.write_sprite(0, sprite);
+
+    let s = bus.ppu.oam.read_sprite(0);
+    println!("Sprite[0] = {:02X} {:02X} {:02X} {:02X}", s[0], s[1], s[2], s[3]);
+
+    // ---------------- OAM BUS ----------------
+
+    println!("\n=== OAM TEST (via PPU bus) ===");
+
+    // Set OAM address ($2102/$2103)
+    bus.cpu_write(0x2102, 0x00); // low
+    bus.cpu_write(0x2103, 0x00); // high
+
+    // Write 4 bytes (sprite 0)
+    bus.cpu_write(0x2104, 0xAA);
+    bus.cpu_write(0x2104, 0xBB);
+    bus.cpu_write(0x2104, 0xCC);
+    bus.cpu_write(0x2104, 0xDD);
+
+    let s = bus.ppu.oam.read_sprite(0);
+    println!("Sprite[0] after port write = {:02X} {:02X} {:02X} {:02X}", s[0], s[1], s[2], s[3]);
+
+    // Read back via OAM read port ($2138)
+    bus.cpu_write(0x2102, 0x00);
+    bus.cpu_write(0x2103, 0x00);
+
+    let r0 = bus.cpu_read(0x2138);
+    let r1 = bus.cpu_read(0x2138);
+    let r2 = bus.cpu_read(0x2138);
+    let r3 = bus.cpu_read(0x2138);
+
+    println!("OAM read via port = {:02X} {:02X} {:02X} {:02X}", r0, r1, r2, r3);
 }
