@@ -31,6 +31,7 @@ impl Ppu {
             0x2104 => self.oam.write_data(value),
 
             // VRAM address
+            0x2115 => self.vram.write_vmain(value),
             0x2116 => self.vram.write_addr_low(value),
             0x2117 => self.vram.write_addr_high(value),
             // VRAM data port
