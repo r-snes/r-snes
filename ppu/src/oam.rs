@@ -22,7 +22,7 @@ pub struct Oam {
     low: [u8; 512],
     high: [u8; 32],
 
-    addr: u16,
+    addr: u16,          // 0..511 (byte address)
     write_latch: u8,    // first byte latch
     write_phase: bool,  // false = expecting low byte
 }
@@ -108,13 +108,29 @@ impl Oam {
     ///
     /// This bypasses PPU port behavior and is intended for debugging
     /// or testing purposes only.
-    pub fn read_sprite(&self, index: usize) -> [u8; 4] {
+    pub fn read_sprite(&self, index: usize) -> [u8; 6] {
         let base = index * 4;
+
+        let y = self.low[base];
+        let tile = self.low[base + 1];
+        let attr = self.low[base + 2];
+        let x_low = self.low[base + 3];
+
+        let hi = self.high[index / 4];
+        let shift = (index % 4) * 2;
+
+        let x_msb = (hi >> shift) & 1;
+        let size = (hi >> (shift + 1)) & 1;
+
+        let x = ((x_msb as u16) << 8) | x_low as u16;
+
         [
-            self.mem[base],
-            self.mem[base + 1],
-            self.mem[base + 2],
-            self.mem[base + 3],
+            y,
+            tile,
+            attr,
+            x as u8,
+            (x >> 8) as u8, // MSB
+            size,
         ]
     }
 
@@ -122,8 +138,14 @@ impl Oam {
     ///
     /// This directly modifies OAM memory and does not emulate
     /// real SNES write timing or port behavior.
-    pub fn write_sprite(&mut self, index: usize, sprite: [u8; 4]) {
+    pub fn write_sprite(&mut self, index: usize, sprite: [u8; 4], x_msb: bool, size: bool) {
         let base = index * 4;
-        self.mem[base..base + 4].copy_from_slice(&sprite);
+        self.low[base..base + 4].copy_from_slice(&sprite);
+
+        let hi_index = index / 4;
+        let shift = (index % 4) * 2;
+
+        self.high[hi_index] &= !(0b11 << shift);
+        self.high[hi_index] |= ((x_msb as u8) | ((size as u8) << 1)) << shift;
     }
 }
