@@ -23,6 +23,8 @@ pub struct Oam {
     high: [u8; 32],
 
     addr: u16,
+    write_latch: u8,    // first byte latch
+    write_phase: bool,  // false = expecting low byte
 }
 
 impl Oam {
@@ -32,6 +34,8 @@ impl Oam {
             low: [0; 512],
             high: [0; 32],
             addr: 0,
+            write_latch: 0,
+            write_phase: false,
         }
     }
 
@@ -47,29 +51,55 @@ impl Oam {
     /// Only bit 0 is used, forming bit 8 of the internal address.
     pub fn write_addr_high(&mut self, value: u8) {
         self.addr = ((value as u16 & 0x01) << 8) | (self.addr & 0xFF);
+        self.write_phase = false;
     }
 
     /// Writes a byte to OAM through the data port ($2104).
     ///
-    /// The value is written at the current address, then the address
-    /// auto-increments and wraps around at 544 bytes.
+    /// OAM writes are buffered:
+    /// - The first write stores the value in an internal latch
+    /// - The second write commits the latched byte to OAM
+    /// - Only after the commit does the OAM address increment
+    ///
+    /// The address increments modulo 512 and always refers
+    /// to the low table. The high table is not directly
+    /// addressable via this port.
     pub fn write_data(&mut self, value: u8) {
-        let a = self.addr as usize;
-        if a < 544 {
-            self.mem[a] = value;
+        if !self.write_phase {
+            // first byte: latch only
+            self.write_latch = value;
+            self.write_phase = true;
+        } else {
+            let addr = self.addr as usize;
+
+            if addr < 512 {
+                self.low[addr] = self.write_latch;
+            }
+
+            self.addr = (self.addr + 1) & 0x1FF;
+            self.write_phase = false;
         }
-        self.addr = (self.addr + 1) % 544;
     }
 
     /// Reads a byte from OAM through the data port ($2138).
     ///
-    /// The value is read from the current address, then the address
-    /// auto-increments and wraps around at 544 bytes.
+    /// Reads return sequential OAM data starting from the
+    /// current address. After each read, the address increments
+    /// modulo 512.
+    ///
+    /// Although the internal read sequence may access the high
+    /// table, the CPU-visible address space always wraps at 512.
     pub fn read_data(&mut self) -> u8 {
-        let a = self.addr as usize;
-        let v = if a < 544 { self.mem[a] } else { 0 };
-        self.addr = (self.addr + 1) % 544;
-        v
+        let addr = self.addr as usize;
+
+        let value = if addr < 512 {
+            self.low[addr]
+        } else {
+            self.high[addr - 512]
+        };
+
+        self.addr = (self.addr + 1) & 0x1FF;
+        value
     }
 
     // ---------- helpers ----------
