@@ -1,24 +1,36 @@
+// /// Represents the Object Attribute Memory (OAM) for sprites.
+// ///
+// /// Each sprite takes 4 bytes:
+// /// - Byte 0: Y position
+// /// - Byte 1: Tile index
+// /// - Byte 2: Attributes (palette, priority, flipping)
+// /// - Byte 3: X position
+// ///
+// /// There are 128 sprites, total 512 bytes.
+// /// The SNES uses 544 bytes internally to manage extra latches.
+// #[derive(Debug)]
+// pub struct Oam {
+//     mem: [u8; 544], // 512 bytes + 32 extra internal bytes
+//     addr: u16,      // Current OAM address (0..543)
+// }
 /// Represents the Object Attribute Memory (OAM) for sprites.
 ///
-/// Each sprite takes 4 bytes:
-/// - Byte 0: Y position
-/// - Byte 1: Tile index
-/// - Byte 2: Attributes (palette, priority, flipping)
-/// - Byte 3: X position
-///
-/// There are 128 sprites, total 512 bytes.
-/// The SNES uses 544 bytes internally to manage extra latches.
+/// Low table: 512 bytes (128 sprites × 4 bytes)
+/// High table: 32 bytes (X MSB + size bits)
 #[derive(Debug)]
 pub struct Oam {
-    mem: [u8; 544], // 512 bytes + 32 extra internal bytes
-    addr: u16,      // Current OAM address (0..543)
+    low: [u8; 512],
+    high: [u8; 32],
+
+    addr: u16,
 }
 
 impl Oam {
     /// Creates a new OAM instance with cleared memory and address set to 0.
     pub fn new() -> Self {
         Self {
-            mem: [0; 544],
+            low: [0; 512],
+            high: [0; 32],
             addr: 0,
         }
     }
