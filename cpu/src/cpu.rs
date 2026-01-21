@@ -3,6 +3,7 @@ use crate::{
     registers::Registers,
 };
 use common::snes_address::SnesAddress;
+use instr_metalang_procmacro::cpu_instr_no_inc_pc;
 
 /// Resumable main CPU of the SNES, a 65C816
 ///
@@ -133,4 +134,39 @@ impl CPU {
         self.next_cycle = next_cycle;
         ret
     }
+
+    /// Resets the CPU as with the RESB input signal
+    ///
+    /// This resets some CPU registers and jumps program execution to
+    /// the address contained at 0:FFFC in bank 0
+    pub fn reset(&mut self) {
+        // set the next cycle to be the reset sequence defined below
+        self.next_cycle = InstrCycle(reset_cyc1);
+    }
+
+    /// Construct a freshly reset CPU, as it would be on power-on
+    pub fn poweron() -> Self {
+        let mut ret = Self::new(Registers::default());
+
+        ret.reset();
+        ret
+    }
 }
+
+cpu_instr_no_inc_pc!(reset {
+    cpu.registers.DB = 0;
+    cpu.registers.D = 0;
+    cpu.registers.PB = 0;
+
+    *cpu.registers.X.hi_mut() = 0;
+    *cpu.registers.Y.hi_mut() = 0;
+
+    cpu.registers.P.M = true;
+    cpu.registers.P.X = true;
+    cpu.registers.P.D = false;
+    cpu.registers.P.I = true;
+    cpu.registers.P.E = true;
+
+    cpu.addr_bus = snes_addr!(0:0xfffc);
+    meta FETCH16_INTO cpu.registers.PC;
+});
