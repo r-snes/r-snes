@@ -1,6 +1,6 @@
 pub(crate) mod instr_tab;
 
-mod prelude;
+pub(crate) mod prelude;
 #[cfg(test)]
 mod test_prelude;
 
