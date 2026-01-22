@@ -7,4 +7,5 @@ mod test_prelude;
 mod flags;
 mod jumps;
 mod loads;
+mod stores;
 mod uncategorised;
