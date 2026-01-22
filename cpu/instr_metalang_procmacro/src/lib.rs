@@ -1,24 +1,17 @@
 mod parser;
 
-use parser::{Cycle, Instr, InstrBody};
-use proc_macro2::TokenStream;
+use parser::{Cycle, Instr, InstrBody, VarWidth};
+use proc_macro2::{TokenStream, Ident};
 use quote::{format_ident, quote, ToTokens};
 
-/// Function that actually implements all the logic for the proc macro,
-/// using the types provided by the `proc_macro2` crate, which have the
-/// advantage of also existing outside of proc macro crates; and therefore
-/// have more utilities built around them, which makes unit-testing easier,
-/// among many other things.
-pub(crate) fn cpu_instr2(input: TokenStream, inc_pc: bool) -> TokenStream {
-    let Instr { name, body: InstrBody { cycles, post_instr } } = match parser::Instr::parse(input, inc_pc) {
-        Ok(instr) => instr,
-        Err(msg) => panic!("{}", msg),
-    };
+fn gen_cycle_functions(name: &Ident, instr_body: InstrBody) -> TokenStream {
+    let cycles = &instr_body.cycles;
+    let post_instr = &instr_body.post_instr;
 
-    let cycle_funcs = cycles
+    cycles
         .iter()
         .enumerate()
-        .map(|(i, Cycle { body, cyc_type })| {
+        .map(|(i, cyc)| {
             let func_name = format_ident!("{}_cyc{}", name, i + 1);
             let next_func_name: TokenStream = if i != cycles.len() - 1 {
                 format_ident!("{}_cyc{}", name, i + 2).into_token_stream()
@@ -37,6 +30,20 @@ pub(crate) fn cpu_instr2(input: TokenStream, inc_pc: bool) -> TokenStream {
                 }
             };
 
+
+            let (body, cyc_type) = match cyc {
+                Cycle::Unconditional{body, cyc_type} => (body, cyc_type),
+                Cycle::ConditionalIdle{body, condition} => (
+                    &quote! {
+                        #body
+                        if !(#condition) {
+                            return (#next_func_name)(cpu);
+                        }
+                    },
+                    &quote!(Internal),
+                ),
+            };
+
             quote! {
                 pub(crate) fn #func_name(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
                     #body
@@ -44,7 +51,49 @@ pub(crate) fn cpu_instr2(input: TokenStream, inc_pc: bool) -> TokenStream {
                     (#cyc_type, InstrCycle(#next_func_name))
                 }
             }
-        }).collect::<TokenStream>();
+        }).collect::<TokenStream>()
+}
+
+/// Function that actually implements all the logic for the proc macro,
+/// using the types provided by the `proc_macro2` crate, which have the
+/// advantage of also existing outside of proc macro crates; and therefore
+/// have more utilities built around them, which makes unit-testing easier,
+/// among many other things.
+pub(crate) fn cpu_instr2(input: TokenStream, inc_pc: bool) -> TokenStream {
+    let Instr { name, body } = match parser::Instr::parse(input, inc_pc) {
+        Ok(instr) => instr,
+        Err(msg) => panic!("{}", msg),
+    };
+
+    let cycle_funcs = match body {
+        VarWidth::ConstWidth(instr_body) => gen_cycle_functions(&name, instr_body),
+        VarWidth::VarWidth{short, long, data} => {
+            let cyc_funcs8 = gen_cycle_functions(&name, short);
+            let cyc_funcs16 = gen_cycle_functions(&name, long);
+            let condition = data;
+
+            let first_cyc_name = format_ident!("{}_cyc1", name);
+
+            quote! {
+                pub(crate) fn #first_cyc_name(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
+                    if #condition {
+                        self::_16::#first_cyc_name(cpu)
+                    } else {
+                        self::_8::#first_cyc_name(cpu)
+                    }
+                }
+
+                pub(crate) mod _8 {
+                    use crate::instrs::prelude::*;
+                    #cyc_funcs8
+                }
+                pub(crate) mod _16 {
+                    use crate::instrs::prelude::*;
+                    #cyc_funcs16
+                }
+            }
+        },
+    };
 
     // wrap the generated instruction in a submodule for it to be easier
     // to expand using cargo_expand
@@ -266,7 +315,6 @@ mod test {
                     use crate::instrs::prelude::*;
 
                     pub(crate) fn test_instr_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
-                        cpu.registers.PC = cpu.registers.PC.wrapping_add(1u16);
                         call_func1();
 
                         (Internal, InstrCycle(test_instr_cyc2))
@@ -274,10 +322,95 @@ mod test {
                     pub(crate) fn test_instr_cyc2(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
                         call_func2();
 
+                        cpu.registers.PC = cpu.registers.PC.wrapping_add(1u16);
                         (Internal, InstrCycle(opcode_fetch))
                     }
                 }
             ),
         );
+    }
+
+    #[test]
+    fn conditional_cycle() {
+        assert_macro_produces(
+            quote!(cond {
+                let a = 0;
+                meta IDLE_IF some_var < 0;
+                meta END_CYCLE Internal;
+            }),
+            quote!(
+                pub(crate) use cond::*;
+                pub(crate) mod cond {
+                    use crate::instrs::prelude::*;
+
+                    pub(crate) fn cond_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
+                        let a = 0;
+
+                        if !(some_var < 0) {
+                            return (cond_cyc2)(cpu);
+                        }
+                        (Internal, InstrCycle(cond_cyc2))
+                    }
+
+                    pub(crate) fn cond_cyc2(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
+                        (Internal, InstrCycle(opcode_fetch))
+                    }
+                }
+            ),
+        )
+    }
+
+    #[test]
+    fn variable_width() {
+        assert_macro_produces(
+            quote!(varwidth {
+                meta SET_OP_SIZE AccMem;
+                meta SET_ADDRMODE_IMM;
+                meta FETCH_OP_INTO cpu.internal_data_bus;
+            }),
+            quote!(
+                pub(crate) use varwidth::*;
+                pub(crate) mod varwidth {
+                    use crate::instrs::prelude::*;
+
+                    pub(crate) fn varwidth_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
+                        if !cpu.registers.P.E && !cpu.registers.P.M {
+                            self::_16::varwidth_cyc1(cpu)
+                        } else {
+                            self::_8::varwidth_cyc1(cpu)
+                        }
+                    }
+
+                    pub(crate) mod _8 {
+                        use crate::instrs::prelude::*;
+                        pub(crate) fn varwidth_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
+                            cpu.addr_bus.addr = cpu.addr_bus.addr.wrapping_add(1u16);
+                            (Read, InstrCycle(|cpu| {
+                                *cpu.internal_data_bus.lo_mut() = cpu.data_bus;
+                                opcode_fetch(cpu)
+                            }))
+                        }
+                    }
+
+                    pub(crate) mod _16 {
+                        use crate::instrs::prelude::*;
+                        pub(crate) fn varwidth_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
+                            cpu.addr_bus.addr = cpu.addr_bus.addr.wrapping_add(1u16);
+                            (Read, InstrCycle(varwidth_cyc2))
+                        }
+
+                        pub(crate) fn varwidth_cyc2(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
+                            *cpu.internal_data_bus.lo_mut() = cpu.data_bus;
+                            cpu.addr_bus.addr = cpu.addr_bus.addr.wrapping_add(1);
+
+                            (Read, InstrCycle(|cpu| {
+                                *cpu.internal_data_bus.hi_mut() = cpu.data_bus;
+                                opcode_fetch(cpu)
+                            }))
+                        }
+                    }
+                }
+            ),
+        )
     }
 }

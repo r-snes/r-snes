@@ -111,11 +111,7 @@ cpu_instr_no_inc_pc!(jsl {
 
     meta END_CYCLE Internal;
 
-    cpu.addr_bus = SnesAddress { // readjust addrbus to read immediate again
-        bank: cpu.registers.PB,
-        addr: cpu.registers.PC.wrapping_add(3),
-    };
-    meta FETCH8_INTO cpu.registers.PB;
+    meta FETCH8_IMM_INTO cpu.registers.PB;
     // adjust pushed PC to next opcode - 1
     meta PUSHN16 cpu.registers.PC.wrapping_add(3);
 
