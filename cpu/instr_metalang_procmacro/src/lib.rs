@@ -1,12 +1,8 @@
 mod parser;
 use parser::{Cycle, Instr, InstrBody, VarWidth};
 
-mod var_width_op;
-use var_width_op::var_width_op_impl;
-
 use proc_macro2::{TokenStream, Ident};
 use quote::{format_ident, quote, ToTokens};
-use syn::{parse_macro_input, ItemFn};
 
 fn gen_cycle_functions(name: &Ident, instr_body: InstrBody) -> TokenStream {
     let cycles = &instr_body.cycles;
@@ -162,16 +158,6 @@ pub fn cpu_instr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 #[proc_macro]
 pub fn cpu_instr_no_inc_pc(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     cpu_instr2(input.into(), false).into()
-}
-
-#[proc_macro_attribute]
-pub fn var_width_op(
-    attr: proc_macro::TokenStream,
-    item: proc_macro::TokenStream,
-) -> proc_macro::TokenStream {
-    let func: ItemFn = parse_macro_input!(item as ItemFn);
-
-    var_width_op_impl(attr.into(), func).into()
 }
 
 #[cfg(test)]
