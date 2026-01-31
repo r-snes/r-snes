@@ -191,3 +191,64 @@ duplicate! {
         meta VAR_WIDTH_OP DUP_algo;
     });
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::instrs::test_prelude::*;
+
+    #[test]
+    fn adc_imm8() {
+        let mut regs = Registers::default();
+        regs.PB = 0x12;
+        regs.PC = 0x3456;
+        regs.A = 0x44;
+        regs.P.E = true;
+        regs.P.Z = true;
+        regs.P.N = false;
+        regs.P.V = false;
+        regs.P.C = false;
+
+        let mut expected_regs = regs.clone();
+        let mut cpu = CPU::new(regs);
+
+        expect_opcode_fetch(&mut cpu, 0x69);
+        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3457), 0x44, "operand");
+        expect_opcode_fetch_cycle(&mut cpu);
+
+        expected_regs.A = 0x88;
+        expected_regs.PC = 0x3458;
+        expected_regs.P.Z = false;
+        expected_regs.P.N = true;
+        expected_regs.P.V = true;
+        expected_regs.P.C = false;
+        assert_eq!(*cpu.regs(), expected_regs);
+    }
+
+    #[test]
+    fn adc_imm16() {
+        let mut regs = Registers::default();
+        regs.PB = 0x12;
+        regs.PC = 0x3456;
+        regs.A = 0x5588;
+        regs.P.E = false;
+        regs.P.M = false;
+        regs.P.Z = true;
+        regs.P.N = true;
+        regs.P.C = false;
+
+        let mut expected_regs = regs.clone();
+        let mut cpu = CPU::new(regs);
+
+        expect_opcode_fetch(&mut cpu, 0x69);
+        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3457), 0x43, "operand lo");
+        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3458), 0x21, "operand hi");
+        expect_opcode_fetch_cycle(&mut cpu);
+
+        expected_regs.A = 0x76cb;
+        expected_regs.PC = 0x3459;
+        expected_regs.P.Z = false;
+        expected_regs.P.N = false;
+        expected_regs.P.C = false;
+        assert_eq!(*cpu.regs(), expected_regs);
+    }
+}
