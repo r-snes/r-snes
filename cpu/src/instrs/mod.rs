@@ -5,6 +5,7 @@ pub(crate) mod prelude;
 mod test_prelude;
 
 mod arithmetic;
+mod algorithms;
 
 mod branches;
 mod flags;
