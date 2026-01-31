@@ -7,5 +7,4 @@
 pub(crate) use common::snes_address::{SnesAddress, snes_addr};
 pub(crate) use common::u16_split::*;
 pub(crate) use crate::instrs::instr_tab::{InstrCycle, opcode_fetch};
-pub(crate) use crate::instrs::arithmetic::VarWidthOp;
 pub(crate) use crate::cpu::{CPU, CycleResult, CycleResult::*};
