@@ -79,6 +79,31 @@ duplicate! {
     });
 }
 
+// duplicate over all addrmodes of BIT
+// we have to include the algo because BIT immediate has a slightly
+// different algorithm (doesn't set N and V flags)
+duplicate! {
+    [
+        DUP_name    DUP_algo    DUP_addrmode;
+        [bit_d]     [bit]       [SET_ADDRMODE_DIRECT];
+        [bit_abs]   [bit]       [SET_ADDRMODE_ABS];
+        [bit_dx]    [bit]       [SET_ADDRMODE_DIRECTX];
+        [bit_absx]  [bit]       [SET_ADDRMODE_ABSX];
+        [bit_imm]   [bit_imm]   [SET_ADDRMODE_IMM];
+    ]
+    cpu_instr!(DUP_name {
+            meta SET_OP_SIZE AccMem;
+            meta DUP_addrmode;
+
+            meta FETCH_OP_INTO cpu.internal_data_bus;
+
+            meta LET_VARWIDTH_MUT a = cpu.registers.A;
+            meta LET_VARWIDTH idb = cpu.internal_data_bus;
+
+            algorithms::DUP_algo(a, idb, &mut cpu.registers.P);
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use crate::instrs::test_prelude::*;
@@ -136,6 +161,60 @@ mod tests {
         expected_regs.P.Z = false;
         expected_regs.P.N = false;
         expected_regs.P.C = false;
+        assert_eq!(*cpu.regs(), expected_regs);
+    }
+
+    #[test]
+    fn bit_imm16() {
+        let mut regs = Registers::default();
+        regs.PB = 0x12;
+        regs.PC = 0x3456;
+        regs.A = 0x00ff;
+        regs.P.E = false;
+        regs.P.M = false;
+        regs.P.Z = false;
+        regs.P.N = false;
+        regs.P.V = false;
+
+        let mut expected_regs = regs.clone();
+        let mut cpu = CPU::new(regs);
+
+        expect_opcode_fetch(&mut cpu, 0x89);
+        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3457), 0x00, "operand lo");
+        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3458), 0xff, "operand hi");
+        expect_opcode_fetch_cycle(&mut cpu);
+
+        expected_regs.PC = 0x3459;
+        expected_regs.P.Z = true; // immediate BIT only touches Z
+        assert_eq!(*cpu.regs(), expected_regs);
+    }
+
+    #[test]
+    fn bit_abs16() {
+        let mut regs = Registers::default();
+        regs.PB = 0x12;
+        regs.PC = 0x3456;
+        regs.A = 0x00ff;
+        regs.P.E = false;
+        regs.P.M = false;
+        regs.P.Z = false;
+        regs.P.N = false;
+        regs.P.V = false;
+
+        let mut expected_regs = regs.clone();
+        let mut cpu = CPU::new(regs);
+
+        expect_opcode_fetch(&mut cpu, 0x2c);
+        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3457), 0xcd, "operand address lo");
+        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3458), 0xab, "operand address hi");
+        expect_read_cycle(&mut cpu, snes_addr!(0:0xabcd), 0x00, "operand lo");
+        expect_read_cycle(&mut cpu, snes_addr!(0:0xabce), 0xff, "operand hi");
+        expect_opcode_fetch_cycle(&mut cpu);
+
+        expected_regs.PC = 0x3459;
+        expected_regs.P.Z = true;
+        expected_regs.P.N = true;
+        expected_regs.P.V = true;
         assert_eq!(*cpu.regs(), expected_regs);
     }
 }
