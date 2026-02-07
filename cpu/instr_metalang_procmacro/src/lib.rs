@@ -1,6 +1,6 @@
 mod parser;
-
 use parser::{Cycle, Instr, InstrBody, VarWidth};
+
 use proc_macro2::{TokenStream, Ident};
 use quote::{format_ident, quote, ToTokens};
 
@@ -85,10 +85,14 @@ pub(crate) fn cpu_instr2(input: TokenStream, inc_pc: bool) -> TokenStream {
 
                 pub(crate) mod _8 {
                     use crate::instrs::prelude::*;
+                    use super::*;
+
                     #cyc_funcs8
                 }
                 pub(crate) mod _16 {
                     use crate::instrs::prelude::*;
+                    use super::*;
+
                     #cyc_funcs16
                 }
             }
@@ -101,6 +105,7 @@ pub(crate) fn cpu_instr2(input: TokenStream, inc_pc: bool) -> TokenStream {
         pub(crate) use #name::*;
         pub(crate) mod #name {
             use crate::instrs::prelude::*;
+            use super::*;
 
             #cycle_funcs
         }
@@ -198,6 +203,7 @@ mod test {
                 pub(crate) use instr_inx::*;
                 pub(crate) mod instr_inx {
                     use crate::instrs::prelude::*;
+                    use super::*;
 
                     pub(crate) fn instr_inx_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
                         cpu.registers.X = cpu.registers.X.wrapping_add(1);
@@ -228,6 +234,7 @@ mod test {
                 pub(crate) use some_instr::*;
                 pub(crate) mod some_instr {
                     use crate::instrs::prelude::*;
+                    use super::*;
 
                     pub(crate) fn some_instr_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
                         some_function1(cpu);
@@ -261,6 +268,7 @@ mod test {
                 pub(crate) use test_instr::*;
                 pub(crate) mod test_instr {
                     use crate::instrs::prelude::*;
+                    use super::*;
 
                     pub(crate) fn test_instr_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
                         (if 1 == 0 { Internal } else { Read }, InstrCycle(test_instr_cyc2))
@@ -286,6 +294,7 @@ mod test {
                 pub(crate) use test_instr::*;
                 pub(crate) mod test_instr {
                     use crate::instrs::prelude::*;
+                    use super::*;
 
                     pub(crate) fn test_instr_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
                         (Read, InstrCycle(|cpu| {
@@ -313,6 +322,7 @@ mod test {
                 pub(crate) use test_instr::*;
                 pub(crate) mod test_instr {
                     use crate::instrs::prelude::*;
+                    use super::*;
 
                     pub(crate) fn test_instr_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
                         call_func1();
@@ -342,6 +352,7 @@ mod test {
                 pub(crate) use cond::*;
                 pub(crate) mod cond {
                     use crate::instrs::prelude::*;
+                    use super::*;
 
                     pub(crate) fn cond_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
                         let a = 0;
@@ -372,6 +383,7 @@ mod test {
                 pub(crate) use varwidth::*;
                 pub(crate) mod varwidth {
                     use crate::instrs::prelude::*;
+                    use super::*;
 
                     pub(crate) fn varwidth_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
                         if !cpu.registers.P.E && !cpu.registers.P.M {
@@ -383,6 +395,7 @@ mod test {
 
                     pub(crate) mod _8 {
                         use crate::instrs::prelude::*;
+                        use super::*;
                         pub(crate) fn varwidth_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
                             cpu.addr_bus.addr = cpu.addr_bus.addr.wrapping_add(1u16);
                             (Read, InstrCycle(|cpu| {
@@ -394,6 +407,7 @@ mod test {
 
                     pub(crate) mod _16 {
                         use crate::instrs::prelude::*;
+                        use super::*;
                         pub(crate) fn varwidth_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
                             cpu.addr_bus.addr = cpu.addr_bus.addr.wrapping_add(1u16);
                             (Read, InstrCycle(varwidth_cyc2))
