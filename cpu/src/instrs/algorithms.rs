@@ -45,6 +45,17 @@ pub fn sbc<T: Reg>(a: &mut T, idb: T, p: &mut RegisterP) {
     adc(a, !idb, p)
 }
 
+pub fn bit<T: Reg>(a: &mut T, idb: T, p: &mut RegisterP) {
+    p.Z = *a & idb == T::ZERO;
+    p.N = idb.is_neg();
+    p.V = (idb << T::ONE).is_neg();
+}
+
+// BIT immediate only sets Z, doesn't touch N and V
+pub fn bit_imm<T: Reg>(a: &mut T, idb: T, p: &mut RegisterP) {
+    p.Z = *a & idb == T::ZERO;
+}
+
 #[cfg(test)]
 mod tests {
     use crate::registers::RegisterP;
