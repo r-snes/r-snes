@@ -2,7 +2,7 @@ pub(crate) mod instr_tab;
 
 pub(crate) mod prelude;
 #[cfg(test)]
-mod test_prelude;
+pub(crate) mod test_prelude;
 
 mod branches;
 mod flags;
