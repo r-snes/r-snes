@@ -4,3 +4,5 @@ pub mod io;
 pub mod memory_region;
 pub mod rom;
 pub mod wram;
+
+pub use bus::Bus;

@@ -14,3 +14,10 @@ members = [
 ]
 
 [dependencies]
+bus = { version = "0.1.0", path = "./bus"}
+cpu = { version = "0.1.0", path = "./cpu"}
+ppu = { version = "0.1.0", path = "./ppu"}
+apu = { version = "0.1.0", path = "./apu"}
+
+sdl2 = { version = "0.38.0", features = ["bundled"] }
+rfd = "0.14"
