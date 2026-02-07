@@ -74,10 +74,10 @@ impl Gui {
         self.canvas.present();
     }
 
-    pub fn load_rom() -> Result<rsnes::Rsnes, String> {
+    pub fn load_rom() -> Result<Box<rsnes::Rsnes>, String> {
         match rfd::FileDialog::new().pick_file() {
             Some(path) => match rsnes::Rsnes::load_rom(&path) {
-                Ok(emu) => Ok(emu),
+                Ok(emu) => Ok(Box::new(emu)),
                 Err(err) => Err(format!("Error loading ROM: {}", err)),
             },
             None => Err("No file selected".to_string()),
@@ -86,7 +86,7 @@ impl Gui {
 
     pub fn handle_events(
         &mut self,
-        rsnes_app: &mut Option<rsnes::Rsnes>,
+        rsnes_app: &mut Option<Box<rsnes::Rsnes>>,
     ) -> Option<sdl2::event::Event> {
         for event in self.event_pump.poll_iter() {
             return match event {
@@ -133,7 +133,7 @@ impl Gui {
         Ok(())
     }
 
-    pub fn update(&mut self, rsnes_app: &mut Option<rsnes::Rsnes>) -> Result<(), String> {
+    pub fn update(&mut self, rsnes_app: &mut Option<Box<rsnes::Rsnes>>) -> Result<(), String> {
         self.clear(30, 30, 35);
         match self.handle_events(rsnes_app) {
             Some(Event::Quit { .. }) => return Err("User quit window".to_string()),
