@@ -1,27 +1,55 @@
 mod gui;
 mod rsnes;
 
-use sdl2::event::Event;
-use std::time::Duration;
+use crate::gui::Gui;
+use std::time::Instant;
 
 fn main() -> Result<(), String> {
     let mut gui = gui::Gui::new()?;
     let mut rsnes_app: Option<rsnes::Rsnes> = None;
 
-    'emulation_loop: loop {
-        gui.clear(30, 30, 35);
-        match gui.handle_events(&mut rsnes_app) {
-            Some(Event::Quit { .. }) => break 'emulation_loop,
-            _ => {}
-        }
-        gui.update();
-        gui.present();
+    // Reference variables
+    let mut frame_nb = 0;
+    let exec_start = Instant::now();
 
-        // Simple frame limiter for now
-        ::std::thread::sleep(Duration::new(0, 1_000_000u32)); // 1_000_000_000u32 / 60 for ~60 FPS
+    // Clock utility variables
+    let mut last_instant = Instant::now();
+    let mut frame_accum: f64 = 0.0;
+
+    'emulation_loop: loop {
+        // rsnes_app.update_master_cycles();
+        // rsnes_app.update();
+        // rsnes_app.get_time_to_next_master_cycle();
+
+        // Get new delta based on current Instant::now()
+        let current_instant = Instant::now();
+        let delta = current_instant.duration_since(last_instant).as_secs_f64();
+        last_instant = current_instant;
+
+        frame_accum += delta;
+
+        // Widnow update if frame treshold is crossed
+        if frame_accum >= Gui::FRAME_DURATION {
+            frame_accum -= Gui::FRAME_DURATION;
+
+            match gui.update(&mut rsnes_app) {
+                Err(_) => break 'emulation_loop,
+                Ok(_) => {}
+            }
+            frame_nb += 1;
+        }
+
+        // Deactivated sleep for now
+        // ::std::thread::sleep(Duration::new(0, 1_000_000u32));
     }
 
     // TODO : Potential Cleanup or user settings save ?
+
+    // Print of the frame rate
+    let time = Instant::now();
+    let program_duration = time.duration_since(exec_start).as_secs_f64();
+    println!("Program duration : {}", program_duration);
+    println!("Frame rate : {}", frame_nb as f64 / program_duration);
 
     Ok(())
 }
