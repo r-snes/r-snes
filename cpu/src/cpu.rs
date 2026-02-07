@@ -170,3 +170,21 @@ cpu_instr_no_inc_pc!(reset {
     cpu.addr_bus = snes_addr!(0:0xfffc);
     meta FETCH16_INTO cpu.registers.PC;
 });
+
+#[cfg(test)]
+mod tests {
+    use crate::instrs::test_prelude::*;
+
+    #[test]
+    fn poweron() {
+        let mut cpu = super::CPU::poweron();
+
+        expect_read_cycle(&mut cpu, snes_addr!(0:0xfffc), 0x68, "start address lo");
+        expect_read_cycle(&mut cpu, snes_addr!(0:0xfffd), 0x24, "start address hi");
+        expect_opcode_fetch_cycle(&mut cpu);
+
+        // we only test the CPU started fetching an opcode from the provided address
+        assert_eq!(cpu.regs().PC, 0x2468);
+        assert_eq!(cpu.regs().PB, 0);
+    }
+}
