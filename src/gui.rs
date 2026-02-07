@@ -10,8 +10,11 @@ pub struct Gui {
 }
 
 impl Gui {
-    const SNES_WIDTH: usize = 256; // TODO : Remove when GUI linked with PPU
-    const SNES_HEIGHT: usize = 224; // TODO : Remove when GUI linked with PPU
+    pub const SNES_WIDTH: usize = 256; // TODO : Remove when GUI linked with PPU
+    pub const SNES_HEIGHT: usize = 224; // TODO : Remove when GUI linked with PPU
+
+    pub const FRAME_RATE: u16 = 60;
+    pub const FRAME_DURATION: f64 = 1.0 / Self::FRAME_RATE as f64;
 
     pub fn new() -> Result<Self, String> {
         let sdl_ctx = sdl2::init().unwrap();
@@ -130,7 +133,15 @@ impl Gui {
         Ok(())
     }
 
-    pub fn update(&mut self) {
+    pub fn update(&mut self, rsnes_app: &mut Option<rsnes::Rsnes>) -> Result<(), String> {
+        self.clear(30, 30, 35);
+        match self.handle_events(rsnes_app) {
+            Some(Event::Quit { .. }) => return Err("User quit window".to_string()),
+            _ => {}
+        }
         let _ = self.draw_framebuffer(); // TODO: Handle error properly
+        self.present();
+
+        Ok(())
     }
 }
