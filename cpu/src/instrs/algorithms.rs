@@ -56,6 +56,62 @@ pub fn bit_imm<T: Reg>(a: &mut T, idb: T, p: &mut RegisterP) {
     p.Z = *a & idb == T::ZERO;
 }
 
+pub fn asl<T: Reg>(op: &mut T, p: &mut RegisterP) {
+    p.C = op.is_neg();
+
+    *op <<= T::ONE;
+    set_nz(*op, p);
+}
+
+pub fn lsr<T: Reg>(op: &mut T, p: &mut RegisterP) {
+    p.C = *op & T::ONE != T::ZERO;
+
+    *op >>= T::ONE;
+    set_nz(*op, p);
+}
+
+pub fn rol<T: Reg>(op: &mut T, p: &mut RegisterP) {
+    let carry_in = if p.C { T::ONE } else { T::ZERO };
+    let carry_out = op.is_neg();
+
+    *op = (*op << T::ONE) | carry_in;
+    p.C = carry_out;
+    set_nz(*op, p);
+}
+
+pub fn ror<T: Reg>(op: &mut T, p: &mut RegisterP) {
+    let carry_in = if p.C {
+        T::ONE << (T::BITS - T::ONE)
+    } else {
+        T::ZERO
+    };
+    let carry_out = *op & T::ONE != T::ZERO;
+
+    *op = (*op >> T::ONE) | carry_in;
+    p.C = carry_out;
+    set_nz(*op, p);
+}
+
+pub fn inc<T: Reg>(op: &mut T, p: &mut RegisterP) {
+    *op = op.wrapping_add(T::ONE);
+    set_nz(*op, p);
+}
+
+pub fn dec<T: Reg>(op: &mut T, p: &mut RegisterP) {
+    *op = op.wrapping_sub(T::ONE);
+    set_nz(*op, p);
+}
+
+pub fn tsb<T: Reg>(op: &mut T, a: T, p: &mut RegisterP) {
+    p.Z = (*op & a) == T::ZERO;
+    *op |= a;
+}
+
+pub fn trb<T: Reg>(op: &mut T, a: T, p: &mut RegisterP) {
+    p.Z = (*op & a) == T::ZERO;
+    *op &= !a;
+}
+
 #[cfg(test)]
 mod tests {
     use crate::registers::RegisterP;
