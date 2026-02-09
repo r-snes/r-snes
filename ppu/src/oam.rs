@@ -148,4 +148,11 @@ impl Oam {
         self.high[hi_index] &= !(0b11 << shift);
         self.high[hi_index] |= ((x_msb as u8) | ((size as u8) << 1)) << shift;
     }
+
+    /// Writes a sprite with default high-table bits (X MSB = 0, size = small).
+    ///
+    /// This matches typical SNES initialization behavior.
+    pub fn write_sprite_simple(&mut self, index: usize, sprite: [u8; 4]) {
+        self.write_sprite(index, sprite, false, false);
+    }
 }

@@ -41,10 +41,10 @@ fn main() {
 
     // ---------------- OAM SPRITES ----------------
 
-    println!("\n=== OAM TEST (direct helpers) ===");
+    println!("\n=== OAM TEST (helpers) ===");
 
     let sprite = [0x10, 0x20, 0x30, 0x40];
-    bus.ppu.oam.write_sprite(0, sprite);
+    bus.ppu.oam.write_sprite_simple(0, sprite);
 
     let s = bus.ppu.oam.read_sprite(0);
     println!("Sprite[0] = {:02X} {:02X} {:02X} {:02X}", s[0], s[1], s[2], s[3]);
