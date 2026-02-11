@@ -818,6 +818,16 @@ impl<T, U: Default> VarWidth<T, U> {
     }
 }
 
+impl<T: Default, U: Default> VarWidth<T, U> {
+    pub fn short(short: T) -> Self {
+        Self::VarWidth{short, long: T::default(), data: U::default()}
+    }
+
+    pub fn long(long: T) -> Self {
+        Self::VarWidth{short: T::default(), long, data: U::default()}
+    }
+}
+
 impl<T: Default, U> Default for VarWidth<T, U> {
     fn default() -> Self {
         Self::ConstWidth(T::default())
@@ -902,27 +912,8 @@ impl Instr {
             Err("Unexpected token after the instruction body")?
         }
 
-        let mut it = body.stream().into_iter().peekable();
-        let mut ret = Instr::new(name);
-
-        loop {
-            let it = it.by_ref();
-
-            ret.body += it.take_while(|token| token.to_string() != "meta").collect::<TokenStream>();
-
-            if it.peek().is_none() {
-                break;
-            }
-
-            let meta_instr = MetaInstruction::try_from(it.take_while(|token| {
-                let TokenTree::Punct(p) = token else {
-                    return true;
-                };
-                return p.as_char() != ';';
-            }))?;
-
-            ret.body += meta_instr.expand(&mut pstatus);
-        }
+        let mut ret = Self::new(name);
+        ret.body += InstrBody::parse(body.stream(), &mut pstatus)?;
 
         // Set PC to point at the next opcode
         match (&mut ret.body, pstatus.imm_offset.map_into(|i| pstatus.conditionally_inc_pc(*i))) {
@@ -1022,6 +1013,32 @@ impl InstrBody {
 
     pub fn post(post_instr: TokenStream) -> Self {
         Self::new(vec![], post_instr)
+    }
+
+    /// Parses a piece of instrbody, calling meta-instr expansions
+    pub fn parse(body: TokenStream, pstatus: &mut ParserStatus) -> Result<VarWidth<Self>, &'static str> {
+        let mut it = body.into_iter().peekable();
+        let mut ret = VarWidth::<Self>::default();
+
+        loop {
+            let it = it.by_ref();
+
+            ret += it.take_while(|token| token.to_string() != "meta").collect::<TokenStream>();
+
+            if it.peek().is_none() {
+                break;
+            }
+
+            let meta_instr = MetaInstruction::try_from(it.take_while(|token| {
+                let TokenTree::Punct(p) = token else {
+                    return true;
+                };
+                return p.as_char() != ';';
+            }))?;
+
+            ret += meta_instr.expand(pstatus);
+        }
+        Ok(ret)
     }
 
     /// Generate a conditional cycle as described by the cpu doc note 4
