@@ -325,6 +325,12 @@ pub(crate) enum MetaInstruction {
 
     /// Creates a variable-width &mut binding for a u16 value
     LetVarWidthMut(Binding),
+
+    /// Inserts raw code in the "short" (8 bit) branch of the instr
+    If8(TokenStream),
+
+    /// Inserts raw code in the "long" (16 bit) branch of the instr
+    If16(TokenStream),
 }
 
 impl MetaInstruction {
@@ -399,6 +405,9 @@ impl MetaInstruction {
 
             "LET_VARWIDTH" => MetaInstruction::LetVarWidth(Binding::parse(it.by_ref().collect())),
             "LET_VARWIDTH_MUT" => MetaInstruction::LetVarWidthMut(Binding::parse(it.by_ref().collect())),
+
+            "IF_8" => MetaInstruction::If8(it.by_ref().collect()),
+            "IF_16" => MetaInstruction::If16(it.by_ref().collect()),
 
             kw => panic!("Unknown meta-keyword: {}", kw),
         };
@@ -775,6 +784,38 @@ impl MetaInstruction {
             }
             Self::LetVarWidthMut(binding) => {
                 ret += binding.expand_mut();
+            }
+            Self::If8(body) => {
+                let mut it = body.into_iter().peekable();
+
+                let first_tok = it.next().expect("at least one token");
+                if let TokenTree::Group(body) = first_tok {
+                    if it.peek().is_some() {
+                        panic!("unexpected trailing tokens after braced If8");
+                    }
+                    ret += VarWidth::short(
+                        InstrBody::parse(body.stream(), pstatus).unwrap().expect_const()
+                    );
+                } else {
+                    let rest = it.collect::<TokenStream>();
+                    ret += VarWidth::short(quote!(#first_tok #rest));
+                }
+            }
+            Self::If16(body) => {
+                let mut it = body.into_iter().peekable();
+
+                let first_tok = it.next().expect("at least one token");
+                if let TokenTree::Group(body) = first_tok {
+                    if it.peek().is_some() {
+                        panic!("unexpected trailing tokens after braced If16");
+                    }
+                    ret += VarWidth::long(
+                        InstrBody::parse(body.stream(), pstatus).unwrap().expect_const()
+                    );
+                } else {
+                    let rest = it.collect::<TokenStream>();
+                    ret += VarWidth::long(quote!(#first_tok #rest));
+                }
             }
         }
         ret
