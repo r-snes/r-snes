@@ -5,8 +5,7 @@ use crate::{gui::Gui, rsnes::Rsnes};
 use std::time::Instant;
 
 fn main() -> Result<(), String> {
-    let gui = gui::Gui::new()?;
-    let mut gui = Box::new(gui);
+    let mut gui = gui::Gui::new()?;
     let mut rsnes_app: Option<Box<rsnes::Rsnes>> = None;
 
     // Reference variables
@@ -31,7 +30,6 @@ fn main() -> Result<(), String> {
             Some(ref mut app) => {
                 master_cycle_accum += delta;
 
-                // In the future, check if this 'while' doesn't restrain the program execution too much
                 while master_cycle_accum >= Rsnes::MASTER_CYCLE_DURATION {
                     master_cycle_accum -= Rsnes::MASTER_CYCLE_DURATION;
                     app.update();
