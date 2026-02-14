@@ -669,7 +669,7 @@ impl MetaInstruction {
             Self::Pull8 => {
                 ret += InstrBody::post(quote! {
                     // stack grows downwards; only set low byte in emu mode
-                    if cpu.registers.P.E {
+                    if cpu.registers.E {
                         *cpu.registers.S.lo_mut() = cpu.registers.S.lo().wrapping_add(1);
                     } else {
                         cpu.registers.S = cpu.registers.S.wrapping_add(1);
@@ -733,7 +733,7 @@ impl MetaInstruction {
                 ret += Self::SetAddrModeStack.expand(pstatus);
                 ret += InstrBody::post(quote! {
                     // stack grows downwards; only set low byte in emu mode
-                    if cpu.registers.P.E {
+                    if cpu.registers.E {
                         *cpu.registers.S.lo_mut() = cpu.registers.S.lo().wrapping_sub(1);
                     } else {
                         cpu.registers.S = cpu.registers.S.wrapping_sub(1);
@@ -981,8 +981,8 @@ impl Instr {
                 OpSize::Constant => panic!(
                     "Variable width instructions used without setting the operand size"
                 ),
-                OpSize::Index => *data = quote!(!cpu.registers.P.E && !cpu.registers.P.X),
-                OpSize::AccMem => *data = quote!(!cpu.registers.P.E && !cpu.registers.P.M),
+                OpSize::Index => *data = quote!(!cpu.registers.E && !cpu.registers.P.X),
+                OpSize::AccMem => *data = quote!(!cpu.registers.E && !cpu.registers.P.M),
             }
         }
         Ok(ret)
