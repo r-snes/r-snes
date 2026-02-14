@@ -29,6 +29,42 @@ cpu_instr!(xce {
     meta END_CYCLE Internal;
 });
 
+// REset P: resets (clears) flags of the P register
+cpu_instr!(rep {
+    meta FETCH8_IMM;
+
+    let mut p: u8 = cpu.registers.P.into();
+    p &= !cpu.data_bus;
+
+    cpu.registers.P = p.into();
+
+    // re-force X and M to 1 if in emulation mode: they can't be set to 0
+    if cpu.registers.E {
+        cpu.registers.P.X = true;
+        cpu.registers.P.M = true;
+    }
+
+    meta END_CYCLE Internal;
+});
+
+// SEt P: sets flags of the P register
+cpu_instr!(sep {
+    meta FETCH8_IMM;
+
+    let mut p: u8 = cpu.registers.P.into();
+    p |= cpu.data_bus;
+
+    cpu.registers.P = p.into();
+
+    // reset XH and YH if we just set the X flag
+    if cpu.registers.P.X {
+        *cpu.registers.X.hi_mut() = 0;
+        *cpu.registers.Y.hi_mut() = 0;
+    }
+
+    meta END_CYCLE Internal;
+});
+
 #[cfg(test)]
 mod tests {
     use crate::instrs::test_prelude::*;
