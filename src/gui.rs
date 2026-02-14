@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use crate::rsnes;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
@@ -7,6 +9,11 @@ pub struct Gui {
     canvas: sdl2::render::Canvas<sdl2::video::Window>,
     event_pump: sdl2::EventPump,
     framebuffer: Vec<u8>,
+}
+
+pub enum RSnesEvent {
+    LoadRom { path: PathBuf },
+    Quit,
 }
 
 impl Gui {
@@ -74,44 +81,31 @@ impl Gui {
         self.canvas.present();
     }
 
-    pub fn load_rom() -> Result<Box<rsnes::Rsnes>, String> {
-        match rfd::FileDialog::new().pick_file() {
-            Some(path) => match rsnes::Rsnes::load_rom(&path) {
-                Ok(emu) => Ok(Box::new(emu)),
-                Err(err) => Err(format!("Error loading ROM: {}", err)),
+    fn map_event_to_rsnes_event(event: Event) -> Option<RSnesEvent> {
+        match event {
+            Event::Quit { .. }
+            | Event::KeyDown {
+                keycode: Some(Keycode::Escape),
+                ..
+            } => Some(RSnesEvent::Quit),
+            Event::KeyDown {
+                keycode: Some(Keycode::L),
+                ..
+            } => match rfd::FileDialog::new().pick_file() {
+                Some(path) => Some(RSnesEvent::LoadRom { path }),
+                None => None,
             },
-            None => Err("No file selected".to_string()),
+            _ => None,
         }
     }
 
-    pub fn handle_events(
-        &mut self,
-        rsnes_app: &mut Option<Box<rsnes::Rsnes>>,
-    ) -> Option<sdl2::event::Event> {
-        for event in self.event_pump.poll_iter() {
-            return match event {
-                Event::Quit { .. }
-                | Event::KeyDown {
-                    keycode: Some(Keycode::Escape),
-                    ..
-                } => Some(Event::Quit { timestamp: 0 }),
-                Event::KeyDown {
-                    keycode: Some(Keycode::L),
-                    ..
-                } => {
-                    match Self::load_rom() {
-                        Ok(emu) => *rsnes_app = Some(emu),
-                        Err(err) => println!("{}", err),
-                    };
-                    return None;
-                }
-                _ => return None,
-            };
-        }
-        None
+    fn handle_events(&mut self) -> impl Iterator<Item = RSnesEvent> {
+        self.event_pump
+            .poll_iter()
+            .filter_map(Self::map_event_to_rsnes_event)
     }
 
-    pub fn draw_framebuffer(&mut self) -> Result<(), String> {
+    fn draw_framebuffer(&mut self) -> Result<(), String> {
         use sdl2::pixels::PixelFormatEnum;
 
         let texture_creator = self.canvas.texture_creator();
@@ -133,15 +127,11 @@ impl Gui {
         Ok(())
     }
 
-    pub fn update(&mut self, rsnes_app: &mut Option<Box<rsnes::Rsnes>>) -> Result<(), String> {
+    pub fn update(&mut self) -> impl Iterator<Item = RSnesEvent> {
         self.clear(30, 30, 35);
-        match self.handle_events(rsnes_app) {
-            Some(Event::Quit { .. }) => return Err("User quit window".to_string()),
-            _ => {}
-        }
         let _ = self.draw_framebuffer(); // TODO: Handle error properly
         self.present();
 
-        Ok(())
+        self.handle_events() // Handle events after presenting window because it's borrowing mut self
     }
 }

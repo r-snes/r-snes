@@ -1,7 +1,10 @@
 mod gui;
 mod rsnes;
 
-use crate::{gui::Gui, rsnes::Rsnes};
+use crate::{
+    gui::{Gui, RSnesEvent},
+    rsnes::Rsnes,
+};
 use std::time::Instant;
 
 fn main() -> Result<(), String> {
@@ -17,7 +20,7 @@ fn main() -> Result<(), String> {
     let mut frame_accum: f64 = 0.0;
     let mut master_cycle_accum: f64 = 0.0;
 
-    loop {
+    'emulation_loop: loop {
         // Get new delta based on current Instant::now()
         let current_instant = Instant::now();
         let delta = current_instant.duration_since(last_instant).as_secs_f64();
@@ -42,9 +45,14 @@ fn main() -> Result<(), String> {
         if frame_accum >= Gui::FRAME_DURATION {
             frame_accum -= Gui::FRAME_DURATION;
 
-            match gui.update(&mut rsnes_app) {
-                Err(_) => break,
-                Ok(_) => {}
+            for state_event in gui.update() {
+                match state_event {
+                    RSnesEvent::LoadRom { path } => match rsnes::Rsnes::load_rom(&path) {
+                        Ok(emu) => rsnes_app = Some(Box::new(emu)),
+                        Err(err) => println!("Error loading ROM: {}", err),
+                    },
+                    RSnesEvent::Quit => break 'emulation_loop,
+                }
             }
             frame_nb += 1;
         }
