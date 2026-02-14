@@ -18,7 +18,7 @@ fn main() -> Result<(), String> {
     let mut frame_accum: f64 = 0.0;
     let mut master_cycle_accum: f64 = 0.0;
 
-    'emulation_loop: loop {
+    loop {
         // Get new delta based on current Instant::now()
         let current_instant = Instant::now();
         let delta = current_instant.duration_since(last_instant).as_secs_f64();
@@ -45,7 +45,7 @@ fn main() -> Result<(), String> {
             frame_accum -= Gui::FRAME_DURATION;
 
             match gui.update(&mut rsnes_app) {
-                Err(_) => break 'emulation_loop,
+                Err(_) => break,
                 Ok(_) => {}
             }
             frame_nb += 1;
