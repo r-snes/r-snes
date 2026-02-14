@@ -1,7 +1,7 @@
 use crate::reg::Reg;
 use crate::registers::RegisterP;
 
-fn set_nz<T: Reg>(val: T, p: &mut RegisterP) {
+pub fn set_nz<T: Reg>(val: T, p: &mut RegisterP) {
     p.Z = val.is_zero();
     p.N = val.is_neg();
 }
