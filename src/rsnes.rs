@@ -1,8 +1,7 @@
 use apu::Apu;
 use bus::Bus;
-use cpu::cpu::CPU;
 use cpu::cpu::CycleResult;
-use cpu::registers::Registers;
+use cpu::cpu::CPU;
 use ppu::ppu::PPU;
 
 use std::error::Error;
@@ -73,8 +72,10 @@ impl Rsnes {
         }
     }
 
-    // This function will be called every master cycle, it will update the CPU, PPU and APU state accordingly
+    /// This function will be called every master cycle, it will update the CPU, PPU and APU state accordingly
     pub fn update(&mut self) {
         self.update_cpu_cycles();
+
+        self.master_cycles += 1;
     }
 }
