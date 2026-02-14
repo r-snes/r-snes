@@ -9,6 +9,14 @@ cpu_instr!(nop {
     meta END_CYCLE Internal;
 });
 
+// `WDM`: reserved for future use, does nothing
+// Actually takes the same number of cycles as a NOP, but with
+// a read cycle instead of an internal cycle.
+// The read is immediate, making the instruction two bytes long
+cpu_instr!(wdm {
+    meta FETCH8_IMM;
+});
+
 #[cfg(test)]
 mod tests {
     use crate::instrs::test_prelude::*;

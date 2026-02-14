@@ -106,7 +106,7 @@ const INSTR_CYC1: [InstrCycle; 256] = [
     /* 3f */ InstrCycle(and::abslx_cyc1),
     /* 40 */ InstrCycle(todo_opcode!(0x40)),
     /* 41 */ InstrCycle(eor::dxind_cyc1),
-    /* 42 */ InstrCycle(todo_opcode!(0x42)),
+    /* 42 */ InstrCycle(wdm_cyc1),
     /* 43 */ InstrCycle(eor::sr_cyc1),
     /* 44 */ InstrCycle(todo_opcode!(0x44)),
     /* 45 */ InstrCycle(eor::d_cyc1),
