@@ -15,10 +15,10 @@ cpu_instr!(wdm {
 });
 
 cpu_instr!(xce {
-    std::mem::swap(&mut cpu.registers.P.C, &mut cpu.registers.P.E);
+    std::mem::swap(&mut cpu.registers.P.C, &mut cpu.registers.E);
 
     // switching to (or already in) emulation mode
-    if cpu.registers.P.E {
+    if cpu.registers.E {
         *cpu.registers.X.hi_mut() = 0;
         *cpu.registers.Y.hi_mut() = 0;
         *cpu.registers.S.hi_mut() = 1;

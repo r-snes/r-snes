@@ -386,7 +386,7 @@ mod test {
                     use super::*;
 
                     pub(crate) fn varwidth_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
-                        if !cpu.registers.P.E && !cpu.registers.P.M {
+                        if !cpu.registers.E && !cpu.registers.P.M {
                             self::_16::varwidth_cyc1(cpu)
                         } else {
                             self::_8::varwidth_cyc1(cpu)
