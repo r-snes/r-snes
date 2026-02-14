@@ -247,4 +247,231 @@ mod tests {
         super::sbc(&mut acc, operand, &mut p);
         assert_eq!(acc, 2);
     }
+
+    // duplicate over 6 possible output flag combinations of asl
+    #[duplicate_item(
+        DUP_name    DUP_a       DUP_res     DUP_c   DUP_n   DUP_z;
+        [asl_]      [0b00000001][0b00000010][false] [false] [false];
+        [asl_z]     [0b00000000][0b00000000][false] [false] [true];
+        [asl_n]     [0b01000000][0b10000000][false] [true]  [false];
+        //  _nz : impossible, 0 is positive
+        [asl_c]     [0b10000001][0b00000010][true]  [false] [false];
+        [asl_cz]    [0b10000000][0b00000000][true]  [false] [true];
+        [asl_cn]    [0b11000000][0b10000000][true]  [true]  [false];
+        //  _cnz : impossible, 0 is positive
+    )]
+    #[test]
+    fn DUP_name() {
+        let mut a: u8 = DUP_a;
+        let mut p = RegisterP::default();
+
+        p.C = !DUP_c;
+        p.N = !DUP_n;
+        p.Z = !DUP_z;
+
+        super::asl(&mut a, &mut p);
+
+        assert_eq!(a, DUP_res);
+        assert_eq!(p.C, DUP_c);
+        assert_eq!(p.N, DUP_n);
+        assert_eq!(p.Z, DUP_z);
+    }
+
+    // duplicate over the possible output flag combinations of lsr
+    #[duplicate_item(
+        DUP_name    DUP_a       DUP_res     DUP_c   DUP_z;
+        [lsr_]      [0b00000010][0b00000001][false] [false];
+        [lsr_z]     [0b00000000][0b00000000][false] [true];
+        [lsr_c]     [0b10000001][0b01000000][true]  [false];
+        [lsr_cz]    [0b00000001][0b00000000][true]  [true];
+    )]
+    #[test]
+    fn DUP_name() {
+        let mut a: u8 = DUP_a;
+        let mut p = RegisterP::default();
+
+        super::lsr(&mut a, &mut p);
+
+        assert_eq!(a, DUP_res);
+        assert_eq!(p.C, DUP_c);
+        assert_eq!(p.N, false, "N is always false as we shift right");
+        assert_eq!(p.Z, DUP_z);
+    }
+
+    // duplicate over 6 possible output flag combinations of rol
+    #[duplicate_item(
+        DUP_name    DUP_a       DUP_c_in    DUP_res     DUP_c_out   DUP_n   DUP_z;
+        [rol_]      [0b00000001][false]     [0b00000010][false]     [false] [false];
+        [rolc_]     [0b00000001][true]      [0b00000011][false]     [false] [false];
+        [rol_z]     [0b00000000][false]     [0b00000000][false]     [false] [true];
+        [rol_n]     [0b01000000][false]     [0b10000000][false]     [true]  [false];
+        [rolc_n]    [0b01000000][true]      [0b10000001][false]     [true]  [false];
+        //  _nz : impossible, 0 is positive
+        [rol_c]     [0b10000001][false]     [0b00000010][true]      [false] [false];
+        [rolc_c]    [0b10000001][true]      [0b00000011][true]      [false] [false];
+        [rol_cz]    [0b10000000][false]     [0b00000000][true]      [false] [true];
+        [rol_cn]    [0b11000000][false]     [0b10000000][true]      [true]  [false];
+        [rolc_cn]   [0b11000000][true]      [0b10000001][true]      [true]  [false];
+        //  _cnz : impossible, 0 is positive
+    )]
+    #[test]
+    fn DUP_name() {
+        let mut a: u8 = DUP_a;
+        let mut p = RegisterP::default();
+
+        p.C = DUP_c_in;
+        p.N = !DUP_n;
+        p.Z = !DUP_z;
+
+        let b: u8 = (1 << 1) | 1;
+        println!("b: {b}");
+
+        super::rol(&mut a, &mut p);
+
+        assert_eq!(a, DUP_res);
+        assert_eq!(p.C, DUP_c_out);
+        assert_eq!(p.N, DUP_n);
+        assert_eq!(p.Z, DUP_z);
+    }
+
+    // duplicate over 6 possible output flag combinations of ror
+    #[duplicate_item(
+        DUP_name    DUP_a       DUP_c_in    DUP_res     DUP_c_out   DUP_n   DUP_z;
+        [ror_]      [0b00000010][false]     [0b00000001][false]     [false] [false];
+        [ror_z]     [0b00000000][false]     [0b00000000][false]     [false] [true];
+        [rorc_n]    [0b01000000][true]      [0b10100000][false]     [true]  [false];
+        [ror_c]     [0b10000001][false]     [0b01000000][true]      [false] [false];
+        [ror_cz]    [0b00000001][false]     [0b00000000][true]      [false] [true];
+        [rorc_cn]   [0b11000001][true]      [0b11100000][true]      [true]  [false];
+    )]
+    #[test]
+    fn DUP_name() {
+        let mut a: u8 = DUP_a;
+        let mut p = RegisterP::default();
+
+        p.C = DUP_c_in;
+        p.N = !DUP_n;
+        p.Z = !DUP_z;
+
+        let b: u8 = (1 << 1) | 1;
+        println!("b: {b}");
+
+        super::ror(&mut a, &mut p);
+
+        assert_eq!(a, DUP_res);
+        assert_eq!(p.C, DUP_c_out);
+        assert_eq!(p.N, DUP_n);
+        assert_eq!(p.Z, DUP_z);
+    }
+
+    #[test]
+    fn inc() {
+        let mut a: u8 = 126;
+        let mut p = RegisterP::default();
+
+        super::inc(&mut a, &mut p);
+        assert_eq!(a, 127);
+        assert_eq!(p.Z, false);
+        assert_eq!(p.N, false);
+
+        super::inc(&mut a, &mut p);
+        assert_eq!(a, 128);
+        assert_eq!(p.Z, false);
+        assert_eq!(p.N, true);
+
+        super::inc(&mut a, &mut p);
+        assert_eq!(a, 129);
+        assert_eq!(p.Z, false);
+        assert_eq!(p.N, true);
+
+        a = 254;
+
+        super::inc(&mut a, &mut p);
+        assert_eq!(a, 255);
+        assert_eq!(p.Z, false);
+        assert_eq!(p.N, true);
+
+        super::inc(&mut a, &mut p);
+        assert_eq!(a, 0);
+        assert_eq!(p.Z, true);
+        assert_eq!(p.N, false);
+    }
+
+    #[test]
+    fn dec() {
+        let mut a: u8 = 129;
+        let mut p = RegisterP::default();
+
+        super::dec(&mut a, &mut p);
+        assert_eq!(a, 128);
+        assert_eq!(p.Z, false);
+        assert_eq!(p.N, true);
+
+        super::dec(&mut a, &mut p);
+        assert_eq!(a, 127);
+        assert_eq!(p.Z, false);
+        assert_eq!(p.N, false);
+
+        super::dec(&mut a, &mut p);
+        assert_eq!(a, 126);
+        assert_eq!(p.Z, false);
+        assert_eq!(p.N, false);
+
+        a = 2;
+
+        super::dec(&mut a, &mut p);
+        assert_eq!(a, 1);
+        assert_eq!(p.Z, false);
+        assert_eq!(p.N, false);
+
+        super::dec(&mut a, &mut p);
+        assert_eq!(a, 0);
+        assert_eq!(p.Z, true);
+        assert_eq!(p.N, false);
+
+        super::dec(&mut a, &mut p);
+        assert_eq!(a, 255);
+        assert_eq!(p.Z, false);
+        assert_eq!(p.N, true);
+    }
+
+    #[duplicate_item(
+        DUP_name            DUP_op      DUP_a       DUP_res     DUP_z;
+        [tsb_no_change]     [0b00110011][0b00110011][0b00110011][false];
+        [tsb_set_all]       [0b00000000][0b11111111][0b11111111][true];
+        [tsb_set_half]      [0b10100000][0b00001111][0b10101111][true];
+        [tsb_set_half2]     [0b10100001][0b00001111][0b10101111][false];
+        [tsb_set_nothing]   [0b10100001][0b00000000][0b10100001][true];
+    )]
+    #[test]
+    fn DUP_name() {
+        let a: u8 = DUP_a;
+        let mut op: u8 = DUP_op;
+        let mut p = RegisterP::default();
+
+        super::tsb(&mut op, a, &mut p);
+
+        assert_eq!(p.Z, DUP_z);
+        assert_eq!(op, DUP_res);
+    }
+
+    #[duplicate_item(
+        DUP_name            DUP_op      DUP_a       DUP_res     DUP_z;
+        [trb_unset]         [0b00110011][0b00110011][0b00000000][false];
+        [trb_unset_all]     [0b11111111][0b11111111][0b00000000][false];
+        [trb_no_change]     [0b10100000][0b00001111][0b10100000][true];
+        [trb_change1]       [0b10100001][0b00001111][0b10100000][false];
+        [trb_unset_nothing] [0b10100001][0b00000000][0b10100001][true];
+    )]
+    #[test]
+    fn DUP_name() {
+        let a: u8 = DUP_a;
+        let mut op: u8 = DUP_op;
+        let mut p = RegisterP::default();
+
+        super::trb(&mut op, a, &mut p);
+
+        assert_eq!(p.Z, DUP_z);
+        assert_eq!(op, DUP_res);
+    }
 }
