@@ -1,14 +1,14 @@
 use apu::Apu;
 use bus::Bus;
-use cpu::cpu::CycleResult;
 use cpu::cpu::CPU;
+use cpu::cpu::CycleResult;
 use ppu::ppu::PPU;
 
 use std::error::Error;
 use std::path::Path;
 use std::path::PathBuf;
 
-pub struct Rsnes {
+pub struct RSnes {
     pub rom_path: PathBuf,
     pub bus: Box<Bus>,
     pub cpu: Box<CPU>,
@@ -18,7 +18,7 @@ pub struct Rsnes {
     pub cpu_master_cycles_to_wait: u16,
 }
 
-impl Rsnes {
+impl RSnes {
     pub const MASTER_CLOCK_HZ: u64 = 21_477_300;
     pub const MASTER_CYCLE_DURATION: f64 = 1.0 / Self::MASTER_CLOCK_HZ as f64;
 

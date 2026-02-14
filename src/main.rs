@@ -3,13 +3,13 @@ mod rsnes;
 
 use crate::{
     gui::{Gui, RSnesEvent},
-    rsnes::Rsnes,
+    rsnes::RSnes,
 };
 use std::time::Instant;
 
 fn main() -> Result<(), String> {
     let mut gui = gui::Gui::new()?;
-    let mut rsnes_app: Option<Box<rsnes::Rsnes>> = None;
+    let mut rsnes_app: Option<Box<rsnes::RSnes>> = None;
 
     // Reference variables
     let mut frame_nb = 0;
@@ -33,8 +33,8 @@ fn main() -> Result<(), String> {
             Some(ref mut app) => {
                 master_cycle_accum += delta;
 
-                while master_cycle_accum >= Rsnes::MASTER_CYCLE_DURATION {
-                    master_cycle_accum -= Rsnes::MASTER_CYCLE_DURATION;
+                while master_cycle_accum >= RSnes::MASTER_CYCLE_DURATION {
+                    master_cycle_accum -= RSnes::MASTER_CYCLE_DURATION;
                     app.update();
                 }
             }
@@ -47,7 +47,7 @@ fn main() -> Result<(), String> {
 
             for state_event in gui.update() {
                 match state_event {
-                    RSnesEvent::LoadRom { path } => match rsnes::Rsnes::load_rom(&path) {
+                    RSnesEvent::LoadRom { path } => match rsnes::RSnes::load_rom(&path) {
                         Ok(emu) => rsnes_app = Some(Box::new(emu)),
                         Err(err) => println!("Error loading ROM: {}", err),
                     },
