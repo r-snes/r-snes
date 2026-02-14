@@ -12,4 +12,5 @@ mod flags;
 mod jumps;
 mod loads;
 mod stores;
+mod transfers;
 mod uncategorised;
