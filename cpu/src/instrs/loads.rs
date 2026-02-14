@@ -75,7 +75,7 @@ mod tests {
             let mut regs = Registers::default();
             regs.PB = 0x12;
             regs.PC = 0x3456;
-            regs.P.E = false; // need to disable emu mode for 16-bit load
+            regs.E = false; // need to disable emu mode for 16-bit load
             regs.P.DUP1_flag = false; // and turn off M flag too
             regs.DUP1_reg = 0x9999; // value which will be overwritten
 
@@ -121,7 +121,7 @@ mod tests {
                 let mut regs = Registers::default();
                 regs.PB = 0x12;
                 regs.PC = 0x3456;
-                regs.P.E = DUP3_emu;
+                regs.E = DUP3_emu;
                 regs.P.DUP1_flag = DUP3_index;
                 regs.DUP1_reg = 0x9999; // value which will be overwritten
 
@@ -161,7 +161,7 @@ mod tests {
         let mut regs = Registers::default();
         regs.PB = 0x12;
         regs.PC = 0x3456;
-        regs.P.E = false; // non-emu mode for 16-bit instr
+        regs.E = false; // non-emu mode for 16-bit instr
         regs.P.X = false; // unset both X and M
         regs.P.M = false; // so that all instrs are 16-bit
         regs.DB = 0xdb;
@@ -188,7 +188,7 @@ mod tests {
         let mut regs = Registers::default();
         regs.PB = 0x12;
         regs.PC = 0x3456;
-        regs.P.E = false; // non-emu mode for 16-bit instr
+        regs.E = false; // non-emu mode for 16-bit instr
         regs.P.X = false; // unset both X and M
         regs.P.M = false; // so that all instrs are 16-bit
         regs.A = 0x9999; // value which will be overwritten
@@ -215,7 +215,7 @@ mod tests {
         let mut regs = Registers::default();
         regs.PB = 0x12;
         regs.PC = 0x3456;
-        regs.P.E = false; // non-emu mode for 16-bit instr
+        regs.E = false; // non-emu mode for 16-bit instr
         regs.P.X = false; // unset both X and M
         regs.P.M = false; // so that all instrs are 16-bit
         regs.A = 0x9999; // value which will be overwritten
@@ -275,7 +275,7 @@ mod tests {
         let mut regs = Registers::default();
         regs.PB = 0x12;
         regs.PC = 0x3456;
-        regs.P.E = false; // non-emu mode to enable 16-bit instrs
+        regs.E = false; // non-emu mode to enable 16-bit instrs
         regs.P.M = false; // M=0 so A is 16-bit
         regs.P.X = DUP_xf;
         regs.DUP_reg = 0x9999; // value which will be overwritten
@@ -326,7 +326,7 @@ mod tests {
             let mut regs = Registers::default();
             regs.PB = 0x12;
             regs.PC = 0x3456;
-            regs.P.E = false; // non-emu mode to enable 16-bit instrs
+            regs.E = false; // non-emu mode to enable 16-bit instrs
             regs.P.M = false; // M=0 so A is 16-bit
             regs.P.X = false; // X=0 so X and Y are 16-bit
             regs.DUP2_reg = 0x9999; // value which will be overwritten
@@ -361,7 +361,7 @@ mod tests {
             let mut regs = Registers::default();
             regs.PB = 0x12;
             regs.PC = 0x3456;
-            regs.P.E = false; // non-emu mode to enable 16-bit instrs
+            regs.E = false; // non-emu mode to enable 16-bit instrs
             regs.P.M = false; // M=0 so A is 16-bit
             regs.P.X = false; // X=0 so X and Y are 16-bit
             regs.DUP2_reg = 0x9999; // value which will be overwritten
@@ -391,7 +391,7 @@ mod tests {
             let mut regs = Registers::default();
             regs.PB = 0x12;
             regs.PC = 0x3456;
-            regs.P.E = false; // non-emu mode to enable 16-bit instrs
+            regs.E = false; // non-emu mode to enable 16-bit instrs
             regs.P.M = false; // M=0 so A is 16-bit
             regs.A = 0x9999; // value which will be overwritten
             regs.D = DUP1_D;
@@ -421,7 +421,7 @@ mod tests {
             let mut regs = Registers::default();
             regs.PB = 0x12;
             regs.PC = 0x3456;
-            regs.P.E = false; // non-emu mode to enable 16-bit instrs
+            regs.E = false; // non-emu mode to enable 16-bit instrs
             regs.P.M = false; // M=0 so A is 16-bit
             regs.A = 0x9999; // value which will be overwritten
             regs.D = DUP1_D;
@@ -462,7 +462,7 @@ mod tests {
             let mut regs = Registers::default();
             regs.PB = 0x12;
             regs.PC = 0x3456;
-            regs.P.E = false; // non-emu mode to enable 16-bit instrs
+            regs.E = false; // non-emu mode to enable 16-bit instrs
             regs.P.M = false; // M=0 so A is 16-bit
             regs.P.X = DUP2_xf;
             regs.Y = DUP2_y;
@@ -497,7 +497,7 @@ mod tests {
             let mut regs = Registers::default();
             regs.PB = 0x12;
             regs.PC = 0x3456;
-            regs.P.E = false; // non-emu mode to enable 16-bit instrs
+            regs.E = false; // non-emu mode to enable 16-bit instrs
             regs.P.M = false; // M=0 so A is 16-bit
             regs.A = 0x9999; // value which will be overwritten
             regs.D = DUP1_D;
@@ -527,7 +527,7 @@ mod tests {
             let mut regs = Registers::default();
             regs.PB = 0x12;
             regs.PC = 0x3456;
-            regs.P.E = false; // non-emu mode to enable 16-bit instrs
+            regs.E = false; // non-emu mode to enable 16-bit instrs
             regs.P.M = false; // M=0 so A is 16-bit
             regs.A = 0x9999; // value which will be overwritten
             regs.D = DUP1_D;
@@ -559,7 +559,7 @@ mod tests {
         let mut regs = Registers::default();
         regs.PB = 0x12;
         regs.PC = 0x3456;
-        regs.P.E = false; // non-emu mode to enable 16-bit instrs
+        regs.E = false; // non-emu mode to enable 16-bit instrs
         regs.P.M = false; // M=0 so A is 16-bit
         regs.A = 0x9999; // value which will be overwritten
         regs.S = 0x0402;
@@ -585,7 +585,7 @@ mod tests {
         let mut regs = Registers::default();
         regs.PB = 0x12;
         regs.PC = 0x3456;
-        regs.P.E = false; // non-emu mode to enable 16-bit instrs
+        regs.E = false; // non-emu mode to enable 16-bit instrs
         regs.P.M = false; // M=0 so A is 16-bit
         regs.A = 0x9999; // value which will be overwritten
         regs.S = 0x0402;
