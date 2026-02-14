@@ -9,6 +9,11 @@ cpu_instr!(nop {
     meta END_CYCLE Internal;
 });
 
+// `WDM`: reserved for future use, does nothing
+cpu_instr!(wdm {
+    meta FETCH8_IMM;
+});
+
 #[cfg(test)]
 mod tests {
     use crate::instrs::test_prelude::*;
