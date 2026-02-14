@@ -73,6 +73,11 @@ jobs:
           version: 2-latest
           version-sdl-image: 2-latest
 
+      - name: Export SDL paths
+        run: |
+          echo "LIBRARY_PATH=${{ steps.sdl.outputs.prefix }}/lib" >> $GITHUB_ENV
+          echo "LD_LIBRARY_PATH=${{ steps.sdl.outputs.prefix }}/lib" >> $GITHUB_ENV
+
       - name: Run coverage
         run: cargo tarpaulin --out html
 
