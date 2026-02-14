@@ -15,11 +15,13 @@ use crate::memory_region::MemoryRegion;
 pub struct Io {
     // TODO : Implement real CPU, PPU, APU, etc... memoriy behaviors.
     data: [u8; IO_SIZE],
+
+    vblank: bool,
 }
 
 impl Io {
     pub fn new() -> Self {
-        Self { data: [0; IO_SIZE] }
+        Self { data: [0; IO_SIZE], vblank: false }
     }
 
     fn panic_invalid_addr(addr: SnesAddress) -> ! {
@@ -55,13 +57,24 @@ impl MemoryRegion for Io {
     ///
     /// # Panics
     /// Panics if the address does not map to a valid I/O memory location.
-    fn read(&self, addr: SnesAddress) -> u8 {
+    fn read(&mut self, addr: SnesAddress) -> u8 {
         let offset = Self::to_offset(addr);
 
-        return *self.data.get(offset).expect(&format!(
-            "ERROR: Couldn't extract value from IO at address: {:06X}",
-            usize::from(addr)
-        ));
+        match offset {
+            0x4210 => {
+                if self.vblank {
+                    self.vblank = false;
+                    0xff
+                } else {
+                    self.vblank = true;
+                    0
+                }
+            }
+            offset => *self.data.get(offset).expect(&format!(
+                "ERROR: Couldn't extract value from IO at address: {:06X}",
+                usize::from(addr)
+            )),
+        }
     }
 
     /// Writes a byte to the I/O memory zone at the given `SnesAddress`.
@@ -71,7 +84,7 @@ impl MemoryRegion for Io {
     /// # Panics
     /// Panics if the address does not map to a valid I/O memory location.
     fn write(&mut self, addr: SnesAddress, value: u8) {
-        let offset = Self::to_offset(addr);
+        let offset = 0;
 
         if offset < self.data.len() {
             self.data[offset] = value;

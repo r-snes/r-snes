@@ -26,7 +26,7 @@ impl Bus {
     duplicate! {
         [
             DUP_method  DUP_parameters                                  DUP_return_t    DUP_method_param;
-            [ read ]    [ &self, addr: SnesAddress ]                    [ u8 ]          [ addr ];
+            [ read ]    [ &mut self, addr: SnesAddress ]                [ u8 ]          [ addr ];
             [ write ]   [ &mut self, addr: SnesAddress, value: u8 ]     [ () ]          [ addr, value ];
         ]
         pub fn DUP_method(DUP_parameters) -> DUP_return_t {

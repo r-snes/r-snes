@@ -54,7 +54,7 @@ impl MemoryRegion for Wram {
     ///
     /// # Panics
     /// Panics if the address is invalid or out of bounds.
-    fn read(&self, addr: SnesAddress) -> u8 {
+    fn read(&mut self, addr: SnesAddress) -> u8 {
         let offset = Self::to_offset(addr);
 
         return *self.data.get(offset).expect(&format!(

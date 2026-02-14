@@ -93,7 +93,7 @@ impl Gui {
                 Event::KeyDown {
                     keycode: Some(Keycode::L),
                     ..
-                } => match rfd::FileDialog::new().pick_file() {
+                } => match Some("/home/fcharpentier/clones/snes-tests/cputest/cputest-basic.sfc".into()) {
                     Some(path) => Some(RSnesEvent::LoadRom { path }),
                     None => None,
                 },

@@ -173,7 +173,7 @@ impl MemoryRegion for Rom {
     ///
     /// # Panics
     /// Panics if the mapping mode is `MappingMode::Unknown` or index out of bounds.
-    fn read(&self, addr: SnesAddress) -> u8 {
+    fn read(&mut self, addr: SnesAddress) -> u8 {
         let offset = self.to_offset(addr);
 
         return *self.data.get(offset).expect(&format!(
