@@ -25,7 +25,7 @@ impl Rsnes {
 
     pub fn load_rom<P: AsRef<Path>>(rom_path: &P) -> Result<Self, Box<dyn Error>> {
         let bus = Box::new(Bus::new(rom_path)?);
-        let cpu = Box::new(CPU::new(Registers::default()));
+        let cpu = Box::new(CPU::poweron());
         let ppu = Box::new(PPU::new());
         let apu = Box::new(Apu::new());
 
