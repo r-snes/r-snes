@@ -26,21 +26,21 @@ fn main() -> Result<(), String> {
 
         frame_accum += delta;
 
-        // Emulation update if master_cycle duration treshold is crossed
+        // Emulation update if emulator exists and if master_cycle duration treshold is crossed
         match rsnes_app {
             Some(ref mut app) => {
                 master_cycle_accum += delta;
 
                 // In the future, check if this 'while' doesn't restrain the program execution too much
                 while master_cycle_accum >= Rsnes::MASTER_CYCLE_DURATION {
-                    master_cycle_accum -= Rsnes::MASTER_CYCLE_DURATION
+                    master_cycle_accum -= Rsnes::MASTER_CYCLE_DURATION;
+                    app.update();
                 }
-                app.update();
             }
             None => {}
         }
 
-        // Widnow update if frame treshold is crossed
+        // Window update if frame treshold is crossed
         if frame_accum >= Gui::FRAME_DURATION {
             frame_accum -= Gui::FRAME_DURATION;
 
@@ -50,14 +50,11 @@ fn main() -> Result<(), String> {
             }
             frame_nb += 1;
         }
-
-        // Deactivated sleep for now
-        // ::std::thread::sleep(Duration::new(0, 1_000_000u32));
     }
 
     // TODO : Potential Cleanup or user settings save ?
 
-    // Print of the window frame rate
+    // Print of the window frame rate and program duration
     let time = Instant::now();
     let program_duration = time.duration_since(exec_start).as_secs_f64();
     println!("Program duration : {}", program_duration);
