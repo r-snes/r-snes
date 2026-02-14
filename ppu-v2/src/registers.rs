@@ -263,4 +263,159 @@ impl PPURegisters {
             stat78: 0,
         }
     }
+
+    pub fn write(&mut self, addr: u16, value: u8) {
+        match addr {
+            0x2100 => self.inidisp = value,
+            0x2101 => self.objsel = value,
+            0x2102 => self.oamaddl = value,
+            0x2103 => self.oamaddh = value,
+            0x2104 => self.oamdata = value,
+            0x2105 => self.bgmode = value,
+            0x2106 => self.mosaic = value,
+            0x2107 => self.bg1sc = value,
+            0x2108 => self.bg2sc = value,
+            0x2109 => self.bg3sc = value,
+            0x210A => self.bg4sc = value,
+            0x210B => self.bg12nba = value,
+            0x210C => self.bg34nba = value,
+
+            0x210D => self.bg1hofs = value as u16, // placeholder
+            0x210E => self.m7hofs = value as u16,
+            0x210F => self.bg1vofs = value as u16,
+            0x2110 => self.m7vofs = value as u16,
+            0x2111 => self.bg2hofs = value as u16,
+            0x2112 => self.bg2vofs = value as u16,
+            0x2113 => self.bg3hofs = value as u16,
+            0x2114 => self.bg3vofs = value as u16,
+
+            0x2115 => self.vmain = value,
+            0x2116 => self.vmaddl = value,
+            0x2117 => self.vmaddh = value,
+            0x2118 => self.vmdatal = value,
+            0x2119 => self.vmdatab = value,
+
+            0x211A => self.m7sel = value,
+
+            0x211B => self.m7a = value as u16,
+            0x211C => self.m7b = value as u16,
+            0x211D => self.m7c = value as u16,
+            0x211E => self.m7d = value as u16,
+            0x211F => self.m7x = value as u16,
+            0x2120 => self.m7y = value as u16,
+
+            0x2121 => self.cgadd = value,
+            0x2122 => self.cgdata = value as u16,
+
+            0x2123 => self.w12sel = value,
+            0x2124 => self.w34sel = value,
+            0x2125 => self.wobjsel = value,
+
+            0x2126 => self.wh0 = value,
+            0x2127 => self.wh1 = value,
+            0x2128 => self.wh2 = value,
+            0x2129 => self.wh3 = value,
+
+            0x212A => self.wbglog = value,
+            0x212B => self.wobjlog = value,
+
+            0x212C => self.tm = value,
+            0x212D => self.ts = value,
+            0x212E => self.tmw = value,
+            0x212F => self.tsw = value,
+
+            0x2130 => self.cgwsel = value,
+            0x2131 => self.cgadsub = value,
+            0x2132 => self.coldata = value,
+            0x2133 => self.setini = value,
+
+            0x2134 => {
+                println!(
+                    "PPU WRITE IGNORED: ${:04X} = {:02X} (read-only: MPYL multiplication result low)",
+                    addr, value
+                );
+            }
+
+            0x2135 => {
+                println!(
+                    "PPU WRITE IGNORED: ${:04X} = {:02X} (read-only: MPYM multiplication result middle)",
+                    addr, value
+                );
+            }
+
+            0x2136 => {
+                println!(
+                    "PPU WRITE IGNORED: ${:04X} = {:02X} (read-only: MPYH multiplication result high)",
+                    addr, value
+                );
+            }
+
+            0x2137 => {
+                println!(
+                    "PPU WRITE IGNORED: ${:04X} = {:02X} (read-only: SLHV latch H/V counters)",
+                    addr, value
+                );
+            }
+
+            0x2138 => {
+                println!(
+                    "PPU WRITE IGNORED: ${:04X} = {:02X} (read-only: OAMDATAREAD)",
+                    addr, value
+                );
+            }
+
+            0x2139 => {
+                println!(
+                    "PPU WRITE IGNORED: ${:04X} = {:02X} (read-only: VMDATALREAD)",
+                    addr, value
+                );
+            }
+
+            0x213A => {
+                println!(
+                    "PPU WRITE IGNORED: ${:04X} = {:02X} (read-only: VMDATAHREAD)",
+                    addr, value
+                );
+            }
+
+            0x213B => {
+                println!(
+                    "PPU WRITE IGNORED: ${:04X} = {:02X} (read-only: CGDATAREAD)",
+                    addr, value
+                );
+            }
+
+            0x213C => {
+                println!(
+                    "PPU WRITE IGNORED: ${:04X} = {:02X} (read-only: OPHCT horizontal counter)",
+                    addr, value
+                );
+            }
+
+            0x213D => {
+                println!(
+                    "PPU WRITE IGNORED: ${:04X} = {:02X} (read-only: OPVCT vertical counter)",
+                    addr, value
+                );
+            }
+
+            0x213E => {
+                println!(
+                    "PPU WRITE IGNORED: ${:04X} = {:02X} (read-only: STAT77 PPU1 status)",
+                    addr, value
+                );
+            }
+
+            0x213F => {
+                println!(
+                    "PPU WRITE IGNORED: ${:04X} = {:02X} (read-only: STAT78 PPU2 status)",
+                    addr, value
+                );
+            }
+
+            _ => {
+                println!("PPU write to unknown address: {:04X}", addr);
+            }
+        }
+    }
 }
