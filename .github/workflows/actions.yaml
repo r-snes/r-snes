@@ -30,6 +30,14 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@1.90.0
 
+      - name: Install SDL2
+        uses: libsdl-org/setup-sdl@main
+        id: sdl
+        with:
+          install-linux-dependencies: true
+          version: 2-latest
+          version-sdl-image: 2-latest
+
       - name: Check program compilation
         timeout-minutes: 3
         run: cargo check --workspace
@@ -56,6 +64,14 @@ jobs:
           if ! command -v cargo-tarpaulin &> /dev/null; then
             cargo install cargo-tarpaulin
           fi
+
+      - name: Install SDL2
+        uses: libsdl-org/setup-sdl@main
+        id: sdl
+        with:
+          install-linux-dependencies: true
+          version: 2-latest
+          version-sdl-image: 2-latest
 
       - name: Run coverage
         run: cargo tarpaulin --out html
