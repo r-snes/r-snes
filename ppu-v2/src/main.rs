@@ -27,17 +27,17 @@ fn main() {
     let full_oam_addr = ((ppu.oamaddh as u16) << 8) | ppu.oamaddl as u16;
     println!("\nOAM Address: 0x{:04X}", full_oam_addr);
 
-    // --- Test Scroll register ($210D BG1HOFS) ---
-    ppu.write(0x210D, 0xFF);
-    ppu.write(0x210D, 0x01); // placeholder for 16-bit value write
-    println!("\nBG1 Horizontal Scroll: {}", ppu.bg1hofs);
+    // Test BG1HOFS ($210D) ---> 16-bit value write 
+    ppu.write(0x210D, 0xFF); // low byte
+    ppu.write(0x210D, 0x01); // high byte
+    println!("\nBG1 Horizontal Scroll: {}", ppu.bg1hofs); // 0x01FF = 511
 
-    // --- Test CGDATA ($2122) ---
+    // Test CGDATA ($2122) ---> 16-bit value write 
     let color: u16 = 0x3C1F; // BGR555
-    ppu.write(0x2122, (color & 0xFF) as u8);       // Low byte
-    ppu.write(0x2122, ((color >> 8) & 0xFF) as u8); // High byte
-    println!("\nCGRAM Write Value: {:016b}", ppu.cgdata);
+    ppu.write(0x2122, (color & 0xFF) as u8);       // low
+    ppu.write(0x2122, ((color >> 8) & 0xFF) as u8); // high
+    println!("\nCGRAM Write Value: {:016b}", ppu.cgdata); // 0011110000011111
 
     // ------ // ------ //
-    println!("\nAll tests executed successfully.");
+    println!("\nNice and clean.");
 }

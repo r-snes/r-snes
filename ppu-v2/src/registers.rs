@@ -192,6 +192,12 @@ pub struct PPURegisters {
 
     // $213F - STAT78
     pub stat78: u8, // Interlace field, counter latch, NTSC/PAL, PPU2 version
+
+    // Latches
+    bg1hofs_latch: u8,
+    cgdata_latch: u8,
+    bg1hofs_latch_written: bool,
+    cgdata_latch_written: bool,
 }
 
 impl PPURegisters {
@@ -261,6 +267,10 @@ impl PPURegisters {
             opvct: 0,
             stat77: 0,
             stat78: 0,
+            bg1hofs_latch: 0,
+            cgdata_latch: 0,
+            bg1hofs_latch_written: false,
+            cgdata_latch_written: false,
         }
     }
 
@@ -280,7 +290,15 @@ impl PPURegisters {
             0x210B => self.bg12nba = value,
             0x210C => self.bg34nba = value,
 
-            0x210D => self.bg1hofs = value as u16, // placeholder
+            0x210D => {
+                if !self.bg1hofs_latch_written {
+                    self.bg1hofs_latch = value; // 1st write = low byte
+                    self.bg1hofs_latch_written = true;
+                } else {
+                    self.bg1hofs = ((value as u16) << 8) | self.bg1hofs_latch as u16; // 2nd write = high byte
+                    self.bg1hofs_latch_written = false; // reset latch
+                }
+            }
             0x210E => self.m7hofs = value as u16,
             0x210F => self.bg1vofs = value as u16,
             0x2110 => self.m7vofs = value as u16,
@@ -305,7 +323,15 @@ impl PPURegisters {
             0x2120 => self.m7y = value as u16,
 
             0x2121 => self.cgadd = value,
-            0x2122 => self.cgdata = value as u16,
+            0x2122 => {
+                if !self.cgdata_latch_written {
+                    self.cgdata_latch = value; // 1st write = low byte
+                    self.cgdata_latch_written = true;
+                } else {
+                    self.cgdata = ((value as u16) << 8) | self.cgdata_latch as u16; // 2nd write = high byte
+                    self.cgdata_latch_written = false; // reset latch
+                }
+            }
 
             0x2123 => self.w12sel = value,
             0x2124 => self.w34sel = value,
