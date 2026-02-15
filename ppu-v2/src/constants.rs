@@ -1,0 +1,1 @@
+pub const VRAM_SIZE: usize = 64 * 1024; // 64 KB
