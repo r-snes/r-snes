@@ -13,6 +13,8 @@ impl PPU {
                 self.regs.vmain = value;
                 self.vram.write_vmain(value);
             }
+            0x2116 => self.vram.write_vmadd_low(value),
+            0x2117 => self.vram.write_vmadd_high(value),
             _ => {
                 println!(
                     "PPU WRITE IGNORED: ${:04X} = {:02X} (unimplemented register)",

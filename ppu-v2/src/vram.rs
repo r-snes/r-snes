@@ -1,10 +1,14 @@
 use crate::constants::VRAM_SIZE;
 
 pub struct VRAM {
-    memory: [u8; VRAM_SIZE],
+    pub memory: [u8; VRAM_SIZE],
 
     // Registers
     pub vmain: u8, // $2115
+    pub vmadd: u16, // current word address (0–0x7FFF)
+
+    // Internal state
+    pub vram_latch: u16, // word latch for reads
 }
 
 impl VRAM {
@@ -12,6 +16,8 @@ impl VRAM {
         Self {
             memory: [0; VRAM_SIZE],
             vmain: 0,
+            vmadd: 0,
+            vram_latch: 0,
         }
     }
 
@@ -42,5 +48,40 @@ impl VRAM {
 
     pub fn increment_after_high(&self) -> bool {
         (self.vmain & 0x80) != 0
+    }
+    
+    fn increment_vmadd(&mut self) {
+        self.vmadd = (self.vmadd + self.increment_amount()) & 0x7FFF;
+    }
+
+    // ============================================================
+    // VMADD ($2116 / $2117)
+    // ============================================================
+
+    pub fn write_vmadd_low(&mut self, value: u8) {
+        self.vmadd = (self.vmadd & 0x7F00) | value as u16;
+        self.vmadd &= 0x7FFF;
+        self.load_latch();
+    }
+
+    pub fn write_vmadd_high(&mut self, value: u8) {
+        self.vmadd = ((value as u16 & 0x7F) << 8) | (self.vmadd & 0x00FF);
+        self.vmadd &= 0x7FFF;
+        self.load_latch();
+    }
+
+    // ============================================================
+    // Internal helpers
+    // ============================================================
+
+    pub fn byte_address(&self) -> usize {
+        ((self.vmadd & 0x7FFF) as usize) * 2
+    }
+
+    pub fn load_latch(&mut self) {
+        let addr = self.byte_address();
+        let low = self.memory[addr];
+        let high = self.memory[addr + 1];
+        self.vram_latch = (high as u16) << 8 | low as u16;
     }
 }
