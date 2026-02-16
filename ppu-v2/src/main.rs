@@ -28,22 +28,28 @@ fn main() {
     println!("VRAM latch = 0x{:04X}", vram.vram_latch);
 
     // -----------------------------
-    // Test VMDATAL / VMDATAH ($2118/$2119)
+    // Test VMDATAL / VMDATAH
     // -----------------------------
-    println!("\n--- Testing VMDATA write ---");
-
+    println!("\n--- Testing VMDATA write ---"); // ($2118/$2119)
+    
     vram.write_vmain(0x80);
     
     // Write a word 0xABCD at current VMADD
     vram.write_vmdatal(0xCD);
     vram.write_vmdatah(0xAB);
-
-    // Check memory content (low byte / high byte)
+    
+    // Manualy check memory content (low byte / high byte)
     let mut addr = vram.byte_address() - 2; // previous address of the word written
     println!("Memory[0x{:04X}] (low1)  = 0x{:02X}", addr, vram.memory[addr]);
     println!("Memory[0x{:04X}] (high1) = 0x{:02X}", addr + 1, vram.memory[addr + 1]);
     println!("Memory[0x{:04X}] (low2)  = 0x{:02X}", addr + 2, vram.memory[addr + 2]);
     println!("Memory[0x{:04X}] (high2) = 0x{:02X}", addr + 3, vram.memory[addr + 3]);
+    
+    // -----------------------------
+    println!("\n--- Testing VMDATA read ---"); // ($2139/$213A)
+
+    println!("Low = 0x{:02X}", vram.read_vmdatal());
+    println!("High = 0x{:02X}", vram.read_vmdatah());
 
     // -----------------------------
     // Test auto-increment

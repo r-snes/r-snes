@@ -90,10 +90,36 @@ impl VRAM {
         self.memory[addr + 1] = value;
 
         self.load_latch();
-        
+
         if self.increment_after_high() {
             self.increment_vmadd();
         }
+    }
+
+    // ============================================================
+    // VRAM DATA READ ($2139 / $213A)
+    // ============================================================
+
+    pub fn read_vmdatal(&mut self) -> u8 {
+        let value = (self.vram_latch & 0x00FF) as u8;
+
+        if self.increment_after_low() {
+            self.load_latch();
+            self.increment_vmadd();
+        }
+
+        value
+    }
+
+    pub fn read_vmdatah(&mut self) -> u8 {
+        let value = (self.vram_latch >> 8) as u8;
+
+        if self.increment_after_high() {
+            self.load_latch();
+            self.increment_vmadd();
+        }
+
+        value
     }
 
     // ============================================================
