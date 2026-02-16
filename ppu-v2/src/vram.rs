@@ -71,7 +71,33 @@ impl VRAM {
     }
 
     // ============================================================
-    // Internal helpers
+    // VRAM DATA WRITE ($2118 / $2119)
+    // ============================================================
+
+    pub fn write_vmdatal(&mut self, value: u8) {
+        let addr = self.byte_address();
+        self.memory[addr] = value;
+        
+        self.load_latch();
+
+        if self.increment_after_low() {
+            self.increment_vmadd();
+        }
+    }
+    
+    pub fn write_vmdatah(&mut self, value: u8) {
+        let addr = self.byte_address();
+        self.memory[addr + 1] = value;
+
+        self.load_latch();
+        
+        if self.increment_after_high() {
+            self.increment_vmadd();
+        }
+    }
+
+    // ============================================================
+    // Helpers
     // ============================================================
 
     pub fn byte_address(&self) -> usize {
