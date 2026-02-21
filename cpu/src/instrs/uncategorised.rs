@@ -287,4 +287,25 @@ mod tests {
         expected_regs.P.Z = false;
         assert_eq!(*cpu.regs(), expected_regs);
     }
+
+    #[test]
+    fn xba() {
+        let mut regs = Registers::default();
+        regs.PB = 0x12;
+        regs.PC = 0x3456;
+        regs.A = 0xbbaa;
+        let mut expected_regs = regs.clone();
+
+        let mut cpu = CPU::new(regs);
+
+        expect_opcode_fetch(&mut cpu, 0xeb);
+        expect_internal_cycle(&mut cpu, "swap");
+        expect_internal_cycle(&mut cpu, "swap (2)");
+        expect_opcode_fetch_cycle(&mut cpu);
+
+        expected_regs.PC = 0x3457;
+        expected_regs.A = 0xaabb;
+        expected_regs.P.N = true; // because 0xbb is negative
+        assert_eq!(*cpu.regs(), expected_regs);
+    }
 }
