@@ -1,11 +1,10 @@
 use std::path::PathBuf;
 
-use crate::rsnes;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 
 pub struct Gui {
-    sdl_ctx: sdl2::Sdl,
+    _sdl_ctx: sdl2::Sdl,
     canvas: sdl2::render::Canvas<sdl2::video::Window>,
     event_pump: sdl2::EventPump,
     framebuffer: Vec<u8>,
@@ -44,7 +43,7 @@ impl Gui {
         let event_pump = sdl_ctx.event_pump().unwrap();
 
         Ok(Gui {
-            sdl_ctx,
+            _sdl_ctx: sdl_ctx,
             canvas,
             event_pump,
             framebuffer: Self::temporary_framebuffer(),

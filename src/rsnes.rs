@@ -9,7 +9,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 pub struct RSnes {
-    pub rom_path: PathBuf,
+    pub _rom_path: PathBuf,
     pub bus: Box<Bus>,
     pub cpu: Box<CPU>,
     pub ppu: Box<PPU>,
@@ -29,7 +29,7 @@ impl RSnes {
         let apu = Box::new(Apu::new());
 
         Ok(Self {
-            rom_path: rom_path.as_ref().to_path_buf().clone(),
+            _rom_path: rom_path.as_ref().to_path_buf().clone(),
             bus,
             cpu,
             ppu,
