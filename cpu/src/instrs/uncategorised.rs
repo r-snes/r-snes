@@ -196,4 +196,52 @@ mod tests {
         expected_regs.PC = 0x3458;
         assert_eq!(*cpu.regs(), expected_regs);
     }
+
+    #[test]
+    fn xce_to_emu() {
+        let mut regs = Registers::default();
+        regs.PB = 0x12;
+        regs.PC = 0x3456;
+        regs.P.C = true; // C will move to E
+        let mut expected_regs = regs.clone();
+
+        let mut cpu = CPU::new(regs);
+
+        expect_opcode_fetch(&mut cpu, 0xfb);
+        expect_internal_cycle(&mut cpu, "switch emu bit");
+        expect_opcode_fetch_cycle(&mut cpu);
+
+        expected_regs.PC = 0x3457;
+
+        expected_regs.E = true;
+        expected_regs.P.C = false;
+        expected_regs.P.X = true; // M and X are set to 1
+        expected_regs.P.M = true; // since we switched to emu mode
+        *expected_regs.S.hi_mut() = 1; // and SH is set to 1
+
+        assert_eq!(*cpu.regs(), expected_regs);
+    }
+
+    #[test]
+    fn xce_to_nat() {
+        let mut regs = Registers::default();
+        regs.PB = 0x12;
+        regs.PC = 0x3456;
+        regs.P.C = false; // C will move to E
+        regs.E = true;
+        let mut expected_regs = regs.clone();
+
+        let mut cpu = CPU::new(regs);
+
+        expect_opcode_fetch(&mut cpu, 0xfb);
+        expect_internal_cycle(&mut cpu, "switch emu bit");
+        expect_opcode_fetch_cycle(&mut cpu);
+
+        expected_regs.PC = 0x3457;
+
+        expected_regs.E = false;
+        expected_regs.P.C = true;
+
+        assert_eq!(*cpu.regs(), expected_regs);
+    }
 }
