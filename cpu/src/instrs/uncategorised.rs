@@ -244,4 +244,47 @@ mod tests {
 
         assert_eq!(*cpu.regs(), expected_regs);
     }
+
+    #[test]
+    fn sep() {
+        let mut regs = Registers::default();
+        regs.PB = 0x12;
+        regs.PC = 0x3456;
+        regs.P.Z = true; // set Z now and set it again with SEP, shouldn't change
+        let mut expected_regs = regs.clone();
+
+        let mut cpu = CPU::new(regs);
+
+        expect_opcode_fetch(&mut cpu, 0xe2);
+        //                                                     -V----ZC
+        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3457), 0b01000011, "bits to set in P");
+        expect_internal_cycle(&mut cpu, "idle after setting flags");
+        expect_opcode_fetch_cycle(&mut cpu);
+
+        expected_regs.PC = 0x3458;
+        expected_regs.P.C = true;
+        expected_regs.P.V = true;
+        assert_eq!(*cpu.regs(), expected_regs);
+    }
+
+    #[test]
+    fn rep() {
+        let mut regs = Registers::default();
+        regs.PB = 0x12;
+        regs.PC = 0x3456;
+        regs.P.Z = true; // set Z for it to be reset by REP
+        let mut expected_regs = regs.clone();
+
+        let mut cpu = CPU::new(regs);
+
+        expect_opcode_fetch(&mut cpu, 0xc2);
+        //                                                     N-----Z-
+        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3457), 0b10000010, "bits to clear in P");
+        expect_internal_cycle(&mut cpu, "idle after clearing flags");
+        expect_opcode_fetch_cycle(&mut cpu);
+
+        expected_regs.PC = 0x3458;
+        expected_regs.P.Z = false;
+        assert_eq!(*cpu.regs(), expected_regs);
+    }
 }
