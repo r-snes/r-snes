@@ -308,4 +308,143 @@ mod tests {
         expected_regs.P.N = true; // because 0xbb is negative
         assert_eq!(*cpu.regs(), expected_regs);
     }
+
+    #[test]
+    fn mvn() {
+        let mut regs = Registers::default();
+        regs.PB = 0x12;
+        regs.PC = 0x3456;
+        regs.A = 2; // so we'll copy 3 bytes
+        regs.X = 0x2222; // source is 2222
+        regs.Y = 0x5555; // dest 5555
+        let mut expected_regs = regs.clone();
+
+        let mut cpu = CPU::new(regs);
+
+        expect_opcode_fetch(&mut cpu, 0x54);
+        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3457), 0x99, "dest bank");
+        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3458), 0x88, "source bank");
+        expect_read_cycle(&mut cpu, snes_addr!(0x88:0x2222), 0x01, "source byte 1");
+        expect_write_cycle(&mut cpu, snes_addr!(0x99:0x5555), 0x01, "dest byte 1");
+        expect_internal_cycle(&mut cpu, "idle 1-1");
+        expect_internal_cycle(&mut cpu, "idle 1-2");
+
+        expect_opcode_fetch(&mut cpu, 0x54);
+        assert_eq!(
+            (cpu.regs().PB, cpu.regs().PC),
+            (0x12, 0x3456),
+            "opcode should be fetched again from the same address",
+        );
+        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3457), 0x99, "dest bank");
+        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3458), 0x88, "source bank");
+        expect_read_cycle(&mut cpu, snes_addr!(0x88:0x2223), 0x02, "source byte 2");
+        expect_write_cycle(&mut cpu, snes_addr!(0x99:0x5556), 0x02, "dest byte 2");
+        expect_internal_cycle(&mut cpu, "idle 2-1");
+        expect_internal_cycle(&mut cpu, "idle 2-2");
+
+        expect_opcode_fetch(&mut cpu, 0x54);
+        assert_eq!(
+            (cpu.regs().PB, cpu.regs().PC),
+            (0x12, 0x3456),
+            "opcode should be fetched again from the same address",
+        );
+        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3457), 0x99, "dest bank");
+        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3458), 0x88, "source bank");
+        expect_read_cycle(&mut cpu, snes_addr!(0x88:0x2224), 0x03, "source byte 3");
+        expect_write_cycle(&mut cpu, snes_addr!(0x99:0x5557), 0x03, "dest byte 3");
+        expect_internal_cycle(&mut cpu, "idle 3-1");
+        expect_internal_cycle(&mut cpu, "idle 3-2");
+
+        expect_opcode_fetch_cycle(&mut cpu);
+        expected_regs.PC = 0x3459;
+        expected_regs.DB = 0x99; // DB is overwritten with the destination bank
+        expected_regs.A = 0xffff; // mvn loops until A is 0xffff
+        expected_regs.X = 0x2225; // X has been incremented 3 times
+        expected_regs.Y = 0x5558; // Y has been incremented 3 times
+
+        assert_eq!(*cpu.regs(), expected_regs);
+    }
+
+    #[test]
+    fn mvp() {
+        let mut regs = Registers::default();
+        regs.PB = 0x12;
+        regs.PC = 0x3456;
+        regs.A = 120; // so we'll copy 121 bytes
+        regs.X = 0x8888; // source is 8888
+        regs.Y = 0x5555; // dest 5555
+        let mut expected_regs = regs.clone();
+
+        let mut cpu = CPU::new(regs);
+
+        let mut src = cpu.registers.X;
+        let mut dst = cpu.registers.Y;
+
+        for i in 1..=121 {
+            expect_opcode_fetch(&mut cpu, 0x44);
+            assert_eq!(
+                (cpu.regs().PB, cpu.regs().PC),
+                (0x12, 0x3456),
+                "opcode should be fetched again from the same address",
+            );
+            expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3457), 0x99, "dest bank");
+            expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3458), 0x88, "source bank");
+            expect_read_cycle(&mut cpu, snes_addr!(0x88:src), i, &format!("source byte {i}"));
+            expect_write_cycle(&mut cpu, snes_addr!(0x99:dst), i, &format!("dest byte {i}"));
+
+            dst -= 1;
+            src -= 1;
+
+            expect_internal_cycle(&mut cpu, &format!("idle {i}-1"));
+            expect_internal_cycle(&mut cpu, &format!("idle {i}-2"));
+        }
+
+        expect_opcode_fetch_cycle(&mut cpu);
+        expected_regs.PC = 0x3459;
+        expected_regs.DB = 0x99; // DB is overwritten with the destination bank
+        expected_regs.A = 0xffff; // mvp loops until A is 0xffff
+        expected_regs.X = src;
+        expected_regs.Y = dst;
+
+        assert_eq!(*cpu.regs(), expected_regs);
+    }
+
+    #[test]
+    fn mvn_pagewrap() {
+        let mut regs = Registers::default();
+        regs.PB = 0x12;
+        regs.PC = 0x3456;
+        regs.A = 1; // so we'll copy 2 bytes
+        regs.X = 0x00fe; // source
+        regs.Y = 0x00ff; // dest
+        regs.P.X = true; // set X and Y to 8-bit mode, which will cause pagewrap
+        let mut expected_regs = regs.clone();
+
+        let mut cpu = CPU::new(regs);
+
+        expect_opcode_fetch(&mut cpu, 0x54);
+        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3457), 0x99, "dest bank");
+        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3458), 0x88, "source bank");
+        expect_read_cycle(&mut cpu, snes_addr!(0x88:0x00fe), 0x01, "source byte 1");
+        expect_write_cycle(&mut cpu, snes_addr!(0x99:0x00ff), 0x01, "dest byte 1");
+        expect_internal_cycle(&mut cpu, "idle 1-1");
+        expect_internal_cycle(&mut cpu, "idle 1-2");
+
+        expect_opcode_fetch(&mut cpu, 0x54);
+        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3457), 0x99, "dest bank");
+        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3458), 0x88, "source bank");
+        expect_read_cycle(&mut cpu, snes_addr!(0x88:0x00ff), 0x02, "source byte 2");
+        expect_write_cycle(&mut cpu, snes_addr!(0x99:0x0000), 0x02, "dest byte 2");
+        expect_internal_cycle(&mut cpu, "idle 2-1");
+        expect_internal_cycle(&mut cpu, "idle 2-2");
+
+        expect_opcode_fetch_cycle(&mut cpu);
+        expected_regs.PC = 0x3459;
+        expected_regs.DB = 0x99; // DB is overwritten with the destination bank
+        expected_regs.A = 0xffff; // mvn loops until A is 0xffff
+        expected_regs.X = 0;
+        expected_regs.Y = 1;
+
+        assert_eq!(*cpu.regs(), expected_regs);
+    }
 }
