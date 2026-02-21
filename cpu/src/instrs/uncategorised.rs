@@ -2,7 +2,11 @@
 //! a bigger category, at least don't *yet* fit into a category with other
 //! currently implemented instructions.
 
-use instr_metalang_procmacro::cpu_instr;
+use instr_metalang_procmacro::{
+    cpu_instr,
+    cpu_instr_no_inc_pc,
+};
+use duplicate::duplicate;
 
 // `NOP`: "no-op" (no operation). Literally does nothing
 cpu_instr!(nop {
@@ -81,6 +85,62 @@ cpu_instr!(xba {
     meta SET_NZ8 *cpu.registers.A.lo();
     meta END_CYCLE Internal;
 });
+
+// `MVN`/`MVP`: MoVe Positive/Negative
+// These "block move" instructions can move blocks of memory across banks
+// and at different addresses. The source and destination bank are immediate
+// operands, whereas the addresses are specified in X and Y registers.
+// The A register specifies the number of bytes to move (minus 1: A == 0 means
+// we move 1 byte).
+// DB is overwritten with the destination bank number.
+//
+// Interestingly, these instructions actually loop themselves (they don't
+// increment PC until the last iteration, so that their opcode is read again
+// and again), executing several times until A wraps around from 0 to 0xFFFF.
+// So actually, these instructions only move byte per "call", taking their full
+// 7 seven cycles of execution to move each byte.
+// X and Y are also adjusted between calls to continue to the next byte to move
+//
+// The difference between these instructions is that MVN copies the block from
+// start to end (increasing addresses), whereas MVP copies from end to start.
+// Thus, for MVP, the initial values in X and Y are the addresses of the end of
+// the source and destination.
+duplicate! {
+    [
+        DUP_name    DUP_inc;
+        [mvn]       [wrapping_add];
+        [mvp]       [wrapping_sub];
+    ]
+    cpu_instr_no_inc_pc!(DUP_name {
+        meta FETCH8_IMM_INTO cpu.registers.DB; // fetch destination bank
+        meta FETCH8_IMM_INTO cpu.addr_bus.bank; // fetch source bank
+
+        cpu.addr_bus.addr = cpu.registers.X;
+        meta END_CYCLE Read;
+
+        cpu.addr_bus.bank = cpu.registers.DB;
+        cpu.addr_bus.addr = cpu.registers.Y;
+        meta END_CYCLE Write;
+
+        meta END_CYCLE Internal;
+
+        if cpu.registers.P.X {
+            *cpu.registers.X.lo_mut() = cpu.registers.X.lo().DUP_inc(1);
+            *cpu.registers.Y.lo_mut() = cpu.registers.Y.lo().DUP_inc(1);
+        } else {
+            cpu.registers.X = cpu.registers.X.DUP_inc(1);
+            cpu.registers.Y = cpu.registers.Y.DUP_inc(1);
+        }
+
+        cpu.registers.A = cpu.registers.A.wrapping_sub(1);
+        if cpu.registers.A == 0xFFFF {
+            cpu.registers.PC = cpu.registers.PC.wrapping_add(3);
+        }
+
+        meta END_CYCLE Internal;
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use crate::instrs::test_prelude::*;
