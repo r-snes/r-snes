@@ -10,10 +10,10 @@ use std::path::PathBuf;
 
 pub struct RSnes {
     pub _rom_path: PathBuf,
-    pub bus: Box<Bus>,
-    pub cpu: Box<CPU>,
-    pub ppu: Box<PPU>,
-    pub apu: Box<Apu>,
+    pub bus: Bus,
+    pub cpu: CPU,
+    pub ppu: PPU,
+    pub apu: Apu,
     pub master_cycles: u64,
     pub cpu_master_cycles_to_wait: u16,
 }
@@ -23,10 +23,10 @@ impl RSnes {
     pub const MASTER_CYCLE_DURATION: f64 = 1.0 / Self::MASTER_CLOCK_HZ as f64;
 
     pub fn load_rom<P: AsRef<Path>>(rom_path: &P) -> Result<Self, Box<dyn Error>> {
-        let bus = Box::new(Bus::new(rom_path)?);
-        let cpu = Box::new(CPU::poweron());
-        let ppu = Box::new(PPU::new());
-        let apu = Box::new(Apu::new());
+        let bus = Bus::new(rom_path)?;
+        let cpu = CPU::poweron();
+        let ppu = PPU::new();
+        let apu = Apu::new();
 
         Ok(Self {
             _rom_path: rom_path.as_ref().to_path_buf().clone(),

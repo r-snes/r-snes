@@ -9,7 +9,7 @@ use std::time::Instant;
 
 fn main() -> Result<(), String> {
     let mut gui = gui::Gui::new()?;
-    let mut rsnes_app: Option<Box<rsnes::RSnes>> = None;
+    let mut rsnes_app: Option<rsnes::RSnes> = None;
 
     // Reference variables
     let mut frame_nb = 0;
@@ -48,7 +48,7 @@ fn main() -> Result<(), String> {
             for state_event in gui.update() {
                 match state_event {
                     RSnesEvent::LoadRom { path } => match rsnes::RSnes::load_rom(&path) {
-                        Ok(emu) => rsnes_app = Some(Box::new(emu)),
+                        Ok(emu) => rsnes_app = Some(emu),
                         Err(err) => println!("Error loading ROM: {}", err),
                     },
                     RSnesEvent::Quit => break 'emulation_loop,
