@@ -276,7 +276,7 @@ const INSTR_CYC1: [InstrCycle; 256] = [
     /* e8 */ InstrCycle(inx_cyc1),
     /* e9 */ InstrCycle(sbc::imm_cyc1),
     /* ea */ InstrCycle(nop_cyc1),
-    /* eb */ InstrCycle(todo_opcode!(0xeb)),
+    /* eb */ InstrCycle(xba_cyc1),
     /* ec */ InstrCycle(cpx_abs_cyc1),
     /* ed */ InstrCycle(sbc::abs_cyc1),
     /* ee */ InstrCycle(inc_abs_cyc1),
