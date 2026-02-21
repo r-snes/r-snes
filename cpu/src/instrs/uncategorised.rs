@@ -119,4 +119,21 @@ mod tests {
 
         expect_opcode_fetch_cycle(&mut cpu);
     }
+
+    #[test]
+    fn wdm() {
+        let mut regs = Registers::default();
+        regs.PB = 0x12;
+        regs.PC = 0x3456;
+        let mut expected_regs = regs.clone();
+
+        let mut cpu = CPU::new(regs);
+
+        expect_opcode_fetch(&mut cpu, 0x42);
+        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3457), 0x00, "idle (ignored read)");
+        expect_opcode_fetch_cycle(&mut cpu);
+
+        expected_regs.PC = 0x3458;
+        assert_eq!(*cpu.regs(), expected_regs);
+    }
 }
