@@ -71,6 +71,16 @@ cpu_instr!(sep {
     meta END_CYCLE Internal;
 });
 
+// eXchange B A: swaps the A and B accumulators
+// (the high byte of the accumulator is also referred to as B,
+// in which case the name A refers to the low byte)
+cpu_instr!(xba {
+    meta END_CYCLE Internal;
+
+    cpu.registers.A = cpu.registers.A.swap_bytes();
+    meta SET_NZ8 *cpu.registers.A.lo();
+    meta END_CYCLE Internal;
+});
 #[cfg(test)]
 mod tests {
     use crate::instrs::test_prelude::*;
