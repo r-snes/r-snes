@@ -4,6 +4,7 @@ use crate::registers::PPURegisters;
 pub struct PPU {
     pub regs: PPURegisters,
     pub vram: VRAM,
+    pub cgram: CGRAM,
 }
 
 impl PPU {
