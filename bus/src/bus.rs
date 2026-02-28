@@ -8,6 +8,28 @@ use ppu::ppu::PPU;
 use std::error::Error;
 use std::path::Path;
 
+#[derive(Copy, Clone)]
+pub enum AccessSpeed {
+    /// Fastest access, takes 6 master cycles
+    Fast,
+
+    /// Slow access, takes 8 master cycles
+    Slow,
+
+    /// Slowest access, takes 12 master cycles
+    XSlow,
+}
+
+impl AccessSpeed {
+    pub fn cycles(self) -> i32 {
+        match self {
+            Self::Fast => 6,
+            Self::Slow => 8,
+            Self::XSlow => 12,
+        }
+    }
+}
+
 pub struct Bus {
     pub wram: Wram,
     pub cart: Cartridge,
