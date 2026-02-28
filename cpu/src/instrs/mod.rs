@@ -4,6 +4,9 @@ pub(crate) mod prelude;
 #[cfg(test)]
 pub(crate) mod test_prelude;
 
+mod arithmetic;
+mod algorithms;
+
 mod branches;
 mod flags;
 mod jumps;

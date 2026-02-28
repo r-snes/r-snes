@@ -75,6 +75,54 @@ impl ParserStatus {
     }
 }
 
+pub struct Binding {
+    pub name: Ident,
+    pub value: TokenStream,
+}
+
+impl Binding {
+    pub fn parse(ts: TokenStream) -> Self {
+        let mut it = ts.into_iter();
+
+        let Some(TokenTree::Ident(name)) = it.next() else {
+            panic!("Expecting identifier name in binding");
+        };
+        match it.next() {
+            Some(TokenTree::Punct(p)) if p.as_char() == '=' => (),
+            _ => panic!("Expecting '=' for binding a value"),
+        }
+        let value = it.collect();
+
+        Self { name, value }
+    }
+
+    pub fn expand_mut(&self) -> VarWidth<TokenStream> {
+        let &Self { ref name, ref value } = self;
+
+        VarWidth::varw(
+            quote! {
+                let #name: &mut u8 = (#value).lo_mut();
+            },
+            quote! {
+                let #name: &mut u16 = &mut #value;
+            },
+        )
+    }
+
+    pub fn expand(&self) -> VarWidth<TokenStream> {
+        let &Self { ref name, ref value } = self;
+
+        VarWidth::varw(
+            quote! {
+                let #name: u8 = *(#value).lo_mut();
+            },
+            quote! {
+                let #name: u16 = #value;
+            },
+        )
+    }
+}
+
 /// Enum for all the meta instructions implemented for the CPU
 /// meta-language.
 ///
@@ -271,6 +319,12 @@ pub(crate) enum MetaInstruction {
 
     /// Sets the CPU flags N and Z for a variable width value
     SetNZOperand(TokenStream),
+
+    /// Creates a variable-width binding for a u16 value
+    LetVarWidth(Binding),
+
+    /// Creates a variable-width &mut binding for a u16 value
+    LetVarWidthMut(Binding),
 }
 
 impl MetaInstruction {
@@ -342,6 +396,9 @@ impl MetaInstruction {
             "SET_NZ8" => MetaInstruction::SetNZ8(it.by_ref().collect()),
             "SET_NZ16" => MetaInstruction::SetNZ16(it.by_ref().collect()),
             "SET_NZ_OP" => MetaInstruction::SetNZOperand(it.by_ref().collect()),
+
+            "LET_VARWIDTH" => MetaInstruction::LetVarWidth(Binding::parse(it.by_ref().collect())),
+            "LET_VARWIDTH_MUT" => MetaInstruction::LetVarWidthMut(Binding::parse(it.by_ref().collect())),
 
             kw => panic!("Unknown meta-keyword: {}", kw),
         };
@@ -712,6 +769,12 @@ impl MetaInstruction {
                     long: Self::SetNZ16(op).expand(pstatus).expect_const(),
                     data: (),
                 }
+            }
+            Self::LetVarWidth(binding) => {
+                ret += binding.expand();
+            }
+            Self::LetVarWidthMut(binding) => {
+                ret += binding.expand_mut();
             }
         }
         ret
