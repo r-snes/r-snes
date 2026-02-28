@@ -1,47 +1,72 @@
+mod constants;
+mod vram;
+mod cgram;
 mod ppu;
-mod tile;
-mod utils;
+mod registers;
+mod renderer;
 
-use minifb::{Key, Window, WindowOptions};
-use crate::ppu::PPU;
-use crate::tile::{load_and_split_image, load_tiles_into_vram};
-use crate::utils::{SCREEN_WIDTH, SCREEN_HEIGHT, WIDTH, HEIGHT, TILE_SIZE};
+use constants::*;
+use ppu::PPU;
+use renderer::Renderer;
 
-pub fn create_window() -> Window {
-    Window::new(
-        "rsnes ppu",
-        SCREEN_WIDTH,
-        SCREEN_HEIGHT,
-        WindowOptions {
-            resize: false,
-            ..WindowOptions::default()
-        },
-    )
-    .expect("[ERR::WindowInit] Unable to create display context.")
-}
-
-pub fn update_window(window: &mut Window, framebuffer: &Vec<u32>) {
-    window
-        .update_with_buffer(framebuffer, WIDTH, HEIGHT)
-        .expect("[ERR::Render] Framebuffer refused to cooperate.");
-}
-
+use sdl2::pixels::PixelFormatEnum;
 
 fn main() {
-    let (tiles, image_width) = load_and_split_image("./tileset.png");
-    println!("Loaded {} tiles, image width: {}", tiles.len(), image_width);
-    // hard-coded filepath => to be removed (but ok for pr #13)
-
     let mut ppu = PPU::new();
-    load_tiles_into_vram(&mut ppu, &tiles);
+    let mut renderer = Renderer::new();
 
-    let tiles_per_row = image_width / TILE_SIZE as usize;
+    // Fill CGRAM with test gradient
+    for i in 0..256 {
+        let i = i as u8;
 
-    let mut window = create_window();
+        // $2121 - CGADD
+        ppu.write(0x2121, i);
 
-    // hard-coded display => to be removed (but ok for pr #13)
-    while window.is_open() && !window.is_key_down(Key::Escape) {
-        ppu.render(tiles_per_row);
-        update_window(&mut window, &ppu.framebuffer);
+        // $2122 - CGDATA
+        ppu.write(0x2122, i); // low byte
+        ppu.write(0x2122, 0x00); // high byte
     }
+
+    // Enable display
+    ppu.write(0x2100, 0x0F);
+
+    let sdl_context = sdl2::init().unwrap();
+    let video = sdl_context.video().unwrap();
+
+    let window = video
+        .window("SNES PPU Scanline", SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32)
+        .position_centered()
+        .build()
+        .unwrap();
+
+    let mut canvas = window.into_canvas().build().unwrap();
+    let texture_creator = canvas.texture_creator();
+
+    let mut texture = texture_creator
+        .create_texture_streaming(PixelFormatEnum::RGB24, SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32)
+        .unwrap();
+
+    let mut event_pump = sdl_context.event_pump().unwrap();
+
+    'running: loop {
+        for event in event_pump.poll_iter() {
+            if let sdl2::event::Event::Quit { .. } = event {
+                break 'running;
+            }
+        }
+
+        // Render full frame
+        for y in 0..SCREEN_HEIGHT {
+            renderer.render_scanline(&ppu, y);
+            ppu.step_scanline();
+        }
+
+        texture.update(None, &renderer.framebuffer, SCREEN_WIDTH * 3).unwrap();
+        canvas.copy(&texture, None, None).unwrap();
+        canvas.present();
+
+        ppu.frame_ready = false;
+    }
+
+    println!("\n>> Nice and clean.");
 }

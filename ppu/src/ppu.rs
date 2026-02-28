@@ -1,99 +1,93 @@
-use crate::utils::{render_scanline, CGRAM_SIZE, HEIGHT, VRAM_SIZE, WIDTH};
+use crate::registers::PPURegisters;
+use crate::vram::VRAM;
+use crate::cgram::CGRAM;
 
 pub struct PPU {
-    pub(crate) framebuffer: Vec<u32>,
-    pub(crate) vram: [u8; VRAM_SIZE],
-    pub(crate) cgram: [u16; CGRAM_SIZE],
+    pub regs: PPURegisters,
+    pub vram: VRAM,
+    pub cgram: CGRAM,
 
-    #[allow(dead_code)] // For future CPU write handling (not implemented yet)
-    pub(crate) cgaddr: u8,
-
-    #[allow(dead_code)] // For future CPU write handling (not implemented yet)
-    pub(crate) latch: u8,
-    pub(crate) latch_filled: bool
+    // Timing
+    pub scanline: u16,
+    pub frame_ready: bool,
 }
 
 impl PPU {
     pub fn new() -> Self {
-        let mut ppu = Self {
-            framebuffer: vec![0; WIDTH * HEIGHT],
-            vram: [0; VRAM_SIZE],
-            cgram: [0; CGRAM_SIZE],
-            cgaddr: 0,
-            latch: 0,
-            latch_filled: false
-        };
-
-        // Hardcoded palette
-        for i in 0..CGRAM_SIZE {
-            let r = (i & 0x1F) as u16;
-            let g = ((i >> 2) & 0x1F) as u16;
-            let b = ((i >> 4) & 0x1F) as u16;
-            ppu.cgram[i] = (b << 10) | (g << 5) | r;
-        }
-
-        ppu
-    }
-
-    pub fn write_vram(&mut self, addr: usize, value: u8) {
-        if addr >= VRAM_SIZE {
-            eprintln!("[ERR::VRAM] Write attempt to invalid address 0x{:04X}", addr);
-            return;
-        }
-        self.vram[addr] = value;
-    }
-
-    pub fn read_vram(&self, addr: usize) -> u8 {
-        if addr >= VRAM_SIZE {
-            eprintln!("[ERR::VRAM] Read attempt from invalid address 0x{:04X}", addr);
-            return 0;
-        }
-        self.vram[addr]
-    }
-
-    #[allow(dead_code)] // For future CPU write handling (not implemented yet)
-    // Set current CGRAM address ($2121 on the SNES)
-    pub fn set_cgram_addr(&mut self, addr: u8) {
-        self.cgaddr = addr;
-        self.latch_filled = false; // reset latch when address changes
-    }
-
-    #[allow(dead_code)] // For future CPU write handling (not implemented yet)
-    // Write one byte to CGRAM ($2122 on the SNES)
-    pub fn write_cgram_data(&mut self, value: u8) {
-        if self.latch_filled {
-            // 2nd write → combine low + high into one 16-bit value
-            let color = u16::from_le_bytes([self.latch, value]);
-            self.cgram[self.cgaddr as usize] = color & 0x7FFF; // mask to 15 bits
-            self.cgaddr = self.cgaddr.wrapping_add(1); // auto-increment address
-            self.latch_filled = false;
-        } else {
-            // 1st write → store in latch
-            self.latch = value;
-            self.latch_filled = true;
+        Self {
+            regs: PPURegisters::new(),
+            vram: VRAM::new(),
+            cgram: CGRAM::new(),
+            scanline: 0,
+            frame_ready: false,
         }
     }
 
-    pub fn read_cgram(&self, index: u8) -> u32 {
-        bgr555_to_argb(self.cgram[index as usize])
-    }
+    pub fn write(&mut self, addr: u16, value: u8) {
+        match addr {
+            // ==========================
+            // DISPLAY
+            // ==========================
+            0x2100 => self.regs.inidisp = value,
 
-    pub fn render(&mut self, tiles_per_row: usize) {
-        for y in 0..HEIGHT {
-            render_scanline(self, y, tiles_per_row);
+            // ==========================
+            // VRAM
+            // ==========================
+            0x2115 => {
+                self.regs.vmain = value;
+                self.vram.write_vmain(value);
+            }
+            0x2116 => self.vram.write_vmadd_low(value),
+            0x2117 => self.vram.write_vmadd_high(value),
+            0x2118 => self.vram.write_vmdatal(value),
+            0x2119 => self.vram.write_vmdatah(value),
+
+            // ==========================
+            // CGRAM
+            // ==========================
+            0x2121 => self.cgram.write_addr(value),
+            0x2122 => self.cgram.write_data(value),
+
+            _ => {
+                println!(
+                    "PPU WRITE IGNORED: ${:04X} = {:02X} (unimplemented register)",
+                    addr, value
+                );
+            }
         }
     }
-}
 
-pub fn bgr555_to_argb(bgr: u16) -> u32 {
-    let r = (bgr & 0x1F) as u32;
-    let g = ((bgr >> 5) & 0x1F) as u32;
-    let b = ((bgr >> 10) & 0x1F) as u32;
+    pub fn read(&mut self, addr: u16) -> u8 {
+        match addr {
+            // ==========================
+            // CGRAM
+            // ==========================
+            0x213B => self.cgram.read_data(),
 
-    // Expand 5-bit to 8-bit by duplicating upper bits
-    let r8 = (r << 3) | (r >> 2);
-    let g8 = (g << 3) | (g >> 2);
-    let b8 = (b << 3) | (b >> 2);
+            _ => {
+                println!(
+                    "PPU READ IGNORED: ${:04X} (unimplemented register)",
+                    addr
+                );
+                0
+            }
+        }
+    }
 
-    (0xFF << 24) | (r8 << 16) | (g8 << 8) | b8
+    pub fn step_scanline(&mut self) {
+        self.scanline += 1;
+
+        if self.scanline >= 262 {
+            self.scanline = 0;
+            self.frame_ready = true;
+        }
+    }
+
+    pub fn force_blank(&self) -> bool {
+        (self.regs.inidisp & 0x80) != 0
+    }
+
+    pub fn brightness(&self) -> u8 {
+        self.regs.inidisp & 0x0F
+    }
 }
