@@ -71,44 +71,25 @@ impl Rom {
     /// Converts a `SnesAddress` into an internal LoROM ROM offset.
     ///
     /// Maps the SNES ROM address space for LoROM cartridges:
-    /// - Banks $00–$7D and $80–$FF, addresses $8000–$FFFF → regular ROM area.
-    /// - Banks $40–$7D and $C0–$FF, addresses $0000–$7FFF → mirrors of upper half.
+    /// - The upper half of banks $80-$FF map the entire ROM one-to-one
+    /// - The upper half of banks $00-$7D mirror what is in $80-$FD
+    /// - Banks $40-$7D and $C0-FF ignore the highest bit of the address,
+    ///   and mirror the same mapping as $80-$FF
     ///
-    /// Each bank contributes 32 KiB to the ROM.
+    /// Each bank maps 32 distinct KiB of the ROM.
     ///
     /// # Panics
     /// Panics if the given address does not correspond to a valid LoROM location.
     pub fn get_lorom_offset(addr: SnesAddress) -> usize {
-        match addr.bank {
-            0x00..=0x3F if addr.addr >= 0x8000 => {
-                let bank_offset = (addr.addr - 0x8000) as usize;
-                return addr.bank as usize * 0x8000 + bank_offset;
-            }
-            0x40..=0x7D => {
-                if addr.addr < 0x8000 {
-                    // ROM Mirror
-                    let bank_offset = addr.addr as usize;
-                    return addr.bank as usize * 0x8000 + bank_offset;
-                } else {
-                    // Superior or equal to 0x8000
-                    let bank_offset = (addr.addr - 0x8000) as usize;
-                    return addr.bank as usize * 0x8000 + bank_offset;
-                }
-            }
-            0x80..=0xBF if addr.addr >= 0x8000 => {
-                let bank_offset = (addr.addr - 0x8000) as usize;
-                return (addr.bank as usize - 0x80) * 0x8000 + bank_offset;
-            }
-            0xC0..=0xFF => {
-                if addr.addr < 0x8000 {
-                    // ROM Mirror
-                    let bank_offset = addr.addr as usize;
-                    return (addr.bank as usize - 0x80) * 0x8000 + bank_offset;
-                } else {
-                    // Superior or equal to 0x8000
-                    let bank_offset = (addr.addr - 0x8000) as usize;
-                    return (addr.bank as usize - 0x80) * 0x8000 + bank_offset;
-                }
+        match (addr.bank, addr.addr) {
+            | (0x00..=0x7D, 0x8000..=0xFFFF)
+            | (0x80..=0xFF, 0x8000..=0xFFFF)
+            | (0x40..=0x7D, _)
+            | (0xC0..=0xFF, _) => {
+                let bank = addr.bank & !0x80;
+                let addr = addr.addr & !0x8000;
+
+                bank as usize * 0x8000 + addr as usize
             }
             _ => Self::panic_invalid_addr(addr),
         }
@@ -117,34 +98,23 @@ impl Rom {
     /// Converts a `SnesAddress` into an internal HiROM ROM offset.
     ///
     /// Maps the SNES ROM address space for HiROM cartridges:
-    /// - Banks $40–$7D and $C0–$FF, addresses $0000–$FFFF → regular ROM area (full 64 KiB per bank).
-    /// - Banks $00–$3F and $80–$BF, addresses $8000–$FFFF → mirrors of the full bank.
-    ///
-    /// Each bank contributes 64 KiB to the ROM.
+    /// - Banks $C0-$FF ($0000-$FFFF, full bank) map the entire ROM one-to-one
+    /// - Banks $40-$FD ($0000-$FFFF, full bank) mirror banks $C0-$FD
+    /// - Banks $00-3F and $80-BF ($8000-$FFFF, only upper half) mirror the
+    ///   upper halves of $C0-$FF
     ///
     /// # Panics
     /// Panics if the given address does not correspond to a valid HiROM location.
     pub fn get_hirom_offset(addr: SnesAddress) -> usize {
-        match addr.bank {
-            // Regular HiROM banks
-            0x40..=0x7D => {
-                let bank_index = addr.bank as usize - 0x40;
-                return bank_index * BANK_SIZE + addr.addr as usize;
-            }
-            0xC0..=0xFF => {
-                let bank_index = addr.bank as usize - 0xC0;
-                return bank_index * BANK_SIZE + addr.addr as usize;
-            }
-            // Mirror Banks
-            0x00..=0x3F if addr.addr >= 0x8000 => {
-                let bank_index = addr.bank as usize - 0x00;
-                let bank_offset = addr.addr as usize;
-                return bank_index * BANK_SIZE + bank_offset;
-            }
-            0x80..=0xBF if addr.addr >= 0x8000 => {
-                let bank_index = addr.bank as usize - 0x80;
-                let bank_offset = addr.addr as usize;
-                return bank_index * BANK_SIZE + bank_offset;
+        match (addr.bank, addr.addr) {
+            | (0x00..=0x7D, 0x8000..=0xFFFF)
+            | (0x80..=0xFF, 0x8000..=0xFFFF)
+            | (0x40..=0x7D, _)
+            | (0xC0..=0xFF, _) => {
+                // AND with 0x3F so that we start over from 0 every 0x40 (64) banks
+                let bank = addr.bank as usize & 0x3F;
+
+                bank as usize * BANK_SIZE + addr.addr as usize
             }
             _ => Self::panic_invalid_addr(addr),
         }
