@@ -14,6 +14,11 @@ use ppu::ppu::PPU;
 /// For example, the addresses `0x004000` and `0x9E4000` both refer to the
 /// same memory location.
 pub struct Io {
+    wmdata: u8,
+    wmaddl: u8,
+    wmaddm: u8,
+    wmaddh: u8,
+
     // ---------- $4016-$4017 ----------
     joyser0: u8,
     joyser1: u8,
@@ -58,6 +63,11 @@ pub struct Io {
 impl Io {
     pub fn new() -> Self {
         Self {
+            wmdata: 0,
+            wmaddl: 0,
+            wmaddm: 0,
+            wmaddh: 0,
+
             joyser0: 0,
             joyser1: 0,
 
@@ -103,6 +113,9 @@ impl Io {
 
     fn read_cpu(&self, addr: SnesAddress, cpu: &mut CPU) -> u8 {
         match addr.addr {
+            // WRAM Data Registers - Seems to be mainly used with DMA
+            0x2180 => self.wmdata,
+
             // Open Bus
             _ => cpu.data_bus,
         }
@@ -110,6 +123,15 @@ impl Io {
 
     fn write_cpu(&mut self, value: u8, addr: SnesAddress, _cpu: &mut CPU) {
         match addr.addr {
+            // WRAM Data Registers - Seems to be mainly used with DMA
+            0x2180 => {
+                self.wmdata = value;
+                self.wmdata += 1; // TODO : Check if this behavior is really intended and if it should wrap around at 0xFF or not
+            }
+            0x2181 => self.wmaddl = value,
+            0x2182 => self.wmaddm = value,
+            0x2183 => self.wmaddh = value,
+
             // UNUSED : manual controller reading not implemented
             0x4016 => self.joyser0 = value,
 
