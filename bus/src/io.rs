@@ -19,11 +19,9 @@ pub struct Io {
     wmaddm: u8,
     wmaddh: u8,
 
-    // ---------- $4016-$4017 ----------
     joyser0: u8,
     joyser1: u8,
 
-    // ---------- $4200-$420D ----------
     nmitimen: u8,
     wrio: u8,
 
@@ -43,21 +41,18 @@ pub struct Io {
     hdmaen: u8,
     memsel: u8,
 
-    // ---------- math results ----------
     rddiv: u16,
     rdmpy: u16,
 
-    // ---------- status ----------
     rdnmi: u8,
     timeup: u8,
     hvbjoy: u8,
     rdio: u8,
 
-    // ---------- joypads ----------
-    joy: [u16; 4],
-
-    // ---------- DMA registers ----------
-    dma: [[u8; 0x10]; 8],
+    joy1: u16,
+    joy2: u16,
+    joy3: u16,
+    joy4: u16,
 }
 
 impl Io {
@@ -98,9 +93,10 @@ impl Io {
             hvbjoy: 0,
             rdio: 0,
 
-            joy: [0; 4],
-
-            dma: [[0xFF; 0x10]; 8],
+            joy1: 0,
+            joy2: 0,
+            joy3: 0,
+            joy4: 0,
         }
     }
 
@@ -111,10 +107,55 @@ impl Io {
         );
     }
 
-    fn read_cpu(&self, addr: SnesAddress, cpu: &mut CPU) -> u8 {
+    fn read_cpu(&mut self, addr: SnesAddress, cpu: &mut CPU) -> u8 {
         match addr.addr {
             // WRAM Data Registers - Seems to be mainly used with DMA
             0x2180 => self.wmdata,
+
+            // UNUSED : manual controller reading not implemented
+            0x4016 => self.joyser0,
+            0x4017 => self.joyser1,
+
+            // Vblank flag and CPU version register
+            // TODO : Implement open bus on unused bits
+            0x4210 => {
+                let value = self.rdnmi;
+                self.rdnmi = self.rdnmi & 0x7F; // Reset V-Blank flag
+                value
+            }
+
+            // Timer flag register
+            // TODO : Implement open bus on unused bits
+            0x4211 => {
+                let value = self.timeup;
+                self.timeup = self.timeup & 0x7F; // Reset Timer flag
+                value
+            }
+
+            // Screen and Joypad status register
+            // TODO : Implement open bus on unused bits
+            0x4212 => self.hvbjoy,
+
+            // UNUSED : manual controller reading not implemented
+            0x4213 => self.rdio,
+
+            // Divison result register
+            0x4214 => self.rddiv as u8,
+            0x4215 => (self.rddiv >> 8) as u8,
+
+            // Multiplication result / Division remainder register
+            0x4216 => self.rdmpy as u8,
+            0x4217 => (self.rdmpy >> 8) as u8,
+
+            // Joypad data registers
+            0x4218 => self.joy1 as u8,
+            0x4219 => (self.joy1 >> 8) as u8,
+            0x421A => self.joy2 as u8,
+            0x421B => (self.joy2 >> 8) as u8,
+            0x421C => self.joy3 as u8,
+            0x421D => (self.joy3 >> 8) as u8,
+            0x421E => self.joy4 as u8,
+            0x421F => (self.joy4 >> 8) as u8,
 
             // Open Bus
             _ => cpu.data_bus,
