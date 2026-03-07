@@ -23,24 +23,22 @@ impl Gui {
     pub const FRAME_DURATION: f64 = 1.0 / Self::FRAME_RATE as f64;
 
     pub fn new() -> Result<Self, String> {
-        let sdl_ctx = sdl2::init().unwrap();
-        let video_subsystem = sdl_ctx.video().unwrap();
+        let sdl_ctx = sdl2::init()?;
+        let video_subsystem = sdl_ctx.video()?;
 
         let window = video_subsystem
             .window("R-SNES", 1920 / 2, 1080 / 2)
             .position_centered()
             .build()
-            .map_err(|e| e.to_string())
-            .unwrap();
+            .map_err(|e| e.to_string())?;
 
         let canvas = window
             .into_canvas()
             .accelerated()
             .build()
-            .map_err(|e| e.to_string())
-            .unwrap();
+            .map_err(|e| e.to_string())?;
 
-        let event_pump = sdl_ctx.event_pump().unwrap();
+        let event_pump = sdl_ctx.event_pump()?;
 
         Ok(Gui {
             _sdl_ctx: sdl_ctx,
