@@ -325,6 +325,12 @@ pub(crate) enum MetaInstruction {
 
     /// Creates a variable-width &mut binding for a u16 value
     LetVarWidthMut(Binding),
+
+    /// Inserts raw code in the "short" (8 bit) branch of the instr
+    If8(TokenStream),
+
+    /// Inserts raw code in the "long" (16 bit) branch of the instr
+    If16(TokenStream),
 }
 
 impl MetaInstruction {
@@ -399,6 +405,9 @@ impl MetaInstruction {
 
             "LET_VARWIDTH" => MetaInstruction::LetVarWidth(Binding::parse(it.by_ref().collect())),
             "LET_VARWIDTH_MUT" => MetaInstruction::LetVarWidthMut(Binding::parse(it.by_ref().collect())),
+
+            "IF_8" => MetaInstruction::If8(it.by_ref().collect()),
+            "IF_16" => MetaInstruction::If16(it.by_ref().collect()),
 
             kw => panic!("Unknown meta-keyword: {}", kw),
         };
@@ -776,6 +785,38 @@ impl MetaInstruction {
             Self::LetVarWidthMut(binding) => {
                 ret += binding.expand_mut();
             }
+            Self::If8(body) => {
+                let mut it = body.into_iter();
+
+                let first_tok = it.next().expect("at least one token");
+                if let TokenTree::Group(body) = first_tok {
+                    if it.next().is_some() {
+                        panic!("unexpected trailing tokens after braced If8");
+                    }
+                    ret += VarWidth::short(
+                        InstrBody::parse(body.stream(), pstatus).unwrap().expect_const()
+                    );
+                } else {
+                    let rest = it.collect::<TokenStream>();
+                    ret += VarWidth::short(quote!(#first_tok #rest));
+                }
+            }
+            Self::If16(body) => {
+                let mut it = body.into_iter();
+
+                let first_tok = it.next().expect("at least one token");
+                if let TokenTree::Group(body) = first_tok {
+                    if it.next().is_some() {
+                        panic!("unexpected trailing tokens after braced If16");
+                    }
+                    ret += VarWidth::long(
+                        InstrBody::parse(body.stream(), pstatus).unwrap().expect_const()
+                    );
+                } else {
+                    let rest = it.collect::<TokenStream>();
+                    ret += VarWidth::long(quote!(#first_tok #rest));
+                }
+            }
         }
         ret
     }
@@ -815,6 +856,16 @@ impl<T, U: Clone> VarWidth<T, U> {
 impl<T, U: Default> VarWidth<T, U> {
     pub fn varw(short: T, long: T) -> Self {
         Self::VarWidth{short, long, data: U::default()}
+    }
+}
+
+impl<T: Default, U: Default> VarWidth<T, U> {
+    pub fn short(short: T) -> Self {
+        Self::VarWidth{short, long: T::default(), data: U::default()}
+    }
+
+    pub fn long(long: T) -> Self {
+        Self::VarWidth{short: T::default(), long, data: U::default()}
     }
 }
 
@@ -902,27 +953,8 @@ impl Instr {
             Err("Unexpected token after the instruction body")?
         }
 
-        let mut it = body.stream().into_iter().peekable();
-        let mut ret = Instr::new(name);
-
-        loop {
-            let it = it.by_ref();
-
-            ret.body += it.take_while(|token| token.to_string() != "meta").collect::<TokenStream>();
-
-            if it.peek().is_none() {
-                break;
-            }
-
-            let meta_instr = MetaInstruction::try_from(it.take_while(|token| {
-                let TokenTree::Punct(p) = token else {
-                    return true;
-                };
-                return p.as_char() != ';';
-            }))?;
-
-            ret.body += meta_instr.expand(&mut pstatus);
-        }
+        let mut ret = Self::new(name);
+        ret.body += InstrBody::parse(body.stream(), &mut pstatus)?;
 
         // Set PC to point at the next opcode
         match (&mut ret.body, pstatus.imm_offset.map_into(|i| pstatus.conditionally_inc_pc(*i))) {
@@ -1022,6 +1054,32 @@ impl InstrBody {
 
     pub fn post(post_instr: TokenStream) -> Self {
         Self::new(vec![], post_instr)
+    }
+
+    /// Parses a piece of instrbody, calling meta-instr expansions
+    pub fn parse(body: TokenStream, pstatus: &mut ParserStatus) -> Result<VarWidth<Self>, &'static str> {
+        let mut it = body.into_iter().peekable();
+        let mut ret = VarWidth::<Self>::default();
+
+        loop {
+            let it = it.by_ref();
+
+            ret += it.take_while(|token| token.to_string() != "meta").collect::<TokenStream>();
+
+            if it.peek().is_none() {
+                break;
+            }
+
+            let meta_instr = MetaInstruction::try_from(it.take_while(|token| {
+                let TokenTree::Punct(p) = token else {
+                    return true;
+                };
+                return p.as_char() != ';';
+            }))?;
+
+            ret += meta_instr.expand(pstatus);
+        }
+        Ok(ret)
     }
 
     /// Generate a conditional cycle as described by the cpu doc note 4
