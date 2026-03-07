@@ -786,11 +786,11 @@ impl MetaInstruction {
                 ret += binding.expand_mut();
             }
             Self::If8(body) => {
-                let mut it = body.into_iter().peekable();
+                let mut it = body.into_iter();
 
                 let first_tok = it.next().expect("at least one token");
                 if let TokenTree::Group(body) = first_tok {
-                    if it.peek().is_some() {
+                    if it.next().is_some() {
                         panic!("unexpected trailing tokens after braced If8");
                     }
                     ret += VarWidth::short(
@@ -802,11 +802,11 @@ impl MetaInstruction {
                 }
             }
             Self::If16(body) => {
-                let mut it = body.into_iter().peekable();
+                let mut it = body.into_iter();
 
                 let first_tok = it.next().expect("at least one token");
                 if let TokenTree::Group(body) = first_tok {
-                    if it.peek().is_some() {
+                    if it.next().is_some() {
                         panic!("unexpected trailing tokens after braced If16");
                     }
                     ret += VarWidth::long(
