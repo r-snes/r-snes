@@ -109,6 +109,19 @@ impl Io {
 
     fn read_cpu(&mut self, addr: SnesAddress, cpu: &mut CPU) -> u8 {
         match addr.addr {
+            // Data-from-APU register
+            // TODO : Link with the actual apu component
+            0x2140..0x2180 => {
+                let reg_nb = addr.addr % 4;
+                match reg_nb {
+                    0 => 0, // Handle read of APU register nb°0
+                    1 => 0, // Handle read of APU register nb°1
+                    2 => 0, // Handle read of APU register nb°2
+                    3 => 0, // Handle read of APU register nb°3
+                    _ => unreachable!(),
+                }
+            }
+
             // WRAM Data Registers - Seems to be mainly used with DMA
             0x2180 => self.wmdata,
 
@@ -164,6 +177,19 @@ impl Io {
 
     fn write_cpu(&mut self, value: u8, addr: SnesAddress, _cpu: &mut CPU) {
         match addr.addr {
+            // Data-to-APU register
+            // TODO : Link with the actual apu component
+            0x2140..0x2180 => {
+                let reg_nb = addr.addr % 4;
+                match reg_nb {
+                    0 => {} // Handle write to APU register nb°0
+                    1 => {} // Handle write to APU register nb°1
+                    2 => {} // Handle write to APU register nb°2
+                    3 => {} // Handle write to APU register nb°3
+                    _ => unreachable!(),
+                }
+            }
+
             // WRAM Data Registers - Seems to be mainly used with DMA
             0x2180 => {
                 self.wmdata = value;
