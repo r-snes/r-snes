@@ -14,14 +14,83 @@ use ppu::ppu::PPU;
 /// For example, the addresses `0x004000` and `0x9E4000` both refer to the
 /// same memory location.
 pub struct Io {
-    // TODO : Implement real CPU, PPU, APU, etc... memoriy behaviors.
-    data: Box<[u8; IO_SIZE]>,
+    // ---------- $4016-$4017 ----------
+    joyser0: u8,
+    joyser1: u8,
+
+    // ---------- $4200-$420D ----------
+    nmitimen: u8,
+    wrio: u8,
+
+    wrmpya: u8,
+    wrmpyb: u8,
+
+    wrdivl: u8,
+    wrdivh: u8,
+    wrdivb: u8,
+
+    htimel: u8,
+    htimeh: u8,
+    vtimel: u8,
+    vtimeh: u8,
+
+    mdmaen: u8,
+    hdmaen: u8,
+    memsel: u8,
+
+    // ---------- math results ----------
+    rddiv: u16,
+    rdmpy: u16,
+
+    // ---------- status ----------
+    rdnmi: u8,
+    timeup: u8,
+    hvbjoy: u8,
+    rdio: u8,
+
+    // ---------- joypads ----------
+    joy: [u16; 4],
+
+    // ---------- DMA registers ----------
+    dma: [[u8; 0x10]; 8],
 }
 
 impl Io {
     pub fn new() -> Self {
         Self {
-            data: Box::new([0; IO_SIZE]),
+            joyser0: 0,
+            joyser1: 0,
+
+            nmitimen: 0,
+            wrio: 0xFF,
+
+            wrmpya: 0xFF,
+            wrmpyb: 0xFF,
+
+            wrdivl: 0xFF,
+            wrdivh: 0xFF,
+            wrdivb: 0xFF,
+
+            htimel: 0xFF,
+            htimeh: 1,
+            vtimel: 0xFF,
+            vtimeh: 1,
+
+            mdmaen: 0,
+            hdmaen: 0,
+            memsel: 0,
+
+            rddiv: 0,
+            rdmpy: 0,
+
+            rdnmi: 0,
+            timeup: 0,
+            hvbjoy: 0,
+            rdio: 0,
+
+            joy: [0; 4],
+
+            dma: [[0xFF; 0x10]; 8],
         }
     }
 
@@ -32,22 +101,80 @@ impl Io {
         );
     }
 
-    /// Converts a `SnesAddress` into an internal I/O offset.
-    ///
-    /// Maps addresses between 0x2000–0x5FFF and mirrored across banks
-    /// 0x00–0x3F and 0x80–0xBF.
-    ///
-    /// # Panics
-    /// Panics if the address is outside the valid I/O memory zone range.
-    fn to_offset(addr: SnesAddress) -> usize {
-        match addr.bank {
-            0x00..=0x3F | 0x80..=0xBF
-                if addr.addr >= IO_START_ADDRESS && addr.addr < IO_END_ADDRESS =>
-            {
-                addr.addr as usize
-            }
-            _ => Self::panic_invalid_addr(addr),
+    fn read_cpu(&self, addr: SnesAddress, cpu: &mut CPU) -> u8 {
+        match addr.addr {
+            // Open Bus
+            _ => cpu.data_bus,
         }
+    }
+
+    fn write_cpu(&mut self, value: u8, addr: SnesAddress, _cpu: &mut CPU) {
+        match addr.addr {
+            // UNUSED : manual controller reading not implemented
+            0x4016 => self.joyser0 = value,
+
+            // Register for enabling NMI, H/V-Blank, and joypad auto-read
+            0x4200 => self.nmitimen = value,
+
+            // UNUSED : manual controller reading not implemented
+            0x4201 => self.wrio = value,
+
+            // Multiplication registers
+            // TODO : Make the actual multiplication take 8 CPU cycles
+            0x4202 => self.wrmpya = value,
+            0x4203 => {
+                self.wrmpyb = value;
+                self.rdmpy = (self.wrmpya as u16) * (self.wrmpyb as u16);
+            }
+
+            // Division registers
+            // TODO : Make the actual division take 16 CPU cycles
+            0x4204 => self.wrdivl = value,
+            0x4205 => self.wrdivh = value,
+            0x4206 => {
+                self.wrdivb = value;
+
+                let dividend = ((self.wrdivh as u16) << 8) | self.wrdivl as u16;
+
+                if value != 0 {
+                    self.rddiv = dividend / value as u16;
+                    self.rdmpy = dividend % value as u16;
+                } else {
+                    self.rddiv = 0xFFFF;
+                    self.rdmpy = dividend;
+                }
+            }
+
+            // Screen timer target values - Horizontal Register
+            0x4207 => self.htimel = value,
+            0x4208 => self.htimeh = value & 1,
+            // Screen timer target values - Vertical Register
+            0x4209 => self.vtimel = value,
+            0x420A => self.vtimeh = value & 1,
+
+            // DMA and HDMA registers
+            // TODO : Implement real DMA and HDMA behaviors
+            0x420B => self.mdmaen = value,
+            0x420C => self.hdmaen = value,
+
+            // ROM access speed register
+            0x420D => self.memsel = value,
+
+            _ => {}
+        }
+    }
+
+    fn read_ppu(&self, addr: SnesAddress, cpu: &mut CPU) -> u8 {
+        0
+    }
+    fn write_ppu(&mut self, value: u8, addr: SnesAddress, cpu: &mut CPU) -> u8 {
+        0
+    }
+    fn read_apu(&self, addr: SnesAddress, cpu: &mut CPU) -> u8 {
+        0
+    }
+    fn write_apu(&mut self, value: u8, addr: SnesAddress, cpu: &mut CPU) -> u8 {
+        0
     }
 }
 
@@ -58,13 +185,18 @@ impl Io {
     ///
     /// # Panics
     /// Panics if the address does not map to a valid I/O memory location.
-    pub fn read(&self, addr: SnesAddress, cpu: &mut CPU, ppu: &mut PPU, apu: &mut Apu) -> u8 {
-        let offset = Self::to_offset(addr);
-
-        return *self.data.get(offset).expect(&format!(
-            "ERROR: Couldn't extract value from IO at address: {:06X}",
-            usize::from(addr)
-        ));
+    pub fn read(&mut self, addr: SnesAddress, cpu: &mut CPU, ppu: &mut PPU, apu: &mut Apu) -> u8 {
+        match addr.bank {
+            0x00..=0x3F | 0x80..=0xBF
+                if addr.addr >= IO_START_ADDRESS && addr.addr < IO_END_ADDRESS =>
+            {
+                match addr.addr {
+                    0x2140..0x4300 => self.read_cpu(addr, cpu),
+                    _ => Self::panic_invalid_addr(addr),
+                }
+            }
+            _ => Self::panic_invalid_addr(addr),
+        }
     }
 
     /// Writes a byte to the I/O memory zone at the given `SnesAddress`.
@@ -81,14 +213,17 @@ impl Io {
         ppu: &mut PPU,
         apu: &mut Apu,
     ) {
-        let offset = Self::to_offset(addr);
-
-        if offset < self.data.len() {
-            self.data[offset] = value;
-        } else {
-            // Shouldn't come here, panics just in case
-            Self::panic_invalid_addr(addr);
-        }
+        match addr.bank {
+            0x00..=0x3F | 0x80..=0xBF
+                if addr.addr >= IO_START_ADDRESS && addr.addr < IO_END_ADDRESS =>
+            {
+                match addr.addr {
+                    0x2140..0x4300 => self.write_cpu(value, addr, cpu),
+                    _ => Self::panic_invalid_addr(addr),
+                }
+            }
+            _ => Self::panic_invalid_addr(addr),
+        };
     }
 }
 
