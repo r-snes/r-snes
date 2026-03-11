@@ -1,0 +1,114 @@
+Plugins !!!
+
+A plugin is a single lua file which returns a table,
+where specific keys have to be used.
+
+a simple example plugin would be
+```
+return {
+    permissions = "all",
+    actions = {
+        default = function(rsnes)
+            rsnes.simple_dialog("hello world")
+        end
+    }
+}
+```
+
+The recognised keys should be the following:
+
+`permissions`
+permission request: asks the user for confirmation
+
+`actions`
+one-time actions that can be started by a keybind
+
+`autoactions`
+actions automatically executed at set intervals
+
+`meta`
+metadata information: author, plugin version, etc.
+
+`api_version`
+version code of the plugin API
+
+`options`
+various options controlling plugin execution
+
+
+When loading a plugin, the lua file will be loaded and
+the returned table will be checked for correctness before
+any of the plugin actions are run, before any permissions
+are granted to the plugin. Errors and warnings may
+be printed to the user trying to load the plugin.
+
+There could be a checkbox 'Show dev warnings' which
+enables additional diagnostic messages about the plugin
+being loaded that would only be relevant to the developer
+of that plugin.
+
+The main point of this "pause" before running any
+function is to let the user confirm requested permissions.
+The user should be able to see a clean render of most
+things in the table returned by the plugin (excluding
+function definitions for example).
+The user will mainly be able to see each requested
+permission, and information about each requested thing.
+The user can deny individual permission requests (?)
+
+
+Detailed plugin API:
+
+`permissions`
+Permission specs can be recursive, and respect the
+following permission tree:
+```
+*root*
++ internal // access stuff within the emulator
+| + control // control the emulator, not the components
+| | + dialog // allows the plugin to show dialog windows
+| | ` pause // pause/resume game
+| |
+| + cpu
+| | ` registers
+| |
+| + ppu // access framebuffer, loaded objects, etc.
+| | ` display // draw to the framebuffer
+| |
+| ` bus // interact with memory
+|   + read
+|   ` write
+|
+` external // access to the host system
+  + filesystem
+  | + read_file
+  | ` write_file
+  |
+  ` http
+```
+
+The idea with this permission tree is that for each node of
+the tree, 3 possible values can be used:
+1. The string `"all"`, which requests all permissions under this node
+2. A list of values, such as `{ "read", "write" }`, requesting all
+  permissions for listed values
+3. A KV table `{ internal = "all", external = { "filesystem" }`,
+  requesting specific permission specs for listed keys
+
+This means that permission specs can be recursive, so
+that they can request any specific combination of
+permissions in the permission tree, while easily requesting
+every permission down from a certain tree node.
+
+If a node from to complete perm tree is omitted in the
+permission request tree, it implicity means that no permission
+is requested under this tree node. This can be made explicit
+by requesting `{ name = "none" }` or `{ name = nil }`
+
+Lastly, leaf nodes of the tree may have their own separate
+syntax, since cases 2. and 3. wouldn't make sense for them. Case 1
+("all" -- or "none" or nil) still works with the same meaning.
+See below for the specific syntax of each leaf node of the perm tree
+(leaf nodes which aren't mentioned only accept case 1.).
+
+(said "below" is not written yet)
