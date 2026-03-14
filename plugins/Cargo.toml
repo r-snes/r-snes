@@ -6,3 +6,5 @@ edition = "2024"
 [dependencies]
 egui = "0.33.3"
 piccolo = { git = "https://github.com/kyren/piccolo" }
+strict_partial_ord_derive = { path = "strict_partial_ord_derive" }
+permission_derive_macro = { path = "permission_derive_macro" }
