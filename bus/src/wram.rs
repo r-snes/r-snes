@@ -13,13 +13,13 @@ use common::snes_address::SnesAddress;
 ///
 /// Warning: bank 0x7F is not mirrored, so `0x7F1000` is independent.
 pub struct Wram {
-    data: [u8; WRAM_SIZE],
+    data: Box<[u8; WRAM_SIZE]>,
 }
 
 impl Wram {
     pub fn new() -> Self {
         Self {
-            data: [0; WRAM_SIZE],
+            data: Box::new([0; WRAM_SIZE]),
         }
     }
 

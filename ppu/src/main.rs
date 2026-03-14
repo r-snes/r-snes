@@ -2,10 +2,10 @@ mod ppu;
 mod tile;
 mod utils;
 
-use minifb::{Key, Window, WindowOptions};
 use crate::ppu::PPU;
 use crate::tile::{load_and_split_image, load_tiles_into_vram};
-use crate::utils::{SCREEN_WIDTH, SCREEN_HEIGHT, WIDTH, HEIGHT, TILE_SIZE};
+use crate::utils::{HEIGHT, SCREEN_HEIGHT, SCREEN_WIDTH, TILE_SIZE, WIDTH};
+use minifb::{Key, Window, WindowOptions};
 
 pub fn create_window() -> Window {
     Window::new(
@@ -25,7 +25,6 @@ pub fn update_window(window: &mut Window, framebuffer: &Vec<u32>) {
         .update_with_buffer(framebuffer, WIDTH, HEIGHT)
         .expect("[ERR::Render] Framebuffer refused to cooperate.");
 }
-
 
 fn main() {
     let (tiles, image_width) = load_and_split_image("./tileset.png");
