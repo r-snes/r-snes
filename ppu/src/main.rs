@@ -27,8 +27,9 @@ fn main() {
         ppu.write(0x2122, 0x00); // high byte
     }
 
-    // Enable display
-    ppu.write(0x2100, 0x0F);
+    ppu.write(0x2100, 0x0F); // Enable display
+    ppu.write(0x2105, 0x01); // Mode 1
+    ppu.write(0x212C, 0x01); // Enable BG1
 
     let sdl_context = sdl2::init().unwrap();
     let video = sdl_context.video().unwrap();
