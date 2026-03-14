@@ -96,10 +96,10 @@ impl Io {
             0x2140..0x2180 => {
                 let reg_nb = addr.addr % 4;
                 match reg_nb {
-                    0 => 0, // Handle read of APU register nb°0
-                    1 => 0, // Handle read of APU register nb°1
-                    2 => 0, // Handle read of APU register nb°2
-                    3 => 0, // Handle read of APU register nb°3
+                    0 => todo!("{} : Implement APU channel n°1 reads", addr.addr),
+                    1 => todo!("{} : Implement APU channel n°2 reads", addr.addr),
+                    2 => todo!("{} : Implement APU channel n°3 reads", addr.addr),
+                    3 => todo!("{} : Implement APU channel n°4 reads", addr.addr),
                     _ => unreachable!(),
                 }
             }
@@ -160,14 +160,13 @@ impl Io {
     fn write_cpu(&mut self, value: u8, addr: SnesAddress, _cpu: &mut CPU) {
         match addr.addr {
             // Data-to-APU register
-            // TODO : Link with the actual apu component
             0x2140..0x2180 => {
                 let reg_nb = addr.addr % 4;
                 match reg_nb {
-                    0 => {} // Handle write to APU register nb°0
-                    1 => {} // Handle write to APU register nb°1
-                    2 => {} // Handle write to APU register nb°2
-                    3 => {} // Handle write to APU register nb°3
+                    0 => todo!("{} : Implement APU channel n°1 writes", addr.addr),
+                    1 => todo!("{} : Implement APU channel n°2 writes", addr.addr),
+                    2 => todo!("{} : Implement APU channel n°3 writes", addr.addr),
+                    3 => todo!("{} : Implement APU channel n°4 writes", addr.addr),
                     _ => unreachable!(),
                 }
             }
@@ -210,10 +209,10 @@ impl Io {
                 }
             }
 
-            // Screen timer target values - Horizontal Register
+            // Screen timer Horizontal target values
             0x4207 => self.htimel = value,
             0x4208 => self.htimeh = value & 1,
-            // Screen timer target values - Vertical Register
+            // Screen timer Vertical target values
             0x4209 => self.vtimel = value,
             0x420A => self.vtimeh = value & 1,
 
