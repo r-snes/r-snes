@@ -14,9 +14,6 @@ use ppu::ppu::PPU;
 /// For example, the addresses `0x004000` and `0x9E4000` both refer to the
 /// same memory location.
 pub struct Io {
-    joyser0: u8,
-    joyser1: u8,
-
     nmitimen: u8,
     wrio: u8,
 
@@ -53,9 +50,6 @@ pub struct Io {
 impl Io {
     pub fn new() -> Self {
         Self {
-            joyser0: 0,
-            joyser1: 0,
-
             nmitimen: 0,
             wrio: 0xFF,
 
@@ -113,11 +107,11 @@ impl Io {
             }
 
             // S-WRAM Data Registers (Expansion port not implemented yet)
-            0x2180..=0x2183 => todo!("Implement Rom S-WRAM reads"),
+            0x2180 => todo!("0x2180-0x2183 : Implement Rom S-WRAM reads"),
 
-            // UNUSED : manual controller reading not implemented
-            0x4016 => self.joyser0,
-            0x4017 => self.joyser1,
+            // JOYSER0/JOYSER1 - manual controller reading not implemented
+            0x4016 => todo!("0x4016 : Implement JOYSER0 register read"),
+            0x4017 => todo!("0x4017 : Implement JOYSER1 register read"),
 
             // Vblank flag and CPU version register
             // TODO : Implement open bus on unused bits
@@ -181,10 +175,10 @@ impl Io {
             }
 
             // S-WRAM Data Registers (Expansion port not implemented yet)
-            0x2180..=0x2183 => todo!("Implement Rom S-WRAM writes"),
+            0x2180..=0x2183 => todo!("0x2180-0x2183 : Implement Rom S-WRAM writes"),
 
-            // UNUSED : manual controller reading not implemented
-            0x4016 => self.joyser0 = value,
+            // JOYOUT - manual controller reading not implemented
+            0x4016 => todo!("0x4016 : Implement JOYOUT register write"),
 
             // Register for enabling NMI, H/V-Blank, and joypad auto-read
             0x4200 => self.nmitimen = value,
