@@ -39,7 +39,6 @@ pub struct Io {
     rdnmi: u8,
     timeup: u8,
     hvbjoy: u8,
-    rdio: u8,
 
     joy1: u16,
     joy2: u16,
@@ -75,7 +74,6 @@ impl Io {
             rdnmi: 0,
             timeup: 0,
             hvbjoy: 0,
-            rdio: 0,
 
             joy1: 0,
             joy2: 0,
@@ -133,8 +131,8 @@ impl Io {
             // TODO : Implement open bus on unused bits
             0x4212 => self.hvbjoy,
 
-            // UNUSED : manual controller reading not implemented
-            0x4213 => self.rdio,
+            // RDIO : manual controller reading not implemented
+            0x4213 => todo!("0x4213 : Implement RDIO register read"),
 
             // Divison result register
             0x4214 => self.rddiv as u8,
