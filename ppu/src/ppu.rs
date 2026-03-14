@@ -31,6 +31,45 @@ impl PPU {
             0x2100 => self.regs.inidisp = value,
 
             // ==========================
+            // BACKGROUNDS
+            // ==========================
+            0x2105 => self.regs.bgmode = value,
+            0x2107 => self.regs.bg1sc = value,
+
+            // BG1 HOFS
+            0x210D => {
+                if !self.regs.bg1hofs_latch_written {
+                    self.regs.bg1hofs_latch = value;
+                    self.regs.bg1hofs_latch_written = true;
+                } else {
+                    self.regs.bg1hofs =
+                        ((value as u16 & 0x07) << 8) |
+                        self.regs.bg1hofs_latch as u16;
+
+                    self.regs.bg1hofs_latch_written = false;
+                }
+            }
+
+            // BG1 VOFS
+            0x210E => {
+                if !self.regs.bg1vofs_latch_written {
+                    self.regs.bg1vofs_latch = value;
+                    self.regs.bg1vofs_latch_written = true;
+                } else {
+                    self.regs.bg1vofs =
+                        ((value as u16 & 0x07) << 8) |
+                        self.regs.bg1vofs_latch as u16;
+
+                    self.regs.bg1vofs_latch_written = false;
+                }
+            }
+
+            // ==========================
+            // COLOR MATH / LAYER ENABLE
+            // ==========================
+            0x212C => self.regs.tm = value,
+
+            // ==========================
             // VRAM
             // ==========================
             0x2115 => {

@@ -194,10 +194,12 @@ pub struct PPURegisters {
     pub stat78: u8, // Interlace field, counter latch, NTSC/PAL, PPU2 version
 
     // Latches
-    bg1hofs_latch: u8,
-    cgdata_latch: u8,
-    bg1hofs_latch_written: bool,
-    cgdata_latch_written: bool,
+    pub bg1hofs_latch: u8,
+    pub cgdata_latch: u8,
+    pub bg1hofs_latch_written: bool,
+    pub cgdata_latch_written: bool,
+    pub bg1vofs_latch: u8,
+    pub bg1vofs_latch_written: bool,
 }
 
 impl PPURegisters {
@@ -271,6 +273,8 @@ impl PPURegisters {
             cgdata_latch: 0,
             bg1hofs_latch_written: false,
             cgdata_latch_written: false,
+            bg1vofs_latch: 0,
+            bg1vofs_latch_written: false,
         }
     }
 
@@ -443,5 +447,25 @@ impl PPURegisters {
                 println!("PPU write to unknown address: {:04X}", addr);
             }
         }
+    }
+
+    // ============================================================
+    // Helpers
+    // ============================================================
+
+    pub fn bg1_enabled(&self) -> bool {
+        (self.tm & 0x01) != 0
+    }
+
+    pub fn bg_mode(&self) -> u8 {
+        self.bgmode & 0x07
+    }
+
+    pub fn bg1_tilemap_addr(&self) -> u16 {
+        ((self.bg1sc as u16) >> 2) * 0x800
+    }
+
+    pub fn bg1_tiledata_addr(&self) -> u16 {
+        ((self.bg12nba as u16) & 0x0F) * 0x1000
     }
 }
