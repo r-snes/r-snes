@@ -203,6 +203,7 @@ impl Io {
             0x421E => self.joy4 as u8,
             0x421F => (self.joy4 >> 8) as u8,
 
+            // DMA and HDMA channel registers
             0x4300..0x4380 => {
                 let channel_nb = (addr.addr - 0x4300) / 0x10;
                 let reg_nb = (addr.addr - 0x4300) % 0x10;
@@ -298,6 +299,7 @@ impl Io {
             // ROM access speed register
             0x420D => self.memsel = value,
 
+            // DMA and HDMA channel registers
             0x4300..0x4380 => {
                 let channel_nb = (addr.addr - 0x4300) / 0x10;
                 let reg_nb = (addr.addr - 0x4300) % 0x10;
@@ -324,17 +326,123 @@ impl Io {
         }
     }
 
-    fn read_ppu(&self, addr: SnesAddress, cpu: &mut CPU) -> u8 {
-        0
+    fn read_ppu(&mut self, addr: SnesAddress, ppu: &mut PPU) -> u8 {
+        match addr.addr {
+            // MPY result (24-bit)
+            0x2134 => todo!("0x2134 : MPYL read"),
+            0x2135 => todo!("0x2135 : MPYM read"),
+            0x2136 => todo!("0x2136 : MPYH read"),
+
+            // Latch H/V counter
+            0x2137 => todo!("0x2137 : SLHV read"),
+
+            // OAM read
+            0x2138 => todo!("0x2138 : OAMDATAREAD"),
+
+            // VRAM read
+            0x2139 => todo!("0x2139 : VMDATALREAD"),
+            0x213A => todo!("0x213A : VMDATAHREAD"),
+
+            // CGRAM read (2-step)
+            0x213B => todo!("0x213B : CGDATAREAD"),
+
+            // H/V counters (2-step reads)
+            0x213C => todo!("0x213C : OPHCT read"),
+            0x213D => todo!("0x213D : OPVCT read"),
+
+            // Status registers
+            0x213E => todo!("0x213E : STAT77 read"),
+            0x213F => todo!("0x213F : STAT78 read"),
+
+            // Open bus, may need to have a custom ppu open bus
+            _ => 0,
+        }
     }
-    fn write_ppu(&mut self, value: u8, addr: SnesAddress, cpu: &mut CPU) -> u8 {
-        0
-    }
-    fn read_apu(&self, addr: SnesAddress, cpu: &mut CPU) -> u8 {
-        0
-    }
-    fn write_apu(&mut self, value: u8, addr: SnesAddress, cpu: &mut CPU) -> u8 {
-        0
+
+    fn write_ppu(&mut self, value: u8, addr: SnesAddress, ppu: &mut PPU) {
+        match addr.addr {
+            // Display / OBJ
+            0x2100 => todo!("0x2100 : INIDISP write"),
+            0x2101 => todo!("0x2101 : OBJSEL write"),
+
+            // OAM
+            0x2102 => todo!("0x2102 : OAMADDL write"),
+            0x2103 => todo!("0x2103 : OAMADDH write"),
+            0x2104 => todo!("0x2104 : OAMDATA write"),
+
+            // BG mode / mosaic
+            0x2105 => todo!("0x2105 : BGMODE write"),
+            0x2106 => todo!("0x2106 : MOSAIC write"),
+
+            // BG tilemap
+            0x2107 => todo!("0x2107 : BG1SC write"),
+            0x2108 => todo!("0x2108 : BG2SC write"),
+            0x2109 => todo!("0x2109 : BG3SC write"),
+            0x210A => todo!("0x210A : BG4SC write"),
+
+            // BG CHR base
+            0x210B => todo!("0x210B : BG12NBA write"),
+            0x210C => todo!("0x210C : BG34NBA write"),
+
+            // Scroll registers (W8x2)
+            0x210D => todo!("0x210D : BG1HOFS / M7HOFS write"),
+            0x210E => todo!("0x210E : BG1VOFS / M7VOFS write"),
+            0x210F => todo!("0x210F : BG2HOFS write"),
+            0x2110 => todo!("0x2110 : BG2VOFS write"),
+            0x2111 => todo!("0x2111 : BG3HOFS write"),
+            0x2112 => todo!("0x2112 : BG3VOFS write"),
+            0x2113 => todo!("0x2113 : BG4HOFS write"),
+            0x2114 => todo!("0x2114 : BG4VOFS write"),
+
+            // VRAM access
+            0x2115 => todo!("0x2115 : VMAIN write"),
+            0x2116 => todo!("0x2116 : VMADDL write"),
+            0x2117 => todo!("0x2117 : VMADDH write"),
+            0x2118 => todo!("0x2118 : VMDATAL write"),
+            0x2119 => todo!("0x2119 : VMDATAH write"),
+
+            // Mode 7
+            0x211A => todo!("0x211A : M7SEL write"),
+            0x211B => todo!("0x211B : M7A write"),
+            0x211C => todo!("0x211C : M7B write"),
+            0x211D => todo!("0x211D : M7C write"),
+            0x211E => todo!("0x211E : M7D write"),
+            0x211F => todo!("0x211F : M7X write"),
+            0x2120 => todo!("0x2120 : M7Y write"),
+
+            // CGRAM
+            0x2121 => todo!("0x2121 : CGADD write"),
+            0x2122 => todo!("0x2122 : CGDATA write"),
+
+            // Window registers
+            0x2123 => todo!("0x2123 : W12SEL write"),
+            0x2124 => todo!("0x2124 : W34SEL write"),
+            0x2125 => todo!("0x2125 : WOBJSEL write"),
+            0x2126 => todo!("0x2126 : WH0 write"),
+            0x2127 => todo!("0x2127 : WH1 write"),
+            0x2128 => todo!("0x2128 : WH2 write"),
+            0x2129 => todo!("0x2129 : WH3 write"),
+
+            // Window logic
+            0x212A => todo!("0x212A : WBGLOG write"),
+            0x212B => todo!("0x212B : WOBJLOG write"),
+
+            // Screen enable
+            0x212C => todo!("0x212C : TM write"),
+            0x212D => todo!("0x212D : TS write"),
+            0x212E => todo!("0x212E : TMW write"),
+            0x212F => todo!("0x212F : TSW write"),
+
+            // Color math
+            0x2130 => todo!("0x2130 : CGWSEL write"),
+            0x2131 => todo!("0x2131 : CGADSUB write"),
+            0x2132 => todo!("0x2132 : COLDATA write"),
+
+            // Screen settings
+            0x2133 => todo!("0x2133 : SETINI write"),
+
+            _ => {}
+        }
     }
 }
 
