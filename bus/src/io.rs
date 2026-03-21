@@ -44,6 +44,55 @@ pub struct Io {
     joy2: u16,
     joy3: u16,
     joy4: u16,
+
+    dma_channels: [DMAChannel; 8],
+}
+
+#[derive(Copy, Clone)]
+pub struct DMAChannel {
+    dmap: u8,
+
+    bbad: u8,
+
+    a1tl: u8,
+    a1th: u8,
+    a1b: u8,
+
+    dasl: u8,
+    dash: u8,
+    dasb: u8,
+
+    a2al: u8,
+    a2ah: u8,
+
+    nltr: u8,
+
+    unused: u8,
+}
+
+impl DMAChannel {
+    pub fn new() -> Self {
+        Self {
+            dmap: 0xFF,
+
+            bbad: 0xFF,
+
+            a1tl: 0xFF,
+            a1th: 0xFF,
+            a1b: 0xFF,
+
+            dasl: 0xFF,
+            dash: 0xFF,
+            dasb: 0xFF,
+
+            a2al: 0xFF,
+            a2ah: 0xFF,
+
+            nltr: 0xFF,
+
+            unused: 0xFF,
+        }
+    }
 }
 
 impl Io {
@@ -79,6 +128,8 @@ impl Io {
             joy2: 0,
             joy3: 0,
             joy4: 0,
+
+            dma_channels: [DMAChannel::new(); 8],
         }
     }
 
@@ -152,12 +203,35 @@ impl Io {
             0x421E => self.joy4 as u8,
             0x421F => (self.joy4 >> 8) as u8,
 
+            0x4300..0x4380 => {
+                let channel_nb = (addr.addr - 0x4300) / 0x10;
+                let reg_nb = (addr.addr - 0x4300) % 0x10;
+
+                let channel = &mut self.dma_channels[channel_nb as usize];
+                match reg_nb {
+                    0x0 => channel.dmap,
+                    0x1 => channel.bbad,
+                    0x2 => channel.a1tl,
+                    0x3 => channel.a1th,
+                    0x4 => channel.a1b,
+                    0x5 => channel.dasl,
+                    0x6 => channel.dash,
+                    0x7 => channel.dasb,
+                    0x8 => channel.a2al,
+                    0x9 => channel.a2ah,
+                    0xA => channel.nltr,
+                    0xB | 0xF => channel.unused,
+
+                    _ => cpu.data_bus, // Open bus I believe, but not sure if this is the correct behavior
+                }
+            }
+
             // Open Bus
             _ => cpu.data_bus,
         }
     }
 
-    fn write_cpu(&mut self, value: u8, addr: SnesAddress, _cpu: &mut CPU) {
+    fn write_cpu(&mut self, value: u8, addr: SnesAddress, cpu: &mut CPU) {
         match addr.addr {
             // Data-to-APU register
             0x2140..0x2180 => {
@@ -216,13 +290,35 @@ impl Io {
             0x4209 => self.vtimel = value,
             0x420A => self.vtimeh = value & 1,
 
-            // DMA and HDMA registers
+            // DMA and HDMA enable registers
             // TODO : Implement real DMA and HDMA behaviors
             0x420B => self.mdmaen = value,
             0x420C => self.hdmaen = value,
 
             // ROM access speed register
             0x420D => self.memsel = value,
+
+            0x4300..0x4380 => {
+                let channel_nb = (addr.addr - 0x4300) / 0x10;
+                let reg_nb = (addr.addr - 0x4300) % 0x10;
+
+                let channel = &mut self.dma_channels[channel_nb as usize];
+                match reg_nb {
+                    0x0 => channel.dmap = value,
+                    0x1 => channel.bbad = value,
+                    0x2 => channel.a1tl = value,
+                    0x3 => channel.a1th = value,
+                    0x4 => channel.a1b = value,
+                    0x5 => channel.dasl = value,
+                    0x6 => channel.dash = value,
+                    0x7 => channel.dasb = value,
+                    0x8 => channel.a2al = value,
+                    0x9 => channel.a2ah = value,
+                    0xA => channel.nltr = value,
+                    0xB | 0xF => channel.unused = value,
+                    _ => {}
+                }
+            }
 
             _ => {}
         }
