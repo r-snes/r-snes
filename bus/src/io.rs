@@ -1,4 +1,4 @@
-use crate::constants::{IO_END_ADDRESS, IO_SIZE, IO_START_ADDRESS};
+use crate::constants::{IO_END_ADDRESS, IO_START_ADDRESS};
 use apu::Apu;
 use common::snes_address::SnesAddress;
 use cpu::cpu::CPU;
@@ -140,7 +140,7 @@ impl Io {
         );
     }
 
-    fn read_cpu(&mut self, addr: SnesAddress, cpu: &mut CPU) -> u8 {
+    fn read_cpu(&mut self, addr: SnesAddress, cpu: &mut CPU, apu: &mut Apu) -> u8 {
         match addr.addr {
             // Data-from-APU register
             // TODO : Link with the actual apu component
@@ -232,7 +232,7 @@ impl Io {
         }
     }
 
-    fn write_cpu(&mut self, value: u8, addr: SnesAddress, cpu: &mut CPU) {
+    fn write_cpu(&mut self, value: u8, addr: SnesAddress, cpu: &mut CPU, apu: &mut Apu) {
         match addr.addr {
             // Data-to-APU register
             0x2140..0x2180 => {
@@ -326,6 +326,7 @@ impl Io {
         }
     }
 
+    #[cfg(not(tarpaulin_include))]
     fn read_ppu(&mut self, addr: SnesAddress, ppu: &mut PPU) -> u8 {
         match addr.addr {
             // MPY result (24-bit)
@@ -359,6 +360,7 @@ impl Io {
         }
     }
 
+    #[cfg(not(tarpaulin_include))]
     fn write_ppu(&mut self, value: u8, addr: SnesAddress, ppu: &mut PPU) {
         match addr.addr {
             // Display / OBJ
@@ -458,8 +460,13 @@ impl Io {
             0x00..=0x3F | 0x80..=0xBF
                 if addr.addr >= IO_START_ADDRESS && addr.addr < IO_END_ADDRESS =>
             {
+                // 0x2000..0x6000 => self.io.DUP_method(DUP_method_param, cpu, ppu, apu),
                 match addr.addr {
-                    0x2140..0x4300 => self.read_cpu(addr, cpu),
+                    0x2000..0x2100 => cpu.data_bus,
+                    0x2100..0x2140 => self.read_ppu(addr, ppu),
+                    0x2140..0x4380 => self.read_cpu(addr, cpu, apu),
+                    0x4380..0x6000 => cpu.data_bus,
+
                     _ => Self::panic_invalid_addr(addr),
                 }
             }
@@ -486,7 +493,11 @@ impl Io {
                 if addr.addr >= IO_START_ADDRESS && addr.addr < IO_END_ADDRESS =>
             {
                 match addr.addr {
-                    0x2140..0x4300 => self.write_cpu(value, addr, cpu),
+                    0x2000..0x2100 => {}
+                    0x2100..0x2140 => self.write_ppu(value, addr, ppu),
+                    0x2140..0x4380 => self.write_cpu(value, addr, cpu, apu),
+                    0x4380..0x6000 => {}
+
                     _ => Self::panic_invalid_addr(addr),
                 }
             }
