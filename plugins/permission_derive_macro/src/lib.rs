@@ -1,49 +1,93 @@
-use proc_macro::TokenStream;
-use quote::quote;
-use syn::parse_macro_input;
-use syn::DeriveInput;
+use {
+    proc_macro::TokenStream,
+    quote::{
+        ToTokens,
+        quote,
+    },
+    syn::{
+        ItemStruct,
+        parse::{self, Parse, ParseStream},
+    }
+};
 
 #[proc_macro_derive(Permission)]
 pub fn derive_permission(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-    let item: syn::Item = input.into();
-    let syn::Item::Struct(item_struct) = item else {
-        panic!("Permission derive macro only supports structs for now");
-    };
-
-    derive_permission_fn(&item_struct).into()
+    derive_permission_impl(input.into()).into()
 }
 
-fn derive_permission_fn(input: &syn::ItemStruct) -> proc_macro2::TokenStream {
-    let ident = &input.ident;
-    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
+fn derive_permission_impl(input: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
+    // Parse the annotated item.
+    let ast: PermDerive = match syn::parse2(input) {
+        Ok(parsed) => parsed,
+        Err(e) => return e.into_compile_error()
+    };
 
-    let members_all_call = input.fields.iter().map(|f| {
-        let ident = &f.ident;
-        let typ = &f.ty;
+    // Return the macro's expanded form (the main logic is in `Pod::to_tokens`).
+    let mut ts = proc_macro2::TokenStream::new();
+    ast.to_tokens(&mut ts);
+    ts
+}
 
-        quote! { #ident: #typ::all() }
-    });
-    let members_none_call = input.fields.iter().map(|f| {
-        let ident = &f.ident;
-        let typ = &f.ty;
+struct PermDerive {
+    item: ItemStruct,
+}
 
-        quote! { #ident: #typ::none() }
-    });
+impl Parse for PermDerive {
+    fn parse(input: ParseStream) -> parse::Result<Self> {
+        Ok(Self { item: input.call(ItemStruct::parse)? })
+    }
+}
 
-    quote! {
-        impl #impl_generics Permission for #ident #ty_generics #where_clause {
-            fn all() -> Self {
-                Self {
-                    #(#members_all_call),*
+impl ToTokens for PermDerive {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        let ident = &self.item.ident;
+        let (impl_generics, ty_generics, where_clause) = self.item.generics.split_for_impl();
+
+        let members_all_call = self.item.fields.iter().map(|f| {
+            let ident = &f.ident;
+            let typ = &f.ty;
+
+            quote! { #ident: #typ::all() }
+        });
+        let members_none_call = self.item.fields.iter().map(|f| {
+            let ident = &f.ident;
+            let typ = &f.ty;
+
+            quote! { #ident: #typ::none() }
+        });
+
+        tokens.extend(quote!(
+            impl #impl_generics Permission for #ident #ty_generics #where_clause {
+                fn all() -> Self {
+                    Self {
+                        #(#members_all_call),*
+                    }
+                }
+
+                fn none() -> Self {
+                    Self {
+                        #(#members_none_call),*
+                    }
                 }
             }
+        ));
+    }
+}
 
-            fn none() -> Self {
-                Self {
-                    #(#members_none_call),*
-                }
-            }
-        }
+#[cfg(test)]
+mod tests {
+    use runtime_macros::emulate_derive_macro_expansion;
+    use super::derive_permission_impl;
+    use std::{env, fs};
+
+    #[test]
+    fn code_coverage() {
+        // This code doesn't check much. Instead, it does macro expansion at run time to let
+        // tarpaulin measure code coverage for the macro.
+        let mut path = env::current_dir().unwrap();
+        path.push("tests");
+        path.push("lib.rs");
+        let file = fs::File::open(path).unwrap();
+        emulate_derive_macro_expansion(file, &[("Permission", derive_permission_impl)]).unwrap();
     }
 }
