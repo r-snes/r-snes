@@ -1,12 +1,14 @@
 use bus::bus::Bus;
 use std::{env, error::Error};
 
+#[cfg(not(tarpaulin_include))]
 fn main() {
     if let Err(e) = run() {
         eprintln!("Error: {}", e);
     }
 }
 
+#[cfg(not(tarpaulin_include))]
 fn run() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = env::args().collect();
     let bus = Bus::new(&args[1])?;
