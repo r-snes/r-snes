@@ -3,7 +3,9 @@ use std::cmp::Ordering;
 use std::cmp::Ordering::*;
 use std::f32::NAN;
 
-#[derive(Debug, PartialEq, strict_partial_ord_derive::PartialOrd)]
+use strict_partial_ord_derive as strict;
+
+#[derive(Debug, PartialEq, strict::PartialOrd)]
 struct Point3 {
     x: f32,
     y: f32,
