@@ -755,6 +755,41 @@ mod tests {
     }
 
     #[test]
+    fn test_register_division_by_zero() {
+        let (mut io, mut cpu, mut ppu, mut apu) = init_all();
+
+        let wrdivl_addr = snes_addr!(0:0x4204);
+        let wrdivh_addr = snes_addr!(0:0x4205);
+        let wrdivb_addr = snes_addr!(0:0x4206);
+        let rddivl_addr = snes_addr!(0:0x4214);
+        let rddivh_addr = snes_addr!(0:0x4215);
+        let rdmpyl_addr = snes_addr!(0:0x4216);
+        let rdmpyh_addr = snes_addr!(0:0x4217);
+        let value_wrdivl = 0x10;
+        let value_wrdivh = 0x25;
+        let value_wrdiv: u16 = 0x2510;
+        let value_wrdivb = 0x00;
+        io.write(wrdivl_addr, value_wrdivl, &mut cpu, &mut ppu, &mut apu);
+        io.write(wrdivh_addr, value_wrdivh, &mut cpu, &mut ppu, &mut apu);
+        io.write(wrdivb_addr, value_wrdivb, &mut cpu, &mut ppu, &mut apu);
+
+        assert_eq!(io.wrdivl, value_wrdivl);
+        assert_eq!(io.wrdivh, value_wrdivh);
+        assert_eq!(io.wrdivb, value_wrdivb);
+        assert_eq!(io.rddiv, 0xFFFF);
+        assert_eq!(io.rdmpy, value_wrdiv);
+
+        let rdmpyl_value = io.read(rdmpyl_addr, &mut cpu, &mut ppu, &mut apu);
+        let rdmpyh_value = io.read(rdmpyh_addr, &mut cpu, &mut ppu, &mut apu);
+        assert_eq!(rdmpyl_value, value_wrdivl);
+        assert_eq!(rdmpyh_value, value_wrdivh);
+        let rddivl_value = io.read(rddivl_addr, &mut cpu, &mut ppu, &mut apu);
+        let rddivh_value = io.read(rddivh_addr, &mut cpu, &mut ppu, &mut apu);
+        assert_eq!(rddivl_value, 0xFF);
+        assert_eq!(rddivh_value, 0xFF);
+    }
+
+    #[test]
     fn test_dma_registers() {
         let (mut io, mut cpu, mut ppu, mut apu) = init_all();
         let cpu_open_bus_value = 0xE4;
