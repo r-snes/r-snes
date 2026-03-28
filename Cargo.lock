@@ -3562,6 +3562,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47b34b781b31e5d73e9fbc8689c70551fd1ade9a19e3e28cfec8580a79290cc4"
 
 [[package]]
+name = "runtime-macros"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "34bef7b9430b9f9e666d930202e1344765b623203affe2f779bcd1f269384248"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "rustc-hash"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3933,6 +3944,7 @@ version = "0.1.0"
 dependencies = [
  "proc-macro2",
  "quote",
+ "runtime-macros",
  "syn",
 ]
 
