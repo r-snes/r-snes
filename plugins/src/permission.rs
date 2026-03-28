@@ -30,3 +30,14 @@ impl Permission for bool {
         false
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn trivial_checks() {
+        assert!(true.is_all());
+        assert!(false.is_none());
+    }
+}
