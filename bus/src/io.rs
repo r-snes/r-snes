@@ -753,4 +753,76 @@ mod tests {
         let joy4h_value = io.read(joy4h_addr, &mut cpu, &mut ppu, &mut apu);
         assert_eq!(joy4h_value, (value_joy4 >> 8) as u8);
     }
+
+    #[test]
+    fn test_dma_registers() {
+        let (mut io, mut cpu, mut ppu, mut apu) = init_all();
+        let cpu_open_bus_value = 0xE4;
+        cpu.data_bus = cpu_open_bus_value;
+
+        let mut value_inc = 0;
+        for channel_nb in (0..8) {
+            let channel_addr = snes_addr!(0:0x4300 + 0x10 * channel_nb);
+
+            for dma_reg in (0x0..=0xF) {
+                let reg_addr = snes_addr!(0:channel_addr.addr + dma_reg);
+
+                io.write(reg_addr, value_inc, &mut cpu, &mut ppu, &mut apu);
+                let read_value = io.read(reg_addr, &mut cpu, &mut ppu, &mut apu);
+                match dma_reg {
+                    0x0 => {
+                        assert_eq!(io.dma_channels[channel_nb as usize].dmap, value_inc);
+                        assert_eq!(read_value, value_inc);
+                    }
+                    0x1 => {
+                        assert_eq!(io.dma_channels[channel_nb as usize].bbad, value_inc);
+                        assert_eq!(read_value, value_inc);
+                    }
+                    0x2 => {
+                        assert_eq!(io.dma_channels[channel_nb as usize].a1tl, value_inc);
+                        assert_eq!(read_value, value_inc);
+                    }
+                    0x3 => {
+                        assert_eq!(io.dma_channels[channel_nb as usize].a1th, value_inc);
+                        assert_eq!(read_value, value_inc);
+                    }
+                    0x4 => {
+                        assert_eq!(io.dma_channels[channel_nb as usize].a1b, value_inc);
+                        assert_eq!(read_value, value_inc);
+                    }
+                    0x5 => {
+                        assert_eq!(io.dma_channels[channel_nb as usize].dasl, value_inc);
+                        assert_eq!(read_value, value_inc);
+                    }
+                    0x6 => {
+                        assert_eq!(io.dma_channels[channel_nb as usize].dash, value_inc);
+                        assert_eq!(read_value, value_inc);
+                    }
+                    0x7 => {
+                        assert_eq!(io.dma_channels[channel_nb as usize].dasb, value_inc);
+                        assert_eq!(read_value, value_inc);
+                    }
+                    0x8 => {
+                        assert_eq!(io.dma_channels[channel_nb as usize].a2al, value_inc);
+                        assert_eq!(read_value, value_inc);
+                    }
+                    0x9 => {
+                        assert_eq!(io.dma_channels[channel_nb as usize].a2ah, value_inc);
+                        assert_eq!(read_value, value_inc);
+                    }
+                    0xA => {
+                        assert_eq!(io.dma_channels[channel_nb as usize].nltr, value_inc);
+                        assert_eq!(read_value, value_inc);
+                    }
+                    0xB | 0xF => {
+                        assert_eq!(io.dma_channels[channel_nb as usize].unused, value_inc);
+                        assert_eq!(read_value, value_inc);
+                    }
+                    _ => assert_eq!(read_value, cpu_open_bus_value),
+                }
+
+                value_inc += 1;
+            }
+        }
+    }
 }
