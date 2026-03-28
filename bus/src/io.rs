@@ -294,10 +294,10 @@ impl Io {
 
             // Screen timer Horizontal target values
             0x4207 => self.htimel = value,
-            0x4208 => self.htimeh = value & 1,
+            0x4208 => self.htimeh = value,
             // Screen timer Vertical target values
             0x4209 => self.vtimel = value,
-            0x420A => self.vtimeh = value & 1,
+            0x420A => self.vtimeh = value,
 
             // DMA and HDMA enable registers
             // TODO : Implement real DMA and HDMA behaviors
@@ -540,7 +540,7 @@ mod tests {
     }
 
     #[test]
-    fn test_nmiten_register() {
+    fn test_nmiten_register_write() {
         let (mut io, mut cpu, mut ppu, mut apu) = init_all();
 
         let nmiten_addr = snes_addr!(0:0x4200);
@@ -548,5 +548,209 @@ mod tests {
         io.write(nmiten_addr, writen_value, &mut cpu, &mut ppu, &mut apu);
 
         assert_eq!(io.nmitimen, writen_value);
+    }
+
+    #[test]
+    fn test_wrio_register_write() {
+        let (mut io, mut cpu, mut ppu, mut apu) = init_all();
+
+        let wrio_addr = snes_addr!(0:0x4201);
+        let writen_value = 0x11;
+        io.write(wrio_addr, writen_value, &mut cpu, &mut ppu, &mut apu);
+
+        assert_eq!(io.wrio, writen_value);
+    }
+
+    #[test]
+    fn test_wrmpya_wrmpyb_register_write() {
+        let (mut io, mut cpu, mut ppu, mut apu) = init_all();
+
+        let wrmpya_addr = snes_addr!(0:0x4202);
+        let wrmpyb_addr = snes_addr!(0:0x4203);
+        let rdmpyl_addr = snes_addr!(0:0x4216);
+        let rdmpyh_addr = snes_addr!(0:0x4217);
+        let value_wrmpya = 0x10;
+        let value_wrmpyb = 0x25;
+        io.write(wrmpya_addr, value_wrmpya, &mut cpu, &mut ppu, &mut apu);
+        io.write(wrmpyb_addr, value_wrmpyb, &mut cpu, &mut ppu, &mut apu);
+
+        assert_eq!(io.wrmpya, value_wrmpya);
+        assert_eq!(io.wrmpyb, value_wrmpyb);
+        assert_eq!(io.rdmpy, (io.wrmpya as u16) * (io.wrmpyb as u16));
+
+        let rdmpyl_value = io.read(rdmpyl_addr, &mut cpu, &mut ppu, &mut apu);
+        let rdmpyh_value = io.read(rdmpyh_addr, &mut cpu, &mut ppu, &mut apu);
+        assert_eq!(rdmpyl_value, (io.rdmpy as u8));
+        assert_eq!(rdmpyh_value, (io.rdmpy >> 8) as u8);
+    }
+
+    #[test]
+    fn test_wrdiv_wrdivb_register_write() {
+        let (mut io, mut cpu, mut ppu, mut apu) = init_all();
+
+        let wrdivl_addr = snes_addr!(0:0x4204);
+        let wrdivh_addr = snes_addr!(0:0x4205);
+        let wrdivb_addr = snes_addr!(0:0x4206);
+        let rddivl_addr = snes_addr!(0:0x4214);
+        let rddivh_addr = snes_addr!(0:0x4215);
+        let rdmpyl_addr = snes_addr!(0:0x4216);
+        let rdmpyh_addr = snes_addr!(0:0x4217);
+        let value_wrdivl = 0x10;
+        let value_wrdivh = 0x25;
+        let value_wrdiv: u16 = 0x2510;
+        let value_wrdivb = 0x30;
+        io.write(wrdivl_addr, value_wrdivl, &mut cpu, &mut ppu, &mut apu);
+        io.write(wrdivh_addr, value_wrdivh, &mut cpu, &mut ppu, &mut apu);
+        io.write(wrdivb_addr, value_wrdivb, &mut cpu, &mut ppu, &mut apu);
+
+        assert_eq!(io.wrdivl, value_wrdivl);
+        assert_eq!(io.wrdivh, value_wrdivh);
+        assert_eq!(io.wrdivb, value_wrdivb);
+        assert_eq!(io.rddiv, value_wrdiv / value_wrdivb as u16);
+        assert_eq!(io.rdmpy, value_wrdiv % value_wrdivb as u16);
+
+        let rdmpyl_value = io.read(rdmpyl_addr, &mut cpu, &mut ppu, &mut apu);
+        let rdmpyh_value = io.read(rdmpyh_addr, &mut cpu, &mut ppu, &mut apu);
+        assert_eq!(rdmpyl_value, (io.rdmpy as u8));
+        assert_eq!(rdmpyh_value, (io.rdmpy >> 8) as u8);
+        let rddivl_value = io.read(rddivl_addr, &mut cpu, &mut ppu, &mut apu);
+        let rddivh_value = io.read(rddivh_addr, &mut cpu, &mut ppu, &mut apu);
+        assert_eq!(rddivl_value, (io.rddiv as u8));
+        assert_eq!(rddivh_value, (io.rddiv >> 8) as u8);
+    }
+
+    #[test]
+    fn test_htimel_vtimel_register_write() {
+        let (mut io, mut cpu, mut ppu, mut apu) = init_all();
+
+        let htimel_addr = snes_addr!(0:0x4207);
+        let htimeh_addr = snes_addr!(0:0x4208);
+        let vtimel_addr = snes_addr!(0:0x4209);
+        let vtimeh_addr = snes_addr!(0:0x420A);
+        let value_htimel = 0x10;
+        let value_htimeh = 0x25;
+        let value_vtimel = 0x30;
+        let value_vtimeh = 0x45;
+        io.write(htimel_addr, value_htimel, &mut cpu, &mut ppu, &mut apu);
+        io.write(htimeh_addr, value_htimeh, &mut cpu, &mut ppu, &mut apu);
+        io.write(vtimel_addr, value_vtimel, &mut cpu, &mut ppu, &mut apu);
+        io.write(vtimeh_addr, value_vtimeh, &mut cpu, &mut ppu, &mut apu);
+
+        assert_eq!(io.htimel, value_htimel);
+        assert_eq!(io.htimeh, value_htimeh);
+        assert_eq!(io.vtimel, value_vtimel);
+        assert_eq!(io.vtimeh, value_vtimeh);
+    }
+
+    #[test]
+    fn test_mdmaen_register_write() {
+        let (mut io, mut cpu, mut ppu, mut apu) = init_all();
+
+        let mdmaen_addr = snes_addr!(0:0x420B);
+        let value_mdmaen = 0x10;
+        io.write(mdmaen_addr, value_mdmaen, &mut cpu, &mut ppu, &mut apu);
+
+        assert_eq!(io.mdmaen, value_mdmaen);
+    }
+
+    #[test]
+    fn test_hdmaen_register_write() {
+        let (mut io, mut cpu, mut ppu, mut apu) = init_all();
+
+        let hdmaen_addr = snes_addr!(0:0x420C);
+        let value_hdmaen = 0x10;
+        io.write(hdmaen_addr, value_hdmaen, &mut cpu, &mut ppu, &mut apu);
+
+        assert_eq!(io.hdmaen, value_hdmaen);
+    }
+
+    #[test]
+    fn test_memsel_register_write() {
+        let (mut io, mut cpu, mut ppu, mut apu) = init_all();
+
+        let memsel_addr = snes_addr!(0:0x420D);
+        let value_memsel = 0x10;
+        io.write(memsel_addr, value_memsel, &mut cpu, &mut ppu, &mut apu);
+
+        assert_eq!(io.memsel, value_memsel);
+    }
+
+    #[test]
+    fn test_rdnmi_register_read() {
+        let (mut io, mut cpu, mut ppu, mut apu) = init_all();
+
+        let rdnmi_addr = snes_addr!(0:0x4210);
+        let value_rdnmi = 0xFF;
+        io.rdnmi = value_rdnmi;
+
+        let read_value = io.read(rdnmi_addr, &mut cpu, &mut ppu, &mut apu);
+        assert_eq!(read_value, value_rdnmi);
+        let second_read_value = io.read(rdnmi_addr, &mut cpu, &mut ppu, &mut apu);
+        assert_eq!(second_read_value, 0b0111_1111);
+    }
+
+    #[test]
+    fn test_timeup_register_read() {
+        let (mut io, mut cpu, mut ppu, mut apu) = init_all();
+
+        let timeup_addr = snes_addr!(0:0x4211);
+        let value_timeup = 0xFF;
+        io.timeup = value_timeup;
+
+        let read_value = io.read(timeup_addr, &mut cpu, &mut ppu, &mut apu);
+        assert_eq!(read_value, value_timeup);
+        let second_read_value = io.read(timeup_addr, &mut cpu, &mut ppu, &mut apu);
+        assert_eq!(second_read_value, 0b0111_1111);
+    }
+
+    #[test]
+    fn test_hvbjoy_register_read() {
+        let (mut io, mut cpu, mut ppu, mut apu) = init_all();
+
+        let hvbjoy_addr = snes_addr!(0:0x4212);
+        let value_hvbjoy = 0xFF;
+        io.hvbjoy = value_hvbjoy;
+
+        let read_value = io.read(hvbjoy_addr, &mut cpu, &mut ppu, &mut apu);
+        assert_eq!(read_value, value_hvbjoy);
+    }
+
+    #[test]
+    fn test_joy_autoread_result_register_read() {
+        let (mut io, mut cpu, mut ppu, mut apu) = init_all();
+
+        let joy1l_addr = snes_addr!(0:0x4218);
+        let joy1h_addr = snes_addr!(0:0x4219);
+        let joy2l_addr = snes_addr!(0:0x421A);
+        let joy2h_addr = snes_addr!(0:0x421B);
+        let joy3l_addr = snes_addr!(0:0x421C);
+        let joy3h_addr = snes_addr!(0:0x421D);
+        let joy4l_addr = snes_addr!(0:0x421E);
+        let joy4h_addr = snes_addr!(0:0x421F);
+        let value_joy1: u16 = 0xF00F;
+        let value_joy2: u16 = 0xE00E;
+        let value_joy3: u16 = 0xD00D;
+        let value_joy4: u16 = 0xC00C;
+        io.joy1 = value_joy1;
+        io.joy2 = value_joy2;
+        io.joy3 = value_joy3;
+        io.joy4 = value_joy4;
+
+        let joy1l_value = io.read(joy1l_addr, &mut cpu, &mut ppu, &mut apu);
+        assert_eq!(joy1l_value, value_joy1 as u8);
+        let joy1h_value = io.read(joy1h_addr, &mut cpu, &mut ppu, &mut apu);
+        assert_eq!(joy1h_value, (value_joy1 >> 8) as u8);
+        let joy2l_value = io.read(joy2l_addr, &mut cpu, &mut ppu, &mut apu);
+        assert_eq!(joy2l_value, value_joy2 as u8);
+        let joy2h_value = io.read(joy2h_addr, &mut cpu, &mut ppu, &mut apu);
+        assert_eq!(joy2h_value, (value_joy2 >> 8) as u8);
+        let joy3l_value = io.read(joy3l_addr, &mut cpu, &mut ppu, &mut apu);
+        assert_eq!(joy3l_value, value_joy3 as u8);
+        let joy3h_value = io.read(joy3h_addr, &mut cpu, &mut ppu, &mut apu);
+        assert_eq!(joy3h_value, (value_joy3 >> 8) as u8);
+        let joy4l_value = io.read(joy4l_addr, &mut cpu, &mut ppu, &mut apu);
+        assert_eq!(joy4l_value, value_joy4 as u8);
+        let joy4h_value = io.read(joy4h_addr, &mut cpu, &mut ppu, &mut apu);
+        assert_eq!(joy4h_value, (value_joy4 >> 8) as u8);
     }
 }
