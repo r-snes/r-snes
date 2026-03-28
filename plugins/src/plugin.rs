@@ -61,4 +61,29 @@ impl Plugin {
             path: path.to_path_buf(),
         })
     }
+
+    pub fn perm_request<'a>(&'a self) -> PluginPermRequest<'a> {
+        PluginPermRequest {
+            plugin: self,
+            allow_all: false,
+        }
+    }
+}
+
+pub struct PluginPermRequest<'a> {
+    pub plugin: &'a Plugin,
+    pub allow_all: bool,
+}
+
+impl<'a> PluginPermRequest<'a> {
+    pub fn show_gui(&mut self, ui: &mut egui::Ui) {
+        ui.label("This is still very much a work in progress");
+        ui.checkbox(&mut self.allow_all, "allow_perms");
+
+        ui.separator();
+
+        ui.collapsing("we can even have collapsing content", |ui| {
+            ui.label("peekaboo!");
+        });
+    }
 }
