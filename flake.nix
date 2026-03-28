@@ -23,6 +23,7 @@
           wayland
           libxkbcommon
           libGL
+          SDL2
 
           xorg.libXcursor
           xorg.libXrandr
