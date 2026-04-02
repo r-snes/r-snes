@@ -2964,6 +2964,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 
 [[package]]
+name = "perm_tree_node_derive"
+version = "0.1.0"
+dependencies = [
+ "permission_derive_macro",
+ "piccolo",
+ "plugins",
+ "proc-macro2",
+ "quote",
+ "runtime-macros",
+ "syn",
+]
+
+[[package]]
 name = "permission_derive_macro"
 version = "0.1.0"
 dependencies = [
@@ -3087,6 +3100,7 @@ dependencies = [
  "eframe",
  "egui",
  "env_logger",
+ "perm_tree_node_derive",
  "permission_derive_macro",
  "piccolo",
  "strict_partial_ord_derive",
