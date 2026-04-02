@@ -963,6 +963,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f27ae1dd37df86211c42e150270f82743308803d90a6f6e6651cd730d5e1732f"
 
 [[package]]
+name = "derive_aliases"
+version = "0.4.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a42564b20fdeb062b38ad78d567d0479b2b318ff679b20895d9a1de3b6896002"
+dependencies = [
+ "derive_aliases_proc_macro",
+]
+
+[[package]]
+name = "derive_aliases_proc_macro"
+version = "0.4.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e81edf3b0f0a7d68f2113aee7cedffa73d1fadea46fc85e468786a7f7aac998c"
+
+[[package]]
 name = "dispatch"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2964,6 +2979,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 
 [[package]]
+name = "perm_tree_node_derive"
+version = "0.1.0"
+dependencies = [
+ "permission_derive_macro",
+ "piccolo",
+ "plugins",
+ "proc-macro2",
+ "quote",
+ "runtime-macros",
+ "syn",
+]
+
+[[package]]
 name = "permission_derive_macro"
 version = "0.1.0"
 dependencies = [
@@ -3084,9 +3112,11 @@ checksum = "b4596b6d070b27117e987119b4dac604f3c58cfb0b191112e24771b2faeac1a6"
 name = "plugins"
 version = "0.1.0"
 dependencies = [
+ "derive_aliases",
  "eframe",
  "egui",
  "env_logger",
+ "perm_tree_node_derive",
  "permission_derive_macro",
  "piccolo",
  "strict_partial_ord_derive",
