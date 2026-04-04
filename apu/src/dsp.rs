@@ -684,6 +684,11 @@ impl Dsp {
         voice.adsr.tick_counter = 0;
 
         voice.current_sample = 0;
+
+        // Clear this voice's bit in ENDX ($7C) so the CPU sees the new
+        // key-on cleanly and doesn't mistake a leftover end flag for
+        // the new sample having already finished.
+        self.registers[0x7C] &= !(1u8 << v);
     }
 
     // ----------------------------------------------------------
@@ -756,6 +761,21 @@ impl Dsp {
                     }
                 }
             }
+
+            // 5. Update read-only ENVX ($X8) and OUTX ($X9) registers.
+            //
+            // Game code polls these to drive visual effects and sync animations:
+            //   ENVX = envelope_level >> 4  (11-bit → 7-bit, bits 10-4)
+            //   OUTX = current_sample >> 8  (16-bit → signed 8-bit, top byte)
+            //
+            // Both sit in the per-voice register block at offsets +8 and +9,
+            // i.e. register indices (v << 4) | 0x8 and (v << 4) | 0x9.
+            let envx_idx = (v << 4) | 0x8;
+            let outx_idx = (v << 4) | 0x9;
+            self.registers[envx_idx] =
+                (self.voices[v].adsr.envelope_level >> 4) as u8;
+            self.registers[outx_idx] =
+                (self.voices[v].current_sample >> 8) as u8;
         }
     }
 
@@ -775,6 +795,10 @@ impl Dsp {
         voice.brr.nibble_idx    = 0;
 
         if end {
+            // $7C ENDX: set the bit for this voice so the CPU can detect
+            // sample completion.  Cleared on KON (see key_on_voice).
+            self.registers[0x7C] |= 1u8 << v;
+
             if do_loop {
                 voice.brr.addr = voice.brr.loop_addr;
             } else {
@@ -860,6 +884,14 @@ impl Dsp {
                     }
                 }
             }
+
+            // ---- 5. Update read-only ENVX ($X8) and OUTX ($X9) registers ----
+            let envx_idx = (v << 4) | 0x8;
+            let outx_idx = (v << 4) | 0x9;
+            self.registers[envx_idx] =
+                (self.voices[v].adsr.envelope_level >> 4) as u8;
+            self.registers[outx_idx] =
+                (self.voices[v].current_sample >> 8) as u8;
         }
     }
 
@@ -884,6 +916,9 @@ impl Dsp {
         voice.brr.nibble_idx    = 0;
 
         if end {
+            // $7C ENDX: set bit for this voice on end-block detection.
+            self.registers[0x7C] |= 1u8 << v;
+
             if do_loop {
                 // Jump to the loop point from the DIR table
                 voice.brr.addr = voice.brr.loop_addr;
