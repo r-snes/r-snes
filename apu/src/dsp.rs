@@ -515,6 +515,14 @@ pub struct Dsp {
     /// DIR register ($5D): high byte of the sample directory base address.
     /// Full address = dir_base * 0x100.
     dir_base: u8,
+
+    /// $0C MVOLL — master left  volume, signed (-128..+127).
+    /// Applied to the final summed mix as a global output scaler.
+    /// Initialised to 0: game code must write a non-zero value to hear output.
+    master_vol_left: i8,
+
+    /// $1C MVOLR — master right volume, signed (-128..+127).
+    master_vol_right: i8,
 }
 
 impl Dsp {
@@ -523,6 +531,9 @@ impl Dsp {
             registers: [0u8; 128],
             voices: [Voice::default(); 8],
             dir_base: 0,
+            // Hardware resets master volume to 0; game code sets it during boot.
+            master_vol_left:  0,
+            master_vol_right: 0,
         }
     }
 
@@ -641,6 +652,12 @@ impl Dsp {
                     }
                 }
             }
+
+            // $0C: MVOLL — master left  volume (signed)
+            (_, _) if idx == 0x0C => self.master_vol_left  = value as i8,
+
+            // $1C: MVOLR — master right volume (signed)
+            (_, _) if idx == 0x1C => self.master_vol_right = value as i8,
 
             // $5D: DIR — sample directory base page
             (_, _) if idx == 0x5D => {
@@ -961,6 +978,13 @@ impl Dsp {
             left  += (scaled * voice.left_vol  as i32) >> 7;
             right += (scaled * voice.right_vol as i32) >> 7;
         }
+
+        // Apply master volume ($0C/$1C) as a final output stage scaler.
+        // Same signed i8 × i32 → >> 7 pattern as per-voice volume.
+        // A second clamp is required because master vol can amplify the
+        // already-summed mix past i16 range again.
+        left  = (left  * self.master_vol_left  as i32) >> 7;
+        right = (right * self.master_vol_right as i32) >> 7;
 
         (
             left .clamp(i16::MIN as i32, i16::MAX as i32) as i16,
