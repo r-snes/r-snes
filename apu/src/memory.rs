@@ -14,9 +14,8 @@ impl Memory {
     }
 
     pub fn read8(&self, addr: u16) -> u8 {
-        // DSP memory-mapped registers
         if (0xF200..=0xF27F).contains(&addr) {
-            self.dsp.read(addr)
+            self.dsp.read_reg((addr - 0xF200) as u8)  // strip base offset → 0x00–0x7F
         } else {
             self.ram[addr as usize]
         }
@@ -30,7 +29,7 @@ impl Memory {
 
     pub fn write8(&mut self, addr: u16, val: u8) {
         if (0xF200..=0xF27F).contains(&addr) {
-            self.dsp.write(addr, val);
+            self.dsp.write_reg((addr - 0xF200) as u8, val);  // strip base offset → 0x00–0x7F
         } else {
             self.ram[addr as usize] = val;
         }
