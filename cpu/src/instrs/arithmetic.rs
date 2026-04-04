@@ -215,7 +215,7 @@ mod tests {
         regs.PB = 0x12;
         regs.PC = 0x3456;
         regs.A = 0x44;
-        regs.P.E = true;
+        regs.E = true;
         regs.P.Z = true;
         regs.P.N = false;
         regs.P.V = false;
@@ -243,7 +243,7 @@ mod tests {
         regs.PB = 0x12;
         regs.PC = 0x3456;
         regs.A = 0x5588;
-        regs.P.E = false;
+        regs.E = false;
         regs.P.M = false;
         regs.P.Z = true;
         regs.P.N = true;
@@ -271,7 +271,7 @@ mod tests {
         regs.PB = 0x12;
         regs.PC = 0x3456;
         regs.A = 0x00ff;
-        regs.P.E = false;
+        regs.E = false;
         regs.P.M = false;
         regs.P.Z = false;
         regs.P.N = false;
@@ -296,7 +296,7 @@ mod tests {
         regs.PB = 0x12;
         regs.PC = 0x3456;
         regs.A = 0x00ff;
-        regs.P.E = false;
+        regs.E = false;
         regs.P.M = false;
         regs.P.Z = false;
         regs.P.N = false;
@@ -324,7 +324,7 @@ mod tests {
         let mut regs = Registers::default();
         regs.PB = 0x12;
         regs.PC = 0x3456;
-        regs.P.E = false;
+        regs.E = false;
         regs.P.M = false;
 
         regs.P.Z = true;
@@ -355,7 +355,7 @@ mod tests {
         let mut regs = Registers::default();
         regs.PB = 0x12;
         regs.PC = 0x3456;
-        regs.P.E = true;
+        regs.E = true;
 
         regs.P.Z = true;
         regs.P.N = true;
@@ -383,7 +383,7 @@ mod tests {
         let mut regs = Registers::default();
         regs.PB = 0x12;
         regs.PC = 0x3456;
-        regs.P.E = true;
+        regs.E = true;
 
         regs.A = 0x0f;
 
