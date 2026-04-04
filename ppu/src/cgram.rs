@@ -37,14 +37,12 @@ impl CGRAM {
     pub fn write_data(&mut self, value: u8) {
         if self.byte_phase == 0 {
             self.write_latch = value;
+            self.byte_addr = (self.byte_addr + 1) & 0x1FF;
         } else {
-            let low_addr = (self.byte_addr - 1) & 0x1FF;
-            let high_addr = self.byte_addr & 0x1FF;
-
-            self.memory[low_addr as usize] = self.write_latch;
-            self.memory[high_addr as usize] = value & 0x7F; // bit 15 unused
+            self.memory[(self.byte_addr - 1) as usize & 0x1FF] = self.write_latch;
+            self.memory[self.byte_addr as usize] = value & 0x7F;
+            self.byte_addr = (self.byte_addr + 1) & 0x1FF;
         }
-        self.byte_addr = (self.byte_addr + 1) & 0x1FF;
         self.byte_phase ^= 1;
         self.ppu_open_bus = value;
     }
