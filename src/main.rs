@@ -48,7 +48,7 @@ fn main() -> Result<(), String> {
             let framebuffer = match rsnes_app {
                 Some(ref mut app) => {
                     use ppu::constants::*;
-                    // println!("ppu scanline");
+                    println!("ppu scanline");
                     for y in 0..SCREEN_HEIGHT {
                         // println!("PPU scanline {y}");
                         app.ppu_renderer.render_scanline(&app.ppu, y);
@@ -65,6 +65,17 @@ fn main() -> Result<(), String> {
                         Ok(emu) => rsnes_app = Some(emu),
                         Err(err) => println!("Error loading ROM: {}", err),
                     },
+                    RSnesEvent::Button => {
+                        match rsnes_app {
+                            None => {}
+                            Some(ref mut app) => {
+                                println!("SPAAAAAAAAAACE");
+                                app.bus.io.hvbjoy = 1;
+                                app.bus.io.joy1 = !app.bus.io.joy1;
+                                app.bus.io.rdnmi = !app.bus.io.rdnmi;
+                            }
+                        }
+                    }
                     RSnesEvent::Quit => break 'emulation_loop,
                 }
             }

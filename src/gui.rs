@@ -12,6 +12,7 @@ pub struct Gui {
 
 pub enum RSnesEvent {
     LoadRom { path: PathBuf },
+    Button,
     Quit,
 }
 
@@ -88,9 +89,15 @@ impl Gui {
                     ..
                 } => Some(RSnesEvent::Quit),
                 Event::KeyDown {
+                    keycode: Some(Keycode::Space),
+                    ..
+                } => {
+                    Some(RSnesEvent::Button)
+                }
+                Event::KeyDown {
                     keycode: Some(Keycode::L),
                     ..
-                } => match Some("/home/fcharpentier/clones/snes-tests/cputest/cputest-basic.sfc".into()) {
+                } => match Some("./cputest-basic.sfc".into()) {
                     Some(path) => Some(RSnesEvent::LoadRom { path }),
                     None => None,
                 },
