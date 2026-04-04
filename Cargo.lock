@@ -1141,6 +1141,7 @@ version = "0.1.0"
 dependencies = [
  "apu",
  "bus",
+ "common",
  "cpu",
  "ppu",
  "rfd",
