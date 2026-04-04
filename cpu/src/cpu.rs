@@ -18,6 +18,10 @@ pub struct CPU {
     /// where memory I/O may occur if a read or write is executed.
     pub(crate) addr_bus: SnesAddress,
 
+    /// Secondary address bus which may be used as a buffer in some
+    /// instructions to maintain addresses between cycles
+    pub(crate) addr_bus2: SnesAddress,
+
     /// Data bus: holds one byte that may be sent to RAM (at the address
     /// hold by the address bus) by executing a write) or coming from
     /// RAM (from the address in the address bus) right after a read has
@@ -60,6 +64,7 @@ impl CPU {
         Self {
             registers,
             addr_bus: SnesAddress::default(),
+            addr_bus2: SnesAddress::default(),
             data_bus: 0,
             internal_data_bus: 0,
             next_cycle: InstrCycle(opcode_fetch),
@@ -165,7 +170,7 @@ cpu_instr_no_inc_pc!(reset {
     cpu.registers.P.X = true;
     cpu.registers.P.D = false;
     cpu.registers.P.I = true;
-    cpu.registers.P.E = true;
+    cpu.registers.E = true;
 
     cpu.addr_bus = snes_addr!(0:0xfffc);
     meta FETCH16_INTO cpu.registers.PC;

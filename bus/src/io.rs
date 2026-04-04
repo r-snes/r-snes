@@ -14,12 +14,14 @@ use crate::memory_region::MemoryRegion;
 /// same memory location.
 pub struct Io {
     // TODO : Implement real CPU, PPU, APU, etc... memoriy behaviors.
-    data: [u8; IO_SIZE],
+    data: Box<[u8; IO_SIZE]>,
 }
 
 impl Io {
     pub fn new() -> Self {
-        Self { data: [0; IO_SIZE] }
+        Self {
+            data: Box::new([0; IO_SIZE]),
+        }
     }
 
     fn panic_invalid_addr(addr: SnesAddress) -> ! {
