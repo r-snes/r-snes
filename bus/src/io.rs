@@ -468,7 +468,6 @@ impl Io {
             0x00..=0x3F | 0x80..=0xBF
                 if addr.addr >= IO_START_ADDRESS && addr.addr < IO_END_ADDRESS =>
             {
-                // 0x2000..0x6000 => self.io.DUP_method(DUP_method_param, cpu, ppu, apu),
                 match addr.addr {
                     0x2000..0x2100 => cpu.data_bus,
                     #[cfg(not(tarpaulin_include))]
@@ -476,7 +475,8 @@ impl Io {
                     0x2140..0x4380 => self.read_cpu(addr, cpu, apu),
                     0x4380..0x6000 => cpu.data_bus,
 
-                    _ => Self::panic_invalid_addr(addr),
+                    #[cfg(not(tarpaulin_include))]
+                    _ => unreachable!(),
                 }
             }
             _ => Self::panic_invalid_addr(addr),
@@ -508,7 +508,8 @@ impl Io {
                     0x2140..0x4380 => self.write_cpu(value, addr, cpu, apu),
                     0x4380..0x6000 => {}
 
-                    _ => Self::panic_invalid_addr(addr),
+                    #[cfg(not(tarpaulin_include))]
+                    _ => unreachable!(),
                 }
             }
             _ => Self::panic_invalid_addr(addr),
@@ -531,12 +532,46 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "Incorrect access to the IO at address: 00A000")]
+    fn test_out_of_bounds_read() {
+        let (mut io, mut cpu, mut ppu, mut apu) = init_all();
+
+        let addr = snes_addr!(0:0xA000);
+        io.read(addr, &mut cpu, &mut ppu, &mut apu);
+    }
+
+    #[test]
+    #[should_panic(expected = "Incorrect access to the IO at address: 00A000")]
+    fn test_out_of_bounds_write() {
+        let (mut io, mut cpu, mut ppu, mut apu) = init_all();
+
+        let addr = snes_addr!(0:0xA000);
+        io.write(addr, 0xAB, &mut cpu, &mut ppu, &mut apu);
+    }
+
+    #[test]
     fn test_write_to_open_bus() {
         let (mut io, mut cpu, mut ppu, mut apu) = init_all();
 
-        // Write to an open bus address
         let open_bus_addr = snes_addr!(0:0x5000);
         io.write(open_bus_addr, 0xAB, &mut cpu, &mut ppu, &mut apu);
+        let open_bus_addr = snes_addr!(0:0x4250);
+        io.write(open_bus_addr, 0xAB, &mut cpu, &mut ppu, &mut apu);
+    }
+
+    #[test]
+    fn test_read_from_open_bus() {
+        let (mut io, mut cpu, mut ppu, mut apu) = init_all();
+
+        cpu.data_bus = 0x20;
+        let open_bus_addr = snes_addr!(0:0x5000);
+        let read_value = io.read(open_bus_addr, &mut cpu, &mut ppu, &mut apu);
+        assert_eq!(read_value, 0x20);
+
+        cpu.data_bus = 0x40;
+        let open_bus_addr = snes_addr!(0:0x4250);
+        let read_value = io.read(open_bus_addr, &mut cpu, &mut ppu, &mut apu);
+        assert_eq!(read_value, 0x40);
     }
 
     #[test]
