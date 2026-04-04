@@ -1,13 +1,6 @@
-mod constants;
-mod vram;
-mod cgram;
-mod ppu;
-mod registers;
-mod renderer;
-
-use constants::*;
-use ppu::PPU;
-use renderer::Renderer;
+use ppu::constants::*;
+use ppu::ppu::PPU;
+use ppu::renderer::Renderer;
 
 use sdl2::pixels::PixelFormatEnum;
 
