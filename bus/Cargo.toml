@@ -5,6 +5,9 @@ edition = "2024"
 
 [dependencies]
 common = { version = "0.1.0", path = "../common"}
+cpu = { version = "0.1.0", path = "../cpu"}
+ppu = { version = "0.1.0", path = "../ppu"}
+apu = { version = "0.1.0", path = "../apu"}
 duplicate = "2.0.0"
 strum = "0.27.2"
 strum_macros = "0.27.2"

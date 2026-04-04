@@ -1,5 +1,4 @@
 use crate::constants::{BANK_SIZE, COPIER_HEADER_SIZE, LOROM_BANK_SIZE};
-use crate::memory_region::MemoryRegion;
 use crate::rom::error::RomError;
 use crate::rom::header::RomHeader;
 use crate::rom::header::mapping_mode::MappingMode;
@@ -136,14 +135,14 @@ impl Rom {
     }
 }
 
-impl MemoryRegion for Rom {
+impl Rom {
     /// Reads a byte from the ROM at the given `SnesAddress`.
     ///
     /// The address is translated to an internal ROM offset using `to_offset`.
     ///
     /// # Panics
     /// Panics if the mapping mode is `MappingMode::Unknown` or index out of bounds.
-    fn read(&self, addr: SnesAddress) -> u8 {
+    pub fn read(&self, addr: SnesAddress) -> u8 {
         let offset = self.to_offset(addr);
 
         return *self.data.get(offset).expect(&format!(
@@ -155,7 +154,7 @@ impl MemoryRegion for Rom {
     /// Ignores writes to the ROM.
     ///
     /// ROM is read-only; this function performs no action.
-    fn write(&mut self, _addr: SnesAddress, _value: u8) {
+    pub fn write(&mut self, _addr: SnesAddress, _value: u8) {
         // ROM is read-only, ignore writes
         // TODO : Add a warning ?
     }
