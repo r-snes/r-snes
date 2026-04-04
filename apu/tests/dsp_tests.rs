@@ -11,7 +11,7 @@
 ///   - Dsp::render_audio_single: silent voices skipped, envelope scaling,
 ///     signed volume, multi-voice mix, clamping, mute flag (FLGS bit 6)
 
-use apu::dsp::{Adsr, Dsp, EnvelopePhase, Voice};
+use apu::dsp::{Adsr, Brr, Dsp, EnvelopePhase, Voice};
 use apu::Memory;
 
 // ============================================================
@@ -274,6 +274,38 @@ fn test_adsr_sustain_step_is_exponential() {
     assert!(step_high > step_low, "sustain exponential: high={step_high} low={step_low}");
 }
 
+#[test]
+fn test_tick_due_period_zero_never_fires() {
+    // period=0 (sustain_rate=0) must never step the envelope — covers the
+    // early-return guard inside tick_due.
+    let mut adsr = Adsr::default();
+    adsr.envelope_phase  = EnvelopePhase::Sustain;
+    adsr.sustain_rate    = 0; // ENVELOPE_RATE_TABLE[0] = 0
+    adsr.envelope_level  = 0x400;
+
+    for _ in 0..100_000 {
+        adsr.update_envelope();
+    }
+    assert_eq!(adsr.envelope_level, 0x400, "period=0 must never step");
+}
+
+#[test]
+fn test_tick_due_fires_exactly_at_period() {
+    // decay_rate=7 → period = ENVELOPE_RATE_TABLE[30] = 2.
+    // Must not step on tick 1, must step on tick 2.
+    let mut adsr = Adsr::default();
+    adsr.envelope_phase = EnvelopePhase::Decay;
+    adsr.decay_rate     = 7;
+    adsr.sustain_level  = 0;
+    adsr.envelope_level = 0x7FF;
+
+    let before = adsr.envelope_level;
+    adsr.update_envelope(); // tick 1
+    assert_eq!(adsr.envelope_level, before, "must not step on first tick");
+    adsr.update_envelope(); // tick 2
+    assert!(adsr.envelope_level < before, "must step on second tick (period=2)");
+}
+
 // ============================================================
 // ADSR — Release
 // ============================================================
@@ -384,6 +416,18 @@ fn test_voice_default() {
     assert_eq!(v.brr.buffer_fill, 0);
 }
 
+#[test]
+fn test_brr_default_all_zero() {
+    let brr = Brr::default();
+    assert_eq!(brr.addr,         0, "addr must be 0");
+    assert_eq!(brr.nibble_idx,   0, "nibble_idx must be 0");
+    assert_eq!(brr.prev1,        0, "prev1 must be 0");
+    assert_eq!(brr.prev2,        0, "prev2 must be 0");
+    assert_eq!(brr.loop_addr,    0, "loop_addr must be 0");
+    assert_eq!(brr.buffer_fill,  0, "buffer_fill must be 0 (no block decoded)");
+    assert_eq!(brr.sample_buffer, [0i16; 16], "sample_buffer must be all-zero");
+}
+
 // ============================================================
 // Dsp::new / read_reg / write_reg — register layout
 // ============================================================
@@ -421,6 +465,26 @@ fn test_write_reg_index_masked_to_7_bits() {
     dsp.write_reg(0x00, 0xAB);
     assert_eq!(dsp.read_reg(0x80), 0xAB);
     assert_eq!(dsp.read_reg(0x00), 0xAB);
+}
+
+#[test]
+fn test_write_reg_unrecognised_global_registers_stored() {
+    // Unimplemented globals ($2C, $3C, $6C, $7D, $0D, $2D, $3D, $4D, $6D)
+    // must store the raw byte without panicking.
+    let mut mem = Memory::new();
+    for &reg in &[0x2Cu8, 0x3C, 0x6C, 0x7D, 0x0D, 0x2D, 0x3D, 0x4D, 0x6D] {
+        mem.dsp.write_reg(reg, 0xAB);
+        assert_eq!(mem.dsp.read_reg(reg), 0xAB,
+            "unimplemented reg {reg:#04X} must store raw byte");
+    }
+}
+
+#[test]
+fn test_write_reg_gain_register_stored() {
+    // $X7 GAIN is not yet implemented but must store the value.
+    let mut mem = Memory::new();
+    dsp_vw(&mut mem, 0, 0x7, 0x7F);
+    assert_eq!(mem.dsp.read_reg(0x07), 0x7F, "GAIN register must store value");
 }
 
 // ============================================================
@@ -574,6 +638,87 @@ fn test_koff_register_enters_release_phase() {
     );
 }
 
+#[test]
+fn test_kon_resets_brr_state() {
+    // KON must zero all BRR playback state so the new sample starts clean.
+    let mut mem = Memory::new();
+    mem.dsp.voices[0].brr.nibble_idx  = 12;
+    mem.dsp.voices[0].brr.prev1       = 999;
+    mem.dsp.voices[0].brr.prev2       = 888;
+    mem.dsp.voices[0].brr.buffer_fill = 16;
+    mem.dsp.voices[0].brr.loop_addr   = 0xDEAD;
+    mem.dsp.voices[0].pitch_counter   = 0x0FFF;
+
+    dsp_gw(&mut mem, 0x4C, 0x01);
+
+    assert_eq!(mem.dsp.voices[0].brr.nibble_idx,  0, "nibble_idx must reset");
+    assert_eq!(mem.dsp.voices[0].brr.prev1,       0, "prev1 must reset");
+    assert_eq!(mem.dsp.voices[0].brr.prev2,       0, "prev2 must reset");
+    assert_eq!(mem.dsp.voices[0].brr.buffer_fill, 0, "buffer_fill must reset");
+    assert_eq!(mem.dsp.voices[0].brr.loop_addr,   0, "loop_addr must reset");
+    assert_eq!(mem.dsp.voices[0].pitch_counter,   0, "pitch_counter must reset");
+}
+
+#[test]
+fn test_kon_resets_current_sample() {
+    let mut mem = Memory::new();
+    mem.dsp.voices[0].current_sample = 0x7FFF;
+    dsp_gw(&mut mem, 0x4C, 0x01);
+    assert_eq!(mem.dsp.voices[0].current_sample, 0, "current_sample must reset on KON");
+}
+
+#[test]
+fn test_kon_zero_value_keys_on_no_voices() {
+    let mut mem = Memory::new();
+    dsp_gw(&mut mem, 0x4C, 0x00);
+    for v in 0..8 {
+        assert!(!mem.dsp.voices[v].key_on, "no voice should be keyed on when KON=0");
+    }
+}
+
+#[test]
+fn test_kon_all_8_voices_simultaneously() {
+    let mut mem = Memory::new();
+    let dir_page: u8  = 0x01;
+    let brr_addr: u16 = 0x0200;
+    write_silent_brr_block(&mut mem, brr_addr, true, false);
+    for v in 0..8u8 {
+        write_dir_entry(&mut mem, dir_page, v, brr_addr, brr_addr);
+        dsp_vw(&mut mem, v, 0x4, v);
+    }
+    dsp_gw(&mut mem, 0x5D, dir_page);
+    dsp_gw(&mut mem, 0x4C, 0xFF);
+
+    for v in 0..8 {
+        assert!(mem.dsp.voices[v].key_on,
+            "voice {v} must be keyed on when KON=0xFF");
+        assert_eq!(mem.dsp.voices[v].adsr.envelope_phase, EnvelopePhase::Attack,
+            "voice {v} must be in Attack after KON");
+    }
+}
+
+#[test]
+fn test_koff_zero_value_releases_no_voices() {
+    let mut mem = Memory::new();
+    for v in 0..8 {
+        mem.dsp.voices[v].adsr.envelope_phase = EnvelopePhase::Sustain;
+    }
+    dsp_gw(&mut mem, 0x5C, 0x00);
+    for v in 0..8 {
+        assert_eq!(mem.dsp.voices[v].adsr.envelope_phase, EnvelopePhase::Sustain,
+            "KOFF=0 must not release any voice");
+    }
+}
+
+#[test]
+fn test_koff_when_voice_already_off_does_not_panic() {
+    // KOFF on an already-Off voice must not panic and level must stay 0.
+    let mut mem = Memory::new();
+    mem.dsp.voices[2].adsr.envelope_phase = EnvelopePhase::Off;
+    dsp_gw(&mut mem, 0x5C, 0b00000100);
+    assert_eq!(mem.dsp.voices[2].adsr.envelope_level, 0);
+}
+
 // ============================================================
 // Dsp::step — BRR playback and pitch advance
 // ============================================================
@@ -661,6 +806,58 @@ fn test_step_pitch_counter_advances() {
     // after one tick from zero the high nibble has consumed one sample
     // and the counter resets to 0. What matters: key_on went true.
     assert!(mem.dsp.voices[0].key_on || mem.dsp.voices[0].adsr.envelope_phase != EnvelopePhase::Off);
+}
+
+#[test]
+fn test_step_with_ram_matches_step_memory() {
+    // step_with_ram (used by Apu) must produce identical results to
+    // step(&Memory) over multiple ticks — covers decode_next_block_raw
+    // and ram_read8.
+    let dir_page: u8  = 0x01;
+    let brr_addr: u16 = 0x0200;
+
+    let mut mem_a = Memory::new();
+    write_silent_brr_block(&mut mem_a, brr_addr, true, true);
+    write_dir_entry(&mut mem_a, dir_page, 0, brr_addr, brr_addr);
+    dsp_gw(&mut mem_a, 0x5D, dir_page);
+    dsp_vw(&mut mem_a, 0, 0x5, 0x8F);
+    dsp_vw(&mut mem_a, 0, 0x6, 0xE0);
+    dsp_gw(&mut mem_a, 0x4C, 0x01);
+
+    let mut mem_b = Memory::new();
+    write_silent_brr_block(&mut mem_b, brr_addr, true, true);
+    write_dir_entry(&mut mem_b, dir_page, 0, brr_addr, brr_addr);
+    dsp_gw(&mut mem_b, 0x5D, dir_page);
+    dsp_vw(&mut mem_b, 0, 0x5, 0x8F);
+    dsp_vw(&mut mem_b, 0, 0x6, 0xE0);
+    dsp_gw(&mut mem_b, 0x4C, 0x01);
+
+    for _ in 0..10 {
+        mem_a.dsp.step(&mem_shadow(&mem_a));
+        let ram = mem_b.ram;
+        mem_b.dsp.step_with_ram(&ram);
+    }
+
+    assert_eq!(
+        mem_a.dsp.voices[0].adsr.envelope_level,
+        mem_b.dsp.voices[0].adsr.envelope_level,
+        "step_with_ram must match step(&Memory) output"
+    );
+}
+
+#[test]
+fn test_step_with_ram_out_of_range_address_does_not_panic() {
+    // ram_read8 returns 0 for addresses >= RAM size.
+    // DIR at $FF00 with zero bytes → BRR resolves to $0000 (all zero,
+    // end flag not set, so voice keeps running safely).
+    let mut mem = Memory::new();
+    dsp_gw(&mut mem, 0x5D, 0xFF);
+    dsp_vw(&mut mem, 0, 0x5, 0x8F);
+    dsp_vw(&mut mem, 0, 0x6, 0xE0);
+    dsp_gw(&mut mem, 0x4C, 0x01);
+
+    let ram = mem.ram;
+    mem.dsp.step_with_ram(&ram); // must not panic
 }
 
 // ============================================================
@@ -790,6 +987,40 @@ fn test_render_two_voices_summed() {
 
     assert!(l2 > l1, "two voices must produce louder output than one");
     assert_eq!(l2, l1 * 2, "two identical voices must double the output");
+}
+
+#[test]
+fn test_render_all_8_voices_contribute_to_mix() {
+    let mut dsp = Dsp::new();
+    dsp.write_reg(0x0C, 127u8);
+    dsp.write_reg(0x1C, 127u8);
+
+    for v in 0..8 {
+        dsp.voices[v].adsr.envelope_phase = EnvelopePhase::Sustain;
+        dsp.voices[v].adsr.envelope_level = 0x7FF;
+        dsp.voices[v].current_sample      = 100;
+        dsp.voices[v].left_vol            = 16;
+        dsp.voices[v].right_vol           = 16;
+    }
+    let (l8, _) = dsp.render_audio_single();
+
+    let mut dsp1 = Dsp::new();
+    dsp1.write_reg(0x0C, 127u8);
+    dsp1.voices[0].adsr.envelope_phase = EnvelopePhase::Sustain;
+    dsp1.voices[0].adsr.envelope_level = 0x7FF;
+    dsp1.voices[0].current_sample      = 100;
+    dsp1.voices[0].left_vol            = 16;
+    let (l1, _) = dsp1.render_audio_single();
+
+    assert!(l8 > l1, "8 voices must produce more output than 1");
+    // Integer arithmetic means the 8 voices are summed before master volume
+    // is applied, so rounding is not perfectly linear per-voice.
+    // Verify the output is proportionally in range: between 7x and 9x a
+    // single voice.
+    assert!(
+        l8 >= l1 * 7 && l8 <= l1 * 9,
+        "8 voices must produce ~8x single-voice output (got l8={l8}, l1={l1})"
+    );
 }
 
 #[test]
