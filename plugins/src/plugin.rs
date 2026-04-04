@@ -77,10 +77,24 @@ pub struct PluginPermRequest<'a> {
 
 impl<'a> PluginPermRequest<'a> {
     pub fn show_gui(&mut self, ui: &mut egui::Ui) {
+        let close = |ui: &mut egui::Ui| {
+            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+        };
+
         ui.label("This is still very much a work in progress");
-        ui.checkbox(&mut self.allow_all, "allow_perms");
 
         ui.separator();
+
+        ui.horizontal(|ui| {
+            if ui.button("Grant requested permissions").clicked() {
+                self.allow_all = true;
+                close(ui);
+            }
+            if ui.button("Cancel plugin execution").clicked() {
+                self.allow_all = false;
+                close(ui);
+            }
+        });
 
         ui.collapsing("we can even have collapsing content", |ui| {
             ui.label("peekaboo!");
