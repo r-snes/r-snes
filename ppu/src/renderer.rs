@@ -104,7 +104,7 @@ impl Renderer {
 
             // Color index 0 = transparent => backdrop (palette 0, entry 0)
             let palette_entry;
-            if (color_index == 0) {
+            if color_index == 0 {
                 palette_entry = 0u8
             } else {
                 // Mode 1 4bpp: palette offset = palette_num * 16
