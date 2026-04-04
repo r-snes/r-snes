@@ -61,13 +61,13 @@ impl<T: PermTreeLeafNode> PermTreeNode for T {
 
 impl PermTreeLeafNode for bool {}
 
-#[derive(PartialEq, Eq, strict::PartialOrd, Permission, PermTreeNode)]
+#[derive(Debug, PartialEq, Eq, strict::PartialOrd, Permission, PermTreeNode)]
 pub struct RSnesPermissions {
     pub internal: InternalPermissions,
     pub external: ExternalPermissions,
 }
 
-#[derive(PartialEq, Eq, strict::PartialOrd, Permission, PermTreeNode)]
+#[derive(Debug, PartialEq, Eq, strict::PartialOrd, Permission, PermTreeNode)]
 pub struct InternalPermissions {
     pub control: ControlPermissions,
     pub cpu: CpuPermissions,
@@ -75,35 +75,35 @@ pub struct InternalPermissions {
     pub bus: BusPermissions,
 }
 
-#[derive(PartialEq, Eq, strict::PartialOrd, Permission, PermTreeNode)]
+#[derive(Debug, PartialEq, Eq, strict::PartialOrd, Permission, PermTreeNode)]
 pub struct ControlPermissions {
     pub dialog: bool,
     pub pause: bool,
 }
 
-#[derive(PartialEq, Eq, strict::PartialOrd, Permission, PermTreeNode)]
+#[derive(Debug, PartialEq, Eq, strict::PartialOrd, Permission, PermTreeNode)]
 pub struct CpuPermissions {
     pub registers: bool,
 }
 
-#[derive(PartialEq, Eq, strict::PartialOrd, Permission, PermTreeNode)]
+#[derive(Debug, PartialEq, Eq, strict::PartialOrd, Permission, PermTreeNode)]
 pub struct PpuPermissions {
     pub display: bool,
 }
 
-#[derive(PartialEq, Eq, strict::PartialOrd, Permission, PermTreeNode)]
+#[derive(Debug, PartialEq, Eq, strict::PartialOrd, Permission, PermTreeNode)]
 pub struct BusPermissions {
     pub read: bool,
     pub write: bool,
 }
 
-#[derive(PartialEq, Eq, strict::PartialOrd, Permission, PermTreeNode)]
+#[derive(Debug, PartialEq, Eq, strict::PartialOrd, Permission, PermTreeNode)]
 pub struct ExternalPermissions {
     pub filesystem: FileSystemPermissions,
     pub http: bool,
 }
 
-#[derive(PartialEq, Eq, strict::PartialOrd, Permission, PermTreeNode)]
+#[derive(Debug, PartialEq, Eq, strict::PartialOrd, Permission, PermTreeNode)]
 pub struct FileSystemPermissions {
     pub read: bool,
     pub write: bool,
