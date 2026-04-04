@@ -78,8 +78,6 @@ impl VRAM {
         let addr = self.byte_address();
         self.memory[addr] = value;
         
-        self.load_latch();
-
         if self.increment_after_low() {
             self.increment_vmadd();
         }
