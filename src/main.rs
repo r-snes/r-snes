@@ -45,7 +45,21 @@ fn main() -> Result<(), String> {
         if frame_accum >= Gui::FRAME_DURATION {
             frame_accum -= Gui::FRAME_DURATION;
 
-            for state_event in gui.update() {
+            let framebuffer = match rsnes_app {
+                Some(ref mut app) => {
+                    use ppu::constants::*;
+                    // println!("ppu scanline");
+                    for y in 0..SCREEN_HEIGHT {
+                        // println!("PPU scanline {y}");
+                        app.ppu_renderer.render_scanline(&app.ppu, y);
+                        app.ppu.step_scanline();
+                    }
+
+                    Some(app.ppu_renderer.framebuffer.as_slice())
+                }
+                None => None,
+            };
+            for state_event in gui.update(framebuffer) {
                 match state_event {
                     RSnesEvent::LoadRom { path } => match rsnes::RSnes::load_rom(&path) {
                         Ok(emu) => rsnes_app = Some(emu),

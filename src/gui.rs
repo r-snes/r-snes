@@ -7,7 +7,7 @@ pub struct Gui {
     _sdl_ctx: sdl2::Sdl,
     canvas: sdl2::render::Canvas<sdl2::video::Window>,
     event_pump: sdl2::EventPump,
-    framebuffer: Vec<u8>,
+    pub(crate) framebuffer: Vec<u8>,
 }
 
 pub enum RSnesEvent {
@@ -90,7 +90,7 @@ impl Gui {
                 Event::KeyDown {
                     keycode: Some(Keycode::L),
                     ..
-                } => match rfd::FileDialog::new().pick_file() {
+                } => match Some("/home/fcharpentier/clones/snes-tests/cputest/cputest-basic.sfc".into()) {
                     Some(path) => Some(RSnesEvent::LoadRom { path }),
                     None => None,
                 },
@@ -98,8 +98,10 @@ impl Gui {
             })
     }
 
-    fn draw_framebuffer(&mut self) -> Result<(), String> {
+    fn draw_framebuffer(&mut self, framebuffer: Option<&[u8]>) -> Result<(), String> {
         use sdl2::pixels::PixelFormatEnum;
+
+        let framebuffer = framebuffer.unwrap_or(&self.framebuffer);
 
         let texture_creator = self.canvas.texture_creator();
 
@@ -112,7 +114,7 @@ impl Gui {
             .map_err(|e| e.to_string())?;
 
         texture
-            .update(None, &self.framebuffer, Self::SNES_WIDTH * 4)
+            .update(None, framebuffer, Self::SNES_WIDTH * 4)
             .map_err(|e| e.to_string())?;
 
         self.canvas.copy(&texture, None, None)?;
@@ -120,9 +122,14 @@ impl Gui {
         Ok(())
     }
 
-    pub fn update(&mut self) -> impl Iterator<Item = RSnesEvent> {
+    pub fn update(&mut self, framebuffer: Option<&[u8]>) -> impl Iterator<Item = RSnesEvent> + use<'_> {
         self.clear(30, 30, 35);
-        let _ = self.draw_framebuffer(); // TODO: Handle error properly
+
+        match self.draw_framebuffer(framebuffer) {
+            Ok(()) => {},
+            Err(s) => eprintln!("draw_framebuffer: {s}"),
+        }
+
         self.present();
 
         self.handle_events() // Handle events after presenting window because it's borrowing mut self

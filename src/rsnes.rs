@@ -4,6 +4,8 @@ use common::snes_address::SnesAddress;
 use cpu::cpu::CPU;
 use cpu::cpu::CycleResult;
 use ppu::ppu::PPU;
+use ppu::renderer::Renderer;
+use ppu::constants::*;
 use std::error::Error;
 use std::path::Path;
 use std::path::PathBuf;
@@ -13,6 +15,7 @@ pub struct RSnes {
     pub bus: Bus,
     pub cpu: CPU,
     pub ppu: PPU,
+    pub ppu_renderer: Renderer,
     pub apu: Apu,
     pub master_cycles: u64,
     pub cpu_master_cycles_to_wait: u16,
@@ -26,6 +29,7 @@ impl RSnes {
         let bus = Bus::new(rom_path)?;
         let cpu = CPU::poweron();
         let ppu = PPU::new();
+        let ppu_renderer = Renderer::new();
         let apu = Apu::new();
 
         Ok(Self {
@@ -33,6 +37,7 @@ impl RSnes {
             bus,
             cpu,
             ppu,
+            ppu_renderer,
             apu,
             master_cycles: 0,
             cpu_master_cycles_to_wait: 0,
@@ -57,8 +62,8 @@ impl RSnes {
 
         // Get transfer parameters from channel DMAP register
         let direction = (ch.dmap >> 7) & 1;
-        let fixed = (ch.dmap >> 4) & 1;
-        let decrement = (ch.dmap >> 5) & 1;
+        let fixed = (ch.dmap >> 3) & 1;
+        let decrement = (ch.dmap >> 4) & 1;
         let mode = ch.dmap & 0x07;
 
         let mut a_addr = SnesAddress {
@@ -71,6 +76,15 @@ impl RSnes {
             let raw = ((ch.dash as u16) << 8) | ch.dasl as u16;
             if raw == 0 { 0x10000 } else { raw as u32 }
         };
+
+        let aaaaa = match (decrement, fixed) {
+            (1, 1) | (0, 1) => "fixed",
+            (0, 0) => "increment",
+            (1, 0) => "decrement",
+            _ => unreachable!(),
+        };
+        println!("starting DMA at {:?} ({}) of {remaining} bytes", a_addr, aaaaa);
+
 
         let b_offsets: &[u8] = match mode {
             0 => &[0],
@@ -118,8 +132,9 @@ impl RSnes {
             remaining -= 1;
 
             // Each byte transferred takes 8 master cycles - ROUGH WAY TO HANDLE IT, TO CHANGE LATER
-            self.cpu_master_cycles_to_wait += 8;
+            // self.cpu_master_cycles_to_wait = self.cpu_master_cycles_to_wait.wrapping_add(8);
         }
+        println!("DMA done");
 
         // Reset DMA channel registers
         let ch = &mut self.bus.io.dma_channels[channel_nb as usize];
