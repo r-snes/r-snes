@@ -462,10 +462,10 @@ impl PPURegisters {
     }
 
     pub fn bg1_tilemap_addr(&self) -> u16 {
-        ((self.bg1sc as u16) >> 2) * 0x800
+        ((self.bg1sc as u16 & 0xFC) >> 2) * 0x400
     }
 
     pub fn bg1_tiledata_addr(&self) -> u16 {
-        ((self.bg12nba as u16) & 0x0F) * 0x1000
+        (self.bg12nba as u16 & 0x0F) * 0x1000
     }
 }
