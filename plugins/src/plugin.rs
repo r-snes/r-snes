@@ -1,3 +1,8 @@
+use crate::perm_tree::{
+    RSnesPermissions,
+    PermTreeNode,
+};
+
 use std::io::Read;
 
 use std::fs as fs;
@@ -22,11 +27,29 @@ pub struct Plugin {
 /// The data described in the lua table returned by
 /// the plugin file
 #[derive(Debug)]
-pub struct PluginTable { }
+pub struct PluginTable {
+    pub perms: RSnesPermissions,
+}
 
 impl<'gc> picc::FromValue<'gc> for PluginTable {
-    fn from_value(_: picc::Context<'gc>, _: picc::Value<'gc>) -> Result<Self, picc::TypeError> {
-        Ok(Self { })
+    fn from_value(ctx: picc::Context<'gc>, value: picc::Value<'gc>) -> Result<Self, picc::TypeError> {
+        let picc::Value::Table(tab) = value else {
+            return Err(picc::TypeError {
+                expected: "table",
+                found: value.type_name()
+            });
+        };
+
+        let perms = RSnesPermissions::from_lua(ctx, tab.get_value(ctx, "permissions"))
+            .ok_or(picc::TypeError {
+                expected: "permission table",
+                found: "nil",
+            })?;
+        tab.set_field(ctx, "permissions", picc::Value::Nil);
+        for (key, value) in tab {
+            eprintln!("found unused KV pair: ({:?}, {:?})", key, value);
+        }
+        Ok(Self { perms })
     }
 }
 
