@@ -1,10 +1,30 @@
 use crate::constants::CGRAM_SIZE;
 
+/// Helper enum to keep track of the byte phase in the CGRAM
+#[derive(Debug, PartialEq, Eq)]
+enum BytePhase {
+    /// Next read/write affects the low byte of the addressed word
+    Low,
+
+    /// Next read/write affects the high byte of the addressed word
+    High,
+}
+use BytePhase::*;
+
+impl BytePhase {
+    fn flip(&mut self) {
+        *self = match self {
+            Low => High,
+            High => Low,
+        };
+    }
+}
+
 pub struct CGRAM {
     pub memory: [u8; CGRAM_SIZE],
 
     byte_addr: u16, // Internal 9-bit byte address (0–511)
-    byte_phase: u8, // 0 = low byte phase, 1 = high byte phase
+    byte_phase: BytePhase,
     write_latch: u8,
 
     pub ppu_open_bus: u8, // bit 7 used during high-byte read
@@ -15,7 +35,7 @@ impl CGRAM {
         Self {
             memory: [0; CGRAM_SIZE],
             byte_addr: 0,
-            byte_phase: 0,
+            byte_phase: Low,
             write_latch: 0,
             ppu_open_bus: 0,
         }
@@ -27,7 +47,7 @@ impl CGRAM {
 
     pub fn write_addr(&mut self, value: u8) {
         self.byte_addr = ((value as u16) << 1) & 0x1FF;
-        self.byte_phase = 0;
+        self.byte_phase = Low;
     }
 
     // ============================================================
@@ -35,7 +55,7 @@ impl CGRAM {
     // ============================================================
 
     pub fn write_data(&mut self, value: u8) {
-        if self.byte_phase == 0 {
+        if self.byte_phase == Low {
             self.write_latch = value;
             self.byte_addr = (self.byte_addr + 1) & 0x1FF;
         } else {
@@ -43,7 +63,7 @@ impl CGRAM {
             self.memory[self.byte_addr as usize] = value & 0x7F;
             self.byte_addr = (self.byte_addr + 1) & 0x1FF;
         }
-        self.byte_phase ^= 1;
+        self.byte_phase.flip();
         self.ppu_open_bus = value;
     }
 
@@ -55,12 +75,12 @@ impl CGRAM {
         let addr = self.byte_addr & 0x1FF;
         let mut value = self.memory[addr as usize];
 
-        if self.byte_phase == 1 {
+        if self.byte_phase == High {
             // High byte read -> bit 7 comes from PPU open bus
             value = (value & 0x7F) | (self.ppu_open_bus & 0x80);
         }
         self.byte_addr = (self.byte_addr + 1) & 0x1FF;
-        self.byte_phase ^= 1;
+        self.byte_phase.flip();
         self.ppu_open_bus = value;
 
         value
@@ -94,7 +114,7 @@ mod tests {
         cgram.write_addr(5);
 
         assert_eq!(cgram.byte_addr, 10); // 5 << 1
-        assert_eq!(cgram.byte_phase, 0);
+        assert_eq!(cgram.byte_phase, Low);
     }
 
     // ============================================================
@@ -135,7 +155,7 @@ mod tests {
         let mut cgram = CGRAM::new();
 
         cgram.byte_addr = 0x1FF;
-        cgram.byte_phase = 0;
+        cgram.byte_phase = Low;
 
         cgram.write_data(0x11);
 
