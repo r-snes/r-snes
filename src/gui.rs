@@ -28,7 +28,7 @@ impl Gui {
         let video_subsystem = sdl_ctx.video()?;
 
         let window = video_subsystem
-            .window("R-SNES", 1920 / 2, 1080 / 2)
+            .window("R-SNES", Self::SNES_WIDTH as u32 * 2, Self::SNES_HEIGHT as u32 * 2)
             .position_centered()
             .build()
             .map_err(|e| e.to_string())?;
@@ -50,19 +50,18 @@ impl Gui {
     }
 
     pub fn temporary_framebuffer() -> Vec<u8> {
-        let mut framebuffer = vec![0u8; Self::SNES_WIDTH * Self::SNES_HEIGHT * 4];
+        let mut framebuffer = vec![0u8; Self::SNES_WIDTH * Self::SNES_HEIGHT * 3];
 
         for y in 0..Self::SNES_HEIGHT {
             for x in 0..Self::SNES_WIDTH {
                 let pixel_index = y * Self::SNES_WIDTH + x;
-                let byte_index = pixel_index * 4;
+                let byte_index = pixel_index * 3;
 
                 let shade = ((x + y) & 0xFF) as u8;
 
                 framebuffer[byte_index + 0] = shade; // B
                 framebuffer[byte_index + 1] = shade; // G
                 framebuffer[byte_index + 2] = shade; // R
-                framebuffer[byte_index + 3] = 255; // A
             }
         }
 
@@ -114,14 +113,14 @@ impl Gui {
 
         let mut texture = texture_creator
             .create_texture_streaming(
-                PixelFormatEnum::ARGB8888,
+                PixelFormatEnum::RGB24,
                 Self::SNES_WIDTH as u32,
                 Self::SNES_HEIGHT as u32,
             )
             .map_err(|e| e.to_string())?;
 
         texture
-            .update(None, framebuffer, Self::SNES_WIDTH * 4)
+            .update(None, framebuffer, Self::SNES_WIDTH * 3)
             .map_err(|e| e.to_string())?;
 
         self.canvas.copy(&texture, None, None)?;
