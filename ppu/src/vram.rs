@@ -51,7 +51,7 @@ impl VRAM {
     }
     
     fn increment_vmadd(&mut self) {
-        println!("incrementing VMADD from {} by {}", self.vmadd, self.increment_amount());
+        // println!("incrementing VMADD from {} by {}", self.vmadd, self.increment_amount());
         self.vmadd = (self.vmadd + self.increment_amount()) & 0x7FFF;
     }
 

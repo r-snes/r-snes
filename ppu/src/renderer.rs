@@ -61,7 +61,7 @@ impl Renderer {
             }
 
             // Only render in Mode 1 with BG1 enabled
-            if bg_mode != 1 || !bg1_enabled {
+            if bg_mode == 1 && !bg1_enabled {
                 self.set_pixel(x, y, 0, 0, 0);
                 continue;
             }
@@ -88,7 +88,7 @@ impl Renderer {
             let entry = (entry_low as u16) | ((entry_high as u16) << 8);
 
             let tile_index = entry & 0x03FF; // bits 9:0
-            let palette_num = (entry >> 10) & 0x07; // bits 12:10
+            let palette_num = (entry >> 10) & 0x0f; // bits 13:10
             let flip_x = (entry & 0x4000) != 0; // bit 14
             let flip_y = (entry & 0x8000) != 0; // bit 15
 

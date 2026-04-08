@@ -36,6 +36,8 @@ impl PPU {
             0x2105 => self.regs.bgmode = value,
             0x2107 => self.regs.bg1sc = value,
 
+            0x210B => self.regs.bg12nba = value,
+
             // BG1 HOFS
             0x210D => {
                 if !self.regs.bg1hofs_latch_written {
