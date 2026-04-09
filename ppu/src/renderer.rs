@@ -99,8 +99,8 @@ impl Renderer {
             // ============================================================
             // Decode 4bpp pixel from CHR data
             // ============================================================
-            let tile_word_base = tiledata_base as usize + tile_index as usize * 16;
-            let color_index = Self::decode_tile_pixel_from( &ppu.vram.memory, tile_word_base, fx, fy);
+            let tile_word_base = tiledata_base as usize + tile_index as usize * 8;
+            let color_index = Self::decode_tile_pixel_mode0( &ppu.vram.memory, tile_word_base, fx, fy);
 
             // Color index 0 = transparent => backdrop (palette 0, entry 0)
             let palette_entry;
@@ -139,6 +139,19 @@ impl Renderer {
         self.framebuffer[index] = r;
         self.framebuffer[index + 1] = g;
         self.framebuffer[index + 2] = b;
+    }
+
+    fn decode_tile_pixel_mode0(vram: &[u8], tile_word_base: usize, x: usize, y: usize) -> u8 {
+        // Convert word address to byte address
+        let base = tile_word_base * 2;
+
+        // Plane 0+1: bytes 0..15 (2 bytes per row x 8 rows)
+        let p0 = vram[base + y * 2];
+        let p1 = vram[base + y * 2 + 1];
+
+        // MSB of each row byte
+        let bit = 7 - x;
+        ((p0 >> bit) & 1) | (((p1 >> bit) & 1) << 1)
     }
 
     fn decode_tile_pixel_from(vram: &[u8], tile_word_base: usize, x: usize, y: usize) -> u8 {

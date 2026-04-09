@@ -45,7 +45,7 @@ impl PPU {
                     self.regs.bg1hofs_latch_written = true;
                 } else {
                     self.regs.bg1hofs =
-                        ((value as u16 & 0x07) << 8) |
+                        ((value as u16 & 0x03) << 8) |
                         self.regs.bg1hofs_latch as u16;
 
                     self.regs.bg1hofs_latch_written = false;
@@ -59,7 +59,7 @@ impl PPU {
                     self.regs.bg1vofs_latch_written = true;
                 } else {
                     self.regs.bg1vofs =
-                        ((value as u16 & 0x07) << 8) |
+                        ((value as u16 & 0x03) << 8) |
                         self.regs.bg1vofs_latch as u16;
 
                     self.regs.bg1vofs_latch_written = false;
