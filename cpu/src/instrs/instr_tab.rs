@@ -5,6 +5,7 @@ use crate::instrs::{
     arithmetic::*,
     branches::*,
     flags::*,
+    interrupts::*,
     jumps::*,
     loads::*,
     stack::*,
@@ -42,9 +43,9 @@ macro_rules! todo_opcode {
 }
 
 const INSTR_CYC1: [InstrCycle; 256] = [
-    /* 00 */ InstrCycle(todo_opcode!(0x00)),
+    /* 00 */ InstrCycle(brk_cyc1),
     /* 01 */ InstrCycle(ora::dxind_cyc1),
-    /* 02 */ InstrCycle(todo_opcode!(0x02)),
+    /* 02 */ InstrCycle(cop_cyc1),
     /* 03 */ InstrCycle(ora::sr_cyc1),
     /* 04 */ InstrCycle(tsb_d_cyc1),
     /* 05 */ InstrCycle(ora::d_cyc1),
@@ -261,7 +262,7 @@ const INSTR_CYC1: [InstrCycle; 256] = [
     /* d8 */ InstrCycle(cld_cyc1),
     /* d9 */ InstrCycle(cmp::absy_cyc1),
     /* da */ InstrCycle(phx_cyc1),
-    /* db */ InstrCycle(todo_opcode!(0xdb)),
+    /* db */ InstrCycle(stp_cyc1),
     /* dc */ InstrCycle(jml_cyc1),
     /* dd */ InstrCycle(cmp::absx_cyc1),
     /* de */ InstrCycle(dec_absx_cyc1),

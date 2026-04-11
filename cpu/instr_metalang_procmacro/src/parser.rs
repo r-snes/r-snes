@@ -50,6 +50,9 @@ pub(crate) enum AddrBusPosition {
 
     /// The addr bus points at the next immediate operand
     Immediate,
+
+    /// Pointing at an absolute operand
+    Absolute,
 }
 
 impl Default for ParserStatus {
@@ -484,7 +487,7 @@ impl MetaInstruction {
                     cpu.addr_bus.addr = cpu.internal_data_bus;
                     cpu.addr_bus.bank = cpu.registers.DB;
                 });
-                pstatus.addrmode = AddrBusPosition::Unaligned;
+                pstatus.addrmode = AddrBusPosition::Absolute;
             }
             Self::SetAddrModeAbsoluteLong => {
                 ret += Self::Fetch16ImmInto(quote!(cpu.internal_data_bus)).expand(pstatus);
@@ -626,11 +629,22 @@ impl MetaInstruction {
             }
             Self::Fetch16Into(into) => {
                 let is_imm = pstatus.addrmode == AddrBusPosition::Immediate;
+                let is_abs = pstatus.addrmode == AddrBusPosition::Absolute;
 
                 ret += Self::Fetch8Into(quote! { *#into.lo_mut() }).expand(pstatus);
-                ret += InstrBody::post(quote! {
-                    cpu.addr_bus.addr = cpu.addr_bus.addr.wrapping_add(1);
-                });
+                if is_abs {
+                    ret += InstrBody::post(quote! {
+                        cpu.addr_bus.addr = cpu.addr_bus.addr.wrapping_add(1);
+                    });
+                } else {
+                    ret += InstrBody::post(quote! {
+                        let (addr, c_out) = cpu.addr_bus.addr.overflowing_add(1);
+                        cpu.addr_bus.addr = addr;
+                        if c_out {
+                            cpu.addr_bus.bank = cpu.addr_bus.bank.wrapping_add(1);
+                        }
+                    });
+                }
                 if is_imm { // if we started as imm, now we are imm again
                     pstatus.addrmode = AddrBusPosition::Immediate;
                 }

@@ -12,7 +12,8 @@ pub struct Gui {
 
 pub enum RSnesEvent {
     LoadRom { path: PathBuf },
-    Button,
+    ButtonDown,
+    ButtonUp,
     Quit,
 }
 
@@ -91,7 +92,13 @@ impl Gui {
                     keycode: Some(Keycode::Space),
                     ..
                 } => {
-                    Some(RSnesEvent::Button)
+                    Some(RSnesEvent::ButtonDown)
+                }
+                Event::KeyUp {
+                    keycode: Some(Keycode::Space),
+                    ..
+                } => {
+                    Some(RSnesEvent::ButtonUp)
                 }
                 Event::KeyDown {
                     keycode: Some(Keycode::L),
