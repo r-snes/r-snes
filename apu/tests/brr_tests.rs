@@ -191,7 +191,7 @@ fn test_block_all_zero_data_no_flags() {
 
     let mut p1 = 0i16;
     let mut p2 = 0i16;
-    let (samples, end, do_loop) = decode_brr_block(&mem, 0x0100, &mut p1, &mut p2);
+    let (samples, end, do_loop) = decode_brr_block(&mem.ram, 0x0100, &mut p1, &mut p2);
 
     assert!(!end);
     assert!(!do_loop);
@@ -206,7 +206,7 @@ fn test_block_end_flag_parsed() {
 
     let mut p1 = 0i16;
     let mut p2 = 0i16;
-    let (_, end, do_loop) = decode_brr_block(&mem, 0x0100, &mut p1, &mut p2);
+    let (_, end, do_loop) = decode_brr_block(&mem.ram, 0x0100, &mut p1, &mut p2);
 
     assert!(end,     "end flag should be set");
     assert!(!do_loop, "loop flag should not be set");
@@ -220,7 +220,7 @@ fn test_block_loop_flag_parsed() {
 
     let mut p1 = 0i16;
     let mut p2 = 0i16;
-    let (_, end, do_loop) = decode_brr_block(&mem, 0x0100, &mut p1, &mut p2);
+    let (_, end, do_loop) = decode_brr_block(&mem.ram, 0x0100, &mut p1, &mut p2);
 
     assert!(!end,   "end flag should not be set");
     assert!(do_loop, "loop flag should be set");
@@ -233,7 +233,7 @@ fn test_block_both_flags_parsed() {
 
     let mut p1 = 0i16;
     let mut p2 = 0i16;
-    let (_, end, do_loop) = decode_brr_block(&mem, 0x0100, &mut p1, &mut p2);
+    let (_, end, do_loop) = decode_brr_block(&mem.ram, 0x0100, &mut p1, &mut p2);
 
     assert!(end);
     assert!(do_loop);
@@ -250,7 +250,7 @@ fn test_block_shift_in_high_nibble_of_header() {
 
     let mut p1 = 0i16;
     let mut p2 = 0i16;
-    let (samples, _, _) = decode_brr_block(&mem, 0x0200, &mut p1, &mut p2);
+    let (samples, _, _) = decode_brr_block(&mem.ram, 0x0200, &mut p1, &mut p2);
 
     assert_eq!(samples[0], 7 << 4, "first sample: nibble=7 shift=4 → 112");
     assert_eq!(samples[1], 7 << 4, "second sample: nibble=7 shift=4 → 112");
@@ -269,7 +269,7 @@ fn test_block_history_threads_between_samples() {
 
     let mut p1 = 0i16;
     let mut p2 = 0i16;
-    let (samples, _, _) = decode_brr_block(&mem, 0x0300, &mut p1, &mut p2);
+    let (samples, _, _) = decode_brr_block(&mem.ram, 0x0300, &mut p1, &mut p2);
 
     // All zero (no accumulated history)
     for (i, &s) in samples.iter().enumerate() {
@@ -286,7 +286,7 @@ fn test_block_history_threads_with_nonzero_start() {
 
     let mut p1: i16 = 1024;
     let mut p2: i16 = 0;
-    let (samples, _, _) = decode_brr_block(&mem, 0x0400, &mut p1, &mut p2);
+    let (samples, _, _) = decode_brr_block(&mem.ram, 0x0400, &mut p1, &mut p2);
 
     // Each sample should be strictly less than the previous (decaying)
     for i in 1..16 {
@@ -308,7 +308,7 @@ fn test_block_prev_updated_after_decode() {
 
     let mut p1: i16 = 0;
     let mut p2: i16 = 0;
-    let (samples, _, _) = decode_brr_block(&mem, 0x0500, &mut p1, &mut p2);
+    let (samples, _, _) = decode_brr_block(&mem.ram, 0x0500, &mut p1, &mut p2);
 
     assert_eq!(p1, samples[15], "p1 must equal last decoded sample");
     assert_eq!(p2, samples[14], "p2 must equal second-to-last decoded sample");
@@ -322,7 +322,7 @@ fn test_block_16_samples_decoded() {
 
     let mut p1 = 0i16;
     let mut p2 = 0i16;
-    let (samples, _, _) = decode_brr_block(&mem, 0x0600, &mut p1, &mut p2);
+    let (samples, _, _) = decode_brr_block(&mem.ram, 0x0600, &mut p1, &mut p2);
 
     assert_eq!(samples.len(), 16);
 }

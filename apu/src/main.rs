@@ -251,7 +251,7 @@ fn test1_sine() {
     // We work around this by running step on mem.dsp directly.
     let mut env_phase_logged = false;
     for i in 0..num_output_samples {
-        mem.dsp.step(&mem_readonly_ref(&mem));
+        mem.dsp.step(&mem.ram);
         let (l, _r) = mem.dsp.render_audio_single();
         out.push(l);
 
@@ -319,7 +319,7 @@ fn test2_8voices() {
     let mut out = Vec::with_capacity(num_samples as usize);
 
     for _ in 0..num_samples {
-        mem.dsp.step(&mem_readonly_ref(&mem));
+        mem.dsp.step(&mem.ram);
         let (l, _r) = mem.dsp.render_audio_single();
         out.push(l);
     }
@@ -376,7 +376,7 @@ fn test3_adsr() {
             println!("  Key-off triggered at sample {i}");
         }
 
-        mem.dsp.step(&mem_readonly_ref(&mem));
+        mem.dsp.step(&mem.ram);
         let (l, _r) = mem.dsp.render_audio_single();
         out.push(l);
 
@@ -444,7 +444,7 @@ fn test4_loop() {
     let mut out = Vec::with_capacity(num_samples as usize);
 
     for i in 0..num_samples {
-        mem.dsp.step(&mem_readonly_ref(&mem));
+        mem.dsp.step(&mem.ram);
         let (l, _r) = mem.dsp.render_audio_single();
         out.push(l);
 
@@ -508,7 +508,7 @@ fn test5_stereo() {
     let mut right_out = Vec::with_capacity(num_samples as usize);
 
     for _ in 0..num_samples {
-        mem.dsp.step(&mem_readonly_ref(&mem));
+        mem.dsp.step(&mem.ram);
         let (l, r) = mem.dsp.render_audio_single();
         left_out.push(l);
         right_out.push(r);
@@ -547,33 +547,13 @@ fn save_stereo_interleaved(path: &str, left: &[i16], right: &[i16]) {
     }
 }
 
-/// Helper to pass an immutable view of Memory's RAM to dsp.step().
-///
-/// dsp.step() needs &Memory to read BRR data from APU RAM, but we
-/// also need &mut mem.dsp to call step.  Rust won't allow both at
-/// once from the same binding.  We solve this by reconstructing a
-/// temporary read-only Memory that shares the RAM array — since
-/// dsp.step() only *reads* memory and never writes it, this is safe.
-///
-/// In a real emulator you would refactor so that the DSP borrows an
-/// immutable &[u8] slice for RAM rather than a &Memory — but for a
-/// self-contained test this keeps the code simple.
-#[inline(always)]
-fn mem_readonly_ref(mem: &Memory) -> Memory {
-    // Build a Memory that has the same RAM contents but a fresh (no-op) Dsp.
-    // dsp.step() only calls mem.read8(), which only touches mem.ram, so the
-    // dummy dsp inside this copy is never used.
-    let mut shadow = Memory::new();
-    shadow.ram.copy_from_slice(&mem.ram);
-    shadow
-}
 
 // ============================================================
 // ENTRY POINT
 // ============================================================
 
 fn main() {
-    println!("SNES APU Test Main");
+    println!("SNES APU Comprehensive Test");
     println!("Output rate: {} Hz, format: signed 16-bit little-endian PCM", SAMPLE_RATE);
 
     test1_sine();

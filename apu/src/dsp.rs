@@ -1,5 +1,3 @@
-use crate::memory::Memory;
-
 // ============================================================
 // ENVELOPE RATE TABLE
 // The real DSP uses a 32-entry lookup table to determine how
@@ -381,32 +379,27 @@ pub fn decode_brr_nibble(nibble: i8, shift: u8, filter: u8, prev1: i16, prev2: i
     clamped as i16
 }
 
-// ============================================================
-// RAW RAM ACCESSOR
-//
-// The DSP needs to read BRR sample data from APU RAM inside
-// step().  Normally we would pass &Memory for this, but Memory
-// owns Dsp — so calling self.memory.dsp.step(&self.memory) from
-// Apu creates a simultaneous mutable + immutable borrow that the
-// compiler rejects.
-//
-// The fix is to pass a plain &[u8] RAM snapshot instead.
-// step_with_ram() and decode_brr_block_raw() are the &[u8] variants
-// used by Apu.  The original Memory-based step() / decode_brr_block()
-// are kept for unit tests.
-//
-// Long-term the Memory-based variants can be removed once all call
-// sites have been migrated.
-// ============================================================
-
 /// Read one byte from a raw RAM slice; returns 0 for out-of-range addresses.
 #[inline(always)]
 fn ram_read8(ram: &[u8], addr: u16) -> u8 {
     ram.get(addr as usize).copied().unwrap_or(0)
 }
 
-/// &[u8] variant of decode_brr_block — identical logic, no Memory borrow.
-pub fn decode_brr_block_raw(
+/// Decode all 16 samples from one 9-byte BRR block.
+///
+/// Takes a plain `&[u8]` RAM slice so the DSP can read sample data
+/// without needing to borrow the full `Memory` struct.
+///
+/// BRR block layout (header byte = SSSSFFEX):
+///   bits 7-4 = shift amount (0–15)
+///   bits 3-2 = filter index (0–3)
+///   bit  1   = loop flag
+///   bit  0   = end flag
+///   bytes 1-8 — 8 data bytes = 16 nibbles = 16 samples
+///
+/// `prev1` and `prev2` are updated in place so history carries forward.
+/// Returns (samples[16], end_flag, loop_flag).
+pub fn decode_brr_block(
     ram: &[u8],
     addr: u16,
     prev1: &mut i16,
@@ -435,64 +428,6 @@ pub fn decode_brr_block_raw(
 
         let s1 = decode_brr_nibble(lo, shift, filter, *prev1, *prev2);
         *prev2 = *prev1; *prev1 = s1;
-        samples[i * 2 + 1] = s1;
-    }
-
-    (samples, end, looop)
-}
-
-/// Decode all 16 samples from one 9-byte BRR block at `addr` in APU RAM.
-///
-/// BRR block layout:
-///   byte 0   — header: SSSSFFEX
-///     bits 7-4 = shift  (S, 0–15)
-///     bits 3-2 = filter (F, 0–3)
-///     bit  1   = loop   (E: on end, jump to loop point)
-///     bit  0   = end    (X: this is the last block)
-///   bytes 1-8 — 8 data bytes, each holding 2 nibbles (high then low)
-///               = 16 samples total
-///
-/// `prev1` and `prev2` are updated in place as decoding proceeds,
-/// so they carry the history forward to the next block.
-///
-/// Returns (samples[16], end_flag, loop_flag).
-pub fn decode_brr_block(
-    mem: &Memory,
-    addr: u16,
-    prev1: &mut i16,
-    prev2: &mut i16,
-) -> ([i16; 16], bool, bool) {
-    let header = mem.read8(addr);
-
-    // Correct bit layout: SSSSFFEX
-    let shift  = (header >> 4) & 0x0F; // bits 7-4: shift amount
-    let filter = (header >> 2) & 0x03; // bits 3-2: filter index
-    let looop  = (header & 0x02) != 0; // bit  1:   loop flag
-    let end    = (header & 0x01) != 0; // bit  0:   end flag
-
-    let mut samples = [0i16; 16];
-
-    for i in 0..8usize {
-        let byte = mem.read8(addr + 1 + i as u16);
-
-        // High nibble first (bits 7-4)
-        let hi_raw = ((byte >> 4) & 0x0F) as i8;
-        let hi = if hi_raw & 0x08 != 0 { hi_raw | !0x0F } else { hi_raw }; // sign-extend from 4 bits
-
-        // Low nibble (bits 3-0)
-        let lo_raw = (byte & 0x0F) as i8;
-        let lo = if lo_raw & 0x08 != 0 { lo_raw | !0x0F } else { lo_raw };
-
-        // Decode high nibble sample
-        let s0 = decode_brr_nibble(hi, shift, filter, *prev1, *prev2);
-        *prev2 = *prev1;
-        *prev1 = s0;
-        samples[i * 2] = s0;
-
-        // Decode low nibble sample (uses the updated prev1/prev2 from s0)
-        let s1 = decode_brr_nibble(lo, shift, filter, *prev1, *prev2);
-        *prev2 = *prev1;
-        *prev1 = s1;
         samples[i * 2 + 1] = s1;
     }
 
@@ -709,20 +644,18 @@ impl Dsp {
     }
 
     // ----------------------------------------------------------
-    // DSP step — two variants
+    // DSP step — called once per output sample (32 kHz)
     //
-    // step_with_ram(&[u8])  — called by Apu; avoids the Memory borrow conflict.
-    // step(&Memory)         — kept for unit tests that construct Memory directly.
-    //
-    // Both do exactly the same work; only the RAM read primitive differs.
+    // Takes a plain &[u8] RAM slice so the caller can pass
+    // &memory.ram without also borrowing memory.dsp mutably.
     // ----------------------------------------------------------
 
-    /// Advance the DSP by one output sample tick using a raw RAM slice.
+    /// Advance the DSP by one output sample tick.
     ///
-    /// Called by `Apu::step()` to avoid the simultaneous mutable/immutable
-    /// borrow that would arise from passing `&self.memory` while also holding
-    /// `&mut self.memory.dsp`.
-    pub fn step_with_ram(&mut self, ram: &[u8]) {
+    /// `ram` is a direct slice of the 64 KB APU RAM.  The DSP only
+    /// reads from RAM (BRR sample data and the DIR table); it never
+    /// writes to it.
+    pub fn step(&mut self, ram: &[u8]) {
         for v in 0..8usize {
             // 1. Envelope update
             if self.voices[v].adsr.envelope_phase != EnvelopePhase::Off {
@@ -738,7 +671,8 @@ impl Dsp {
                 continue;
             }
 
-            // 2. Resolve DIR table on first tick after key-on
+            // 2. Resolve DIR table on first tick after key-on.
+            // buffer_fill == 0 means we haven't decoded anything yet.
             if self.voices[v].brr.buffer_fill == 0 {
                 let dir_entry = self.voices[v].brr.addr;
 
@@ -750,10 +684,11 @@ impl Dsp {
                 self.voices[v].brr.addr      = (start_hi << 8) | start_lo;
                 self.voices[v].brr.loop_addr = (loop_hi  << 8) | loop_lo;
 
-                self.decode_next_block_raw(v, ram);
+                self.decode_next_block(v, ram);
             }
 
-            // 3. Pitch counter advance
+            // 3. Pitch counter advance.
+            // Every 0x1000 units = one BRR sample consumed.
             let pitch = self.voices[v].pitch & 0x3FFF;
             self.voices[v].pitch_counter =
                 self.voices[v].pitch_counter.wrapping_add(pitch);
@@ -761,7 +696,7 @@ impl Dsp {
             let samples_to_consume = self.voices[v].pitch_counter / 0x1000;
             self.voices[v].pitch_counter %= 0x1000;
 
-            // 4. Consume decoded samples from buffer
+            // 4. Consume decoded samples from buffer.
             for _ in 0..samples_to_consume {
                 let idx = self.voices[v].brr.nibble_idx as usize;
                 if idx < self.voices[v].brr.buffer_fill as usize {
@@ -772,7 +707,7 @@ impl Dsp {
 
                 if self.voices[v].brr.nibble_idx >= self.voices[v].brr.buffer_fill {
                     self.voices[v].brr.nibble_idx = 0;
-                    self.decode_next_block_raw(v, ram);
+                    self.decode_next_block(v, ram);
                     if !self.voices[v].key_on {
                         break;
                     }
@@ -780,129 +715,8 @@ impl Dsp {
             }
 
             // 5. Update read-only ENVX ($X8) and OUTX ($X9) registers.
-            //
-            // Game code polls these to drive visual effects and sync animations:
-            //   ENVX = envelope_level >> 4  (11-bit → 7-bit, bits 10-4)
-            //   OUTX = current_sample >> 8  (16-bit → signed 8-bit, top byte)
-            //
-            // Both sit in the per-voice register block at offsets +8 and +9,
-            // i.e. register indices (v << 4) | 0x8 and (v << 4) | 0x9.
-            let envx_idx = (v << 4) | 0x8;
-            let outx_idx = (v << 4) | 0x9;
-            self.registers[envx_idx] =
-                (self.voices[v].adsr.envelope_level >> 4) as u8;
-            self.registers[outx_idx] =
-                (self.voices[v].current_sample >> 8) as u8;
-        }
-    }
-
-    /// &[u8] variant of decode_next_block — used by step_with_ram.
-    fn decode_next_block_raw(&mut self, v: usize, ram: &[u8]) {
-        let voice = &mut self.voices[v];
-
-        let (samples, end, do_loop) = decode_brr_block_raw(
-            ram,
-            voice.brr.addr,
-            &mut voice.brr.prev1,
-            &mut voice.brr.prev2,
-        );
-
-        voice.brr.sample_buffer = samples;
-        voice.brr.buffer_fill   = 16;
-        voice.brr.nibble_idx    = 0;
-
-        if end {
-            // $7C ENDX: set the bit for this voice so the CPU can detect
-            // sample completion.  Cleared on KON (see key_on_voice).
-            self.registers[0x7C] |= 1u8 << v;
-
-            if do_loop {
-                voice.brr.addr = voice.brr.loop_addr;
-            } else {
-                voice.key_on = false;
-                voice.adsr.envelope_phase = EnvelopePhase::Release;
-            }
-        } else {
-            voice.brr.addr = voice.brr.addr.wrapping_add(9);
-        }
-    }
-
-    // ----------------------------------------------------------
-    // DSP step — called once per output sample (32000 Hz)
-    // ----------------------------------------------------------
-
-    pub fn step(&mut self, mem: &Memory) {
-        for v in 0..8usize {
-            // ---- 1. Envelope update ----
-            if self.voices[v].adsr.envelope_phase != EnvelopePhase::Off {
-                self.voices[v].adsr.update_envelope();
-            }
-
-            // Skip voices that are fully silent and not playing
-            if !self.voices[v].key_on
-                && self.voices[v].adsr.envelope_phase == EnvelopePhase::Off
-            {
-                continue;
-            }
-
-            if !self.voices[v].key_on {
-                continue;
-            }
-
-            // ---- 2. Resolve DIR table on first tick after key-on ----
-            // buffer_fill == 0 means we haven't decoded anything yet.
-            if self.voices[v].brr.buffer_fill == 0 {
-                let dir_entry = self.voices[v].brr.addr;
-
-                // Read 4-byte directory entry
-                let start_lo = mem.read8(dir_entry)     as u16;
-                let start_hi = mem.read8(dir_entry + 1) as u16;
-                let loop_lo  = mem.read8(dir_entry + 2) as u16;
-                let loop_hi  = mem.read8(dir_entry + 3) as u16;
-
-                let start_addr = (start_hi << 8) | start_lo;
-                let loop_addr  = (loop_hi  << 8) | loop_lo;
-
-                self.voices[v].brr.addr      = start_addr;
-                self.voices[v].brr.loop_addr = loop_addr;
-
-                // Decode the first block immediately
-                self.decode_next_block(v, mem);
-            }
-
-            // ---- 3. Pitch counter advance ----
-            // Add pitch to the counter each output sample.
-            // Every 0x1000 units = one BRR sample consumed.
-            let pitch = self.voices[v].pitch & 0x3FFF;
-            let old_counter = self.voices[v].pitch_counter;
-            self.voices[v].pitch_counter = old_counter.wrapping_add(pitch);
-
-            // Number of whole BRR samples to consume this tick
-            let samples_to_consume = self.voices[v].pitch_counter / 0x1000;
-            self.voices[v].pitch_counter %= 0x1000;
-
-            // ---- 4. Consume decoded samples from buffer ----
-            for _ in 0..samples_to_consume {
-                let idx = self.voices[v].brr.nibble_idx as usize;
-
-                if idx < self.voices[v].brr.buffer_fill as usize {
-                    self.voices[v].current_sample = self.voices[v].brr.sample_buffer[idx];
-                    self.voices[v].brr.nibble_idx += 1;
-                }
-
-                // If the buffer is exhausted, decode the next block
-                if self.voices[v].brr.nibble_idx >= self.voices[v].brr.buffer_fill {
-                    self.voices[v].brr.nibble_idx = 0;
-                    self.decode_next_block(v, mem);
-
-                    // decode_next_block may have silenced the voice (no-loop end)
-                    if !self.voices[v].key_on {
-                        break;
-                    }
-                }
-            }
-
-            // ---- 5. Update read-only ENVX ($X8) and OUTX ($X9) registers ----
+            //   ENVX = envelope_level >> 4  (11-bit → 7-bit)
+            //   OUTX = current_sample  >> 8 (signed top byte)
             let envx_idx = (v << 4) | 0x8;
             let outx_idx = (v << 4) | 0x9;
             self.registers[envx_idx] =
@@ -918,11 +732,11 @@ impl Dsp {
     /// - end=true,  loop=true  → jump to loop_addr and continue
     /// - end=true,  loop=false → silence the voice (enter release)
     /// - end=false             → advance address by 9 bytes
-    fn decode_next_block(&mut self, v: usize, mem: &Memory) {
+    fn decode_next_block(&mut self, v: usize, ram: &[u8]) {
         let voice = &mut self.voices[v];
 
         let (samples, end, do_loop) = decode_brr_block(
-            mem,
+            ram,
             voice.brr.addr,
             &mut voice.brr.prev1,
             &mut voice.brr.prev2,
@@ -933,20 +747,16 @@ impl Dsp {
         voice.brr.nibble_idx    = 0;
 
         if end {
-            // $7C ENDX: set bit for this voice on end-block detection.
+            // Set ENDX bit so the CPU can detect sample completion.
             self.registers[0x7C] |= 1u8 << v;
 
             if do_loop {
-                // Jump to the loop point from the DIR table
                 voice.brr.addr = voice.brr.loop_addr;
-                // Note: prev1/prev2 carry forward through the loop boundary
             } else {
-                // No loop: silence the voice after the current buffer drains
                 voice.key_on = false;
                 voice.adsr.envelope_phase = EnvelopePhase::Release;
             }
         } else {
-            // Normal advance: next BRR block is 9 bytes later
             voice.brr.addr = voice.brr.addr.wrapping_add(9);
         }
     }

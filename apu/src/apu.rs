@@ -51,15 +51,7 @@ impl Apu {
             self.dsp_cycles += 1;
             if self.dsp_cycles >= DSP_CYCLES_PER_SAMPLE {
                 self.dsp_cycles = 0;
-
-                // dsp.step() needs to read BRR sample data from APU RAM, but
-                // Memory owns the Dsp, so we cannot pass &self.memory while
-                // also holding &mut self.memory.dsp.  We resolve this by
-                // building a read-only RAM view.  This will be eliminated when
-                // dsp.step() is refactored to take a &[u8] RAM slice directly
-                // (see issue tracker — "borrow conflict" item).
-                let ram_snapshot = self.memory.ram;
-                self.memory.dsp.step_with_ram(&ram_snapshot);
+                self.memory.dsp.step(&self.memory.ram);
             }
 
             self.cycles += 1;
