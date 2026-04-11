@@ -30,7 +30,7 @@ duplicate! {
 }
 
 // duplicate over variable width registers (as destination --
-// since the size of the transfer comes from the size of the source)
+// since the size of the transfer comes from the size of the dest)
 duplicate! {
     [
         DUP_name    DUP_src     DUP_dest    DUP_size;
