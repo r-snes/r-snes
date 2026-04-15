@@ -14,7 +14,7 @@ Being a SNES emulator, R-SNES allows users to play SNES games. We also try to st
 
 ### Plugins
 
-We also wish to make the player experience extensible with Lua plugins which can affect many parts of the emulator, be run automatically for each rendered frame, on each CPU cycle, or when a specific value in memory changes.
+We also wish to make the player experience extensible with Lua plugins which can affect many parts of the emulator, be run automatically for each rendered frame, on each CPU cycle, or when a specific value in memory changes (among other trigger conditions).
 
 Plugins will also be able to access things *outside* the emulator (which we refer to as "external"), which could allow them to, for example, read data from files, or save data extracted from a running game to a file, or even send them over the network in HTTP requests.
 
@@ -39,4 +39,4 @@ Each component (hardware piece of the original console) is implemented in its ow
 
 ## Language choice
 
-The emulator is implemented in Rust. This choice of language is mostly by personal preference, but our preferences are also influenced by having worked with C and C++ for a few years, and we all come to agree it is easier to collaborate with Rust (even though we had far less experience with it at the start of the project) than with other programming languages which can compete in performance and low-level control such as C and C++
+The emulator is implemented in Rust. This choice of language is mostly by personal preference, but our preferences are also influenced by having worked with C and C++ for a few years, and we all come to agree it is easier to collaborate with Rust (even though we had far less experience with it at the start of the project) than with other programming languages which can compete in performance and low-level control such as C and C++.
