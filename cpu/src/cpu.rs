@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+
 use crate::{
     instrs::instr_tab::*,
     registers::Registers,
