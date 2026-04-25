@@ -114,7 +114,7 @@ impl Renderer {
             // ============================================================
             // Get color from CGRAM and apply brightness
             // ============================================================
-            let color = ppu.cgram.current_word(palette_entry);
+            let color = ppu.cgram.read(palette_entry);
 
             let mut r5 = (color & 0x1F) as u16;
             let mut g5 = ((color >> 5) & 0x1F) as u16;
