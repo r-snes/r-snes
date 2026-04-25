@@ -74,11 +74,7 @@ impl Renderer {
             // Read tilemap entry: tilemap_base is a word address => byte address = * 2
             // ==========================================================================
             let map_word_addr = tilemap_base as usize + tile_row * 32 + tile_col;
-            let map_byte_addr = map_word_addr * 2;
-            let entry = u16::from_le_bytes([
-                ppu.vram.memory[map_byte_addr],
-                ppu.vram.memory[map_byte_addr + 1],
-            ]);
+            let entry = ppu.vram.memory[map_word_addr];
 
             let tile_index = entry & 0x03FF; // bits 9:0
             let palette_num = (entry >> 10) & 0x07; // bits 12:10
@@ -93,7 +89,7 @@ impl Renderer {
             // Decode 4bpp pixel from CHR data
             // ============================================================
             let tile_word_base = tiledata_base as usize + tile_index as usize * 16;
-            let color_index = Self::decode_tile_pixel_from( &ppu.vram.memory, tile_word_base, fx, fy);
+            let color_index = Self::decode_tile_pixel_from(&ppu.vram.memory, tile_word_base, fx, fy);
 
             // Color index 0 = transparent => backdrop (palette 0, entry 0)
             let palette_entry;
@@ -134,19 +130,16 @@ impl Renderer {
         self.framebuffer[index + 2] = b;
     }
 
-    fn decode_tile_pixel_from(vram: &[u8], tile_word_base: usize, x: usize, y: usize) -> u8 {
-        // Convert word address to byte address
-        let base = tile_word_base * 2;
+    fn decode_tile_pixel_from(vram: &[u16], tile_word_base: usize, x: usize, y: usize) -> u8 {
+        let w01 = vram[tile_word_base + y];
+        let p0 = (w01 & 0xFF) as u8;       // lo byte = plane 0
+        let p1 = (w01 >> 8) as u8;         // hi byte = plane 1
 
-        // Plane 0+1: bytes 0..15 (2 bytes per row x 8 rows)
-        let p0 = vram[base + y * 2];
-        let p1 = vram[base + y * 2 + 1];
+        // Plane 2+3 : 8 mots plus loin (tiles 4bpp = 16 mots total)
+        let w23 = vram[tile_word_base + 8 + y];
+        let p2 = (w23 & 0xFF) as u8;       // lo byte = plane 2
+        let p3 = (w23 >> 8) as u8;         // hi byte = plane 3
 
-        // Plane 2+3: bytes 16..31
-        let p2 = vram[base + 16 + y * 2];
-        let p3 = vram[base + 16 + y * 2 + 1];
-
-        // MSB of each row byte
         let bit = 7 - x;
         ((p0 >> bit) & 1)
             | (((p1 >> bit) & 1) << 1)
