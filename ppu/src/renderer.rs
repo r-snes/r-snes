@@ -39,8 +39,6 @@ impl Renderer {
     pub fn render_scanline(&mut self, ppu: &PPU, y: usize) {
         let force_blank = ppu.force_blank();
         let target_brightness = ppu.brightness() & 0x0F;
-        let bg_mode = ppu.regs.bg_mode();
-        let bg1_enabled = ppu.regs.bg1_enabled();
 
         // Update brightness once per scanline
         self.update_brightness(target_brightness);
@@ -57,12 +55,6 @@ impl Renderer {
         for x in 0..SCREEN_WIDTH {
             // Hardware force blank: output black
             if force_blank {
-                self.set_pixel(x, y, 0, 0, 0);
-                continue;
-            }
-
-            // Only render in Mode 1 with BG1 enabled
-            if bg_mode != 1 || !bg1_enabled {
                 self.set_pixel(x, y, 0, 0, 0);
                 continue;
             }
