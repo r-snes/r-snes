@@ -176,7 +176,7 @@ pub struct PPURegisters {
     pub vmdatalread: u8, // VRAM data read low
 
     // $213A - VMDATAHREAD
-    pub vmdatabread: u8, // VRAM data read high
+    pub vmdatahread: u8, // VRAM data read high
 
     // $213B - CGDATAREAD
     pub cgdataread: u16, // CGRAM data read
@@ -263,7 +263,7 @@ impl PPURegisters {
             slhv: 0,
             oamdataread: 0,
             vmdatalread: 0,
-            vmdatabread: 0,
+            vmdatahread: 0,
             cgdataread: 0,
             ophct: 0,
             opvct: 0,
