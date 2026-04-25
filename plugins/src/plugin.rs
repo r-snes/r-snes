@@ -30,10 +30,16 @@ pub struct Plugin {
 #[derive(Debug)]
 pub struct PluginTable {
     pub perms: RSnesPermissions,
+
+    /// The lua function that will be run when the plugin is successully
+    /// loaded, right after the user accepted the permission request
+    pub init: Option<picc::StashedClosure>,
 }
 
 impl<'gc> picc::FromValue<'gc> for PluginTable {
     fn from_value(ctx: picc::Context<'gc>, value: picc::Value<'gc>) -> Result<Self, picc::TypeError> {
+        use picc::*;
+
         let picc::Value::Table(tab) = value else {
             return Err(picc::TypeError {
                 expected: "table",
@@ -47,10 +53,23 @@ impl<'gc> picc::FromValue<'gc> for PluginTable {
                 found: "nil",
             })?;
         tab.set_field(ctx, "permissions", picc::Value::Nil);
+
+        let init = match tab.get_value(ctx, "init") {
+            Value::Nil => None,
+            Value::Function(Function::Closure(c)) => Some(ctx.stash(c)),
+            v => return Err(picc::TypeError {
+                expected: "init function or nil",
+                found: v.type_name(),
+            }),
+        };
+        tab.set_field(ctx, "init", picc::Value::Nil);
+
+        // we have removed all expected fields, if any remains, warn for it
         for (key, value) in tab {
             eprintln!("found unused KV pair: ({:?}, {:?})", key, value);
         }
-        Ok(Self { perms })
+
+        Ok(Self { perms, init })
     }
 }
 

@@ -32,7 +32,7 @@ fn main() -> eframe::Result {
     let filename = "./plugin.lua";
     let plugin = Plugin::load_from_file(std::path::Path::new(filename));
 
-    let plugin = match plugin {
+    let mut plugin = match plugin {
         Err(e) => {
             dbg!(e);
             std::process::exit(1);
@@ -59,7 +59,19 @@ fn main() -> eframe::Result {
     if perm_request.allow_all {
         println!("\x1B[1;32m✔\x1B[0m permissions granted");
     } else {
-        println!("\x1B[1;31m✘\x1B[0m permission denied");
+        println!("\x1B[1;31m✘\x1B[0m permission denied, exiting");
+        return Ok(());
+    }
+
+    if let Some(init) = plugin.table.init {
+        let ex = plugin.lua.enter(|ctx| {
+            let closure = ctx.fetch(&init);
+            let ex = piccolo::Executor::start(ctx, closure.into(), ());
+
+            ctx.stash(ex)
+        });
+
+        plugin.lua.execute::<()>(&ex);
     }
 
     Ok(())
