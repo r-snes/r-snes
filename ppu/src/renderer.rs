@@ -40,6 +40,12 @@ impl Renderer {
         let force_blank = ppu.force_blank();
         let target_brightness = ppu.brightness() & 0x0F;
 
+        // Hardware force blank: output black
+        if force_blank {
+            Self::render_full_black(self, y);
+            return;
+        }
+
         // Update brightness once per scanline
         self.update_brightness(target_brightness);
         let brightness = self.current_brightness as u16;
@@ -53,12 +59,6 @@ impl Renderer {
         let scroll_y = ppu.regs.bg1vofs as usize;
 
         for x in 0..SCREEN_WIDTH {
-            // Hardware force blank: output black
-            if force_blank {
-                self.set_pixel(x, y, 0, 0, 0);
-                continue;
-            }
-
             // ============================================================
             // Screen pixel -> tile coordinates
             // ============================================================
@@ -152,5 +152,11 @@ impl Renderer {
             | (((p1 >> bit) & 1) << 1)
             | (((p2 >> bit) & 1) << 2)
             | (((p3 >> bit) & 1) << 3)
+    }
+
+    fn render_full_black(&mut self, y: usize) {
+        for x in 0..SCREEN_WIDTH {
+            self.set_pixel(x, y, 0, 0, 0);
+        }
     }
 }
