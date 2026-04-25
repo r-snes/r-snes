@@ -63,15 +63,8 @@ fn main() -> eframe::Result {
         return Ok(());
     }
 
-    if let Some(init) = plugin.table.init {
-        let ex = plugin.lua.enter(|ctx| {
-            let closure = ctx.fetch(&init);
-            let ex = piccolo::Executor::start(ctx, closure.into(), ());
-
-            ctx.stash(ex)
-        });
-
-        plugin.lua.execute::<()>(&ex);
+    if let Some(ref init) = plugin.table.init {
+        Plugin::run_lua::<_, ()>(&mut plugin.lua, init).unwrap();
     }
 
     Ok(())
