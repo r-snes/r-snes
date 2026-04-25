@@ -1,3 +1,6 @@
 return {
-    permissions = "all"
+    permissions = "all",
+    init = function()
+        print("hello world")
+    end,
 }
