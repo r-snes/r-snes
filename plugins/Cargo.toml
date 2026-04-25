@@ -12,6 +12,7 @@ egui = "0.34.1"
 eframe = { version = "0.34.1", optional = true, features = ["wgpu"] }
 piccolo = { workspace = true }
 env_logger = { version = "0.11.8", features = ["auto-color", "humantime"] }
+derive_aliases = "0.4.7"
 
 # put dependencies only used in the example behind a feature flag
 [features]

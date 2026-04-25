@@ -1,7 +1,5 @@
-use strict_partial_ord_derive as strict;
 use crate::permission::Permission;
-use permission_derive_macro::Permission;
-use perm_tree_node_derive::PermTreeNode;
+use derive_aliases::derive;
 
 use piccolo::{Context, Value};
 
@@ -61,13 +59,13 @@ impl<T: PermTreeLeafNode> PermTreeNode for T {
 
 impl PermTreeLeafNode for bool {}
 
-#[derive(Debug, PartialEq, Eq, strict::PartialOrd, Permission, PermTreeNode)]
+#[derive(..PermTree)]
 pub struct RSnesPermissions {
     pub internal: InternalPermissions,
     pub external: ExternalPermissions,
 }
 
-#[derive(Debug, PartialEq, Eq, strict::PartialOrd, Permission, PermTreeNode)]
+#[derive(..PermTree)]
 pub struct InternalPermissions {
     pub control: ControlPermissions,
     pub cpu: CpuPermissions,
@@ -75,35 +73,35 @@ pub struct InternalPermissions {
     pub bus: BusPermissions,
 }
 
-#[derive(Debug, PartialEq, Eq, strict::PartialOrd, Permission, PermTreeNode)]
+#[derive(..PermTree)]
 pub struct ControlPermissions {
     pub dialog: bool,
     pub pause: bool,
 }
 
-#[derive(Debug, PartialEq, Eq, strict::PartialOrd, Permission, PermTreeNode)]
+#[derive(..PermTree)]
 pub struct CpuPermissions {
     pub registers: bool,
 }
 
-#[derive(Debug, PartialEq, Eq, strict::PartialOrd, Permission, PermTreeNode)]
+#[derive(..PermTree)]
 pub struct PpuPermissions {
     pub display: bool,
 }
 
-#[derive(Debug, PartialEq, Eq, strict::PartialOrd, Permission, PermTreeNode)]
+#[derive(..PermTree)]
 pub struct BusPermissions {
     pub read: bool,
     pub write: bool,
 }
 
-#[derive(Debug, PartialEq, Eq, strict::PartialOrd, Permission, PermTreeNode)]
+#[derive(..PermTree)]
 pub struct ExternalPermissions {
     pub filesystem: FileSystemPermissions,
     pub http: bool,
 }
 
-#[derive(Debug, PartialEq, Eq, strict::PartialOrd, Permission, PermTreeNode)]
+#[derive(..PermTree)]
 pub struct FileSystemPermissions {
     pub read: bool,
     pub write: bool,
