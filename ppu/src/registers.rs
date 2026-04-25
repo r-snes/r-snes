@@ -1,3 +1,5 @@
+use common::u16_split::U16Split;
+
 /// PPU Registers placeholder definitions
 /// Each field is a placeholder; actual behavior, latches, buffering, and timing to implement later.
 pub struct PPURegisters {
@@ -299,7 +301,9 @@ impl PPURegisters {
                     self.bg1hofs_latch = value; // 1st write = low byte
                     self.bg1hofs_latch_written = true;
                 } else {
-                    self.bg1hofs = ((value as u16) << 8) | self.bg1hofs_latch as u16; // 2nd write = high byte
+                    *self.bg1hofs.lo_mut() = self.bg1hofs_latch;
+                    *self.bg1hofs.hi_mut() = value; // 2nd write = high byte
+
                     self.bg1hofs_latch_written = false; // reset latch
                 }
             }
@@ -332,7 +336,9 @@ impl PPURegisters {
                     self.cgdata_latch = value; // 1st write = low byte
                     self.cgdata_latch_written = true;
                 } else {
-                    self.cgdata = ((value as u16) << 8) | self.cgdata_latch as u16; // 2nd write = high byte
+                    *self.cgdata.lo_mut() = self.cgdata_latch;
+                    *self.cgdata.hi_mut() = value; // 2nd write = high byte
+
                     self.cgdata_latch_written = false; // reset latch
                 }
             }

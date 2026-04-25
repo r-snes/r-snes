@@ -59,10 +59,13 @@ impl CGRAM {
         if self.byte_phase == Low {
             self.write_latch = value;
         } else {
-            let word = (self.write_latch as u16) | (((value & 0x7F) as u16) << 8);
-            self.memory[self.word_addr as usize] = word;
+            let word = &mut self.memory[self.word_addr as usize];
+            *word.lo_mut() = self.write_latch;
+            *word.hi_mut() = value & 0x7F;
+
             self.word_addr = self.word_addr.wrapping_add(1);
         }
+
         self.byte_phase.flip();
         self.ppu_open_bus = value;
     }

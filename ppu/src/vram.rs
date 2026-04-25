@@ -1,4 +1,5 @@
 use crate::constants::VRAM_SIZE;
+use common::u16_split::U16Split;
 
 pub struct VRAM {
     pub memory: [u8; VRAM_SIZE],
@@ -59,14 +60,12 @@ impl VRAM {
     // ============================================================
 
     pub fn write_vmadd_low(&mut self, value: u8) {
-        self.vmadd = (self.vmadd & 0x7F00) | value as u16;
-        self.vmadd &= 0x7FFF;
+        *self.vmadd.lo_mut() = value;
         self.load_latch();
     }
 
     pub fn write_vmadd_high(&mut self, value: u8) {
-        self.vmadd = ((value as u16 & 0x7F) << 8) | (self.vmadd & 0x00FF);
-        self.vmadd &= 0x7FFF;
+        *self.vmadd.hi_mut() = value & 0x7F;
         self.load_latch();
     }
 
@@ -130,9 +129,10 @@ impl VRAM {
 
     pub fn load_latch(&mut self) {
         let addr = self.byte_address();
-        let low = self.memory[addr];
-        let high = self.memory[addr + 1];
-        self.vram_latch = (high as u16) << 8 | low as u16;
+        self.vram_latch = u16::from_le_bytes([
+            self.memory[addr],
+            self.memory[addr + 1],
+        ]);
     }
 }
 

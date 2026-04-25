@@ -1,6 +1,7 @@
 use crate::registers::PPURegisters;
 use crate::vram::VRAM;
 use crate::cgram::CGRAM;
+use common::u16_split::U16Split;
 
 pub struct PPU {
     pub regs: PPURegisters,
@@ -42,9 +43,8 @@ impl PPU {
                     self.regs.bg1hofs_latch = value;
                     self.regs.bg1hofs_latch_written = true;
                 } else {
-                    self.regs.bg1hofs =
-                        ((value as u16 & 0x07) << 8) |
-                        self.regs.bg1hofs_latch as u16;
+                    *self.regs.bg1hofs.lo_mut() = self.regs.bg1hofs_latch;
+                    *self.regs.bg1hofs.hi_mut() = value & 0x07;
 
                     self.regs.bg1hofs_latch_written = false;
                 }
@@ -56,9 +56,8 @@ impl PPU {
                     self.regs.bg1vofs_latch = value;
                     self.regs.bg1vofs_latch_written = true;
                 } else {
-                    self.regs.bg1vofs =
-                        ((value as u16 & 0x07) << 8) |
-                        self.regs.bg1vofs_latch as u16;
+                    *self.regs.bg1vofs.lo_mut() = self.regs.bg1vofs_latch;
+                    *self.regs.bg1vofs.hi_mut() = value & 0x07;
 
                     self.regs.bg1vofs_latch_written = false;
                 }

@@ -82,10 +82,10 @@ impl Renderer {
             // ==========================================================================
             let map_word_addr = tilemap_base as usize + tile_row * 32 + tile_col;
             let map_byte_addr = map_word_addr * 2;
-
-            let entry_low  = ppu.vram.memory[map_byte_addr];
-            let entry_high = ppu.vram.memory[map_byte_addr + 1];
-            let entry = (entry_low as u16) | ((entry_high as u16) << 8);
+            let entry = u16::from_le_bytes([
+                ppu.vram.memory[map_byte_addr],
+                ppu.vram.memory[map_byte_addr + 1],
+            ]);
 
             let tile_index = entry & 0x03FF; // bits 9:0
             let palette_num = (entry >> 10) & 0x07; // bits 12:10
