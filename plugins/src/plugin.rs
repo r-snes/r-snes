@@ -116,6 +116,21 @@ impl Plugin {
             allow_all: false,
         }
     }
+
+    pub fn run_lua<F, R>(lua: &mut picc::Lua, stashed: &F) -> Result<R, picc::ExternError>
+    where
+        F: for<'gc> picc::stash::Fetchable<Fetched<'gc>: Into<picc::Function<'gc>>>,
+        R: for<'gc> picc::FromMultiValue<'gc>
+    {
+        let ex = lua.enter(|ctx| {
+            let func = ctx.fetch(stashed);
+            let ex = piccolo::Executor::start(ctx, func.into(), ());
+
+            ctx.stash(ex)
+        });
+
+        lua.execute(&ex)
+    }
 }
 
 pub struct PluginPermRequest<'a> {
