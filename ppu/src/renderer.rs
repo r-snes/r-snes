@@ -18,20 +18,21 @@ impl Renderer {
     }
 
     fn update_brightness(&mut self, target: u8) {
-        if self.current_brightness != target {
-            if self.brightness_delay == 0 {
-                self.brightness_delay = 72; // 1-chip fade
-            }
+        if self.current_brightness == target {
+            return;
+        }
 
-            if self.brightness_delay > 0 {
-                self.brightness_delay -= 1;
+        if self.brightness_delay == 0 {
+            self.brightness_delay = 72;
+            return;
+        }
 
-                if self.current_brightness < target {
-                    self.current_brightness += 1;
-                } else if self.current_brightness > target {
-                    self.current_brightness -= 1;
-                }
-            }
+        self.brightness_delay -= 1;
+
+        if self.current_brightness < target {
+            self.current_brightness += 1;
+        } else {
+            self.current_brightness -= 1;
         }
     }
 
