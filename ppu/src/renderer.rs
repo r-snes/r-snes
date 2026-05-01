@@ -56,6 +56,7 @@ impl Renderer {
 
             let tile_index = entry & 0x03FF; // bits 9:0
             let palette_num = (entry >> 10) & 0x07; // bits 12:10
+            let _priority = (entry & 0x2000) != 0; // bit 13
             let flip_x = (entry & 0x4000) != 0; // bit 14
             let flip_y = (entry & 0x8000) != 0; // bit 15
 
