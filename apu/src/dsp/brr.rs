@@ -1,8 +1,3 @@
-// ============================================================
-// BRR DECODER STATE (per voice)
-// Tracks position within the compressed BRR sample stream.
-// ============================================================
-
 /// BRR playback state for one voice.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Brr {
@@ -30,13 +25,11 @@ pub struct Brr {
 
 
 
-// ============================================================
-// GAUSSIAN INTERPOLATION TABLE
-// 512-entry Gaussian kernel taken from the SNES DSP ROM.
-// Used to smoothly interpolate between decoded BRR samples,
-// eliminating the aliasing that would occur with nearest-neighbour.
-// ============================================================
-
+/// 512-entry Gaussian kernel from the SNES DSP ROM.
+///
+/// Used to smoothly interpolate between decoded BRR samples,
+/// eliminating the aliasing that would occur with nearest-neighbour
+/// sample selection at non-native pitches.
 pub(super) const GAUSS: [i16; 512] = [
       0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
       1,   1,   1,   1,   1,   1,   1,   1,   1,   1,   1,   2,   2,   2,   2,   2,
@@ -71,10 +64,6 @@ pub(super) const GAUSS: [i16; 512] = [
    1616,1623,1630,1636,1643,1650,1657,1664,1671,1678,1685,1692,1699,1706,1713,1720,
    1727,1734,1741,1748,1755,1762,1769,1777,1784,1791,1798,1805,1812,1819,1826,1833,
 ];
-
-// ============================================================
-// BRR DECODING FUNCTIONS
-// ============================================================
 
 /// Decode one 4-bit BRR nibble into a 16-bit PCM sample.
 ///

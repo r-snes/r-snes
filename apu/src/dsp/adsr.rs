@@ -15,12 +15,6 @@ pub(super) const ENVELOPE_RATE_TABLE: [u16; 32] = [
     1,    // 31: every tick
 ];
 
-// ============================================================
-// ADSR ENVELOPE
-// Controls how loud a voice is over time using a 4-phase model.
-// Envelope level is 11 bits wide (0x000–0x7FF).
-// ============================================================
-
 /// Current phase of the ADSR envelope state machine.
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub enum EnvelopePhase {

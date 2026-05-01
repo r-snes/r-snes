@@ -1,11 +1,6 @@
 use super::adsr::Adsr;
 use super::brr::Brr;
 
-// ============================================================
-// VOICE
-// Represents one of the 8 independent audio channels.
-// ============================================================
-
 /// One voice (channel) of the SNES APU DSP.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Voice {

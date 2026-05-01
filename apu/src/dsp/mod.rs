@@ -2,17 +2,12 @@ mod adsr;
 mod brr;
 mod voice;
 
-// Re-export everything tests and external code need
 pub use adsr::{Adsr, EnvelopePhase};
 pub use brr::{Brr, decode_brr_nibble, decode_brr_block};
 pub use voice::Voice;
 
 use adsr::ENVELOPE_RATE_TABLE;
 use brr::ram_read8;
-
-// ============================================================
-// DSP CORE
-// ============================================================
 
 /// The SNES DSP: 8 voices, ADSR envelopes, BRR decoding, stereo mix.
 pub struct Dsp {
@@ -48,42 +43,22 @@ impl Dsp {
         }
     }
 
-    // ----------------------------------------------------------
-    // Register I/O
-    //
-    // DSP register map (7-bit index, 0x00–0x7F):
-    //
-    // Per-voice block (16 bytes per voice, voice N at offset N*0x10):
-    //   +0x0  VOL(L)   signed left volume
-    //   +0x1  VOL(R)   signed right volume
-    //   +0x2  PITCHL   pitch low byte
-    //   +0x3  PITCHH   pitch high byte (6 bits, 13-8)
-    //   +0x4  SRCN     sample source number
-    //   +0x5  ADSR1    EDDDAAAA
-    //   +0x6  ADSR2    SSSRRRRR
-    //   +0x7  GAIN     (not yet implemented)
-    //   +0x8  ENVX     read-only envelope (7-bit)
-    //   +0x9  OUTX     read-only output (8-bit)
-    //
-    // Global registers (in the upper nibble of each 16-byte block):
-    //   $0C  MVOLL    master left volume
-    //   $1C  MVOLR    master right volume
-    //   $2C  EVOLL    echo left volume
-    //   $3C  EVOLR    echo right volume
-    //   $4C  KON      key on  (1 bit per voice)
-    //   $5C  KOFF     key off (1 bit per voice)
-    //   $6C  FLG      flags
-    //   $7C  ENDX     end flags (read)
-    //   $0D  EFB      echo feedback
-    //   $2D  PMON     pitch modulation enable
-    //   $3D  NON      noise enable
-    //   $4D  EON      echo enable
-    //   $5D  DIR      sample directory base page
-    //   $6D  ESA      echo start page
-    //   $7D  EDL      echo delay
-    // ----------------------------------------------------------
-
     /// Read a DSP register by its 7-bit index.
+    ///
+    /// DSP register map (7-bit index `0x00–0x7F`):
+    ///
+    /// Per-voice block — voice N at offset `N * 0x10`:
+    /// ```text
+    /// +0x0 VOL(L)  +0x1 VOL(R)  +0x2 PITCHL  +0x3 PITCHH
+    /// +0x4 SRCN    +0x5 ADSR1   +0x6 ADSR2   +0x7 GAIN
+    /// +0x8 ENVX    +0x9 OUTX
+    /// ```
+    /// Global registers:
+    /// ```text
+    /// $0C MVOLL  $1C MVOLR  $4C KON   $5C KOFF  $5D DIR
+    /// $6C FLG    $7C ENDX   $0D EFB   $2D PMON  $3D NON
+    /// $4D EON    $6D ESA    $7D EDL
+    /// ```
     pub fn read_reg(&self, index: u8) -> u8 {
         self.registers[(index & 0x7F) as usize]
     }
@@ -219,18 +194,13 @@ impl Dsp {
         self.registers[0x7C] &= !(1u8 << v);
     }
 
-    // ----------------------------------------------------------
-    // DSP step — called once per output sample (32 kHz)
-    //
-    // Takes a plain &[u8] RAM slice so the caller can pass
-    // &memory.ram without also borrowing memory.dsp mutably.
-    // ----------------------------------------------------------
-
     /// Advance the DSP by one output sample tick.
     ///
-    /// `ram` is a direct slice of the 64 KB APU RAM.  The DSP only
-    /// reads from RAM (BRR sample data and the DIR table); it never
-    /// writes to it.
+    /// `ram` is a direct slice of the 64 KB APU RAM. The DSP only reads
+    /// from RAM (BRR sample data and the DIR table); it never writes to it.
+    ///
+    /// Takes `&[u8]` rather than `&Memory` so the caller can pass
+    /// `&memory.ram` without conflicting with the `&mut memory.dsp` borrow.
     pub fn step(&mut self, ram: &[u8]) {
         for v in 0..8usize {
             // 1. Envelope update
@@ -336,10 +306,6 @@ impl Dsp {
             voice.brr.addr = voice.brr.addr.wrapping_add(9);
         }
     }
-
-    // ----------------------------------------------------------
-    // Stereo mix
-    // ----------------------------------------------------------
 
     /// Mix all active voices into one stereo output sample pair.
     ///
