@@ -17,30 +17,9 @@ impl Renderer {
         }
     }
 
-    fn update_brightness(&mut self, target: u8) {
-        if self.current_brightness == target {
-            return;
-        }
-
-        if self.brightness_delay == 0 {
-            self.brightness_delay = 72;
-            return;
-        }
-
-        self.brightness_delay -= 1;
-
-        if self.current_brightness < target {
-            self.current_brightness += 1;
-        } else {
-            self.current_brightness -= 1;
-        }
-    }
-
     pub fn render_scanline(&mut self, ppu: &PPU, y: usize) {
-        let force_blank = ppu.force_blank();
-
         // Hardware force blank: output black
-        if force_blank {
+        if ppu.force_blank() {
             Self::render_full_black(self, y);
             return;
         }
@@ -90,35 +69,51 @@ impl Renderer {
             let tile_word_base = tiledata_base as usize + tile_index as usize * 16;
             let color_index = Self::decode_tile_pixel_from(&ppu.vram.memory, tile_word_base, fx, fy);
 
-            // Color index 0 = transparent => backdrop (palette 0, entry 0)
-            let palette_entry;
+            // Transparent pixel -> do nothing
             if color_index == 0 {
-                palette_entry = 0u8
-            } else {
-                // Mode 1 4bpp: palette offset = palette_num * 16
-                palette_entry = (palette_num as u8) * 16 + color_index
+                continue;
             }
 
-            // ============================================================
-            // Get color from CGRAM and apply brightness
-            // ============================================================
+            let palette_entry = ((palette_num as u8) << 4) | color_index;
             let color = ppu.cgram.read(palette_entry);
 
-            let mut r5 = (color & 0x1F) as u16;
-            let mut g5 = ((color >> 5) & 0x1F) as u16;
-            let mut b5 = ((color >> 10) & 0x1F) as u16;
+            let (r, g, b) = Self::apply_brightness(color, brightness);
+            self.set_pixel(x, y, r, g, b);
+        }
+    }
 
-            // Brightness scaling: channel = (channel * (brightness + 1)) >> 4
-            r5 = (r5 * (brightness + 1)) >> 4;
-            g5 = (g5 * (brightness + 1)) >> 4;
-            b5 = (b5 * (brightness + 1)) >> 4;
+    fn apply_brightness(color: u16, brightness: u16) -> (u8, u8, u8) {
+        let mut r = (color & 0x1F) as u16;
+        let mut g = ((color >> 5) & 0x1F) as u16;
+        let mut b = ((color >> 10) & 0x1F) as u16;
 
-            // Convert BGR555 -> RGB888
-            let r8 = ((r5 << 3) | (r5 >> 2)) as u8;
-            let g8 = ((g5 << 3) | (g5 >> 2)) as u8;
-            let b8 = ((b5 << 3) | (b5 >> 2)) as u8;
+        r = (r * (brightness + 1)) >> 4;
+        g = (g * (brightness + 1)) >> 4;
+        b = (b * (brightness + 1)) >> 4;
 
-            self.set_pixel(x, y, r8, g8, b8);
+        let r8 = ((r << 3) | (r >> 2)) as u8;
+        let g8 = ((g << 3) | (g >> 2)) as u8;
+        let b8 = ((b << 3) | (b >> 2)) as u8;
+
+        (r8, g8, b8)
+    }
+
+    fn update_brightness(&mut self, target: u8) {
+        if self.current_brightness == target {
+            return;
+        }
+
+        if self.brightness_delay == 0 {
+            self.brightness_delay = 72;
+            return;
+        }
+
+        self.brightness_delay -= 1;
+
+        if self.current_brightness < target {
+            self.current_brightness += 1;
+        } else {
+            self.current_brightness -= 1;
         }
     }
 
