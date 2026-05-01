@@ -27,7 +27,7 @@ pub struct Plugin {
 
 /// The data described in the lua table returned by
 /// the plugin file
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct PluginTable {
     pub perms: RSnesPermissions,
 
@@ -47,29 +47,34 @@ impl<'gc> picc::FromValue<'gc> for PluginTable {
             });
         };
 
-        let perms = RSnesPermissions::from_lua(ctx, tab.get_value(ctx, "permissions"))
-            .ok_or(picc::TypeError {
-                expected: "permission table",
-                found: "nil",
-            })?;
-        tab.set_field(ctx, "permissions", picc::Value::Nil);
+        let mut ret = Self::default();
 
-        let init = match tab.get_value(ctx, "init") {
-            Value::Nil => None,
-            Value::Function(Function::Closure(c)) => Some(ctx.stash(c)),
-            v => return Err(picc::TypeError {
-                expected: "init function or nil",
-                found: v.type_name(),
-            }),
-        };
-        tab.set_field(ctx, "init", picc::Value::Nil);
-
-        // we have removed all expected fields, if any remains, warn for it
         for (key, value) in tab {
-            eprintln!("found unused KV pair: ({:?}, {:?})", key, value);
+            let Value::String(key) = key else {
+                eprintln!("found unexpected non-string key [{}]", key.display());
+                continue;
+            };
+
+            match key.as_bytes() {
+                b"init" => ret.init = match value {
+                    Value::Nil => None,
+                    Value::Function(Function::Closure(c)) => Some(ctx.stash(c)),
+                    v => return Err(picc::TypeError {
+                        expected: "init function or nil",
+                        found: v.type_name(),
+                    }),
+                },
+                b"permissions" => ret.perms = RSnesPermissions::from_lua(ctx, value)
+                    .ok_or(picc::TypeError {
+                        expected: "permission table",
+                        found: "nil",
+                    })?,
+
+                _ => eprintln!("found unknow key in plugin table: [{:?}]", key.debug_lossy()),
+            }
         }
 
-        Ok(Self { perms, init })
+        Ok(ret)
     }
 }
 
