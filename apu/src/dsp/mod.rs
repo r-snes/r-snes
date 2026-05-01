@@ -124,38 +124,38 @@ impl Dsp {
             (v, 0x7) => todo!("GAIN mode"),
 
             // ---- Global registers ----
-
-            // $4C: KON — key on, one bit per voice (bit 0 = voice 0)
-            (_, _) if idx == 0x4C => {
-                for v in 0..8usize {
-                    if value & (1 << v) != 0 {
-                        self.key_on_voice(v);
+            _ => match idx {
+                // $4C: KON — key on, one bit per voice (bit 0 = voice 0)
+                0x4C => {
+                    for v in 0..8usize {
+                        if value & (1 << v) != 0 {
+                            self.key_on_voice(v);
+                        }
                     }
                 }
-            }
 
-            // $5C: KOFF — key off, enter release phase
-            (_, _) if idx == 0x5C => {
-                for v in 0..8usize {
-                    if value & (1 << v) != 0 {
-                        self.voices[v].key_on = false;
-                        self.voices[v].adsr.envelope_phase = EnvelopePhase::Release;
+                // $5C: KOFF — key off, enter release phase
+                0x5C => {
+                    for v in 0..8usize {
+                        if value & (1 << v) != 0 {
+                            self.voices[v].key_on = false;
+                            self.voices[v].adsr.envelope_phase = EnvelopePhase::Release;
+                        }
                     }
                 }
+
+                // $0C: MVOLL — master left  volume (signed)
+                0x0C => self.master_vol_left  = value as i8,
+
+                // $1C: MVOLR — master right volume (signed)
+                0x1C => self.master_vol_right = value as i8,
+
+                // $5D: DIR — sample directory base page
+                0x5D => self.dir_base = value,
+
+                // All other registers (echo, FIR, noise, etc.) not yet implemented
+                _ => {}
             }
-
-            // $0C: MVOLL — master left  volume (signed)
-            (_, _) if idx == 0x0C => self.master_vol_left  = value as i8,
-
-            // $1C: MVOLR — master right volume (signed)
-            (_, _) if idx == 0x1C => self.master_vol_right = value as i8,
-
-            // $5D: DIR — sample directory base page
-            (_, _) if idx == 0x5D => {
-                self.dir_base = value;
-            }
-
-            _ => {}
         }
     }
 
