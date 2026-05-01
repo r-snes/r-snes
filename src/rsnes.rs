@@ -277,7 +277,7 @@ mod tests {
     fn test_a1t_decrements_after_transfer() {
         let mut rsnes = make_rsnes();
         rsnes.bus.io.mdmaen = 0b0000_0001;
-        set_dma_channel(&mut rsnes, 0, 0b0010_0000, 0x7E, 0x0010, 4);
+        set_dma_channel(&mut rsnes, 0, 0b0001_0000, 0x7E, 0x0010, 4);
 
         rsnes.dma_transfer();
 
@@ -293,8 +293,7 @@ mod tests {
     fn test_a1t_unchanged_in_fixed_mode() {
         let mut rsnes = make_rsnes();
         rsnes.bus.io.mdmaen = 0b0000_0001;
-        // dmap: bit4=1 (fixed address)
-        set_dma_channel(&mut rsnes, 0, 0b0001_0000, 0x7E, 0x0010, 4);
+        set_dma_channel(&mut rsnes, 0, 0b0000_1000, 0x7E, 0x0010, 4);
 
         rsnes.dma_transfer();
 
