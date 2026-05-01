@@ -108,15 +108,15 @@ impl Renderer {
             let mut g5 = ((color >> 5) & 0x1F) as u16;
             let mut b5 = ((color >> 10) & 0x1F) as u16;
 
-            // Brightness scaling: channel = (channel * brightness) >> 4
-            r5 = (r5 * brightness) >> 4;
-            g5 = (g5 * brightness) >> 4;
-            b5 = (b5 * brightness) >> 4;
+            // Brightness scaling: channel = (channel * (brightness + 1)) >> 4
+            r5 = (r5 * (brightness + 1)) >> 4;
+            g5 = (g5 * (brightness + 1)) >> 4;
+            b5 = (b5 * (brightness + 1)) >> 4;
 
             // Convert BGR555 -> RGB888
-            let r8 = ((r5.min(31) << 3) | (r5.min(31) >> 2)) as u8;
-            let g8 = ((g5.min(31) << 3) | (g5.min(31) >> 2)) as u8;
-            let b8 = ((b5.min(31) << 3) | (b5.min(31) >> 2)) as u8;
+            let r8 = ((r5 << 3) | (r5 >> 2)) as u8;
+            let g8 = ((g5 << 3) | (g5 >> 2)) as u8;
+            let b8 = ((b5 << 3) | (b5 >> 2)) as u8;
 
             self.set_pixel(x, y, r8, g8, b8);
         }
