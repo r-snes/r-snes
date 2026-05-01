@@ -1,6 +1,14 @@
 return {
     permissions = "all",
     init = function()
-        print("hello world")
+        i = 10
+        print("plugin initialised: i =", i)
     end,
+
+    actions = {
+        default = function()
+            i = i + 1
+            print("ran plugin default action, i =", i)
+        end,
+    }
 }
