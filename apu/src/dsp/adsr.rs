@@ -22,7 +22,7 @@ pub(super) const ENVELOPE_RATE_TABLE: [u16; 32] = [
 // ============================================================
 
 /// Current phase of the ADSR envelope state machine.
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub enum EnvelopePhase {
     /// Rise linearly from 0 to 0x7FF. Rate index comes from the 4-bit
     /// `attack_rate` field. Special case: `attack_rate == 15` uses a fixed
@@ -43,11 +43,12 @@ pub enum EnvelopePhase {
     Release,
 
     /// Voice is silent; envelope processing is skipped entirely.
+    #[default]
     Off,
 }
 
 /// ADSR envelope for one voice.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct Adsr {
     /// true = ADSR mode, false = GAIN mode (GAIN not yet implemented)
     pub adsr_mode: bool,
@@ -72,21 +73,6 @@ pub struct Adsr {
 
     /// Internal tick counter used to pace envelope updates.
     pub tick_counter: u16,
-}
-
-impl Default for Adsr {
-    fn default() -> Self {
-        Self {
-            adsr_mode: false,
-            attack_rate: 0,
-            decay_rate: 0,
-            sustain_level: 0,
-            sustain_rate: 0,
-            envelope_level: 0,
-            envelope_phase: EnvelopePhase::Off,
-            tick_counter: 0,
-        }
-    }
 }
 
 impl Adsr {

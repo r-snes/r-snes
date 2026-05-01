@@ -4,7 +4,7 @@
 // ============================================================
 
 /// BRR playback state for one voice.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct Brr {
     /// Address of the current BRR block header byte in APU RAM.
     pub addr: u16,
@@ -28,19 +28,7 @@ pub struct Brr {
     pub buffer_fill: u8,
 }
 
-impl Default for Brr {
-    fn default() -> Self {
-        Self {
-            addr: 0,
-            nibble_idx: 0,
-            prev1: 0,
-            prev2: 0,
-            loop_addr: 0,
-            sample_buffer: [0i16; 16],
-            buffer_fill: 0,
-        }
-    }
-}
+
 
 // ============================================================
 // GAUSSIAN INTERPOLATION TABLE

@@ -7,7 +7,7 @@ use super::brr::Brr;
 // ============================================================
 
 /// One voice (channel) of the SNES APU DSP.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct Voice {
     /// Left channel volume, signed (-128..+127).
     pub left_vol: i8,
@@ -37,20 +37,4 @@ pub struct Voice {
 
     /// BRR decoder sub-state.
     pub brr: Brr,
-}
-
-impl Default for Voice {
-    fn default() -> Self {
-        Self {
-            left_vol: 0,
-            right_vol: 0,
-            pitch: 0,
-            srcn: 0,
-            key_on: false,
-            pitch_counter: 0,
-            current_sample: 0,
-            adsr: Adsr::default(),
-            brr: Brr::default(),
-        }
-    }
 }
