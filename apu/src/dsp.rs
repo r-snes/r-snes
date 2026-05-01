@@ -24,10 +24,25 @@ const ENVELOPE_RATE_TABLE: [u16; 32] = [
 /// Current phase of the ADSR envelope state machine.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum EnvelopePhase {
+    /// Rise linearly from 0 to 0x7FF. Rate index comes from the 4-bit
+    /// `attack_rate` field. Special case: `attack_rate == 15` uses a fixed
+    /// +1024 step for a near-instant attack.
     Attack,
+
+    /// Fall exponentially toward the sustain target. Rate index =
+    /// `decay_rate * 2 + 16` (upper half of the rate table). Step size =
+    /// `-(level >> 8) - 1`. Transitions to Sustain when the target is reached.
     Decay,
+
+    /// Continue falling exponentially at the sustain rate. Rate 0 = infinite
+    /// hold (envelope never steps). Transitions to Off when level reaches 0.
     Sustain,
+
+    /// Fixed linear fade of -8 per tick, entered on key-off. No rate table
+    /// gating. Transitions to Off when level reaches 0.
     Release,
+
+    /// Voice is silent; envelope processing is skipped entirely.
     Off,
 }
 
@@ -81,12 +96,6 @@ impl Adsr {
     /// determined by the rate table. Each phase has its own rate source.
     pub fn update_envelope(&mut self) {
         match self.envelope_phase {
-            // -------------------------------------------------
-            // ATTACK: rise linearly from 0 to 0x7FF.
-            // Rate index comes from the 4-bit attack_rate field.
-            // Special case: attack_rate == 15 uses a fixed +1024 step
-            // for a near-instant attack.
-            // -------------------------------------------------
             EnvelopePhase::Attack => {
                 if self.attack_rate == 15 {
                     // Fast attack: fixed +1024 step, no rate gating
@@ -108,12 +117,6 @@ impl Adsr {
                 }
             }
 
-            // -------------------------------------------------
-            // DECAY: fall exponentially toward the sustain target.
-            // Rate index = decay_rate * 2 + 16 (upper half of table).
-            // Step = -(level >> 8) - 1  (exponential curve).
-            // Transition when level reaches the sustain target.
-            // -------------------------------------------------
             EnvelopePhase::Decay => {
                 let rate_idx = (self.decay_rate * 2 + 16) as usize;
                 let period = ENVELOPE_RATE_TABLE[rate_idx.min(31)];
@@ -134,10 +137,6 @@ impl Adsr {
                 }
             }
 
-            // -------------------------------------------------
-            // SUSTAIN: continue falling exponentially at the sustain rate.
-            // Rate 0 = infinite hold (never step).
-            // -------------------------------------------------
             EnvelopePhase::Sustain => {
                 let rate_idx = self.sustain_rate as usize;
                 let period = ENVELOPE_RATE_TABLE[rate_idx.min(31)];
@@ -154,10 +153,6 @@ impl Adsr {
                 }
             }
 
-            // -------------------------------------------------
-            // RELEASE: fixed linear fade of -8 per tick.
-            // Entered on key-off; no rate table gating.
-            // -------------------------------------------------
             EnvelopePhase::Release => {
                 self.envelope_level = self.envelope_level.saturating_sub(8);
                 if self.envelope_level == 0 {
