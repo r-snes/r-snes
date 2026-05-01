@@ -110,8 +110,9 @@ impl Adsr {
                     self.envelope_level = (self.envelope_level + 32).min(0x7FF);
                 }
 
-                if self.envelope_level >= 0x7FF {
-                    self.envelope_level = 0x7FF;
+                // Both branches above clamp with .min(0x7FF), so == is sufficient
+                // and the redundant re-assignment of 0x7FF can be omitted.
+                if self.envelope_level == 0x7FF {
                     self.envelope_phase = EnvelopePhase::Decay;
                     self.tick_counter = 0;
                 }
