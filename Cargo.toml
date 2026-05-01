@@ -26,3 +26,6 @@ sdl2 = { version = "0.38.0", features = ["bundled"] }
 
 [target.'cfg(unix)'.dependencies]
 sdl2 = { version = "0.38.0"}
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)'] }
