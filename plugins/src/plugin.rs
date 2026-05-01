@@ -87,3 +87,15 @@ impl<'a> PluginPermRequest<'a> {
         });
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn load_empty_plugin() {
+        let plugin = Plugin::load(&std::path::Path::new("/dev/null")).unwrap();
+
+        // nothing else to assert yet, we just expect the plugin to load properly
+    }
+}
