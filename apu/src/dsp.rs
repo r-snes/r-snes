@@ -1,12 +1,9 @@
-// ============================================================
-// ENVELOPE RATE TABLE
-// The real DSP uses a 32-entry lookup table to determine how
-// many ticks pass between each envelope step. Index 0 means
-// "never" (infinite hold). All other values are tick counts.
-// ============================================================
-
 /// Ticks between envelope updates for each rate index (0–31).
-/// Rate 0 = never update (infinite). Rate 31 = update every tick.
+/// Rate 31 = update every tick; all other values are tick counts.
+///
+/// The real DSP uses a 32-entry lookup table to determine how many ticks
+/// pass between each envelope step. Index 0 is a special sentinel meaning
+/// infinite hold — the envelope never steps while this rate is active.
 const ENVELOPE_RATE_TABLE: [u16; 32] = [
     0,    // 0: never (infinite)
     2048, 1536, 1280, 1024, 768,
