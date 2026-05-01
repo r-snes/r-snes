@@ -57,8 +57,8 @@ impl RSnes {
 
         // Get transfer parameters from channel DMAP register
         let direction = (ch.dmap >> 7) & 1;
-        let fixed = (ch.dmap >> 4) & 1;
-        let decrement = (ch.dmap >> 5) & 1;
+        let fixed = (ch.dmap >> 3) & 1;
+        let decrement = (ch.dmap >> 4) & 1;
         let mode = ch.dmap & 0x07;
 
         let mut a_addr = SnesAddress {
