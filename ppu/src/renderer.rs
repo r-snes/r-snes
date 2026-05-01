@@ -64,8 +64,8 @@ impl Renderer {
             let px = (x + scroll_x) & 0xFF;
             let py = (y + scroll_y) & 0xFF;
 
-            let tile_col = (px / 8) & 31;
-            let tile_row = (py / 8) & 31;
+            let tile_col = px >> 3;
+            let tile_row = py >> 3;
             let fine_x = px % 8;
             let fine_y = py % 8;
 
