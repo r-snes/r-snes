@@ -279,4 +279,35 @@ mod tests {
             "load should fail: got a int instead of a perm table",
         );
     }
+
+    #[test]
+    fn basic_plugin_increment() {
+        use piccolo::Value;
+
+        let mut plugin = Plugin::load_from_raw(
+            br#"
+            return {
+                permissions = "all",
+                init = function()
+                    i = 10
+                end,
+                actions = {
+                    default = function()
+                        i = i + 1
+                    end,
+                },
+            }"#,
+            None,
+        ).unwrap();
+
+        plugin.run_init().unwrap();
+
+        plugin.run_default().unwrap();
+        plugin.run_default().unwrap();
+        plugin.run_default().unwrap();
+
+        plugin.lua.enter(|ctx| {
+            assert!(matches!(ctx.get_global_value("i"), Value::Integer(13)));
+        });
+    }
 }
