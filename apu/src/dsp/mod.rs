@@ -10,6 +10,8 @@ pub use voice::Voice;
 use adsr::ENVELOPE_RATE_TABLE;
 use brr::ram_read8;
 
+use common::u16_split::U16Split;
+
 /// The SNES DSP: 8 voices, ADSR envelopes, BRR decoding, stereo mix.
 pub struct Dsp {
     /// 128 DSP registers (indexed 0x00–0x7F).
@@ -86,13 +88,13 @@ impl Dsp {
             // +2: PITCH low byte
             (v, 0x2) => {
                 let p = &mut self.voices[v].pitch;
-                *p = (*p & 0x3F00) | (value as u16);
+                *p.lo_mut() = value;
             }
 
             // +3: PITCH high byte (only bits 5-0 = pitch bits 13-8)
             (v, 0x3) => {
                 let p = &mut self.voices[v].pitch;
-                *p = (*p & 0x00FF) | ((value as u16 & 0x3F) << 8);
+                *p.hi_mut() = value & 0x3F;
             }
 
             // +4: SRCN — sample source number (index into DIR table)
