@@ -133,6 +133,8 @@ impl<'a> PluginPermRequest<'a> {
 
 #[cfg(test)]
 mod tests {
+    use piccolo::ExternError;
+
     use super::*;
 
     #[test]
@@ -151,5 +153,25 @@ mod tests {
         let plugin = Plugin::load_from_raw(b"return { permissions = {}}", None).unwrap();
 
         // nothing else to assert yet, we just expect the plugin to load properly
+    }
+
+    #[test]
+    fn invalid_plugin_table() {
+        let plugin = Plugin::load_from_raw(b"return 42", None);
+
+        assert!(
+            matches!(plugin, Err(PluginLoadError::PluginTabError(_))),
+            "load should fail: got a int instead of a table",
+        );
+    }
+
+    #[test]
+    fn invalid_perm_table() {
+        let plugin = Plugin::load_from_raw(b"return { permissions = 42 }", None);
+
+        assert!(
+            matches!(plugin, Err(PluginLoadError::PluginTabError(_))),
+            "load should fail: got a int instead of a perm table",
+        );
     }
 }
