@@ -2,6 +2,7 @@ mod adsr;
 mod brr;
 mod voice;
 
+// Re-export everything tests and external code need
 pub use adsr::{Adsr, EnvelopePhase};
 pub use brr::{Brr, decode_brr_nibble, decode_brr_block};
 pub use voice::Voice;
@@ -71,35 +72,37 @@ impl Dsp {
         let voice_num = idx >> 4;   // high nibble = voice 0–7
         let reg_off   = idx & 0x0F; // low nibble  = register within voice block
 
+        // voice_num = idx >> 4, idx = index & 0x7F, so voice_num <= 7 always.
+        // The `if v < 8` guards are therefore redundant and omitted.
         match (voice_num, reg_off) {
-            // ---- Per-voice registers (voices 0-7) ----
+            // ---- Per-voice registers ----
 
             // +0: VOL(L) — signed left volume
-            (v, 0x0) if v < 8 => self.voices[v].left_vol = value as i8,
+            (v, 0x0) => self.voices[v].left_vol = value as i8,
 
             // +1: VOL(R) — signed right volume
-            (v, 0x1) if v < 8 => self.voices[v].right_vol = value as i8,
+            (v, 0x1) => self.voices[v].right_vol = value as i8,
 
             // +2: PITCH low byte
-            (v, 0x2) if v < 8 => {
+            (v, 0x2) => {
                 let p = &mut self.voices[v].pitch;
                 *p = (*p & 0x3F00) | (value as u16);
             }
 
             // +3: PITCH high byte (only bits 5-0 = pitch bits 13-8)
-            (v, 0x3) if v < 8 => {
+            (v, 0x3) => {
                 let p = &mut self.voices[v].pitch;
                 *p = (*p & 0x00FF) | ((value as u16 & 0x3F) << 8);
             }
 
             // +4: SRCN — sample source number (index into DIR table)
-            (v, 0x4) if v < 8 => self.voices[v].srcn = value,
+            (v, 0x4) => self.voices[v].srcn = value,
 
             // +5: ADSR1 = EDDDAAAA
             //   bit 7:    ADSR enable (1=ADSR, 0=GAIN)
             //   bits 6-4: decay rate index (0–7)
             //   bits 3-0: attack rate index (0–15)
-            (v, 0x5) if v < 8 => {
+            (v, 0x5) => {
                 let adsr = &mut self.voices[v].adsr;
                 adsr.adsr_mode   = (value & 0x80) != 0;
                 adsr.decay_rate  = (value >> 4) & 0x07;
@@ -109,14 +112,14 @@ impl Dsp {
             // +6: ADSR2 = SSSRRRRR
             //   bits 7-5: sustain level (0–7)
             //   bits 4-0: sustain rate index (0–31)
-            (v, 0x6) if v < 8 => {
+            (v, 0x6) => {
                 let adsr = &mut self.voices[v].adsr;
                 adsr.sustain_level = (value >> 5) & 0x07;
                 adsr.sustain_rate  =  value & 0x1F;
             }
 
             // +7: GAIN — TODO: implement GAIN mode
-            (v, 0x7) if v < 8 => { /* GAIN mode not yet implemented */ }
+            (v, 0x7) => { /* GAIN mode not yet implemented */ }
 
             // ---- Global registers ----
 
