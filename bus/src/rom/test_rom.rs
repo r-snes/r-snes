@@ -9,6 +9,7 @@ use common::u16_split::*;
 use std::io::Write;
 use tempfile::tempdir;
 
+#[cfg(not(tarpaulin_include))]
 pub fn create_valid_header(map: MappingMode) -> Vec<u8> {
     let mut header = vec![0u8; HEADER_SIZE];
 
@@ -43,6 +44,7 @@ pub fn create_valid_header(map: MappingMode) -> Vec<u8> {
     header
 }
 
+#[cfg(not(tarpaulin_include))]
 pub fn create_valid_lorom(size: usize) -> Vec<u8> {
     assert!(size >= LOROM_BANK_SIZE, "ROM must be at least 32KiB");
     let mut rom = vec![0; size];
@@ -53,6 +55,7 @@ pub fn create_valid_lorom(size: usize) -> Vec<u8> {
     rom
 }
 
+#[cfg(not(tarpaulin_include))]
 pub fn create_valid_hirom(size: usize) -> Vec<u8> {
     assert!(size >= HIROM_BANK_SIZE, "ROM must be at least 64KiB");
     let mut rom = vec![0; size];
@@ -63,6 +66,7 @@ pub fn create_valid_hirom(size: usize) -> Vec<u8> {
     rom
 }
 
+#[cfg(not(tarpaulin_include))]
 pub fn create_temp_rom(data: &[u8]) -> (std::path::PathBuf, tempfile::TempDir) {
     let dir = tempdir().unwrap();
     let rom_path = dir.path().join("test_rom.sfc");
