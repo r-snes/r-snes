@@ -31,9 +31,23 @@ pub struct Plugin {
 pub struct PluginTable {
     pub perms: RSnesPermissions,
 
+    /// Actions which can be run manually by the user
+    pub actions: PluginActions,
+
     /// The lua function that will be run when the plugin is successully
     /// loaded, right after the user accepted the permission request
     pub init: Option<picc::StashedClosure>,
+}
+
+/// The plugin "actions" (lua functions) which can be manually
+/// triggered by the user
+///
+/// (for now we only accept a single action)
+#[derive(Debug, Default)]
+pub struct PluginActions {
+    /// The "default" action of the plugin, which can be called manually
+    /// by the user as many times as they want
+    pub default: Option<picc::StashedClosure>,
 }
 
 impl<'gc> picc::FromValue<'gc> for PluginTable {
@@ -70,6 +84,44 @@ impl<'gc> picc::FromValue<'gc> for PluginTable {
                         found: "nil",
                     })?,
 
+                b"actions" => ret.actions = FromValue::from_value(ctx, value)?,
+
+                _ => eprintln!("found unknow key in plugin table: [{:?}]", key.debug_lossy()),
+            }
+        }
+
+        Ok(ret)
+    }
+}
+
+impl<'gc> picc::FromValue<'gc> for PluginActions {
+    fn from_value(ctx: picc::Context<'gc>, value: picc::Value<'gc>) -> Result<Self, picc::TypeError> {
+        use picc::*;
+
+        let picc::Value::Table(tab) = value else {
+            return Err(picc::TypeError {
+                expected: "table",
+                found: value.type_name()
+            });
+        };
+
+        let mut ret = Self::default();
+
+        for (key, value) in tab {
+            let Value::String(key) = key else {
+                eprintln!("found unexpected non-string key [{}]", key.display());
+                continue;
+            };
+
+            match key.as_bytes() {
+                b"default" => ret.default = match value {
+                    Value::Nil => None,
+                    Value::Function(Function::Closure(c)) => Some(ctx.stash(c)),
+                    v => return Err(picc::TypeError {
+                        expected: "default function or nil",
+                        found: v.type_name(),
+                    }),
+                },
                 _ => eprintln!("found unknow key in plugin table: [{:?}]", key.debug_lossy()),
             }
         }
@@ -124,7 +176,14 @@ impl Plugin {
 
     pub fn run_init(&mut self) -> Result<(), picc::ExternError> {
         if let Some(ref init) = self.table.init {
-            Self::run_lua::<_, ()>(&mut self.lua, init)?;
+            return Self::run_lua(&mut self.lua, init);
+        }
+        Ok(())
+    }
+
+    pub fn run_default(&mut self) -> Result<(), picc::ExternError> {
+        if let Some(ref default) = self.table.actions.default {
+            return Self::run_lua(&mut self.lua, default);
         }
         Ok(())
     }

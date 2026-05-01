@@ -65,5 +65,9 @@ fn main() -> eframe::Result {
 
     plugin.run_init().unwrap();
 
+    for _ in 1..=5 {
+        plugin.run_default().unwrap();
+    }
+
     Ok(())
 }
