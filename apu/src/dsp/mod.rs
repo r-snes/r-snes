@@ -119,7 +119,7 @@ impl Dsp {
             }
 
             // +7: GAIN — TODO: implement GAIN mode
-            (v, 0x7) => { /* GAIN mode not yet implemented */ }
+            (v, 0x7) => todo!("GAIN mode"),
 
             // ---- Global registers ----
 
