@@ -38,7 +38,6 @@ impl Renderer {
 
     pub fn render_scanline(&mut self, ppu: &PPU, y: usize) {
         let force_blank = ppu.force_blank();
-        let target_brightness = ppu.brightness() & 0x0F;
 
         // Hardware force blank: output black
         if force_blank {
@@ -47,7 +46,7 @@ impl Renderer {
         }
 
         // Update brightness once per scanline
-        self.update_brightness(target_brightness);
+        self.update_brightness(ppu.brightness());
         let brightness = self.current_brightness as u16;
 
         // VRAM word addresses
