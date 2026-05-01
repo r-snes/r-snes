@@ -3,12 +3,6 @@ use common::u16_split::U16Split;
 
 pub struct VRAM {
     pub memory: [u16; VRAM_SIZE],
-
-    // Registers
-    pub vmain: u8, // $2115
-    pub vmadd: u16, // current word address (0–0x7FFF)
-
-    // Internal state
     pub vram_latch: u16, // word latch for reads
 }
 
@@ -16,78 +10,78 @@ impl VRAM {
     pub fn new() -> Self {
         Self {
             memory: [0; VRAM_SIZE],
-            vmain: 0,
-            vmadd: 0,
             vram_latch: 0,
         }
-    }
-
-    // ============================================================
-    // $2115 - VMAIN
-    // ============================================================
-
-    pub fn write_vmain(&mut self, value: u8) {
-        self.vmain = value;
     }
 
     // ============================================================
     // Address increment logic
     // ============================================================
 
-    pub fn increment_amount(&self) -> u16 {
-        match self.vmain & 0b11 {
-            0 => 1,       // increment by 1 word
-            1 => 32,      // increment by 32 words
-            2 | 3 => 128, // increment by 128 words
+    fn vmadd(vmaddl: u8, vmaddh: u8) -> u16 {
+        (vmaddl as u16) | ((vmaddh as u16 & 0x7F) << 8)
+    }
+
+    fn set_vmadd(addr: u16, vmaddl: &mut u8, vmaddh: &mut u8) {
+        *vmaddl = (addr & 0xFF) as u8;
+        *vmaddh = ((addr >> 8) & 0x7F) as u8;
+    }
+
+    pub fn increment_amount(vmain: u8) -> u16 {
+        match vmain & 0b11 {
+            0 => 1,
+            1 => 32,
+            2 | 3 => 128,
             _ => unreachable!(),
         }
     }
 
-    pub fn increment_after_low(&self) -> bool {
-        (self.vmain & 0x80) == 0
+    pub fn increment_after_low(vmain: u8) -> bool {
+        (vmain & 0x80) == 0
     }
 
-    pub fn increment_after_high(&self) -> bool {
-        (self.vmain & 0x80) != 0
+    pub fn increment_after_high(vmain: u8) -> bool {
+        (vmain & 0x80) != 0
     }
 
-    fn increment_vmadd(&mut self) {
-        self.vmadd = (self.vmadd + self.increment_amount()) & 0x7FFF;
+    fn increment_vmadd(vmain: u8, vmaddl: &mut u8, vmaddh: &mut u8) {
+        let addr = (Self::vmadd(*vmaddl, *vmaddh) + Self::increment_amount(vmain)) & 0x7FFF;
+        Self::set_vmadd(addr, vmaddl, vmaddh);
     }
 
     // ============================================================
     // VMADD ($2116 / $2117)
     // ============================================================
 
-    pub fn write_vmadd_low(&mut self, value: u8) {
-        *self.vmadd.lo_mut() = value;
-        self.load_latch();
+    pub fn write_vmadd_low(&mut self, vmaddl: &mut u8, vmaddh: &mut u8, value: u8) {
+        *vmaddl = value;
+        self.load_latch(*vmaddl, *vmaddh);
     }
 
-    pub fn write_vmadd_high(&mut self, value: u8) {
-        *self.vmadd.hi_mut() = value & 0x7F;
-        self.load_latch();
+    pub fn write_vmadd_high(&mut self, vmaddl: &mut u8, vmaddh: &mut u8, value: u8) {
+        *vmaddh = value & 0x7F;
+        self.load_latch(*vmaddl, *vmaddh);
     }
 
     // ============================================================
     // VRAM DATA WRITE ($2118 / $2119)
     // ============================================================
 
-    pub fn write_vmdatal(&mut self, value: u8) {
-        let word = &mut self.memory[self.vmadd as usize];
-        *word.lo_mut() = value;
+    pub fn write_vmdatal(&mut self, vmain: u8, vmaddl: &mut u8, vmaddh: &mut u8, value: u8) {
+        let addr = Self::vmadd(*vmaddl, *vmaddh) as usize;
+        *self.memory[addr].lo_mut() = value;
 
-        if self.increment_after_low() {
-            self.increment_vmadd();
+        if Self::increment_after_low(vmain) {
+            Self::increment_vmadd(vmain, vmaddl, vmaddh);
         }
     }
 
-    pub fn write_vmdatah(&mut self, value: u8) {
-        let word = &mut self.memory[self.vmadd as usize];
-        *word.hi_mut() = value;
+    pub fn write_vmdatah(&mut self, vmain: u8, vmaddl: &mut u8, vmaddh: &mut u8, value: u8) {
+        let addr = Self::vmadd(*vmaddl, *vmaddh) as usize;
+        *self.memory[addr].hi_mut() = value;
 
-        if self.increment_after_high() {
-            self.increment_vmadd();
+        if Self::increment_after_high(vmain) {
+            Self::increment_vmadd(vmain, vmaddl, vmaddh);
         }
     }
 
@@ -95,23 +89,23 @@ impl VRAM {
     // VRAM DATA READ ($2139 / $213A)
     // ============================================================
 
-    pub fn read_vmdatal(&mut self) -> u8 {
+    pub fn read_vmdatal(&mut self, vmain: u8, vmaddl: &mut u8, vmaddh: &mut u8) -> u8 {
         let value = *self.vram_latch.lo();
 
-        if self.increment_after_low() {
-            self.load_latch();
-            self.increment_vmadd();
+        if Self::increment_after_low(vmain) {
+            self.load_latch(*vmaddl, *vmaddh);
+            Self::increment_vmadd(vmain, vmaddl, vmaddh);
         }
 
         value
     }
 
-    pub fn read_vmdatah(&mut self) -> u8 {
+    pub fn read_vmdatah(&mut self, vmain: u8, vmaddl: &mut u8, vmaddh: &mut u8) -> u8 {
         let value = *self.vram_latch.hi();
 
-        if self.increment_after_high() {
-            self.load_latch();
-            self.increment_vmadd();
+        if Self::increment_after_high(vmain) {
+            self.load_latch(*vmaddl, *vmaddh);
+            Self::increment_vmadd(vmain, vmaddl, vmaddh);
         }
 
         value
@@ -121,8 +115,8 @@ impl VRAM {
     // Helpers
     // ============================================================
 
-    pub fn load_latch(&mut self) {
-        self.vram_latch = self.memory[self.vmadd as usize];
+    pub fn load_latch(&mut self, vmaddl: u8, vmaddh: u8) {
+        self.vram_latch = self.memory[Self::vmadd(vmaddl, vmaddh) as usize];
     }
 }
 
