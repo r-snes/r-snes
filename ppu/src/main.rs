@@ -104,7 +104,7 @@ fn main() {
             ppu.step_scanline();
         }
 
-        texture.update(None, &renderer.framebuffer, SCREEN_WIDTH * 3).unwrap();
+        texture.update(None, &renderer.framebuffer[..], SCREEN_WIDTH * 3).unwrap();
         canvas.copy(&texture, None, None).unwrap();
         canvas.present();
 
