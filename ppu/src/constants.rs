@@ -1,4 +1,4 @@
-pub const VRAM_SIZE: usize = 64 * 1024; // 64 KB
+pub const VRAM_SIZE: usize = 32 * 1024; // 64 KB
 pub const CGRAM_SIZE: usize = 256; // 512 octets
 
 pub const SCREEN_WIDTH: usize = 256;
