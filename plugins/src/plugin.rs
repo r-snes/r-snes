@@ -117,6 +117,13 @@ impl Plugin {
         }
     }
 
+    pub fn run_init(&mut self) -> Result<(), picc::ExternError> {
+        if let Some(ref init) = self.table.init {
+            Self::run_lua::<_, ()>(&mut self.lua, init)?;
+        }
+        Ok(())
+    }
+
     pub fn run_lua<F, R>(lua: &mut picc::Lua, stashed: &F) -> Result<R, picc::ExternError>
     where
         F: for<'gc> picc::stash::Fetchable<Fetched<'gc>: Into<picc::Function<'gc>>>,

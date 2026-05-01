@@ -63,9 +63,7 @@ fn main() -> eframe::Result {
         return Ok(());
     }
 
-    if let Some(ref init) = plugin.table.init {
-        Plugin::run_lua::<_, ()>(&mut plugin.lua, init).unwrap();
-    }
+    plugin.run_init().unwrap();
 
     Ok(())
 }
