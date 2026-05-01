@@ -182,6 +182,7 @@ impl RSnes {
 mod tests {
     use super::*;
     use bus::rom::test_rom::*;
+    use common::snes_addr;
 
     fn make_rsnes() -> RSnes {
         let rom_data = create_valid_lorom(0x20000);
@@ -356,5 +357,56 @@ mod tests {
             &[0x00, 0x00, 0x00],
             "WRAM should have been overwritten with open bus value 0x00"
         );
+    }
+
+    #[test]
+    fn test_cpu_update_function() {
+        let mut rsnes = make_rsnes();
+
+        let reset_addr = bus::rom::Rom::get_lorom_offset(snes_addr!(0:0xFFFC));
+        rsnes.bus.rom.data[reset_addr] = 0x00;
+        rsnes.bus.rom.data[reset_addr + 1] = 0x80;
+
+        rsnes.bus.rom.data[0] = 0xEA;
+        rsnes.bus.rom.data[1] = 0xA9;
+        rsnes.bus.rom.data[2] = 0x42;
+        rsnes.bus.rom.data[3] = 0x8D;
+        rsnes.bus.rom.data[4] = 0x34;
+        rsnes.bus.rom.data[5] = 0x12;
+
+        rsnes.update();
+        assert_eq!(rsnes.cpu_master_cycles_to_wait, 6);
+        rsnes.cpu_master_cycles_to_wait = 0;
+        rsnes.update();
+        assert_eq!(rsnes.cpu.regs().PC, 0);
+        rsnes.cpu_master_cycles_to_wait = 0;
+
+        // NO-OP
+        rsnes.update();
+        rsnes.cpu_master_cycles_to_wait = 0;
+        assert_eq!(rsnes.cpu.regs().PC, 0x8000);
+        rsnes.update();
+        rsnes.cpu_master_cycles_to_wait = 0;
+
+        // LDA
+        assert_ne!(rsnes.cpu.regs().A, 0x42);
+        rsnes.update();
+        rsnes.cpu_master_cycles_to_wait = 0;
+        rsnes.update();
+        rsnes.cpu_master_cycles_to_wait = 0;
+
+        // STA
+        assert_ne!(rsnes.cpu.data_bus, 0x8D);
+        rsnes.update();
+        rsnes.cpu_master_cycles_to_wait = 0;
+        assert_eq!(rsnes.cpu.data_bus, 0x8D);
+        rsnes.update();
+        rsnes.cpu_master_cycles_to_wait = 0;
+        rsnes.update();
+        rsnes.cpu_master_cycles_to_wait = 0;
+        rsnes.update();
+        rsnes.cpu_master_cycles_to_wait = 0;
+
+        assert_eq!(rsnes.bus.wram.read(snes_addr!(0:0x1234)), 0x42);
     }
 }
