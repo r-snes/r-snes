@@ -4,6 +4,7 @@ use crate::perm_tree::{
 };
 
 use std::io::Read;
+use std::path::{Path, PathBuf};
 
 use std::fs as fs;
 use piccolo as picc;
@@ -20,7 +21,7 @@ pub enum PluginLoadError {
 
 pub struct Plugin {
     pub lua: picc::Lua,
-    pub path: std::path::PathBuf,
+    pub path: Option<PathBuf>,
     pub table: PluginTable,
 }
 
@@ -54,18 +55,23 @@ impl<'gc> picc::FromValue<'gc> for PluginTable {
 }
 
 impl Plugin {
-    pub fn load(path: &std::path::Path) -> Result<Self, PluginLoadError> {
+    /// Loads a plugin from the file passed as parameter
+    pub fn load_from_file(path: &Path) -> Result<Self, PluginLoadError> {
         let file = fs::File::open(path).map_err(PluginLoadError::OpenError)?;
         let mut file = p_io::buffered_read(file).map_err(PluginLoadError::BufCreationError)?;
         let mut source = Vec::new();
         file.read_to_end(&mut source).map_err(PluginLoadError::ReadError)?;
 
+        Self::load_from_raw(source.as_slice(), Some(path.to_path_buf()))
+    }
+
+    pub fn load_from_raw(file: &[u8], path: Option<std::path::PathBuf>) -> Result<Self, PluginLoadError> {
         let mut lua = picc::Lua::full();
 
         // Enter a context
         let plugin = lua.try_enter(|ctx| {
             // Run the lua script in the global context
-            let closure = picc::Closure::load(ctx, path.to_str(), source.as_slice())?;
+            let closure = picc::Closure::load(ctx, path.as_ref().map(|p| p.to_str()).flatten(), file)?;
 
             // Create an executor that will run the lua script
             let ex = picc::Executor::start(ctx, closure.into(), ());
@@ -81,7 +87,7 @@ impl Plugin {
         Ok(Self {
             lua,
             table,
-            path: path.to_path_buf(),
+            path,
         })
     }
 
@@ -130,8 +136,19 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(target_family = "unix")]
+    fn load_from_file() {
+        let plugin = Plugin::load_from_file(&Path::new("/dev/null"));
+
+        assert!(
+            matches!(plugin, Err(PluginLoadError::PluginTabError(_))),
+            "loading from empty file should fail when reading the plugin tab",
+        );
+    }
+
+    #[test]
     fn load_empty_plugin() {
-        let plugin = Plugin::load(&std::path::Path::new("/dev/null")).unwrap();
+        let plugin = Plugin::load_from_raw(b"return { permissions = {}}", None).unwrap();
 
         // nothing else to assert yet, we just expect the plugin to load properly
     }
