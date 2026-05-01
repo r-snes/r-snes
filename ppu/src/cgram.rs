@@ -22,7 +22,7 @@ impl BytePhase {
 }
 
 pub struct CGRAM {
-    pub memory: [u16; CGRAM_SIZE],
+    pub memory: [u16; CGRAM_SIZE / 2], // CGRAM stored as u16 words instead of bytes
 
     word_addr: u8, // Internal 8-bit word address (0–255)
     byte_phase: BytePhase,
@@ -34,7 +34,7 @@ pub struct CGRAM {
 impl CGRAM {
     pub fn new() -> Self {
         Self {
-            memory: [0; CGRAM_SIZE],
+            memory: [0; CGRAM_SIZE / 2],
             word_addr: 0,
             byte_phase: Low,
             write_latch: 0,
