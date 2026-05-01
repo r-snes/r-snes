@@ -1,6 +1,6 @@
 use ppu::constants::*;
 use ppu::ppu::PPU;
-use ppu::renderer::Renderer;
+use ppu::rendering::renderer::Renderer;
 
 use sdl2::pixels::PixelFormatEnum;
 
