@@ -66,8 +66,8 @@ impl Renderer {
 
             let tile_col = px >> 3;
             let tile_row = py >> 3;
-            let fine_x = px % 8;
-            let fine_y = py % 8;
+            let fine_x = px & 7;
+            let fine_y = py & 7;
 
             // ==========================================================================
             // Read tilemap entry: tilemap_base is a word address => byte address = * 2
