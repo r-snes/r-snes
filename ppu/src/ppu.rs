@@ -1,3 +1,4 @@
+use crate::constants::SCANLINES_PER_FRAME;
 use crate::registers::PPURegisters;
 use crate::vram::VRAM;
 use crate::cgram::CGRAM;
@@ -118,7 +119,7 @@ impl PPU {
     pub fn step_scanline(&mut self) {
         self.scanline += 1;
 
-        if self.scanline >= 262 {
+        if self.scanline >= SCANLINES_PER_FRAME {
             self.scanline = 0;
             self.frame_ready = true;
         }
