@@ -2,6 +2,7 @@ use crate::constants::SCANLINES_PER_FRAME;
 use crate::registers::PPURegisters;
 use crate::vram::VRAM;
 use crate::cgram::CGRAM;
+use crate::write_twice::WriteTwice;
 use common::u16_split::U16Split;
 
 pub struct PPU {
@@ -12,6 +13,9 @@ pub struct PPU {
     // Timing
     pub scanline: u16,
     pub frame_ready: bool,
+
+    bg1hofs_latch: WriteTwice,
+    bg1vofs_latch: WriteTwice,
 }
 
 impl PPU {
@@ -22,6 +26,8 @@ impl PPU {
             cgram: CGRAM::new(),
             scanline: 0,
             frame_ready: false,
+            bg1hofs_latch: WriteTwice::new(),
+            bg1vofs_latch: WriteTwice::new(),
         }
     }
 
@@ -40,27 +46,17 @@ impl PPU {
 
             // BG1 HOFS
             0x210D => {
-                if !self.regs.bg1hofs_latch_written {
-                    self.regs.bg1hofs_latch = value;
-                    self.regs.bg1hofs_latch_written = true;
-                } else {
-                    *self.regs.bg1hofs.lo_mut() = self.regs.bg1hofs_latch;
-                    *self.regs.bg1hofs.hi_mut() = value & 0x07;
-
-                    self.regs.bg1hofs_latch_written = false;
+                if let Some((lo, hi)) = self.bg1hofs_latch.write(value) {
+                    *self.regs.bg1hofs.lo_mut() = lo;
+                    *self.regs.bg1hofs.hi_mut() = hi & 0x07;
                 }
             }
 
             // BG1 VOFS
             0x210E => {
-                if !self.regs.bg1vofs_latch_written {
-                    self.regs.bg1vofs_latch = value;
-                    self.regs.bg1vofs_latch_written = true;
-                } else {
-                    *self.regs.bg1vofs.lo_mut() = self.regs.bg1vofs_latch;
-                    *self.regs.bg1vofs.hi_mut() = value & 0x07;
-
-                    self.regs.bg1vofs_latch_written = false;
+                if let Some((lo, hi)) = self.bg1vofs_latch.write(value) {
+                    *self.regs.bg1vofs.lo_mut() = lo;
+                    *self.regs.bg1vofs.hi_mut() = hi & 0x07;
                 }
             }
 
@@ -226,23 +222,21 @@ mod tests {
     // write $210D — BG1HOFS (two-write latch)
     // ============================================================
 
-    /// First write to $210D must latch the value without committing.
+    /// First write to $210D must not commit bg1hofs.
     #[test]
     fn test_bg1hofs_first_write_latches() {
         let mut ppu = PPU::new();
         ppu.write(0x210D, 0xAB);
         assert_eq!(ppu.regs.bg1hofs, 0x0000);
-        assert!(ppu.regs.bg1hofs_latch_written);
     }
 
     /// Second write to $210D must commit the full 10-bit scroll value.
     #[test]
     fn test_bg1hofs_second_write_commits() {
         let mut ppu = PPU::new();
-        ppu.write(0x210D, 0xCD); // lo
-        ppu.write(0x210D, 0x03); // hi — only bits[2:0] stored
+        ppu.write(0x210D, 0xCD);
+        ppu.write(0x210D, 0x03);
         assert_eq!(ppu.regs.bg1hofs, 0x03CD);
-        assert!(!ppu.regs.bg1hofs_latch_written);
     }
 
     /// The high byte of BG1HOFS must be masked to bits[2:0] only (10-bit scroll).
@@ -250,7 +244,7 @@ mod tests {
     fn test_bg1hofs_high_byte_masked_to_3_bits() {
         let mut ppu = PPU::new();
         ppu.write(0x210D, 0xFF);
-        ppu.write(0x210D, 0xFF); // only bits[2:0] = 0x07 must be stored
+        ppu.write(0x210D, 0xFF);
         assert_eq!(*ppu.regs.bg1hofs.hi(), 0x07);
     }
 
@@ -258,23 +252,21 @@ mod tests {
     // write $210E — BG1VOFS (two-write latch)
     // ============================================================
 
-    /// First write to $210E must latch the value without committing.
+    /// First write to $210E must not commit bg1vofs.
     #[test]
     fn test_bg1vofs_first_write_latches() {
         let mut ppu = PPU::new();
         ppu.write(0x210E, 0x55);
         assert_eq!(ppu.regs.bg1vofs, 0x0000);
-        assert!(ppu.regs.bg1vofs_latch_written);
     }
 
     /// Second write to $210E must commit the full 10-bit scroll value.
     #[test]
     fn test_bg1vofs_second_write_commits() {
         let mut ppu = PPU::new();
-        ppu.write(0x210E, 0x78); // lo
-        ppu.write(0x210E, 0x02); // hi
+        ppu.write(0x210E, 0x78);
+        ppu.write(0x210E, 0x02);
         assert_eq!(ppu.regs.bg1vofs, 0x0278);
-        assert!(!ppu.regs.bg1vofs_latch_written);
     }
 
     /// The high byte of BG1VOFS must be masked to bits[2:0] only.
