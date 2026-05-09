@@ -115,6 +115,7 @@ impl Spc700 {
 
             // Stack operations
             0x2D => self.inst_push_a(mem), // PUSH A
+            0xAE => self.inst_pop_a(mem),  // POP A
 
             // Catch-all
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
@@ -558,6 +559,12 @@ impl Spc700 {
     /// PUSH A — push accumulator onto the stack. 4 cycles.
     fn inst_push_a(&mut self, mem: &mut Memory) {
         self.stack_push(mem, self.regs.a);
+        self.cycles += 4;
+    }
+
+    /// POP A — pop accumulator from the stack. 4 cycles.
+    fn inst_pop_a(&mut self, mem: &mut Memory) {
+        self.regs.a = self.stack_pop(mem);
         self.cycles += 4;
     }
 }
