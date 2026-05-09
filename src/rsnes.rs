@@ -90,21 +90,16 @@ impl RSnes {
                 addr: 0x2100 | ch_b_addr as u16 + b_offset as u16,
             };
 
-            if direction == 0 {
-                // A-Bus to B-Bus
-                let byte = self
-                    .bus
-                    .read(a_addr, &mut self.cpu, &mut self.ppu, &mut self.apu);
-                self.bus
-                    .write(b_addr, byte, &mut self.cpu, &mut self.ppu, &mut self.apu);
+            let (src, dest) = if direction == 0 {
+                (a_addr, b_addr)
             } else {
-                // B-Bus to A-Bus
-                let byte = self
-                    .bus
-                    .read(b_addr, &mut self.cpu, &mut self.ppu, &mut self.apu);
-                self.bus
-                    .write(a_addr, byte, &mut self.cpu, &mut self.ppu, &mut self.apu);
-            }
+                (b_addr, a_addr)
+            };
+            let byte = self
+                .bus
+                .read(src, &mut self.cpu, &mut self.ppu, &mut self.apu);
+            self.bus
+                .write(dest, byte, &mut self.cpu, &mut self.ppu, &mut self.apu);
 
             if fixed == 0 {
                 if decrement == 0 {
