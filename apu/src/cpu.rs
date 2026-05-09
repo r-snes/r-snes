@@ -118,6 +118,8 @@ impl Spc700 {
             0xAE => self.inst_pop_a(mem),  // POP A
             0x4D => self.inst_push_x(mem), // PUSH X
             0xCE => self.inst_pop_x(mem),  // POP X
+            0x6D => self.inst_push_y(mem), // PUSH Y
+            0xEE => self.inst_pop_y(mem),  // POP Y
 
             // Catch-all
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
@@ -579,6 +581,18 @@ impl Spc700 {
     /// POP X — pop X register from the stack. 4 cycles.
     fn inst_pop_x(&mut self, mem: &mut Memory) {
         self.regs.x = self.stack_pop(mem);
+        self.cycles += 4;
+    }
+
+    /// PUSH Y — push Y register onto the stack. 4 cycles.
+    fn inst_push_y(&mut self, mem: &mut Memory) {
+        self.stack_push(mem, self.regs.y);
+        self.cycles += 4;
+    }
+
+    /// POP Y — pop Y register from the stack. 4 cycles.
+    fn inst_pop_y(&mut self, mem: &mut Memory) {
+        self.regs.y = self.stack_pop(mem);
         self.cycles += 4;
     }
 }
