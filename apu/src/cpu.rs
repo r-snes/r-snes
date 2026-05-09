@@ -83,6 +83,7 @@ impl Spc700 {
         
             // Branches
             0x2F => self.inst_bra(mem), // BRA rel
+            0xF0 => self.inst_beq(mem), // BEQ rel
 
             // Catch-all
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
@@ -338,5 +339,17 @@ impl Spc700 {
         let offset = self.read_immediate(mem) as i8;
         self.regs.pc = self.regs.pc.wrapping_add(offset as u16);
         self.cycles += 4;
+    }
+
+    /// BEQ rel — branch if Zero flag is set (last result was zero).
+    /// 4 cycles if taken, 2 cycles if not taken.
+    fn inst_beq(&mut self, mem: &mut Memory) {
+        let offset = self.read_immediate(mem) as i8;
+        if self.get_flag(FLAG_Z) {
+            self.regs.pc = self.regs.pc.wrapping_add(offset as u16);
+            self.cycles += 4;
+        } else {
+            self.cycles += 2;
+        }
     }
 }
