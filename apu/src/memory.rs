@@ -1,4 +1,5 @@
 use crate::dsp::Dsp;
+use common::u16_split::U16Split;
 
 /// SPC700 memory map, covering the relevant I/O region `$00F0–$00FF`:
 ///
@@ -191,8 +192,8 @@ impl Memory {
     }
 
     pub fn write16(&mut self, addr: u16, value: u16) {
-        self.write8(addr,                      (value & 0xFF) as u8);
-        self.write8(addr.wrapping_add(1), (value >> 8) as u8);
+        self.write8(addr,                     *value.lo());
+        self.write8(addr.wrapping_add(1), *value.hi());
     }
 
     /// Write a value to communication port `n` (0–3) from the SNES CPU side.
