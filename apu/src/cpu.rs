@@ -120,6 +120,8 @@ impl Spc700 {
             0xCE => self.inst_pop_x(mem),  // POP X
             0x6D => self.inst_push_y(mem), // PUSH Y
             0xEE => self.inst_pop_y(mem),  // POP Y
+            0x0D => self.inst_push_psw(mem), // PUSH PSW
+            0x8E => self.inst_pop_psw(mem),  // POP PSW
 
             // Catch-all
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
@@ -593,6 +595,19 @@ impl Spc700 {
     /// POP Y — pop Y register from the stack. 4 cycles.
     fn inst_pop_y(&mut self, mem: &mut Memory) {
         self.regs.y = self.stack_pop(mem);
+        self.cycles += 4;
+    }
+
+    /// PUSH PSW — push processor status word onto the stack. 4 cycles.
+    fn inst_push_psw(&mut self, mem: &mut Memory) {
+        self.stack_push(mem, self.regs.psw);
+        self.cycles += 4;
+    }
+
+    /// POP PSW — pop processor status word from the stack. 4 cycles.
+    /// Unlike POP A/X/Y, this restores all flags simultaneously.
+    fn inst_pop_psw(&mut self, mem: &mut Memory) {
+        self.regs.psw = self.stack_pop(mem);
         self.cycles += 4;
     }
 }
