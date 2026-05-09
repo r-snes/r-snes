@@ -82,10 +82,9 @@ impl RSnes {
             5 => &[0, 1, 0, 1],
             _ => unreachable!(),
         };
-        let mut pattern_idx = 0;
 
-        while remaining > 0 {
-            let b_offset = b_offsets[pattern_idx % b_offsets.len()];
+        for pattern_idx in 0..remaining {
+            let b_offset = b_offsets[pattern_idx as usize % b_offsets.len()];
             let b_addr = SnesAddress {
                 bank: 0x00,
                 addr: 0x2100 | ch_b_addr as u16 + b_offset as u16,
@@ -114,9 +113,6 @@ impl RSnes {
                     a_addr.decrement();
                 }
             }
-
-            pattern_idx += 1;
-            remaining -= 1;
 
             // Each byte transferred takes 8 master cycles - ROUGH WAY TO HANDLE IT, TO CHANGE LATER
             self.cpu_master_cycles_to_wait += 8;
