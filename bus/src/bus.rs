@@ -21,7 +21,7 @@ impl Bus {
         Ok(Self {
             rom: Rom::load_from_file(rom_path)?,
             wram: Wram::new(),
-            io: Io::new(),
+            io: Io::default(),
         })
     }
 

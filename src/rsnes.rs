@@ -53,13 +53,14 @@ impl RSnes {
     }
 
     fn execute_dma_channel(&mut self, channel_nb: u8) {
-        let ch = self.bus.io.dma_channels[channel_nb as usize];
+        let ch = &self.bus.io.dma_channels[channel_nb as usize];
 
         // Get transfer parameters from channel DMAP register
         let direction = (ch.dmap >> 7) & 1;
         let fixed = (ch.dmap >> 3) & 1;
         let decrement = (ch.dmap >> 4) & 1;
         let mode = ch.dmap & 0x07;
+        let ch_b_addr = ch.bbad;
 
         let mut a_addr = SnesAddress {
             bank: ch.a1t.bank,
@@ -87,7 +88,7 @@ impl RSnes {
             let b_offset = b_offsets[pattern_idx % b_offsets.len()];
             let b_addr = SnesAddress {
                 bank: 0x00,
-                addr: 0x2100 | ch.bbad as u16 + b_offset as u16,
+                addr: 0x2100 | ch_b_addr as u16 + b_offset as u16,
             };
 
             if direction == 0 {

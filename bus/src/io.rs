@@ -45,7 +45,6 @@ pub struct Io {
     pub dma_channels: [DMAChannel; 8],
 }
 
-#[derive(Copy, Clone)]
 pub struct DMAChannel {
     pub dmap: u8,
 
@@ -63,8 +62,8 @@ pub struct DMAChannel {
     pub unused: u8,
 }
 
-impl DMAChannel {
-    pub fn new() -> Self {
+impl Default for DMAChannel {
+    fn default() -> Self {
         Self {
             dmap: 0xFF,
 
@@ -83,8 +82,8 @@ impl DMAChannel {
     }
 }
 
-impl Io {
-    pub fn new() -> Self {
+impl Default for Io {
+    fn default() -> Self {
         Self {
             nmitimen: 0,
             wrio: 0xFF,
@@ -114,10 +113,12 @@ impl Io {
             joy3: 0,
             joy4: 0,
 
-            dma_channels: [DMAChannel::new(); 8],
+            dma_channels: Default::default(),
         }
     }
+}
 
+impl Io {
     fn panic_invalid_addr(addr: SnesAddress) -> ! {
         panic!(
             "Incorrect access to the IO at address: {:06X}",
@@ -508,7 +509,7 @@ mod tests {
     use common::snes_address::snes_addr;
 
     fn init_all() -> (Io, CPU, PPU, Apu) {
-        let io = Io::new();
+        let io = Io::default();
         let cpu = CPU::poweron();
         let ppu = PPU::new();
         let apu = Apu::new();
