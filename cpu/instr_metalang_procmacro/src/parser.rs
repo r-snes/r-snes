@@ -281,6 +281,9 @@ pub(crate) enum MetaInstruction {
     /// See note 2 for differences with Pull16Into
     PullN16Into(TokenStream),
 
+    /// Generates a Pull8Into or a Pull16Into depending on operand size
+    PullOpInto(TokenStream),
+
     /// Write the u8 stored in <tokstream> at the current address bus
     Write8(TokenStream),
 
@@ -310,6 +313,9 @@ pub(crate) enum MetaInstruction {
     ///
     /// See note 2 for differences with Push16
     PushN16(TokenStream),
+
+    /// Generates a Push8 or a Push16 depending on operand size
+    PushOp(TokenStream),
 
     /// Sets the CPU flags N and Z for an 8-bit value
     SetNZ8(TokenStream),
@@ -388,6 +394,7 @@ impl MetaInstruction {
             "PULLN8_INTO" => MetaInstruction::PullN8Into(it.by_ref().collect()),
             "PULL16_INTO" => MetaInstruction::Pull16Into(it.by_ref().collect()),
             "PULLN16_INTO" => MetaInstruction::PullN16Into(it.by_ref().collect()),
+            "PULL_OP_INTO" => MetaInstruction::PullOpInto(it.by_ref().collect()),
 
             "WRITE8" => MetaInstruction::Write8(it.by_ref().collect()),
             "WRITE16" => MetaInstruction::Write16(it.by_ref().collect()),
@@ -398,6 +405,7 @@ impl MetaInstruction {
             "PUSHN8" => MetaInstruction::PushN8(it.by_ref().collect()),
             "PUSH16" => MetaInstruction::Push16(it.by_ref().collect()),
             "PUSHN16" => MetaInstruction::PushN16(it.by_ref().collect()),
+            "PUSH_OP" => MetaInstruction::PushOp(it.by_ref().collect()),
 
             "SET_NZ8" => MetaInstruction::SetNZ8(it.by_ref().collect()),
             "SET_NZ16" => MetaInstruction::SetNZ16(it.by_ref().collect()),
@@ -704,6 +712,13 @@ impl MetaInstruction {
                 ret += Self::PullN8Into(quote! { *#into.lo_mut() }).expand(pstatus);
                 ret += Self::PullN8Into(quote! { *#into.hi_mut() }).expand(pstatus);
             }
+            Self::PullOpInto(into) => {
+                ret += MetaInstrExpansion::VarWidth{
+                    short: Self::Pull8Into(quote! { *#into.lo_mut() }).expand(pstatus).expect_const(),
+                    long: Self::Pull16Into(into).expand(pstatus).expect_const(),
+                    data: (),
+                };
+            }
 
             Self::Write8(data) => {
                 ret += InstrBody::cycles(vec![Cycle::new(
@@ -759,6 +774,13 @@ impl MetaInstruction {
                 // pushes write the high byte first
                 ret += Self::PushN8(quote! { *#data.hi() }).expand(pstatus);
                 ret += Self::PushN8(quote! { *#data.lo() }).expand(pstatus);
+            }
+            Self::PushOp(op) => {
+                ret += MetaInstrExpansion::VarWidth{
+                    short: Self::Push8(quote! { *#op.lo() }).expand(pstatus).expect_const(),
+                    long: Self::Push16(op).expand(pstatus).expect_const(),
+                    data: (),
+                };
             }
             Self::SetNZ8(data) => {
                 ret += quote! {
