@@ -79,7 +79,7 @@ pub struct PPURegisters {
     pub vmdatal: u8, // Bits: LLLLLLLL | VRAM data write low, increments VMADD
 
     // $2119 - VMDATAH
-    pub vmdatab: u8, // Bits: HHHHHHHH | VRAM data write high, increments VMADD
+    pub vmdatah: u8, // Bits: HHHHHHHH | VRAM data write high, increments VMADD
 
     // $211A - M7SEL
     pub m7sel: u8, // Bits: RF..YX | Mode 7 tilemap repeat (R), fill (F), flip vertical (Y), flip horizontal (X)
@@ -229,7 +229,7 @@ impl PPURegisters {
             vmaddl: 0,
             vmaddh: 0,
             vmdatal: 0,
-            vmdatab: 0,
+            vmdatah: 0,
             m7sel: 0,
             m7a: 0,
             m7b: 0,
