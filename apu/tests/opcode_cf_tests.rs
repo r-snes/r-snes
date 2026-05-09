@@ -1453,3 +1453,124 @@ fn test_tcall_all_16_vector_addresses() {
             "opcode {opcode:#04X} must read vector at {vector_addr:#06X}");
     }
 }
+
+// ============================================================
+// PUSH A ($2D) — push accumulator onto stack
+// ============================================================
+ 
+#[test]
+fn test_push_a_writes_a_to_stack() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a  = 0xAB;
+    cpu.regs.sp = 0xFE;
+    mem.write8(0x0200, 0x2D);
+    cpu.step(&mut mem);
+    assert_eq!(mem.read8(0x01FE), 0xAB, "A must be written to $01FE");
+}
+ 
+#[test]
+fn test_push_a_decrements_sp() {
+    let (mut cpu, mut mem) = make();
+    let sp = cpu.regs.sp;
+    mem.write8(0x0200, 0x2D);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.sp, sp.wrapping_sub(1));
+}
+ 
+#[test]
+fn test_push_a_costs_4_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x2D);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 4);
+}
+ 
+#[test]
+fn test_push_a_does_not_modify_a() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x55;
+    mem.write8(0x0200, 0x2D);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x55, "PUSH must not modify A");
+}
+ 
+#[test]
+fn test_push_a_does_not_modify_flags() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C | FLAG_N;
+    mem.write8(0x0200, 0x2D);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.psw, FLAG_C | FLAG_N);
+}
+ 
+#[test]
+fn test_push_a_sp_wraps_from_00_to_ff() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.sp = 0x00;
+    mem.write8(0x0200, 0x2D);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.sp, 0xFF);
+}
+
+// ============================================================
+// POP A ($AE) — pop accumulator from stack
+// ============================================================
+
+#[test]
+fn test_pop_a_reads_from_stack() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.sp = 0xFE;
+    mem.write8(0x01FF, 0xAB); // value waiting on stack
+    mem.write8(0x0200, 0xAE);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0xAB);
+}
+
+#[test]
+fn test_pop_a_increments_sp() {
+    let (mut cpu, mut mem) = make();
+    let sp = cpu.regs.sp;
+    mem.write8(0x0200, 0xAE);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.sp, sp.wrapping_add(1));
+}
+
+#[test]
+fn test_pop_a_costs_4_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0xAE);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 4);
+}
+
+#[test]
+fn test_pop_a_does_not_modify_flags() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C | FLAG_N;
+    mem.write8(0x0200, 0xAE);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.psw, FLAG_C | FLAG_N);
+}
+
+#[test]
+fn test_pop_a_sp_wraps_from_ff_to_00() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.sp = 0xFF;
+    mem.write8(0x0100, 0x77); // value at $0100 (SP wraps to $00, reads $0100)
+    mem.write8(0x0200, 0xAE);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.sp, 0x00);
+    assert_eq!(cpu.regs.a, 0x77);
+}
+
+#[test]
+fn test_push_a_pop_a_round_trip() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0xCD;
+    mem.write8(0x0200, 0x2D); // PUSH A
+    mem.write8(0x0201, 0xAE); // POP A
+    cpu.regs.a = 0x00;        // clobber A between push and pop
+    cpu.step(&mut mem);       // PUSH
+    cpu.step(&mut mem);       // POP
+    assert_eq!(cpu.regs.a, 0xCD);
+}
