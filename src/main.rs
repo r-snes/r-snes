@@ -55,7 +55,7 @@ fn main() -> Result<(), String> {
                         app.ppu.step_scanline();
                     }
 
-                    Some(app.ppu_renderer.framebuffer.as_slice())
+                    Some(&*app.ppu_renderer.framebuffer)
                 }
                 None => None,
             };

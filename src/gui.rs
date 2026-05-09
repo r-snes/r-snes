@@ -3,11 +3,13 @@ use std::path::PathBuf;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 
+type RawFrameBuffer = [u8; Gui::SNES_WIDTH * Gui::SNES_HEIGHT * 3];
+
 pub struct Gui {
     _sdl_ctx: sdl2::Sdl,
     canvas: sdl2::render::Canvas<sdl2::video::Window>,
     event_pump: sdl2::EventPump,
-    pub(crate) framebuffer: Vec<u8>,
+    pub(crate) framebuffer: Box<RawFrameBuffer>,
 }
 
 pub enum RSnesEvent {
@@ -46,28 +48,10 @@ impl Gui {
             _sdl_ctx: sdl_ctx,
             canvas,
             event_pump,
-            framebuffer: Self::temporary_framebuffer(),
+            framebuffer: Box::new(*include_bytes!("../logo_framebuffer.raw")),
         })
     }
 
-    pub fn temporary_framebuffer() -> Vec<u8> {
-        let mut framebuffer = vec![0u8; Self::SNES_WIDTH * Self::SNES_HEIGHT * 3];
-
-        for y in 0..Self::SNES_HEIGHT {
-            for x in 0..Self::SNES_WIDTH {
-                let pixel_index = y * Self::SNES_WIDTH + x;
-                let byte_index = pixel_index * 3;
-
-                let shade = ((x + y) & 0xFF) as u8;
-
-                framebuffer[byte_index + 0] = shade; // B
-                framebuffer[byte_index + 1] = shade; // G
-                framebuffer[byte_index + 2] = shade; // R
-            }
-        }
-
-        framebuffer
-    }
 
     pub fn clear(&mut self, r: u8, g: u8, b: u8) {
         self.canvas
@@ -111,7 +95,7 @@ impl Gui {
             })
     }
 
-    fn draw_framebuffer(&mut self, framebuffer: Option<&[u8]>) -> Result<(), String> {
+    fn draw_framebuffer(&mut self, framebuffer: Option<&RawFrameBuffer>) -> Result<(), String> {
         use sdl2::pixels::PixelFormatEnum;
 
         let framebuffer = framebuffer.unwrap_or(&self.framebuffer);
@@ -135,7 +119,7 @@ impl Gui {
         Ok(())
     }
 
-    pub fn update(&mut self, framebuffer: Option<&[u8]>) -> impl Iterator<Item = RSnesEvent> + use<'_> {
+    pub fn update(&mut self, framebuffer: Option<&RawFrameBuffer>) -> impl Iterator<Item = RSnesEvent> + use<'_> {
         self.clear(30, 30, 35);
 
         match self.draw_framebuffer(framebuffer) {

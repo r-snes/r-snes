@@ -1,8 +1,10 @@
 use crate::constants::*;
 use crate::ppu::PPU;
 
+pub type RawFrameBuffer = [u8; SCREEN_WIDTH * SCREEN_HEIGHT * 3];
+
 pub struct Renderer {
-    pub framebuffer: Vec<u8>,
+    pub framebuffer: Box<RawFrameBuffer>,
 
     current_brightness: u8,
     brightness_delay: u8,
@@ -11,8 +13,8 @@ pub struct Renderer {
 impl Renderer {
     pub fn new() -> Self {
         Self {
-            framebuffer: vec![0; SCREEN_WIDTH * SCREEN_HEIGHT * 3],
-            current_brightness: 15, // full brightness 
+            framebuffer: Box::new([0; size_of::<RawFrameBuffer>()]),
+            current_brightness: 15, // full brightness
             brightness_delay: 0,
         }
     }
