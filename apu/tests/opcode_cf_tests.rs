@@ -8,6 +8,7 @@
 /// - BVC ($50) — branch if V clear
 /// - BVS ($70) — branch if V set
 /// - BCC ($90) — branch if C clear
+/// - BCS ($B0) — branch if C set
 
 use apu::cpu::{Spc700, FLAG_C, FLAG_N, FLAG_Z, FLAG_V};
 use apu::Memory;
