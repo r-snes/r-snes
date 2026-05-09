@@ -62,13 +62,13 @@ impl RSnes {
         let mode = ch.dmap & 0x07;
 
         let mut a_addr = SnesAddress {
-            bank: ch.a1b,
-            addr: ((ch.a1th as u16) << 8) | ch.a1tl as u16,
+            bank: ch.a1t.bank,
+            addr: ch.a1t.addr,
         };
 
         // 0x0000 means 65536 bytes, u32 needed to not overflow
         let mut remaining: u32 = {
-            let raw = ((ch.dash as u16) << 8) | ch.dasl as u16;
+            let raw = ch.das;
             if raw == 0 { 0x10000 } else { raw as u32 }
         };
 
@@ -123,10 +123,8 @@ impl RSnes {
 
         // Reset DMA channel registers
         let ch = &mut self.bus.io.dma_channels[channel_nb as usize];
-        ch.dasl = 0;
-        ch.dash = 0;
-        ch.a1tl = a_addr.addr as u8;
-        ch.a1th = (a_addr.addr >> 8) as u8;
+        ch.das = 0;
+        ch.a1t.addr = a_addr.addr;
     }
 
     /// This function will be called every master cycle, it will either decrease the
@@ -201,11 +199,9 @@ mod tests {
         let ch = &mut rsnes.bus.io.dma_channels[channel];
         ch.dmap = dmap;
         ch.bbad = 0xFF; // 0x21FF: safe no-op destination because useful memory zones not implemented yet
-        ch.a1b = src_bank;
-        ch.a1tl = src_addr as u8;
-        ch.a1th = (src_addr >> 8) as u8;
-        ch.dasl = size as u8;
-        ch.dash = (size >> 8) as u8;
+        ch.a1t.bank = src_bank;
+        ch.a1t.addr = src_addr;
+        ch.das = size;
     }
 
     #[test]
@@ -234,7 +230,7 @@ mod tests {
 
         // Channel 0 was not enabled, its source address should not have changed
         let ch0 = &rsnes.bus.io.dma_channels[0];
-        let ch0_addr = ((ch0.a1th as u16) << 8) | ch0.a1tl as u16;
+        let ch0_addr = ch0.a1t.addr;
         assert_eq!(ch0_addr, 0x0000, "Channel 0 should not have run");
         assert_eq!(rsnes.bus.io.mdmaen, 0);
     }
@@ -250,11 +246,11 @@ mod tests {
         rsnes.dma_transfer();
 
         let ch0 = &rsnes.bus.io.dma_channels[0];
-        let ch0_addr = ((ch0.a1th as u16) << 8) | ch0.a1tl as u16;
+        let ch0_addr = ch0.a1t.addr;
         assert_eq!(ch0_addr, 0x0002, "Channel 0 should have advanced by 2");
 
         let ch1 = &rsnes.bus.io.dma_channels[1];
-        let ch1_addr = ((ch1.a1th as u16) << 8) | ch1.a1tl as u16;
+        let ch1_addr = ch1.a1t.addr;
         assert_eq!(ch1_addr, 0x0103, "Channel 1 should have advanced by 3");
     }
 
@@ -267,7 +263,7 @@ mod tests {
         rsnes.dma_transfer();
 
         let ch = &rsnes.bus.io.dma_channels[0];
-        let final_addr = ((ch.a1th as u16) << 8) | ch.a1tl as u16;
+        let final_addr = ch.a1t.addr;
         assert_eq!(
             final_addr, 0x0014,
             "Source address should have advanced by 4"
@@ -283,7 +279,7 @@ mod tests {
         rsnes.dma_transfer();
 
         let ch = &rsnes.bus.io.dma_channels[0];
-        let final_addr = ((ch.a1th as u16) << 8) | ch.a1tl as u16;
+        let final_addr = ch.a1t.addr;
         assert_eq!(
             final_addr, 0x000C,
             "Source address should have decreased by 4"
@@ -299,7 +295,7 @@ mod tests {
         rsnes.dma_transfer();
 
         let ch = &rsnes.bus.io.dma_channels[0];
-        let final_addr = ((ch.a1th as u16) << 8) | ch.a1tl as u16;
+        let final_addr = ch.a1t.addr;
         assert_eq!(
             final_addr, 0x0010,
             "Source address should not change in fixed mode"
@@ -315,8 +311,7 @@ mod tests {
         rsnes.dma_transfer();
 
         let ch = &rsnes.bus.io.dma_channels[0];
-        assert_eq!(ch.dasl, 0, "dasl should be 0 after transfer");
-        assert_eq!(ch.dash, 0, "dash should be 0 after transfer");
+        assert_eq!(ch.das, 0, "das should be 0 after transfer");
     }
 
     /// This test isn't really relevant for now because the destination
@@ -335,7 +330,7 @@ mod tests {
         rsnes.dma_transfer();
 
         let ch = &rsnes.bus.io.dma_channels[0];
-        let final_addr = ((ch.a1th as u16) << 8) | ch.a1tl as u16;
+        let final_addr = ch.a1t.addr;
         assert_eq!(final_addr, 0x0103);
     }
 

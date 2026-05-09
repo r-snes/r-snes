@@ -1,6 +1,6 @@
 use crate::constants::{IO_END_ADDRESS, IO_START_ADDRESS};
 use apu::Apu;
-use common::snes_address::SnesAddress;
+use common::{snes_addr, snes_address::SnesAddress, u16_split::U16Split};
 use cpu::cpu::CPU;
 use ppu::ppu::PPU;
 
@@ -20,14 +20,11 @@ pub struct Io {
     pub wrmpya: u8,
     pub wrmpyb: u8,
 
-    pub wrdivl: u8,
-    pub wrdivh: u8,
+    pub wrdiv: u16,
     pub wrdivb: u8,
 
-    pub htimel: u8,
-    pub htimeh: u8,
-    pub vtimel: u8,
-    pub vtimeh: u8,
+    pub htime: u16,
+    pub vtime: u16,
 
     pub mdmaen: u8,
     pub hdmaen: u8,
@@ -54,16 +51,12 @@ pub struct DMAChannel {
 
     pub bbad: u8,
 
-    pub a1tl: u8,
-    pub a1th: u8,
-    pub a1b: u8,
+    pub a1t: SnesAddress,
 
-    pub dasl: u8,
-    pub dash: u8,
+    pub das: u16,
     pub dasb: u8,
 
-    pub a2al: u8,
-    pub a2ah: u8,
+    pub a2a: u16,
 
     pub nltr: u8,
 
@@ -77,16 +70,11 @@ impl DMAChannel {
 
             bbad: 0xFF,
 
-            a1tl: 0xFF,
-            a1th: 0xFF,
-            a1b: 0xFF,
-
-            dasl: 0xFF,
-            dash: 0xFF,
+            a1t: snes_addr!(0xFF:0xFFFF),
+            das: 0xFF,
             dasb: 0xFF,
 
-            a2al: 0xFF,
-            a2ah: 0xFF,
+            a2a: 0xFFFF,
 
             nltr: 0xFF,
 
@@ -104,14 +92,11 @@ impl Io {
             wrmpya: 0xFF,
             wrmpyb: 0xFF,
 
-            wrdivl: 0xFF,
-            wrdivh: 0xFF,
+            wrdiv: 0xFFFF,
             wrdivb: 0xFF,
 
-            htimel: 0xFF,
-            htimeh: 1,
-            vtimel: 0xFF,
-            vtimeh: 1,
+            htime: 0x01FF,
+            vtime: 0x01FF,
 
             mdmaen: 0,
             hdmaen: 0,
@@ -217,14 +202,14 @@ impl Io {
                 match reg_nb {
                     0x0 => channel.dmap,
                     0x1 => channel.bbad,
-                    0x2 => channel.a1tl,
-                    0x3 => channel.a1th,
-                    0x4 => channel.a1b,
-                    0x5 => channel.dasl,
-                    0x6 => channel.dash,
+                    0x2 => *channel.a1t.addr.lo(),
+                    0x3 => *channel.a1t.addr.hi(),
+                    0x4 => channel.a1t.bank,
+                    0x5 => *channel.das.lo(),
+                    0x6 => *channel.das.hi(),
                     0x7 => channel.dasb,
-                    0x8 => channel.a2al,
-                    0x9 => channel.a2ah,
+                    0x8 => *channel.a2a.lo(),
+                    0x9 => *channel.a2a.hi(),
                     0xA => channel.nltr,
                     0xB | 0xF => channel.unused,
 
@@ -276,12 +261,12 @@ impl Io {
 
             // Division registers
             // TODO : Make the actual division take 16 CPU cycles
-            0x4204 => self.wrdivl = value,
-            0x4205 => self.wrdivh = value,
+            0x4204 => *self.wrdiv.lo_mut() = value,
+            0x4205 => *self.wrdiv.hi_mut() = value,
             0x4206 => {
                 self.wrdivb = value;
 
-                let dividend = ((self.wrdivh as u16) << 8) | self.wrdivl as u16;
+                let dividend = self.wrdiv;
 
                 if value != 0 {
                     self.rddiv = dividend / value as u16;
@@ -293,11 +278,11 @@ impl Io {
             }
 
             // Screen timer Horizontal target values
-            0x4207 => self.htimel = value,
-            0x4208 => self.htimeh = value,
+            0x4207 => *self.htime.lo_mut() = value,
+            0x4208 => *self.htime.hi_mut() = value,
             // Screen timer Vertical target values
-            0x4209 => self.vtimel = value,
-            0x420A => self.vtimeh = value,
+            0x4209 => *self.vtime.lo_mut() = value,
+            0x420A => *self.vtime.hi_mut() = value,
 
             // DMA and HDMA enable registers
             // TODO : Implement real DMA and HDMA behaviors
@@ -316,14 +301,14 @@ impl Io {
                 match reg_nb {
                     0x0 => channel.dmap = value,
                     0x1 => channel.bbad = value,
-                    0x2 => channel.a1tl = value,
-                    0x3 => channel.a1th = value,
-                    0x4 => channel.a1b = value,
-                    0x5 => channel.dasl = value,
-                    0x6 => channel.dash = value,
+                    0x2 => *channel.a1t.addr.lo_mut() = value,
+                    0x3 => *channel.a1t.addr.hi_mut() = value,
+                    0x4 => channel.a1t.bank = value,
+                    0x5 => *channel.das.lo_mut() = value,
+                    0x6 => *channel.das.hi_mut() = value,
                     0x7 => channel.dasb = value,
-                    0x8 => channel.a2al = value,
-                    0x9 => channel.a2ah = value,
+                    0x8 => *channel.a2a.lo_mut() = value,
+                    0x9 => *channel.a2a.hi_mut() = value,
                     0xA => channel.nltr = value,
                     0xB | 0xF => channel.unused = value,
                     _ => {}
@@ -638,8 +623,8 @@ mod tests {
         io.write(wrdivh_addr, value_wrdivh, &mut cpu, &mut ppu, &mut apu);
         io.write(wrdivb_addr, value_wrdivb, &mut cpu, &mut ppu, &mut apu);
 
-        assert_eq!(io.wrdivl, value_wrdivl);
-        assert_eq!(io.wrdivh, value_wrdivh);
+        assert_eq!(*io.wrdiv.lo(), value_wrdivl);
+        assert_eq!(*io.wrdiv.hi(), value_wrdivh);
         assert_eq!(io.wrdivb, value_wrdivb);
         assert_eq!(io.rddiv, value_wrdiv / value_wrdivb as u16);
         assert_eq!(io.rdmpy, value_wrdiv % value_wrdivb as u16);
@@ -671,10 +656,10 @@ mod tests {
         io.write(vtimel_addr, value_vtimel, &mut cpu, &mut ppu, &mut apu);
         io.write(vtimeh_addr, value_vtimeh, &mut cpu, &mut ppu, &mut apu);
 
-        assert_eq!(io.htimel, value_htimel);
-        assert_eq!(io.htimeh, value_htimeh);
-        assert_eq!(io.vtimel, value_vtimel);
-        assert_eq!(io.vtimeh, value_vtimeh);
+        assert_eq!(*io.htime.lo(), value_htimel);
+        assert_eq!(*io.htime.hi(), value_htimeh);
+        assert_eq!(*io.vtime.lo(), value_vtimel);
+        assert_eq!(*io.vtime.hi(), value_vtimeh);
     }
 
     #[test]
@@ -808,8 +793,8 @@ mod tests {
         io.write(wrdivh_addr, value_wrdivh, &mut cpu, &mut ppu, &mut apu);
         io.write(wrdivb_addr, value_wrdivb, &mut cpu, &mut ppu, &mut apu);
 
-        assert_eq!(io.wrdivl, value_wrdivl);
-        assert_eq!(io.wrdivh, value_wrdivh);
+        assert_eq!(*io.wrdiv.lo(), value_wrdivl);
+        assert_eq!(*io.wrdiv.hi(), value_wrdivh);
         assert_eq!(io.wrdivb, value_wrdivb);
         assert_eq!(io.rddiv, 0xFFFF);
         assert_eq!(io.rdmpy, value_wrdiv);
@@ -849,23 +834,29 @@ mod tests {
                         assert_eq!(read_value, value_inc);
                     }
                     0x2 => {
-                        assert_eq!(io.dma_channels[channel_nb as usize].a1tl, value_inc);
+                        assert_eq!(
+                            *io.dma_channels[channel_nb as usize].a1t.addr.lo(),
+                            value_inc
+                        );
                         assert_eq!(read_value, value_inc);
                     }
                     0x3 => {
-                        assert_eq!(io.dma_channels[channel_nb as usize].a1th, value_inc);
+                        assert_eq!(
+                            *io.dma_channels[channel_nb as usize].a1t.addr.hi(),
+                            value_inc
+                        );
                         assert_eq!(read_value, value_inc);
                     }
                     0x4 => {
-                        assert_eq!(io.dma_channels[channel_nb as usize].a1b, value_inc);
+                        assert_eq!(io.dma_channels[channel_nb as usize].a1t.bank, value_inc);
                         assert_eq!(read_value, value_inc);
                     }
                     0x5 => {
-                        assert_eq!(io.dma_channels[channel_nb as usize].dasl, value_inc);
+                        assert_eq!(*io.dma_channels[channel_nb as usize].das.lo(), value_inc);
                         assert_eq!(read_value, value_inc);
                     }
                     0x6 => {
-                        assert_eq!(io.dma_channels[channel_nb as usize].dash, value_inc);
+                        assert_eq!(*io.dma_channels[channel_nb as usize].das.hi(), value_inc);
                         assert_eq!(read_value, value_inc);
                     }
                     0x7 => {
@@ -873,11 +864,11 @@ mod tests {
                         assert_eq!(read_value, value_inc);
                     }
                     0x8 => {
-                        assert_eq!(io.dma_channels[channel_nb as usize].a2al, value_inc);
+                        assert_eq!(*io.dma_channels[channel_nb as usize].a2a.lo(), value_inc);
                         assert_eq!(read_value, value_inc);
                     }
                     0x9 => {
-                        assert_eq!(io.dma_channels[channel_nb as usize].a2ah, value_inc);
+                        assert_eq!(*io.dma_channels[channel_nb as usize].a2a.hi(), value_inc);
                         assert_eq!(read_value, value_inc);
                     }
                     0xA => {
