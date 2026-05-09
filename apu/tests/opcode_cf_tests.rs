@@ -4,8 +4,11 @@
 ///   - BEQ ($F0) — branch if Z set
 ///  - BNE ($D0) — branch if Z clear
 ///  - BPL ($10) — branch if N clear
+/// - BMI ($30) — branch if N set
+/// - BVC ($50) — branch if V clear
+/// - BVS ($70) — branch if V set
 
-use apu::cpu::{Spc700, FLAG_C, FLAG_N, FLAG_Z};
+use apu::cpu::{Spc700, FLAG_C, FLAG_N, FLAG_Z, FLAG_V};
 use apu::Memory;
 
 // ============================================================
@@ -533,5 +536,219 @@ fn test_bmi_not_taken_after_positive_load() {
  
     cpu.step(&mut mem); // LDA #$01 → N=0
     cpu.step(&mut mem); // BMI — not taken
+    assert_eq!(cpu.regs.pc, 0x0204);
+}
+
+// ============================================================
+// BVC ($50) — branch if Overflow clear
+// ============================================================
+ 
+#[test]
+fn test_bvc_taken_when_v_clear() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = 0x00;
+    mem.write8(0x0200, 0x50);
+    mem.write8(0x0201, 0x04); // +4 → $0206
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.pc, 0x0206);
+}
+ 
+#[test]
+fn test_bvc_taken_costs_4_cycles() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = 0x00;
+    mem.write8(0x0200, 0x50);
+    mem.write8(0x0201, 0x00);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 4);
+}
+ 
+#[test]
+fn test_bvc_not_taken_when_v_set() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_V;
+    mem.write8(0x0200, 0x50);
+    mem.write8(0x0201, 0x04);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.pc, 0x0202);
+}
+ 
+#[test]
+fn test_bvc_not_taken_costs_2_cycles() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_V;
+    mem.write8(0x0200, 0x50);
+    mem.write8(0x0201, 0x00);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 2);
+}
+ 
+#[test]
+fn test_bvc_taken_when_n_and_z_set_but_v_clear() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_N | FLAG_Z;
+    mem.write8(0x0200, 0x50);
+    mem.write8(0x0201, 0x04);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.pc, 0x0206);
+}
+ 
+#[test]
+fn test_bvc_not_taken_when_v_and_n_set() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_V | FLAG_N;
+    mem.write8(0x0200, 0x50);
+    mem.write8(0x0201, 0x04);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.pc, 0x0202);
+}
+ 
+#[test]
+fn test_bvc_does_not_modify_flags() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_N | FLAG_C;
+    mem.write8(0x0200, 0x50);
+    mem.write8(0x0201, 0x00);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.psw, FLAG_N | FLAG_C);
+}
+ 
+#[test]
+fn test_bvc_taken_after_adc_no_overflow() {
+    // $01 + $01 = $02 — no signed overflow, V=0 → BVC taken
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x01;
+    mem.write8(0x0200, 0x88); // ADC A,#$01
+    mem.write8(0x0201, 0x01);
+    mem.write8(0x0202, 0x50); // BVC +2
+    mem.write8(0x0203, 0x02);
+    mem.write8(0x0204, 0xFF); // skipped
+    mem.write8(0x0205, 0xFF); // skipped
+    mem.write8(0x0206, 0x00); // NOP — branch target
+ 
+    cpu.step(&mut mem); // ADC — V=0
+    cpu.step(&mut mem); // BVC — taken
+    assert_eq!(cpu.regs.pc, 0x0206);
+}
+ 
+#[test]
+fn test_bvc_not_taken_after_adc_overflow() {
+    // $70 + $10 = $80 — pos+pos=neg, signed overflow, V=1 → BVC not taken
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x70;
+    mem.write8(0x0200, 0x88); // ADC A,#$10
+    mem.write8(0x0201, 0x10);
+    mem.write8(0x0202, 0x50); // BVC +2
+    mem.write8(0x0203, 0x02);
+ 
+    cpu.step(&mut mem); // ADC — V=1
+    cpu.step(&mut mem); // BVC — not taken
+    assert_eq!(cpu.regs.pc, 0x0204);
+}
+
+// ============================================================
+// BVS ($70) — branch if Overflow set
+// ============================================================
+ 
+#[test]
+fn test_bvs_taken_when_v_set() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_V;
+    mem.write8(0x0200, 0x70);
+    mem.write8(0x0201, 0x04); // +4 → $0206
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.pc, 0x0206);
+}
+ 
+#[test]
+fn test_bvs_taken_costs_4_cycles() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_V;
+    mem.write8(0x0200, 0x70);
+    mem.write8(0x0201, 0x00);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 4);
+}
+ 
+#[test]
+fn test_bvs_not_taken_when_v_clear() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = 0x00;
+    mem.write8(0x0200, 0x70);
+    mem.write8(0x0201, 0x04);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.pc, 0x0202);
+}
+ 
+#[test]
+fn test_bvs_not_taken_costs_2_cycles() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = 0x00;
+    mem.write8(0x0200, 0x70);
+    mem.write8(0x0201, 0x00);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 2);
+}
+ 
+#[test]
+fn test_bvs_taken_with_other_flags_also_set() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_V | FLAG_N | FLAG_C;
+    mem.write8(0x0200, 0x70);
+    mem.write8(0x0201, 0x04);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.pc, 0x0206);
+}
+ 
+#[test]
+fn test_bvs_not_taken_when_only_n_set() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_N;
+    mem.write8(0x0200, 0x70);
+    mem.write8(0x0201, 0x04);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.pc, 0x0202);
+}
+ 
+#[test]
+fn test_bvs_does_not_modify_flags() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_V | FLAG_C;
+    mem.write8(0x0200, 0x70);
+    mem.write8(0x0201, 0x00);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.psw, FLAG_V | FLAG_C);
+}
+ 
+#[test]
+fn test_bvs_taken_after_adc_overflow() {
+    // $70 + $10 = $80 — pos+pos=neg, V=1 → BVS taken
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x70;
+    mem.write8(0x0200, 0x88); // ADC A,#$10
+    mem.write8(0x0201, 0x10);
+    mem.write8(0x0202, 0x70); // BVS +2
+    mem.write8(0x0203, 0x02);
+    mem.write8(0x0204, 0xFF); // skipped
+    mem.write8(0x0205, 0xFF); // skipped
+    mem.write8(0x0206, 0x00); // NOP — branch target
+ 
+    cpu.step(&mut mem); // ADC — V=1
+    cpu.step(&mut mem); // BVS — taken
+    assert_eq!(cpu.regs.pc, 0x0206);
+}
+ 
+#[test]
+fn test_bvs_not_taken_after_adc_no_overflow() {
+    // $01 + $01 = $02 — no overflow, V=0 → BVS not taken
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x01;
+    mem.write8(0x0200, 0x88); // ADC A,#$01
+    mem.write8(0x0201, 0x01);
+    mem.write8(0x0202, 0x70); // BVS +2
+    mem.write8(0x0203, 0x02);
+ 
+    cpu.step(&mut mem); // ADC — V=0
+    cpu.step(&mut mem); // BVS — not taken
     assert_eq!(cpu.regs.pc, 0x0204);
 }
