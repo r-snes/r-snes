@@ -94,6 +94,7 @@ impl Spc700 {
 
             // Subroutine calls and returns
             0x3F => self.inst_call(mem), // CALL !abs
+            0x6F => self.inst_ret(mem),  // RET
 
             // Catch-all
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
@@ -461,7 +462,7 @@ impl Spc700 {
         self.regs.sp = self.regs.sp.wrapping_sub(1);
     }
  
-    fn _stack_pop(&mut self, mem: &mut Memory) -> u8 {
+    fn stack_pop(&mut self, mem: &mut Memory) -> u8 {
         self.regs.sp = self.regs.sp.wrapping_add(1);
         mem.read8_mut(0x0100 | self.regs.sp as u16)
     }
@@ -482,5 +483,15 @@ impl Spc700 {
         self.stack_push(mem, pc_lo);
         self.regs.pc = target;
         self.cycles += 8;
+    }
+
+    /// RET — pop return address (low then high) and jump to it.
+    ///
+    /// 1 byte. 5 cycles.
+    fn inst_ret(&mut self, mem: &mut Memory) {
+        let lo = self.stack_pop(mem) as u16;
+        let hi = self.stack_pop(mem) as u16;
+        self.regs.pc = (hi << 8) | lo;
+        self.cycles += 5;
     }
 }
