@@ -92,6 +92,9 @@ impl Spc700 {
             0x90 => self.inst_bcc(mem), // BCC rel
             0xB0 => self.inst_bcs(mem), // BCS rel
 
+            // Subroutine calls and returns
+            0x3F => self.inst_call(mem), // CALL !abs
+
             // Catch-all
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
         }
@@ -442,5 +445,42 @@ impl Spc700 {
         } else {
             self.cycles += 2;
         }
+    }
+
+    // =========================================================
+    // STACK HELPERS
+    //
+    // The SPC700 stack lives at $0100–$01FF regardless of FLAG_P.
+    // SP points to the next free slot.
+    // PUSH: write to $0100|SP, then decrement SP.
+    // POP:  increment SP, then read from $0100|SP.
+    // =========================================================
+ 
+    fn stack_push(&mut self, mem: &mut Memory, value: u8) {
+        mem.write8(0x0100 | self.regs.sp as u16, value);
+        self.regs.sp = self.regs.sp.wrapping_sub(1);
+    }
+ 
+    fn _stack_pop(&mut self, mem: &mut Memory) -> u8 {
+        self.regs.sp = self.regs.sp.wrapping_add(1);
+        mem.read8_mut(0x0100 | self.regs.sp as u16)
+    }
+ 
+    // =========================================================
+    // SUBROUTINE CALLS AND RETURNS
+    // =========================================================
+ 
+    /// CALL !abs — push PC (high then low), jump to 16-bit target.
+    /// 3 bytes: opcode + 16-bit target address. 8 cycles.
+    fn inst_call(&mut self, mem: &mut Memory) {
+        let target = self.read_immediate16(mem);
+        // Push return address: high byte first, then low byte.
+        // RET will pop low then high to reconstruct PC correctly.
+        let pc_hi = (self.regs.pc >> 8) as u8;
+        let pc_lo = (self.regs.pc & 0xFF) as u8;
+        self.stack_push(mem, pc_hi);
+        self.stack_push(mem, pc_lo);
+        self.regs.pc = target;
+        self.cycles += 8;
     }
 }
