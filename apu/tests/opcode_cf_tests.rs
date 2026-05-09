@@ -1138,3 +1138,221 @@ fn test_nested_call_ret() {
     cpu.step(&mut mem); // outer RET  → $0203
     assert_eq!(cpu.regs.pc, 0x0203);
 }
+
+// ============================================================
+// PCALL ($4F) — push return address, jump to $FF00 + u
+// ============================================================
+ 
+#[test]
+fn test_pcall_jumps_to_ff00_plus_u() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x4F);
+    mem.write8(0x0201, 0x20); // u = $20 → target = $FF20
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.pc, 0xFF20);
+}
+ 
+#[test]
+fn test_pcall_u_zero_jumps_to_ff00() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x4F);
+    mem.write8(0x0201, 0x00);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.pc, 0xFF00);
+}
+ 
+#[test]
+fn test_pcall_u_ff_jumps_to_ffff() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x4F);
+    mem.write8(0x0201, 0xFF);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.pc, 0xFFFF);
+}
+ 
+#[test]
+fn test_pcall_pushes_return_address() {
+    // PCALL is 2 bytes → return address = $0202
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x4F);
+    mem.write8(0x0201, 0x20);
+    let sp = cpu.regs.sp;
+    cpu.step(&mut mem);
+    let hi = mem.read8(0x0100 | sp as u16);
+    let lo = mem.read8(0x0100 | sp.wrapping_sub(1) as u16);
+    let ret = ((hi as u16) << 8) | lo as u16;
+    assert_eq!(ret, 0x0202);
+}
+ 
+#[test]
+fn test_pcall_decrements_sp_by_2() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x4F);
+    mem.write8(0x0201, 0x00);
+    let sp_before = cpu.regs.sp;
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.sp, sp_before.wrapping_sub(2));
+}
+ 
+#[test]
+fn test_pcall_costs_6_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x4F);
+    mem.write8(0x0201, 0x00);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 6);
+}
+ 
+#[test]
+fn test_pcall_does_not_modify_flags() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C | FLAG_Z;
+    mem.write8(0x0200, 0x4F);
+    mem.write8(0x0201, 0x00);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.psw, FLAG_C | FLAG_Z);
+}
+ 
+#[test]
+fn test_pcall_ret_round_trip() {
+    // PCALL to $FF20, RET returns to $0202
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x4F); // PCALL $20
+    mem.write8(0x0201, 0x20);
+    mem.write8(0xFF20, 0x6F); // RET
+    let sp_before = cpu.regs.sp;
+    cpu.step(&mut mem); // PCALL
+    cpu.step(&mut mem); // RET
+    assert_eq!(cpu.regs.pc, 0x0202);
+    assert_eq!(cpu.regs.sp, sp_before);
+}
+
+// ============================================================
+// TCALL ($01/$11/.../$F1) — call via vector table at $FFDE-(n*2)
+// ============================================================
+ 
+#[test]
+fn test_tcall_0_reads_vector_at_ffde() {
+    // n=0: vector at $FFDE/$FFDF
+    let (mut cpu, mut mem) = make();
+    mem.write8(0xFFDE, 0x00);
+    mem.write8(0xFFDF, 0x08); // target = $0800
+    mem.write8(0x0200, 0x01); // TCALL 0
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.pc, 0x0800);
+}
+ 
+#[test]
+fn test_tcall_1_reads_vector_at_ffdc() {
+    // n=1: vector at $FFDE - 2 = $FFDC/$FFDD
+    let (mut cpu, mut mem) = make();
+    mem.write8(0xFFDC, 0x00);
+    mem.write8(0xFFDD, 0x09); // target = $0900
+    mem.write8(0x0200, 0x11); // TCALL 1
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.pc, 0x0900);
+}
+ 
+#[test]
+fn test_tcall_15_reads_vector_at_ffc0() {
+    // n=15: vector at $FFDE - 30 = $FFC0/$FFC1
+    let (mut cpu, mut mem) = make();
+    mem.write8(0xFFC0, 0x00);
+    mem.write8(0xFFC1, 0x0A); // target = $0A00
+    mem.write8(0x0200, 0xF1); // TCALL 15
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.pc, 0x0A00);
+}
+ 
+#[test]
+fn test_tcall_pushes_return_address() {
+    // TCALL is 1 byte → return address = $0201
+    let (mut cpu, mut mem) = make();
+    mem.write8(0xFFDE, 0x00);
+    mem.write8(0xFFDF, 0x08);
+    mem.write8(0x0200, 0x01);
+    let sp = cpu.regs.sp;
+    cpu.step(&mut mem);
+    let hi = mem.read8(0x0100 | sp as u16);
+    let lo = mem.read8(0x0100 | sp.wrapping_sub(1) as u16);
+    let ret = ((hi as u16) << 8) | lo as u16;
+    assert_eq!(ret, 0x0201);
+}
+ 
+#[test]
+fn test_tcall_decrements_sp_by_2() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0xFFDE, 0x00);
+    mem.write8(0xFFDF, 0x08);
+    mem.write8(0x0200, 0x01);
+    let sp_before = cpu.regs.sp;
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.sp, sp_before.wrapping_sub(2));
+}
+ 
+#[test]
+fn test_tcall_costs_8_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0xFFDE, 0x00);
+    mem.write8(0xFFDF, 0x08);
+    mem.write8(0x0200, 0x01);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 8);
+}
+ 
+#[test]
+fn test_tcall_does_not_modify_flags() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C | FLAG_Z;
+    mem.write8(0xFFDE, 0x00);
+    mem.write8(0xFFDF, 0x08);
+    mem.write8(0x0200, 0x01);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.psw, FLAG_C | FLAG_Z);
+}
+ 
+#[test]
+fn test_tcall_vector_is_little_endian() {
+    // Low byte at vector_addr, high byte at vector_addr+1
+    let (mut cpu, mut mem) = make();
+    mem.write8(0xFFDE, 0x34); // lo
+    mem.write8(0xFFDF, 0x12); // hi → target = $1234
+    mem.write8(0x0200, 0x01);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.pc, 0x1234);
+}
+ 
+#[test]
+fn test_tcall_ret_round_trip() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0xFFDE, 0x00);
+    mem.write8(0xFFDF, 0x08); // target = $0800
+    mem.write8(0x0200, 0x01); // TCALL 0
+    mem.write8(0x0800, 0x6F); // RET → back to $0201
+    let sp_before = cpu.regs.sp;
+    cpu.step(&mut mem); // TCALL
+    cpu.step(&mut mem); // RET
+    assert_eq!(cpu.regs.pc, 0x0201);
+    assert_eq!(cpu.regs.sp, sp_before);
+}
+ 
+#[test]
+fn test_tcall_all_16_vector_addresses() {
+    // Verify each n maps to the correct vector address
+    let expected: [(u8, u16); 16] = [
+        (0x01, 0xFFDE), (0x11, 0xFFDC), (0x21, 0xFFDA), (0x31, 0xFFD8),
+        (0x41, 0xFFD6), (0x51, 0xFFD4), (0x61, 0xFFD2), (0x71, 0xFFD0),
+        (0x81, 0xFFCE), (0x91, 0xFFCC), (0xA1, 0xFFCA), (0xB1, 0xFFC8),
+        (0xC1, 0xFFC6), (0xD1, 0xFFC4), (0xE1, 0xFFC2), (0xF1, 0xFFC0),
+    ];
+ 
+    for (opcode, vector_addr) in expected {
+        let (mut cpu, mut mem) = make();
+        mem.write8(vector_addr,     0x34);
+        mem.write8(vector_addr + 1, 0x12); // target = $1234 for each
+        mem.write8(0x0200, opcode);
+        cpu.step(&mut mem);
+        assert_eq!(cpu.regs.pc, 0x1234,
+            "opcode {opcode:#04X} must read vector at {vector_addr:#06X}");
+    }
+}
