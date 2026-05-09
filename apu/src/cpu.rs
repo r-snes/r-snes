@@ -81,6 +81,9 @@ impl Spc700 {
             0x08 => self.inst_ora_imm(mem), // ORA #imm
             0x48 => self.inst_eor_imm(mem), // EOR #imm
         
+            // Branches
+            0x2F => self.inst_bra(mem), // BRA rel
+
             // Catch-all
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
         }
@@ -326,5 +329,14 @@ impl Spc700 {
         self.regs.a ^= self.read_immediate(mem);
         self.set_zn_flags(self.regs.a);
         self.cycles += 2;
+    }
+
+    /// BRA rel — branch always.
+    /// Reads a signed 8-bit offset relative to the instruction after BRA
+    /// Always taken. 4 cycles.
+    fn inst_bra(&mut self, mem: &mut Memory) {
+        let offset = self.read_immediate(mem) as i8;
+        self.regs.pc = self.regs.pc.wrapping_add(offset as u16);
+        self.cycles += 4;
     }
 }
