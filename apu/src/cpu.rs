@@ -86,6 +86,7 @@ impl Spc700 {
             0xF0 => self.inst_beq(mem), // BEQ rel
             0xD0 => self.inst_bne(mem), // BNE rel
             0x10 => self.inst_bpl(mem), // BPL rel
+            0x30 => self.inst_bmi(mem), // BMI rel
 
             // Catch-all
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
@@ -372,6 +373,17 @@ impl Spc700 {
     fn inst_bpl(&mut self, mem: &mut Memory) {
         let offset = self.read_immediate(mem) as i8;
         if !self.get_flag(FLAG_N) {
+            self.regs.pc = self.regs.pc.wrapping_add(offset as u16);
+            self.cycles += 4;
+        } else {
+            self.cycles += 2;
+        }
+    }
+    /// BMI rel — branch if Negative flag is set
+    /// 4 cycles if taken, 2 cycles if not taken.
+    fn inst_bmi(&mut self, mem: &mut Memory) {
+        let offset = self.read_immediate(mem) as i8;
+        if self.get_flag(FLAG_N) {
             self.regs.pc = self.regs.pc.wrapping_add(offset as u16);
             self.cycles += 4;
         } else {
