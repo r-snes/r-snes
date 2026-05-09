@@ -1569,9 +1569,9 @@ fn test_push_a_pop_a_round_trip() {
     cpu.regs.a = 0xCD;
     mem.write8(0x0200, 0x2D); // PUSH A
     mem.write8(0x0201, 0xAE); // POP A
-    cpu.regs.a = 0x00;        // clobber A between push and pop
-    cpu.step(&mut mem);       // PUSH
-    cpu.step(&mut mem);       // POP
+    cpu.step(&mut mem);       // PUSH — A=0xCD pushed
+    cpu.regs.a = 0x00;        // clobber after push
+    cpu.step(&mut mem);       // POP — restores 0xCD
     assert_eq!(cpu.regs.a, 0xCD);
 }
 
@@ -1661,9 +1661,9 @@ fn test_push_x_pop_x_round_trip() {
     cpu.regs.x = 0xEF;
     mem.write8(0x0200, 0x4D); // PUSH X
     mem.write8(0x0201, 0xCE); // POP X
-    cpu.regs.x = 0x00;
-    cpu.step(&mut mem);
-    cpu.step(&mut mem);
+    cpu.step(&mut mem);       // PUSH
+    cpu.regs.x = 0x00;        // clobber after push
+    cpu.step(&mut mem);       // POP
     assert_eq!(cpu.regs.x, 0xEF);
 }
 
@@ -1753,9 +1753,9 @@ fn test_push_y_pop_y_round_trip() {
     cpu.regs.y = 0x9A;
     mem.write8(0x0200, 0x6D); // PUSH Y
     mem.write8(0x0201, 0xEE); // POP Y
-    cpu.regs.y = 0x00;
-    cpu.step(&mut mem);
-    cpu.step(&mut mem);
+    cpu.step(&mut mem);       // PUSH
+    cpu.regs.y = 0x00;        // clobber after push
+    cpu.step(&mut mem);       // POP
     assert_eq!(cpu.regs.y, 0x9A);
 }
 
@@ -1848,15 +1848,14 @@ fn test_push_psw_pop_psw_round_trip() {
     cpu.regs.psw = FLAG_C | FLAG_V | FLAG_N;
     mem.write8(0x0200, 0x0D); // PUSH PSW
     mem.write8(0x0201, 0x8E); // POP PSW
-    cpu.regs.psw = 0x00;      // clobber flags
-    cpu.step(&mut mem);
-    cpu.step(&mut mem);
+    cpu.step(&mut mem);       // PUSH
+    cpu.regs.psw = 0x00;      // clobber after push
+    cpu.step(&mut mem);       // POP
     assert_eq!(cpu.regs.psw, FLAG_C | FLAG_V | FLAG_N);
 }
 
 #[test]
 fn test_all_registers_push_pop_independent() {
-    // Push A, X, Y, PSW in order — pop must restore in reverse (LIFO)
     let (mut cpu, mut mem) = make();
     cpu.regs.a   = 0x11;
     cpu.regs.x   = 0x22;
@@ -1871,13 +1870,17 @@ fn test_all_registers_push_pop_independent() {
     mem.write8(0x0206, 0xCE); // POP X
     mem.write8(0x0207, 0xAE); // POP A
 
-    // clobber all before popping
+    // push all four
+    for _ in 0..4 { cpu.step(&mut mem); }
+
+    // clobber after all pushes are done
     cpu.regs.a   = 0x00;
     cpu.regs.x   = 0x00;
     cpu.regs.y   = 0x00;
     cpu.regs.psw = 0x00;
 
-    for _ in 0..8 { cpu.step(&mut mem); }
+    // pop all four
+    for _ in 0..4 { cpu.step(&mut mem); }
 
     assert_eq!(cpu.regs.psw, FLAG_C, "PSW must be restored");
     assert_eq!(cpu.regs.y,   0x33,   "Y must be restored");
