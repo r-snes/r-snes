@@ -40,7 +40,7 @@ impl Spc700 {
     }
 
     pub fn step(&mut self, mem: &mut Memory) {
-        let opcode = mem.read8(self.regs.pc);
+        let opcode = mem.read8_mut(self.regs.pc);
         self.regs.pc = self.regs.pc.wrapping_add(1);
 
         match opcode {
@@ -113,15 +113,17 @@ impl Spc700 {
     }
 
     /// Read the next byte from memory at PC and advance PC by 1.
-    fn read_immediate(&mut self, mem: &Memory) -> u8 {
-        let value = mem.read8(self.regs.pc);
+    ///
+    /// Uses `read8_mut` so that reads of `$FD–$FF` (timer counters)
+    /// correctly clear the counter, matching hardware behaviour.
+    fn read_immediate(&mut self, mem: &mut Memory) -> u8 {
+        let value = mem.read8_mut(self.regs.pc);
         self.regs.pc = self.regs.pc.wrapping_add(1);
         value
     }
 
     /// Read a 16-bit little-endian immediate (two bytes) and advance PC by 2.
-    /// Takes &Memory, not &mut Memory — reads are non-mutating.
-    fn read_immediate16(&mut self, mem: &Memory) -> u16 {
+    fn read_immediate16(&mut self, mem: &mut Memory) -> u16 {
         let lo = self.read_immediate(mem) as u16;
         let hi = self.read_immediate(mem) as u16;
         lo | (hi << 8)
@@ -148,19 +150,19 @@ impl Spc700 {
         self.cycles += 2;
     }
 
-    pub fn inst_lda_imm(&mut self, mem: &Memory) {
+    pub fn inst_lda_imm(&mut self, mem: &mut Memory) {
         self.regs.a = self.read_immediate(mem);
         self.set_zn_flags(self.regs.a);
         self.cycles += 2;
     }
 
-    pub fn inst_ldx_imm(&mut self, mem: &Memory) {
+    pub fn inst_ldx_imm(&mut self, mem: &mut Memory) {
         self.regs.x = self.read_immediate(mem);
         self.set_zn_flags(self.regs.x);
         self.cycles += 2;
     }
 
-    pub fn inst_ldy_imm(&mut self, mem: &Memory) {
+    pub fn inst_ldy_imm(&mut self, mem: &mut Memory) {
         self.regs.y = self.read_immediate(mem);
         self.set_zn_flags(self.regs.y);
         self.cycles += 2;
@@ -184,56 +186,54 @@ impl Spc700 {
         self.cycles += 4;
     }
 
-    pub fn inst_lda_abs(&mut self, mem: &Memory) {
+    pub fn inst_lda_abs(&mut self, mem: &mut Memory) {
         let addr = self.read_immediate16(mem);
-        self.regs.a = mem.read8(addr);
+        self.regs.a = mem.read8_mut(addr);
         self.set_zn_flags(self.regs.a);
         self.cycles += 4;
     }
 
-    pub fn inst_ldx_abs(&mut self, mem: &Memory) {
+    pub fn inst_ldx_abs(&mut self, mem: &mut Memory) {
         let addr = self.read_immediate16(mem);
-        self.regs.x = mem.read8(addr);
+        self.regs.x = mem.read8_mut(addr);
         self.set_zn_flags(self.regs.x);
         self.cycles += 4;
     }
 
-    pub fn inst_ldy_abs(&mut self, mem: &Memory) {
+    pub fn inst_ldy_abs(&mut self, mem: &mut Memory) {
         let addr = self.read_immediate16(mem);
-        self.regs.y = mem.read8(addr);
+        self.regs.y = mem.read8_mut(addr);
         self.set_zn_flags(self.regs.y);
         self.cycles += 4;
     }    
 
-    // Load from direct page — read-only, takes &Memory
-    pub fn inst_lda_dp(&mut self, mem: &Memory) {
+    // Load from direct page
+    pub fn inst_lda_dp(&mut self, mem: &mut Memory) {
         let offset = self.read_immediate(mem) as u16;
         let addr = self.dp_base() | offset;
-        self.regs.a = mem.read8(addr);
+        self.regs.a = mem.read8_mut(addr);
         self.set_zn_flags(self.regs.a);
         self.cycles += 3;
     }
 
-    pub fn inst_ldx_dp(&mut self, mem: &Memory) {
+    pub fn inst_ldx_dp(&mut self, mem: &mut Memory) {
         let offset = self.read_immediate(mem) as u16;
         let addr = self.dp_base() | offset;
-        self.regs.x = mem.read8(addr);
+        self.regs.x = mem.read8_mut(addr);
         self.set_zn_flags(self.regs.x);
         self.cycles += 3;
     }
 
-    pub fn inst_ldy_dp(&mut self, mem: &Memory) {
+    pub fn inst_ldy_dp(&mut self, mem: &mut Memory) {
         let offset = self.read_immediate(mem) as u16;
         let addr = self.dp_base() | offset;
-        self.regs.y = mem.read8(addr);
+        self.regs.y = mem.read8_mut(addr);
         self.set_zn_flags(self.regs.y);
         self.cycles += 3;
     }
     
     pub fn inst_sta_dp(&mut self, mem: &mut Memory) {
-        let offset = mem.read8(self.regs.pc) as u16;
-        self.regs.pc = self.regs.pc.wrapping_add(1);
-    
+        let offset = self.read_immediate(mem) as u16;
         let addr = self.dp_base() | offset;
         mem.write8(addr, self.regs.a);
     
@@ -241,9 +241,7 @@ impl Spc700 {
     }
     
     pub fn inst_stx_dp(&mut self, mem: &mut Memory) {
-        let offset = mem.read8(self.regs.pc) as u16;
-        self.regs.pc = self.regs.pc.wrapping_add(1);
-    
+        let offset = self.read_immediate(mem) as u16;
         let addr = self.dp_base() | offset;
         mem.write8(addr, self.regs.x);
     
@@ -251,16 +249,14 @@ impl Spc700 {
     }
     
     pub fn inst_sty_dp(&mut self, mem: &mut Memory) {
-        let offset = mem.read8(self.regs.pc) as u16;
-        self.regs.pc = self.regs.pc.wrapping_add(1);
-    
+        let offset = self.read_immediate(mem) as u16;
         let addr = self.dp_base() | offset;
         mem.write8(addr, self.regs.y);
     
         self.cycles += 3;
     }    
 
-    pub fn inst_adc_imm(&mut self, mem: &Memory) {
+    pub fn inst_adc_imm(&mut self, mem: &mut Memory) {
         let value = self.read_immediate(mem);
 
         let carry_in = if self.get_flag(FLAG_C) { 1 } else { 0 };
@@ -282,7 +278,7 @@ impl Spc700 {
     }
 
     /// Compare memory with accumulator (sets flags only)
-    pub fn inst_cmp_imm(&mut self, mem: &Memory) {
+    pub fn inst_cmp_imm(&mut self, mem: &mut Memory) {
         let value = self.read_immediate(mem);
 
         let result = self.regs.a.wrapping_sub(value);
@@ -293,7 +289,7 @@ impl Spc700 {
         self.cycles += 2;
     }
 
-    pub fn inst_sbc_imm(&mut self, mem: &Memory) {
+    pub fn inst_sbc_imm(&mut self, mem: &mut Memory) {
         let value = self.read_immediate(mem);
 
         let carry_in = if self.get_flag(FLAG_C) { 0 } else { 1 }; // SPC700 uses inverted carry
@@ -312,21 +308,21 @@ impl Spc700 {
     }
 
     /// Bitwise AND with accumulator
-    pub fn inst_and_imm(&mut self, mem: &Memory) {
+    pub fn inst_and_imm(&mut self, mem: &mut Memory) {
         self.regs.a &= self.read_immediate(mem);
         self.set_zn_flags(self.regs.a);
         self.cycles += 2;
     }
 
     /// Bitwise OR with accumulator
-    pub fn inst_ora_imm(&mut self, mem: &Memory) {
+    pub fn inst_ora_imm(&mut self, mem: &mut Memory) {
         self.regs.a |= self.read_immediate(mem);
         self.set_zn_flags(self.regs.a);
         self.cycles += 2;
     }
 
     /// Bitwise XOR with accumulator
-    pub fn inst_eor_imm(&mut self, mem: &Memory) {
+    pub fn inst_eor_imm(&mut self, mem: &mut Memory) {
         self.regs.a ^= self.read_immediate(mem);
         self.set_zn_flags(self.regs.a);
         self.cycles += 2;
