@@ -21,6 +21,9 @@
         rust-pkgs = import rust-nixpkgs { inherit system; };
         libs = with pkgs; [
           wayland
+          libxkbcommon
+          libGL
+          SDL2
 
           xorg.libXcursor
           xorg.libXrandr

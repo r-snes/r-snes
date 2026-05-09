@@ -5,12 +5,15 @@ edition = "2024"
 
 [workspace]
 members = [
-    "common",
-    "ppu",
-    "cpu",
     "apu",
-    "cpu/instr_metalang_procmacro",
     "bus",
+    "common",
+    "cpu",
+    "cpu/instr_metalang_procmacro",
+    "plugins",
+    "plugins/permission_derive_macro",
+    "plugins/strict_partial_ord_derive",
+    "ppu",
 ]
 
 [dependencies]
