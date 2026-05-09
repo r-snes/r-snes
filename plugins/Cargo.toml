@@ -1,0 +1,23 @@
+[package]
+name = "plugins"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+strict_partial_ord_derive = { path = "strict_partial_ord_derive" }
+permission_derive_macro = { path = "permission_derive_macro" }
+perm_tree_node_derive = { path = "perm_tree_node_derive" }
+
+egui = "0.34.1"
+eframe = { version = "0.34.1", optional = true, features = ["wgpu"] }
+piccolo = { workspace = true }
+env_logger = { version = "0.11.8", features = ["auto-color", "humantime"] }
+derive_aliases = "0.4.7"
+
+# put dependencies only used in the example behind a feature flag
+[features]
+example = ["dep:eframe"]
+
+[[bin]]
+name = "main"
+required-features = ["example"]
