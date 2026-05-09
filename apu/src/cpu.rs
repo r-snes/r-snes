@@ -96,6 +96,22 @@ impl Spc700 {
             0x3F => self.inst_call(mem), // CALL !abs
             0x6F => self.inst_ret(mem),  // RET
             0x4F => self.inst_pcall(mem), // PCALL !abs
+            0x01 => self.inst_tcall(mem, 0),
+            0x11 => self.inst_tcall(mem, 1),
+            0x21 => self.inst_tcall(mem, 2),
+            0x31 => self.inst_tcall(mem, 3),
+            0x41 => self.inst_tcall(mem, 4),
+            0x51 => self.inst_tcall(mem, 5),
+            0x61 => self.inst_tcall(mem, 6),
+            0x71 => self.inst_tcall(mem, 7),
+            0x81 => self.inst_tcall(mem, 8),
+            0x91 => self.inst_tcall(mem, 9),
+            0xA1 => self.inst_tcall(mem, 10),
+            0xB1 => self.inst_tcall(mem, 11),
+            0xC1 => self.inst_tcall(mem, 12),
+            0xD1 => self.inst_tcall(mem, 13),
+            0xE1 => self.inst_tcall(mem, 14),
+            0xF1 => self.inst_tcall(mem, 15),
 
             // Catch-all
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
@@ -508,5 +524,23 @@ impl Spc700 {
         self.stack_push(mem, pc_lo);
         self.regs.pc = target;
         self.cycles += 6;
+    }
+
+    /// TCALL n — call via vector table entry at $FFDE - (n * 2).
+    /// Reads the 16-bit target address from the table (little-endian),
+    /// pushes the return address, and jumps to the target.
+    /// 16 variants: n = 0–15, opcode = (n << 4) | 0x01.
+    /// 1 byte. 8 cycles.
+    fn inst_tcall(&mut self, mem: &mut Memory, n: u8) {
+        let vector_addr = 0xFFDE_u16.wrapping_sub(n as u16 * 2);
+        let lo = mem.read8_mut(vector_addr)     as u16;
+        let hi = mem.read8_mut(vector_addr + 1) as u16;
+        let target = (hi << 8) | lo;
+        let pc_hi = (self.regs.pc >> 8) as u8;
+        let pc_lo = (self.regs.pc & 0xFF) as u8;
+        self.stack_push(mem, pc_hi);
+        self.stack_push(mem, pc_lo);
+        self.regs.pc = target;
+        self.cycles += 8;
     }
 }
