@@ -122,6 +122,8 @@ impl Spc700 {
             0xEE => self.inst_pop_y(mem),  // POP Y
             0x0D => self.inst_push_psw(mem), // PUSH PSW
             0x8E => self.inst_pop_psw(mem),  // POP PSW
+            0xEF => self.inst_sleep(), // SLEEP
+            0xFF => self.inst_stop(),  // STOP
 
             // Catch-all
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
@@ -609,5 +611,17 @@ impl Spc700 {
     fn inst_pop_psw(&mut self, mem: &mut Memory) {
         self.regs.psw = self.stack_pop(mem);
         self.cycles += 4;
+    }
+
+    /// SLEEP — halt CPU until an interrupt fires.
+    /// TODO: implement when interrupt handling is added (feature/ipl-boot-rom).
+    fn inst_sleep(&mut self) {
+        todo!("SLEEP: halt until interrupt")
+    }
+
+    /// STOP — halt CPU permanently.
+    /// TODO: implement when interrupt handling is added (feature/ipl-boot-rom).
+    fn inst_stop(&mut self) {
+        todo!("STOP: permanent halt")
     }
 }
