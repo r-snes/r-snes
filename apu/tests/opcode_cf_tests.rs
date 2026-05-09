@@ -2,6 +2,8 @@
 /// Currently covers:
 ///   - BRA ($2F) — branch always
 ///   - BEQ ($F0) — branch if Z set
+///  - BNE ($D0) — branch if Z clear
+///  - BPL ($10) — branch if N clear
 
 use apu::cpu::{Spc700, FLAG_C, FLAG_N, FLAG_Z};
 use apu::Memory;
@@ -205,4 +207,226 @@ fn test_beq_used_as_loop_exit() {
     cpu.step(&mut mem); // LDA #0 → sets Z
     cpu.step(&mut mem); // BEQ → taken
     assert_eq!(cpu.regs.pc, 0x0205);
+}
+
+// ============================================================
+// BNE ($D0) — branch if Zero clear
+// ============================================================
+
+#[test]
+fn test_bne_taken_when_z_clear() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = 0x00;
+    mem.write8(0x0200, 0xD0);
+    mem.write8(0x0201, 0x04); // +4 → $0206
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.pc, 0x0206);
+}
+
+#[test]
+fn test_bne_taken_negative_offset() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = 0x00;
+    mem.write8(0x0200, 0xD0);
+    mem.write8(0x0201, 0xFD); // -3 → $01FF
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.pc, 0x01FF);
+}
+
+#[test]
+fn test_bne_taken_costs_4_cycles() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = 0x00;
+    mem.write8(0x0200, 0xD0);
+    mem.write8(0x0201, 0x00);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 4);
+}
+
+#[test]
+fn test_bne_not_taken_when_z_set() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_Z;
+    mem.write8(0x0200, 0xD0);
+    mem.write8(0x0201, 0x04);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.pc, 0x0202);
+}
+
+#[test]
+fn test_bne_not_taken_costs_2_cycles() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_Z;
+    mem.write8(0x0200, 0xD0);
+    mem.write8(0x0201, 0x00);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 2);
+}
+
+#[test]
+fn test_bne_not_taken_when_z_and_n_set() {
+    // Z set is all that matters — N alongside it must not rescue the branch
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_Z | FLAG_N;
+    mem.write8(0x0200, 0xD0);
+    mem.write8(0x0201, 0x04);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.pc, 0x0202);
+}
+
+#[test]
+fn test_bne_taken_when_only_n_set() {
+    // N set but Z clear — BNE must branch
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_N;
+    mem.write8(0x0200, 0xD0);
+    mem.write8(0x0201, 0x04);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.pc, 0x0206);
+}
+
+#[test]
+fn test_bne_does_not_modify_flags() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_N | FLAG_C;
+    mem.write8(0x0200, 0xD0);
+    mem.write8(0x0201, 0x00);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.psw, FLAG_N | FLAG_C);
+}
+
+#[test]
+fn test_bne_used_as_loop_counter() {
+    // Classic decrement loop: LDA #2, loop: SBC #1, BNE back
+    // After 2 iterations A reaches 0 and Z is set so BNE falls through
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C; // carry set = no borrow for SBC
+
+    // $0200: SBC A,#1  ($A8 $01)
+    // $0202: BNE -4    ($D0 $FC) — back to $0200
+    mem.write8(0x0200, 0xA8);
+    mem.write8(0x0201, 0x01);
+    mem.write8(0x0202, 0xD0);
+    mem.write8(0x0203, 0xFC); // -4 → back to $0200
+    mem.write8(0x0204, 0x00); // NOP — loop exit
+
+    cpu.regs.a = 2;
+
+    // Iteration 1: A=2 → SBC → A=1, Z clear → BNE taken
+    cpu.step(&mut mem);
+    cpu.regs.psw |= FLAG_C; // restore carry
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.pc, 0x0200, "BNE must loop back");
+
+    // Iteration 2: A=1 → SBC → A=0, Z set → BNE not taken
+    cpu.step(&mut mem);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.pc, 0x0204, "BNE must fall through when Z set");
+}
+
+// ============================================================
+// BPL ($10) — branch if Negative clear
+// ============================================================
+
+#[test]
+fn test_bpl_taken_when_n_clear() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = 0x00;
+    mem.write8(0x0200, 0x10);
+    mem.write8(0x0201, 0x04); // +4 → $0206
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.pc, 0x0206);
+}
+
+#[test]
+fn test_bpl_taken_costs_4_cycles() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = 0x00;
+    mem.write8(0x0200, 0x10);
+    mem.write8(0x0201, 0x00);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 4);
+}
+
+#[test]
+fn test_bpl_not_taken_when_n_set() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_N;
+    mem.write8(0x0200, 0x10);
+    mem.write8(0x0201, 0x04);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.pc, 0x0202);
+}
+
+#[test]
+fn test_bpl_not_taken_costs_2_cycles() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_N;
+    mem.write8(0x0200, 0x10);
+    mem.write8(0x0201, 0x00);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 2);
+}
+
+#[test]
+fn test_bpl_taken_when_z_set_but_n_clear() {
+    // Z alongside a clear N must not block the branch
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_Z;
+    mem.write8(0x0200, 0x10);
+    mem.write8(0x0201, 0x04);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.pc, 0x0206);
+}
+
+#[test]
+fn test_bpl_not_taken_when_n_and_z_both_set() {
+    // N set is all that matters — Z alongside it must not rescue the branch
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_N | FLAG_Z;
+    mem.write8(0x0200, 0x10);
+    mem.write8(0x0201, 0x04);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.pc, 0x0202);
+}
+
+#[test]
+fn test_bpl_does_not_modify_flags() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_Z | FLAG_C;
+    mem.write8(0x0200, 0x10);
+    mem.write8(0x0201, 0x00);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.psw, FLAG_Z | FLAG_C);
+}
+
+#[test]
+fn test_bpl_used_after_positive_load() {
+    // LDA #$01 sets N=0, Z=0 → BPL must branch
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0xE8); // LDA #$01
+    mem.write8(0x0201, 0x01);
+    mem.write8(0x0202, 0x10); // BPL +2
+    mem.write8(0x0203, 0x02);
+    mem.write8(0x0204, 0xFF); // skipped
+    mem.write8(0x0205, 0xFF); // skipped
+    mem.write8(0x0206, 0x00); // NOP — branch target
+
+    cpu.step(&mut mem); // LDA #$01
+    cpu.step(&mut mem); // BPL — taken
+    assert_eq!(cpu.regs.pc, 0x0206);
+}
+
+#[test]
+fn test_bpl_not_taken_after_negative_load() {
+    // LDA #$80 sets N=1 → BPL must not branch
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0xE8); // LDA #$80
+    mem.write8(0x0201, 0x80);
+    mem.write8(0x0202, 0x10); // BPL +2
+    mem.write8(0x0203, 0x02);
+
+    cpu.step(&mut mem); // LDA #$80
+    cpu.step(&mut mem); // BPL — not taken
+    assert_eq!(cpu.regs.pc, 0x0204);
 }
