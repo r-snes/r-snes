@@ -9,6 +9,7 @@
 /// - BVS ($70) — branch if V set
 /// - BCC ($90) — branch if C clear
 /// - BCS ($B0) — branch if C set
+/// - CALL ($3F) — absolute subroutine call
 
 use apu::cpu::{Spc700, FLAG_C, FLAG_N, FLAG_Z, FLAG_V};
 use apu::Memory;
@@ -967,4 +968,173 @@ fn test_bcs_not_taken_after_adc_no_carry() {
     cpu.step(&mut mem); // ADC — C=0
     cpu.step(&mut mem); // BCS — not taken
     assert_eq!(cpu.regs.pc, 0x0204);
+}
+
+// ============================================================
+// CALL ($3F) — push return address, jump to absolute target
+// ============================================================
+ 
+#[test]
+fn test_call_jumps_to_target() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x3F);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05); // target = $0500
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.pc, 0x0500);
+}
+ 
+#[test]
+fn test_call_pushes_return_address() {
+    // CALL at $0200 is 3 bytes → return address = $0203
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x3F);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    let sp = cpu.regs.sp;
+    cpu.step(&mut mem);
+    let hi = mem.read8(0x0100 | sp as u16);
+    let lo = mem.read8(0x0100 | sp.wrapping_sub(1) as u16);
+    let ret = ((hi as u16) << 8) | lo as u16;
+    assert_eq!(ret, 0x0203, "return address must be instruction after CALL");
+}
+ 
+#[test]
+fn test_call_decrements_sp_by_2() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x3F);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    let sp_before = cpu.regs.sp;
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.sp, sp_before.wrapping_sub(2));
+}
+ 
+#[test]
+fn test_call_costs_8_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x3F);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 8);
+}
+ 
+#[test]
+fn test_call_does_not_modify_flags() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C | FLAG_N;
+    mem.write8(0x0200, 0x3F);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.psw, FLAG_C | FLAG_N);
+}
+ 
+#[test]
+fn test_call_sp_wraps_at_00() {
+    // SP at $01 — after pushing 2 bytes SP wraps to $FF
+    let (mut cpu, mut mem) = make();
+    cpu.regs.sp = 0x01;
+    mem.write8(0x0200, 0x3F);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.sp, 0xFF);
+}
+
+// ============================================================
+// RET ($6F) — pop return address and jump
+// ============================================================
+ 
+#[test]
+fn test_ret_jumps_to_return_address() {
+    // CALL pushes $0203, RET must restore PC to $0203
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x3F); // CALL $0500
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    mem.write8(0x0500, 0x6F); // RET
+    cpu.step(&mut mem); // CALL
+    cpu.step(&mut mem); // RET
+    assert_eq!(cpu.regs.pc, 0x0203);
+}
+ 
+#[test]
+fn test_ret_restores_sp() {
+    let (mut cpu, mut mem) = make();
+    let sp_before = cpu.regs.sp;
+    mem.write8(0x0200, 0x3F); // CALL $0500
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    mem.write8(0x0500, 0x6F); // RET
+    cpu.step(&mut mem); // CALL — SP -= 2
+    cpu.step(&mut mem); // RET  — SP += 2
+    assert_eq!(cpu.regs.sp, sp_before, "SP must be restored after CALL+RET");
+}
+ 
+#[test]
+fn test_ret_costs_5_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x3F);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    mem.write8(0x0500, 0x6F);
+    cpu.step(&mut mem); // CALL
+    let cycles_before = cpu.cycles;
+    cpu.step(&mut mem); // RET
+    assert_eq!(cpu.cycles - cycles_before, 5);
+}
+ 
+#[test]
+fn test_ret_does_not_modify_flags() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C | FLAG_N;
+    mem.write8(0x0200, 0x3F);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    mem.write8(0x0500, 0x6F);
+    cpu.step(&mut mem);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.psw, FLAG_C | FLAG_N);
+}
+ 
+#[test]
+fn test_call_ret_round_trip_multiple_times() {
+    // Call and return three times — SP must be the same each time
+    let (mut cpu, mut mem) = make();
+    let sp_start = cpu.regs.sp;
+ 
+    for _ in 0..3 {
+        mem.write8(0x0200, 0x3F); // CALL $0500
+        mem.write8(0x0201, 0x00);
+        mem.write8(0x0202, 0x05);
+        mem.write8(0x0500, 0x6F); // RET
+        cpu.regs.pc = 0x0200;
+        cpu.step(&mut mem);
+        cpu.step(&mut mem);
+        assert_eq!(cpu.regs.sp, sp_start, "SP must be restored after each CALL+RET");
+        assert_eq!(cpu.regs.pc, 0x0203);
+    }
+}
+ 
+#[test]
+fn test_nested_call_ret() {
+    // Outer call → inner call → inner ret → outer ret
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x3F); // CALL $0400 (outer)
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x04);
+    mem.write8(0x0400, 0x3F); // CALL $0600 (inner)
+    mem.write8(0x0401, 0x00);
+    mem.write8(0x0402, 0x06);
+    mem.write8(0x0600, 0x6F); // RET → back to $0403
+    mem.write8(0x0403, 0x6F); // RET → back to $0203
+ 
+    cpu.step(&mut mem); // outer CALL → $0400
+    cpu.step(&mut mem); // inner CALL → $0600
+    cpu.step(&mut mem); // inner RET  → $0403
+    assert_eq!(cpu.regs.pc, 0x0403);
+    cpu.step(&mut mem); // outer RET  → $0203
+    assert_eq!(cpu.regs.pc, 0x0203);
 }
