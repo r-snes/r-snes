@@ -7,6 +7,7 @@
 /// - BMI ($30) — branch if N set
 /// - BVC ($50) — branch if V clear
 /// - BVS ($70) — branch if V set
+/// - BCC ($90) — branch if C clear
 
 use apu::cpu::{Spc700, FLAG_C, FLAG_N, FLAG_Z, FLAG_V};
 use apu::Memory;
@@ -750,5 +751,219 @@ fn test_bvs_not_taken_after_adc_no_overflow() {
  
     cpu.step(&mut mem); // ADC — V=0
     cpu.step(&mut mem); // BVS — not taken
+    assert_eq!(cpu.regs.pc, 0x0204);
+}
+
+// ============================================================
+// BCC ($90) — branch if Carry clear
+// ============================================================
+ 
+#[test]
+fn test_bcc_taken_when_c_clear() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = 0x00;
+    mem.write8(0x0200, 0x90);
+    mem.write8(0x0201, 0x04); // +4 → $0206
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.pc, 0x0206);
+}
+ 
+#[test]
+fn test_bcc_taken_costs_4_cycles() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = 0x00;
+    mem.write8(0x0200, 0x90);
+    mem.write8(0x0201, 0x00);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 4);
+}
+ 
+#[test]
+fn test_bcc_not_taken_when_c_set() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C;
+    mem.write8(0x0200, 0x90);
+    mem.write8(0x0201, 0x04);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.pc, 0x0202);
+}
+ 
+#[test]
+fn test_bcc_not_taken_costs_2_cycles() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C;
+    mem.write8(0x0200, 0x90);
+    mem.write8(0x0201, 0x00);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 2);
+}
+ 
+#[test]
+fn test_bcc_taken_when_n_set_but_c_clear() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_N;
+    mem.write8(0x0200, 0x90);
+    mem.write8(0x0201, 0x04);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.pc, 0x0206);
+}
+ 
+#[test]
+fn test_bcc_not_taken_when_c_and_n_set() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C | FLAG_N;
+    mem.write8(0x0200, 0x90);
+    mem.write8(0x0201, 0x04);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.pc, 0x0202);
+}
+ 
+#[test]
+fn test_bcc_does_not_modify_flags() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_N | FLAG_Z;
+    mem.write8(0x0200, 0x90);
+    mem.write8(0x0201, 0x00);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.psw, FLAG_N | FLAG_Z);
+}
+ 
+#[test]
+fn test_bcc_taken_after_adc_no_carry() {
+    // $01 + $01 = $02 — no carry out, C=0 → BCC taken
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x01;
+    mem.write8(0x0200, 0x88); // ADC A,#$01
+    mem.write8(0x0201, 0x01);
+    mem.write8(0x0202, 0x90); // BCC +2
+    mem.write8(0x0203, 0x02);
+    mem.write8(0x0204, 0xFF); // skipped
+    mem.write8(0x0205, 0xFF); // skipped
+    mem.write8(0x0206, 0x00); // NOP — branch target
+ 
+    cpu.step(&mut mem); // ADC — C=0
+    cpu.step(&mut mem); // BCC — taken
+    assert_eq!(cpu.regs.pc, 0x0206);
+}
+ 
+#[test]
+fn test_bcc_not_taken_after_adc_carry() {
+    // $FF + $01 = $00 with carry out, C=1 → BCC not taken
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0xFF;
+    mem.write8(0x0200, 0x88); // ADC A,#$01
+    mem.write8(0x0201, 0x01);
+    mem.write8(0x0202, 0x90); // BCC +2
+    mem.write8(0x0203, 0x02);
+ 
+    cpu.step(&mut mem); // ADC — C=1
+    cpu.step(&mut mem); // BCC — not taken
+    assert_eq!(cpu.regs.pc, 0x0204);
+}
+
+// ============================================================
+// BCS ($B0) — branch if Carry set
+// ============================================================
+ 
+#[test]
+fn test_bcs_taken_when_c_set() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C;
+    mem.write8(0x0200, 0xB0);
+    mem.write8(0x0201, 0x04); // +4 → $0206
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.pc, 0x0206);
+}
+ 
+#[test]
+fn test_bcs_taken_costs_4_cycles() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C;
+    mem.write8(0x0200, 0xB0);
+    mem.write8(0x0201, 0x00);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 4);
+}
+ 
+#[test]
+fn test_bcs_not_taken_when_c_clear() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = 0x00;
+    mem.write8(0x0200, 0xB0);
+    mem.write8(0x0201, 0x04);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.pc, 0x0202);
+}
+ 
+#[test]
+fn test_bcs_not_taken_costs_2_cycles() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = 0x00;
+    mem.write8(0x0200, 0xB0);
+    mem.write8(0x0201, 0x00);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 2);
+}
+ 
+#[test]
+fn test_bcs_taken_with_other_flags_also_set() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C | FLAG_N | FLAG_Z;
+    mem.write8(0x0200, 0xB0);
+    mem.write8(0x0201, 0x04);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.pc, 0x0206);
+}
+ 
+#[test]
+fn test_bcs_not_taken_when_only_n_set() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_N;
+    mem.write8(0x0200, 0xB0);
+    mem.write8(0x0201, 0x04);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.pc, 0x0202);
+}
+ 
+#[test]
+fn test_bcs_does_not_modify_flags() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C | FLAG_N;
+    mem.write8(0x0200, 0xB0);
+    mem.write8(0x0201, 0x00);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.psw, FLAG_C | FLAG_N);
+}
+ 
+#[test]
+fn test_bcs_taken_after_adc_carry() {
+    // $FF + $01 = $00 with carry out, C=1 → BCS taken
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0xFF;
+    mem.write8(0x0200, 0x88); // ADC A,#$01
+    mem.write8(0x0201, 0x01);
+    mem.write8(0x0202, 0xB0); // BCS +2
+    mem.write8(0x0203, 0x02);
+    mem.write8(0x0204, 0xFF); // skipped
+    mem.write8(0x0205, 0xFF); // skipped
+    mem.write8(0x0206, 0x00); // NOP — branch target
+ 
+    cpu.step(&mut mem); // ADC — C=1
+    cpu.step(&mut mem); // BCS — taken
+    assert_eq!(cpu.regs.pc, 0x0206);
+}
+ 
+#[test]
+fn test_bcs_not_taken_after_adc_no_carry() {
+    // $01 + $01 = $02 — no carry, C=0 → BCS not taken
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x01;
+    mem.write8(0x0200, 0x88); // ADC A,#$01
+    mem.write8(0x0201, 0x01);
+    mem.write8(0x0202, 0xB0); // BCS +2
+    mem.write8(0x0203, 0x02);
+ 
+    cpu.step(&mut mem); // ADC — C=0
+    cpu.step(&mut mem); // BCS — not taken
     assert_eq!(cpu.regs.pc, 0x0204);
 }
