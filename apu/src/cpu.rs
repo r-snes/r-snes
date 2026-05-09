@@ -90,6 +90,7 @@ impl Spc700 {
             0x50 => self.inst_bvc(mem), // BVC rel
             0x70 => self.inst_bvs(mem), // BVS rel
             0x90 => self.inst_bcc(mem), // BCC rel
+            0xB0 => self.inst_bcs(mem), // BCS rel
 
             // Catch-all
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
@@ -424,6 +425,18 @@ impl Spc700 {
     fn inst_bcc(&mut self, mem: &mut Memory) {
         let offset = self.read_immediate(mem) as i8;
         if !self.get_flag(FLAG_C) {
+            self.regs.pc = self.regs.pc.wrapping_add(offset as u16);
+            self.cycles += 4;
+        } else {
+            self.cycles += 2;
+        }
+    }
+
+    /// BCS rel — branch if Carry flag is set.
+    /// 4 cycles if taken, 2 cycles if not taken.
+    fn inst_bcs(&mut self, mem: &mut Memory) {
+        let offset = self.read_immediate(mem) as i8;
+        if self.get_flag(FLAG_C) {
             self.regs.pc = self.regs.pc.wrapping_add(offset as u16);
             self.cycles += 4;
         } else {
