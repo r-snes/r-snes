@@ -125,8 +125,7 @@ impl Rom {
     /// to compute the correct byte position in the loaded ROM data.
     ///
     /// # Panics
-    /// Panics if the address is invalid for the detected mapping mode,
-    /// or if the mapping mode is [`MappingMode::Unknown`].
+    /// Panics if the address is invalid for the detected mapping mode
     fn to_offset(&self, addr: SnesAddress) -> usize {
         match self.map {
             MappingMode::HiRom => Self::get_hirom_offset(addr),
@@ -141,7 +140,7 @@ impl Rom {
     /// The address is translated to an internal ROM offset using `to_offset`.
     ///
     /// # Panics
-    /// Panics if the mapping mode is `MappingMode::Unknown` or index out of bounds.
+    /// Panics if the index is out of bounds.
     pub fn read(&self, addr: SnesAddress) -> u8 {
         let offset = self.to_offset(addr);
 
