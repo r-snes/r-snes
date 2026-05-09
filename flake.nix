@@ -26,6 +26,7 @@
           xorg.libXrandr
           xorg.libXi
           xorg.libX11
+          SDL2
         ];
       in
       {
