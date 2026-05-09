@@ -1574,3 +1574,334 @@ fn test_push_a_pop_a_round_trip() {
     cpu.step(&mut mem);       // POP
     assert_eq!(cpu.regs.a, 0xCD);
 }
+
+// ============================================================
+// PUSH X ($4D) — push X register onto stack
+// ============================================================
+
+#[test]
+fn test_push_x_writes_x_to_stack() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.x  = 0x12;
+    cpu.regs.sp = 0xFE;
+    mem.write8(0x0200, 0x4D);
+    cpu.step(&mut mem);
+    assert_eq!(mem.read8(0x01FE), 0x12);
+}
+
+#[test]
+fn test_push_x_decrements_sp() {
+    let (mut cpu, mut mem) = make();
+    let sp = cpu.regs.sp;
+    mem.write8(0x0200, 0x4D);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.sp, sp.wrapping_sub(1));
+}
+
+#[test]
+fn test_push_x_costs_4_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x4D);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 4);
+}
+
+#[test]
+fn test_push_x_does_not_modify_flags() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C | FLAG_N;
+    mem.write8(0x0200, 0x4D);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.psw, FLAG_C | FLAG_N);
+}
+
+// ============================================================
+// POP X ($CE) — pop X register from stack
+// ============================================================
+
+#[test]
+fn test_pop_x_reads_from_stack() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.sp = 0xFE;
+    mem.write8(0x01FF, 0x34);
+    mem.write8(0x0200, 0xCE);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.x, 0x34);
+}
+
+#[test]
+fn test_pop_x_increments_sp() {
+    let (mut cpu, mut mem) = make();
+    let sp = cpu.regs.sp;
+    mem.write8(0x0200, 0xCE);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.sp, sp.wrapping_add(1));
+}
+
+#[test]
+fn test_pop_x_costs_4_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0xCE);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 4);
+}
+
+#[test]
+fn test_pop_x_does_not_modify_flags() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C | FLAG_Z;
+    mem.write8(0x0200, 0xCE);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.psw, FLAG_C | FLAG_Z);
+}
+
+#[test]
+fn test_push_x_pop_x_round_trip() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.x = 0xEF;
+    mem.write8(0x0200, 0x4D); // PUSH X
+    mem.write8(0x0201, 0xCE); // POP X
+    cpu.regs.x = 0x00;
+    cpu.step(&mut mem);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.x, 0xEF);
+}
+
+// ============================================================
+// PUSH Y ($6D) — push Y register onto stack
+// ============================================================
+
+#[test]
+fn test_push_y_writes_y_to_stack() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.y  = 0x56;
+    cpu.regs.sp = 0xFE;
+    mem.write8(0x0200, 0x6D);
+    cpu.step(&mut mem);
+    assert_eq!(mem.read8(0x01FE), 0x56);
+}
+
+#[test]
+fn test_push_y_decrements_sp() {
+    let (mut cpu, mut mem) = make();
+    let sp = cpu.regs.sp;
+    mem.write8(0x0200, 0x6D);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.sp, sp.wrapping_sub(1));
+}
+
+#[test]
+fn test_push_y_costs_4_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x6D);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 4);
+}
+
+#[test]
+fn test_push_y_does_not_modify_flags() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_N | FLAG_V;
+    mem.write8(0x0200, 0x6D);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.psw, FLAG_N | FLAG_V);
+}
+
+// ============================================================
+// POP Y ($EE) — pop Y register from stack
+// ============================================================
+
+#[test]
+fn test_pop_y_reads_from_stack() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.sp = 0xFE;
+    mem.write8(0x01FF, 0x78);
+    mem.write8(0x0200, 0xEE);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.y, 0x78);
+}
+
+#[test]
+fn test_pop_y_increments_sp() {
+    let (mut cpu, mut mem) = make();
+    let sp = cpu.regs.sp;
+    mem.write8(0x0200, 0xEE);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.sp, sp.wrapping_add(1));
+}
+
+#[test]
+fn test_pop_y_costs_4_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0xEE);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 4);
+}
+
+#[test]
+fn test_pop_y_does_not_modify_flags() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C | FLAG_V;
+    mem.write8(0x0200, 0xEE);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.psw, FLAG_C | FLAG_V);
+}
+
+#[test]
+fn test_push_y_pop_y_round_trip() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.y = 0x9A;
+    mem.write8(0x0200, 0x6D); // PUSH Y
+    mem.write8(0x0201, 0xEE); // POP Y
+    cpu.regs.y = 0x00;
+    cpu.step(&mut mem);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.y, 0x9A);
+}
+
+// ============================================================
+// PUSH PSW ($0D) — push processor status word onto stack
+// ============================================================
+
+#[test]
+fn test_push_psw_writes_psw_to_stack() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C | FLAG_N | FLAG_Z;
+    cpu.regs.sp  = 0xFE;
+    mem.write8(0x0200, 0x0D);
+    cpu.step(&mut mem);
+    assert_eq!(mem.read8(0x01FE), FLAG_C | FLAG_N | FLAG_Z);
+}
+
+#[test]
+fn test_push_psw_decrements_sp() {
+    let (mut cpu, mut mem) = make();
+    let sp = cpu.regs.sp;
+    mem.write8(0x0200, 0x0D);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.sp, sp.wrapping_sub(1));
+}
+
+#[test]
+fn test_push_psw_costs_4_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x0D);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 4);
+}
+
+#[test]
+fn test_push_psw_preserves_psw() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = 0xFF;
+    mem.write8(0x0200, 0x0D);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.psw, 0xFF, "PUSH PSW must not modify PSW");
+}
+
+// ============================================================
+// POP PSW ($8E) — pop processor status word from stack
+// ============================================================
+
+#[test]
+fn test_pop_psw_restores_all_flags() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.sp  = 0xFE;
+    mem.write8(0x01FF, 0xFF); // all flags set
+    mem.write8(0x0200, 0x8E);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.psw, 0xFF);
+}
+
+#[test]
+fn test_pop_psw_increments_sp() {
+    let (mut cpu, mut mem) = make();
+    let sp = cpu.regs.sp;
+    mem.write8(0x0200, 0x8E);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.sp, sp.wrapping_add(1));
+}
+
+#[test]
+fn test_pop_psw_costs_4_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x8E);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 4);
+}
+
+#[test]
+fn test_pop_psw_clears_all_flags() {
+    // POP PSW of $00 must clear every flag
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = 0xFF;
+    cpu.regs.sp  = 0xFE;
+    mem.write8(0x01FF, 0x00);
+    mem.write8(0x0200, 0x8E);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.psw, 0x00);
+}
+
+#[test]
+fn test_push_psw_pop_psw_round_trip() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C | FLAG_V | FLAG_N;
+    mem.write8(0x0200, 0x0D); // PUSH PSW
+    mem.write8(0x0201, 0x8E); // POP PSW
+    cpu.regs.psw = 0x00;      // clobber flags
+    cpu.step(&mut mem);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.psw, FLAG_C | FLAG_V | FLAG_N);
+}
+
+#[test]
+fn test_all_registers_push_pop_independent() {
+    // Push A, X, Y, PSW in order — pop must restore in reverse (LIFO)
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a   = 0x11;
+    cpu.regs.x   = 0x22;
+    cpu.regs.y   = 0x33;
+    cpu.regs.psw = FLAG_C;
+    mem.write8(0x0200, 0x2D); // PUSH A
+    mem.write8(0x0201, 0x4D); // PUSH X
+    mem.write8(0x0202, 0x6D); // PUSH Y
+    mem.write8(0x0203, 0x0D); // PUSH PSW
+    mem.write8(0x0204, 0x8E); // POP PSW
+    mem.write8(0x0205, 0xEE); // POP Y
+    mem.write8(0x0206, 0xCE); // POP X
+    mem.write8(0x0207, 0xAE); // POP A
+
+    // clobber all before popping
+    cpu.regs.a   = 0x00;
+    cpu.regs.x   = 0x00;
+    cpu.regs.y   = 0x00;
+    cpu.regs.psw = 0x00;
+
+    for _ in 0..8 { cpu.step(&mut mem); }
+
+    assert_eq!(cpu.regs.psw, FLAG_C, "PSW must be restored");
+    assert_eq!(cpu.regs.y,   0x33,   "Y must be restored");
+    assert_eq!(cpu.regs.x,   0x22,   "X must be restored");
+    assert_eq!(cpu.regs.a,   0x11,   "A must be restored");
+}
+
+// ============================================================
+// SLEEP ($EF) / STOP ($FF) — halt instructions
+// Both need to be implemented
+// ============================================================
+
+#[test]
+#[should_panic(expected = "SLEEP: halt until interrupt")]
+fn test_sleep_panics_with_todo() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0xEF);
+    cpu.step(&mut mem);
+}
+
+#[test]
+#[should_panic(expected = "STOP: permanent halt")]
+fn test_stop_panics_with_todo() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0xFF);
+    cpu.step(&mut mem);
+}
