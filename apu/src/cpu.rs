@@ -113,6 +113,9 @@ impl Spc700 {
             0xE1 => self.inst_tcall(mem, 14),
             0xF1 => self.inst_tcall(mem, 15),
 
+            // Stack operations
+            0x2D => self.inst_push_a(mem), // PUSH A
+
             // Catch-all
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
         }
@@ -542,5 +545,19 @@ impl Spc700 {
         self.stack_push(mem, pc_lo);
         self.regs.pc = target;
         self.cycles += 8;
+    }
+
+    // =========================================================
+    // STACK — PUSH / POP
+    //
+    // PUSH: write register to $0100|SP, decrement SP. 4 cycles.
+    // POP:  increment SP, read from $0100|SP into register. 4 cycles.
+    // Neither instruction affects any flags.
+    // =========================================================
+ 
+    /// PUSH A — push accumulator onto the stack. 4 cycles.
+    fn inst_push_a(&mut self, mem: &mut Memory) {
+        self.stack_push(mem, self.regs.a);
+        self.cycles += 4;
     }
 }
