@@ -1,21 +1,20 @@
 use crate::dsp::Dsp;
 
-// ============================================================
-// SPC700 MEMORY MAP (relevant I/O region: $00F0–$00FF)
-//
-// $F0        TEST      — hardware test register (write-only, boot only)
-// $F1        CONTROL   — timer enable, ROM/RAM switch, port clear
-// $F2        DSPADDR   — DSP register address latch
-// $F3        DSPDATA   — DSP register data (read/write via $F2 latch)
-// $F4–$F7    CPUIO0–3  — bidirectional communication ports (CPU ↔ APU)
-// $F8–$F9    AUXRAM    — extra RAM bytes (readable/writable normally)
-// $FA–$FC    TnDIV     — timer 0/1/2 divisor (write-only)
-// $FD–$FF    TnOUT     — timer 0/1/2 counter output (read-only, clears on read)
-//
-// The direct-mapped range $F200–$F27F used by test code is kept alongside
-// the real port protocol so both can coexist during development.
-// ============================================================
-
+/// SPC700 memory map, covering the relevant I/O region `$00F0–$00FF`:
+///
+/// ```text
+/// $F0        TEST      — hardware test register (write-only, boot only)
+/// $F1        CONTROL   — timer enable, ROM/RAM switch, port clear
+/// $F2        DSPADDR   — DSP register address latch
+/// $F3        DSPDATA   — DSP register data (read/write via $F2 latch)
+/// $F4–$F7    CPUIO0–3  — bidirectional communication ports (CPU ↔ APU)
+/// $F8–$F9    AUXRAM    — extra RAM bytes (readable/writable normally)
+/// $FA–$FC    TnDIV     — timer 0/1/2 divisor (write-only)
+/// $FD–$FF    TnOUT     — timer 0/1/2 counter output (read-only, clears on read)
+/// ```
+///
+/// The direct-mapped range `$F200–$F27F` used by test code is kept alongside
+/// the real port protocol so both can coexist during development.
 pub struct Memory {
     /// 64 KB APU RAM.  All addresses that are not intercepted as I/O
     /// read/write from/to this array.
@@ -74,10 +73,6 @@ impl Memory {
             timer_out: [0u8; 3],
         }
     }
-
-    // ----------------------------------------------------------
-    // read8 / read16
-    // ----------------------------------------------------------
 
     pub fn read8(&self, addr: u16) -> u8 {
         match addr {
@@ -146,10 +141,6 @@ impl Memory {
         (hi << 8) | lo
     }
 
-    // ----------------------------------------------------------
-    // write8 / write16
-    // ----------------------------------------------------------
-
     pub fn write8(&mut self, addr: u16, val: u8) {
         match addr {
             // $F0 TEST — only relevant during hardware boot; ignore safely.
@@ -203,13 +194,6 @@ impl Memory {
         self.write8(addr,                      (value & 0xFF) as u8);
         self.write8(addr.wrapping_add(1), (value >> 8) as u8);
     }
-
-    // ----------------------------------------------------------
-    // SNES CPU ↔ APU communication helpers
-    //
-    // The SNES main CPU accesses these from its side of the bus.
-    // These are called by the top-level emulator, not by the SPC700.
-    // ----------------------------------------------------------
 
     /// Write a value to communication port `n` (0–3) from the SNES CPU side.
     /// The SPC700 will read this via $F4+n.
