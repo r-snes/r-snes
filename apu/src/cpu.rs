@@ -95,6 +95,7 @@ impl Spc700 {
             // Subroutine calls and returns
             0x3F => self.inst_call(mem), // CALL !abs
             0x6F => self.inst_ret(mem),  // RET
+            0x4F => self.inst_pcall(mem), // PCALL !abs
 
             // Catch-all
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
@@ -493,5 +494,19 @@ impl Spc700 {
         let hi = self.stack_pop(mem) as u16;
         self.regs.pc = (hi << 8) | lo;
         self.cycles += 5;
+    }
+
+     /// PCALL u — push return address, jump to $FF00 + u.
+    /// Used to call routines in the SPC700 high page without a full
+    /// 16-bit address. 2 bytes: opcode + u. 6 cycles.
+    fn inst_pcall(&mut self, mem: &mut Memory) {
+        let u = self.read_immediate(mem);
+        let target = 0xFF00 | u as u16;
+        let pc_hi = (self.regs.pc >> 8) as u8;
+        let pc_lo = (self.regs.pc & 0xFF) as u8;
+        self.stack_push(mem, pc_hi);
+        self.stack_push(mem, pc_lo);
+        self.regs.pc = target;
+        self.cycles += 6;
     }
 }
