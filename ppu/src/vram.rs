@@ -2,7 +2,7 @@ use crate::constants::VRAM_SIZE;
 use common::u16_split::U16Split;
 
 pub struct VRAM {
-    pub memory: [u16; VRAM_SIZE / 2], // VRAM stored as u16 words instead of bytes
+    pub memory: [u16; VRAM_SIZE / 2], // VRAM stored as u16 words
     pub vram_latch: u16, // word latch for reads
 }
 

@@ -227,7 +227,7 @@ mod tests {
     }
 
     // ============================================================
-    // render_scanline_mode1 — transparent pixels
+    // render_scanline_mode1 - transparent pixels
     // ============================================================
 
     /// A fully transparent tile (all zero CHR data) must leave the framebuffer unchanged.
@@ -239,7 +239,7 @@ mod tests {
         for b in renderer.framebuffer.iter_mut() { *b = 0xAA; }
 
         let mut ppu = make_ppu_mode1();
-        // Tilemap entry at (0,0): tile 0, palette 0 — CHR data is all zero -> transparent
+        // Tilemap entry at (0,0): tile 0, palette 0 - CHR data is all zero -> transparent
         ppu.vram.memory[0] = 0x0000; // tilemap entry: tile index 0
         // CHR data for tile 0 is already all zero
 
@@ -253,7 +253,7 @@ mod tests {
     }
 
     // ============================================================
-    // render_scanline_mode1 — opaque pixels
+    // render_scanline_mode1 - opaque pixels
     // ============================================================
 
     /// An opaque tile pixel must write the CGRAM colour (with brightness) to the framebuffer.
@@ -281,7 +281,7 @@ mod tests {
     }
 
     // ============================================================
-    // render_scanline_mode1 — flip_x / flip_y
+    // render_scanline_mode1 - flip_x / flip_y
     // ============================================================
 
     /// flip_x must mirror the pixel horizontally within the tile (fine_x = 7 - fine_x).
@@ -325,13 +325,13 @@ mod tests {
     }
 
     // ============================================================
-    // render_scanline_mode1 — scroll wrapping
+    // render_scanline_mode1 - scroll wrapping
     // ============================================================
 
     /// Scroll coordinates must wrap at 256 pixels (8-bit tilemap).
     #[test]
     fn test_scroll_wraps_at_256() {
-        // px = (x + scroll_x) & 0xFF — verify the mask holds
+        // px = (x + scroll_x) & 0xFF - verify the mask holds
         let scroll_x: usize = 0xFF;
         let x: usize = 1;
         let px = (x + scroll_x) & 0xFF;
@@ -339,7 +339,7 @@ mod tests {
     }
 
     // ============================================================
-    // render_scanline_mode1 — palette entry composition
+    // render_scanline_mode1 - palette entry composition
     // ============================================================
 
     /// palette_entry must combine palette_num (bits[7:4]) and color_index (bits[3:0]).

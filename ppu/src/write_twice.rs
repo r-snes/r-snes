@@ -61,7 +61,7 @@ mod tests {
     #[test]
     fn test_reset_cancels_pending_latch() {
         let mut w = WriteTwice::new();
-        w.write(0xFF); // first write — pending
+        w.write(0xFF); // first write - pending
         w.reset();
         assert_eq!(w.write(0xAB), None); // treated as first write again
         assert_eq!(w.write(0x01), Some((0xAB, 0x01)));

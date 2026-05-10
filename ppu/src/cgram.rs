@@ -22,7 +22,7 @@ impl BytePhase {
 }
 
 pub struct CGRAM {
-    pub memory: [u16; CGRAM_SIZE / 2], // CGRAM stored as u16 words instead of bytes
+    pub memory: [u16; CGRAM_SIZE / 2], // CGRAM stored as u16 words
 
     word_addr: u8, // Internal 8-bit word address (0–255)
     byte_phase: BytePhase,
@@ -43,7 +43,7 @@ impl CGRAM {
     }
 
     // ============================================================
-    // $2121 — CGADD
+    // $2121 - CGADD
     // ============================================================
 
     pub fn write_addr(&mut self, value: u8) {
@@ -52,7 +52,7 @@ impl CGRAM {
     }
 
     // ============================================================
-    // $2122 — CGDATA (Write)
+    // $2122 - CGDATA (Write-twice)
     // ============================================================
 
     pub fn write_data(&mut self, value: u8) {
@@ -71,7 +71,7 @@ impl CGRAM {
     }
 
     // ============================================================
-    // $213B — CGDATAREAD
+    // $213B - CGDATAREAD
     // ============================================================
 
     pub fn read_data(&mut self) -> u8 {
@@ -182,7 +182,7 @@ mod tests {
     fn test_write_data_low_then_high_commits_word() {
         let mut cgram = CGRAM::new();
         cgram.write_data(0xCD); // lo latch
-        cgram.write_data(0xFF); // hi write — bit 7 masked -> 0x7F
+        cgram.write_data(0xFF); // hi write - bit 7 masked -> 0x7F
         assert_eq!(cgram.memory[0x00], 0x7FCD);
     }
 
@@ -262,7 +262,7 @@ mod tests {
     fn test_read_data_high_phase_returns_hi_with_open_bus_bit7() {
         let mut cgram = CGRAM::new();
         cgram.memory[0x00] = 0x1234;
-        let _lo = cgram.read_data(); // Low phase — ppu_open_bus becomes 0x34
+        let _lo = cgram.read_data(); // Low phase - ppu_open_bus becomes 0x34
         // Simulate open bus bit 7 being set by a previous PPU operation
         cgram.ppu_open_bus = 0x80;
         let hi = cgram.read_data(); // High phase
@@ -275,7 +275,7 @@ mod tests {
     fn test_open_bus_bit7_on_high_read() {
         let mut cgram = CGRAM::new();
         cgram.memory[0x00] = 0x7F00; // hi = 0x7F (bit 7 clear in CGRAM)
-        let _lo = cgram.read_data(); // Low phase — ppu_open_bus becomes 0x00
+        let _lo = cgram.read_data(); // Low phase - ppu_open_bus becomes 0x00
         // Force open bus bit 7 before the high read
         cgram.ppu_open_bus = 0x80;
         let hi = cgram.read_data();
@@ -299,7 +299,7 @@ mod tests {
     fn test_read_data_no_increment_after_low_phase() {
         let mut cgram = CGRAM::new();
         cgram.memory[0x00] = 0xABCD;
-        let _lo = cgram.read_data(); // Low phase — addr must stay at 0x00
+        let _lo = cgram.read_data(); // Low phase - addr must stay at 0x00
         // High phase read should still be from word 0x00
         let hi = cgram.read_data();
         assert_eq!(hi & 0x7F, 0xAB & 0x7F);

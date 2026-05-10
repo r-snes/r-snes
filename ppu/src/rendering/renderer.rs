@@ -172,7 +172,7 @@ mod tests {
         // White in BGR555: 0x7FFF (r=31, g=31, b=31)
         let (r, g, b) = Renderer::apply_brightness(0x7FFF, 0);
         // brightness+1 = 1, >> 4 -> each channel = 31*1>>4 = 1
-        // expanded: (1<<3)|(1>>2) = 8|0 = 8 — just verify they're all equal and small
+        // expanded: (1<<3)|(1>>2) = 8|0 = 8 - just verify they're all equal and small
         assert_eq!(r, g);
         assert_eq!(g, b);
         assert!(r < 16);
@@ -237,7 +237,7 @@ mod tests {
     }
 
     // ============================================================
-    // render_scanline — force blank
+    // render_scanline - force blank
     // ============================================================
 
     /// When force blank is active, render_scanline must output a fully black scanline.
@@ -268,7 +268,7 @@ mod tests {
     }
 
     // ============================================================
-    // render_scanline — unimplemented mode falls back to black
+    // render_scanline - unimplemented mode falls back to black
     // ============================================================
 
     /// An unimplemented BG mode must output black for the scanline without panicking.
