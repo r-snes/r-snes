@@ -177,22 +177,22 @@ impl Io {
             0x4213 => todo!("0x4213 : Implement RDIO register read"),
 
             // Divison result register
-            0x4214 => self.rddiv as u8,
-            0x4215 => (self.rddiv >> 8) as u8,
+            0x4214 => *self.rddiv.lo(),
+            0x4215 => *self.rddiv.hi(),
 
             // Multiplication result / Division remainder register
-            0x4216 => self.rdmpy as u8,
-            0x4217 => (self.rdmpy >> 8) as u8,
+            0x4216 => *self.rdmpy.lo(),
+            0x4217 => *self.rdmpy.hi(),
 
             // Joypad data registers
-            0x4218 => self.joy1 as u8,
-            0x4219 => (self.joy1 >> 8) as u8,
-            0x421A => self.joy2 as u8,
-            0x421B => (self.joy2 >> 8) as u8,
-            0x421C => self.joy3 as u8,
-            0x421D => (self.joy3 >> 8) as u8,
-            0x421E => self.joy4 as u8,
-            0x421F => (self.joy4 >> 8) as u8,
+            0x4218 => *self.joy1.lo(),
+            0x4219 => *self.joy1.hi(),
+            0x421A => *self.joy2.lo(),
+            0x421B => *self.joy2.hi(),
+            0x421C => *self.joy3.lo(),
+            0x421D => *self.joy3.hi(),
+            0x421E => *self.joy4.lo(),
+            0x421F => *self.joy4.hi(),
 
             // DMA and HDMA channel registers
             0x4300..0x4380 => {

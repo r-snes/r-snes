@@ -62,10 +62,7 @@ impl RSnes {
         let mode = ch.dmap & 0x07;
         let ch_b_addr = ch.bbad;
 
-        let mut a_addr = SnesAddress {
-            bank: ch.a1t.bank,
-            addr: ch.a1t.addr,
-        };
+        let mut a_addr = ch.a1t;
 
         // 0x0000 means 65536 bytes, u32 needed to not overflow
         let mut remaining: u32 = {
