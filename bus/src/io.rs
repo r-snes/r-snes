@@ -4,61 +4,237 @@ use common::{snes_addr, snes_address::SnesAddress, u16_split::U16Split};
 use cpu::cpu::CPU;
 use ppu::ppu::PPU;
 
-/// I/O Registers – 0x4000 bytes (mirrored)
+/// I/O register file of the SNES, mapped to `0x2000–0x5FFF` in banks
+/// `0x00–0x3F` and `0x80–0xBF` (fully mirrored).
 ///
-/// - Memory area for various hardware components (CPU, APU, PPU, etc.).  
-/// - Accessible in banks 0x00–0x3F and 0x80–0xBF, within the address
-///   range 0x2000–0x5FFF.  
-/// - Fully mirrored across all these banks.  
+/// Write-only registers store the last written value; read-only registers are
+/// updated internally by the emulator. Fields spanning two bytes are stored as
+/// `u16` and split on access via [`U16Split`].
 ///
-/// For example, the addresses `0x004000` and `0x9E4000` both refer to the
-/// same memory location.
+/// # Reference
+/// [SNESdev Wiki - MMIO registers](https://snes.nesdev.org/wiki/MMIO_registers)
 pub struct Io {
+    /// **NMITIMEN** (`0x4200`, W) - Enables NMI on V-Blank, H/V IRQ, and
+    /// joypad auto-read. Bit 7 = NMI, bits 5–4 = IRQ mode, bit 0 = auto-read.
+    ///
+    /// # Reference
+    /// [SNESdev Wiki - NMITIMEN](https://snes.nesdev.org/wiki/MMIO_registers#NMITIMEN)
     pub nmitimen: u8,
+
+    /// **WRIO** (`0x4201`, W) - Programmable I/O port output. Bit 7 latches
+    /// H/V counters on a 1->0 transition.
+    ///
+    /// # Reference
+    /// [SNESdev Wiki - WRIO](https://snes.nesdev.org/wiki/MMIO_registers#WRIO)
     pub wrio: u8,
 
+    /// **WRMPYA** (`0x4202`, W) - Multiplicand for the 8×8 unsigned
+    /// multiplier. Result appears in [`rdmpy`](Self::rdmpy) after writing
+    /// [`wrmpyb`](Self::wrmpyb).
+    ///
+    /// # Reference
+    /// [SNESdev Wiki - WRMPYA](https://snes.nesdev.org/wiki/MMIO_registers#WRMPYA)
     pub wrmpya: u8,
+
+    /// **WRMPYB** (`0x4203`, W) - Multiplier for the 8×8 unsigned multiplier.
+    /// Writing triggers `wrmpya * wrmpyb -> rdmpy`.
+    ///
+    /// # Reference
+    /// [SNESdev Wiki - WRMPYB](https://snes.nesdev.org/wiki/MMIO_registers#WRMPYB)
     pub wrmpyb: u8,
 
+    /// **WRDIVL/H** (`0x4204–0x4205`, W) - 16-bit dividend for the 16/8
+    /// unsigned divider (lo/hi). Division is triggered by [`wrdivb`](Self::wrdivb).
+    ///
+    /// # Reference
+    /// [SNESdev Wiki - WRDIV](https://snes.nesdev.org/wiki/MMIO_registers#WRDIV)
     pub wrdiv: u16,
+
+    /// **WRDIVB** (`0x4206`, W) - 8-bit divisor. Writing triggers
+    /// `wrdiv / wrdivb -> rddiv`, remainder `-> rdmpy`.
+    /// Division by zero yields `rddiv = 0xFFFF`, `rdmpy = wrdiv`.
+    ///
+    /// # Reference
+    /// [SNESdev Wiki - WRDIVB](https://snes.nesdev.org/wiki/MMIO_registers#WRDIVB)
     pub wrdivb: u8,
 
+    /// **HTIMEL/H** (`0x4207–0x4208`, W) - Horizontal dot position (0–339)
+    /// at which the H/V IRQ fires (low 9 bits).
+    ///
+    /// # Reference
+    /// [SNESdev Wiki - HTIME](https://snes.nesdev.org/wiki/MMIO_registers#HTIME)
     pub htime: u16,
+
+    /// **VTIMEL/H** (`0x4209–0x420A`, W) - Vertical scanline (0–261) at
+    /// which the H/V IRQ fires (low 9 bits).
+    ///
+    /// # Reference
+    /// [SNESdev Wiki - VTIME](https://snes.nesdev.org/wiki/MMIO_registers#VTIME)
     pub vtime: u16,
 
+    /// **MDMAEN** (`0x420B`, W) - General-purpose DMA enable bitmask.
+    /// Each bit enables the corresponding channel (0–7) for an immediate
+    /// transfer, executed lowest-to-highest.
+    ///
+    /// # Reference
+    /// [SNESdev Wiki - MDMAEN](https://snes.nesdev.org/wiki/DMA_registers#MDMAEN)
     pub mdmaen: u8,
+
+    /// **HDMAEN** (`0x420C`, W) - HDMA enable bitmask. Each bit enables the
+    /// corresponding channel for per-scanline H-Blank DMA.
+    ///
+    /// # Reference
+    /// [SNESdev Wiki - HDMAEN](https://snes.nesdev.org/wiki/DMA_registers#HDMAEN)
     pub hdmaen: u8,
+
+    /// **MEMSEL** (`0x420D`, W) - ROM access speed. Bit 0: `1` = FastROM
+    /// (3.58 MHz), `0` = SlowROM (2.68 MHz) for banks `0x80–0xFF`.
+    ///
+    /// # Reference
+    /// [SNESdev Wiki - MEMSEL](https://snes.nesdev.org/wiki/MMIO_registers#MEMSEL)
     pub memsel: u8,
 
+    /// **RDDIVL/H** (`0x4214–0x4215`, R) - Quotient of the last 16/8
+    /// division. Updated when [`wrdivb`](Self::wrdivb) is written.
+    ///
+    /// # Reference
+    /// [SNESdev Wiki - RDDIV](https://snes.nesdev.org/wiki/MMIO_registers#RDDIV)
     pub rddiv: u16,
+
+    /// **RDMPYL/H** (`0x4216–0x4217`, R) - After multiplication: 16-bit
+    /// product. After division: 16-bit remainder.
+    ///
+    /// # Reference
+    /// [SNESdev Wiki - RDMPY](https://snes.nesdev.org/wiki/MMIO_registers#RDMPY)
     pub rdmpy: u16,
 
+    /// **RDNMI** (`0x4210`, R) - V-Blank NMI flag (bit 7) and CPU version
+    /// (bits 3–0). Bit 7 is set at V-Blank start and cleared on read and/or V-Blank end.
+    ///
+    /// # Reference
+    /// [SNESdev Wiki - RDNMI](https://snes.nesdev.org/wiki/MMIO_registers#RDNMI)
     pub rdnmi: u8,
+
+    /// **TIMEUP** (`0x4211`, R) - H/V timer IRQ flag (bit 7). Set when the
+    /// IRQ condition is met, cleared on read.
+    ///
+    /// # Reference
+    /// [SNESdev Wiki - TIMEUP](https://snes.nesdev.org/wiki/MMIO_registers#TIMEUP)
     pub timeup: u8,
+
+    /// **HVBJOY** (`0x4212`, R) - Screen/joypad status. Bit 7 = V-Blank,
+    /// bit 6 = H-Blank, bit 0 = joypad auto-read in progress.
+    ///
+    /// # Reference
+    /// [SNESdev Wiki - HVBJOY](https://snes.nesdev.org/wiki/MMIO_registers#HVBJOY)
     pub hvbjoy: u8,
 
+    /// **JOY1L/H** (`0x4218–0x4219`, R) - Auto-read result for controller
+    /// port 1. Updated once per frame when auto-read is enabled.
+    ///
+    /// # Reference
+    /// [SNESdev Wiki - JOY1](https://snes.nesdev.org/wiki/MMIO_registers#JOY1)
     pub joy1: u16,
+
+    /// **JOY2L/H** (`0x421A–0x421B`, R) - Auto-read result for controller
+    /// port 2. See [`joy1`](Self::joy1).
+    ///
+    /// # Reference
+    /// [SNESdev Wiki - JOY2](https://snes.nesdev.org/wiki/MMIO_registers#JOY2)
     pub joy2: u16,
+
+    /// **JOY3L/H** (`0x421C–0x421D`, R) - Auto-read result for controller
+    /// port 3 (multitap). See [`joy1`](Self::joy1).
+    ///
+    /// # Reference
+    /// [SNESdev Wiki - JOY3](https://snes.nesdev.org/wiki/MMIO_registers#JOY3)
     pub joy3: u16,
+
+    /// **JOY4L/H** (`0x421E–0x421F`, R) - Auto-read result for controller
+    /// port 4 (multitap). See [`joy1`](Self::joy1).
+    ///
+    /// # Reference
+    /// [SNESdev Wiki - JOY4](https://snes.nesdev.org/wiki/MMIO_registers#JOY4)
     pub joy4: u16,
 
+    /// DMA/HDMA register banks for all 8 channels (`0x4300–0x437F`).
+    /// Channel `n` occupies `0x43n0–0x43nF`.
     pub dma_channels: [DMAChannel; 8],
 }
 
+/// Register state for a single SNES DMA/HDMA channel.
+///
+/// Each of the 8 channels occupies a 16-byte window at `0x43n0–0x43nF`.
+/// Channels support two modes: **DMA** (immediate bulk transfer, enabled via
+/// [`Io::mdmaen`]) and **HDMA** (one transfer per scanline, enabled via
+/// [`Io::hdmaen`]). Some registers have different roles depending on the
+/// active mode. All registers default to `0xFF` at power-on.
+///
+/// # Reference
+/// [SNESdev Wiki - DMA registers](https://snes.nesdev.org/wiki/DMA_registers)
 pub struct DMAChannel {
+    /// **DMAPn** (`0x43n0`) - Channel parameters.
+    /// Bit 7 = direction (0: CPU->PPU, 1: PPU->CPU), bit 6 = HDMA indirect
+    /// mode, bits 4–3 = A-bus step (inc/dec/fixed), bits 2–0 = transfer unit
+    /// pattern (1/2/4 bytes).
+    ///
+    /// # Reference
+    /// [SNESdev Wiki - DMAPn](https://snes.nesdev.org/wiki/DMA_registers#DMAPn)
     pub dmap: u8,
 
+    /// **BBADn** (`0x43n1`) - B-bus (PPU) target register offset.
+    /// Effective address: `0x2100 + bbad`.
+    ///
+    /// # Reference
+    /// [SNESdev Wiki - BBADn](https://snes.nesdev.org/wiki/DMA_registers#BBADn)
     pub bbad: u8,
 
+    /// **A1TLn/A1THn/A1Bn** (`0x43n2–0x43n4`) - Full 24-bit A-bus source
+    /// address (DMA) or HDMA table start address. Advanced per-byte according
+    /// to the step mode in [`dmap`](Self::dmap).
+    ///
+    /// # Reference
+    /// [SNESdev Wiki - A1Tn](https://snes.nesdev.org/wiki/DMA_registers#A1Tn)
     pub a1t: SnesAddress,
 
+    /// **DASLn/DASHn** (`0x43n5–0x43n6`) - DMA: byte count to transfer
+    /// (`0x0000` = 65 536 bytes). HDMA: low 16 bits of the indirect table
+    /// address when [`dmap`](Self::dmap) bit 6 is set.
+    ///
+    /// # Reference
+    /// [SNESdev Wiki - DASn](https://snes.nesdev.org/wiki/DMA_registers#DASn)
     pub das: u16,
+
+    /// **DASBn** (`0x43n7`) - HDMA indirect table bank byte. Forms the upper
+    /// byte of the 24-bit indirect address with [`das`](Self::das).
+    /// Unused in DMA mode.
+    ///
+    /// # Reference
+    /// [SNESdev Wiki - DASBn](https://snes.nesdev.org/wiki/DMA_registers#DASBn)
     pub dasb: u8,
 
+    /// **A2ALn/A2AHn** (`0x43n8–0x43n9`) - HDMA current table pointer
+    /// (16-bit offset; bank from [`a1t`](Self::a1t)). Initialized to
+    /// `a1t` each frame and advanced as the table is consumed.
+    /// Unused in DMA mode.
+    ///
+    /// # Reference
+    /// [SNESdev Wiki - A2An](https://snes.nesdev.org/wiki/DMA_registers#A2An)
     pub a2a: u16,
 
+    /// **NLTRn** (`0x43nA`) - HDMA line counter. Bits 6–0: remaining
+    /// scanlines for the current entry; bit 7: write-once (`1`) vs.
+    /// every-line (`0`). Unused in DMA mode.
+    ///
+    /// # Reference
+    /// [SNESdev Wiki - NLTRn](https://snes.nesdev.org/wiki/DMA_registers#NLTRn)
     pub nltr: u8,
 
+    /// **Unused** (`0x43nB` / `0x43nF`) - No hardware function. Both offsets
+    /// alias this byte; reads return the last written value.
+    ///
+    /// # Reference
+    /// [SNESdev Wiki - UNUSEDn](https://snes.nesdev.org/wiki/DMA_registers#UNUSEDn)
     pub unused: u8,
 }
 
