@@ -775,10 +775,8 @@ mod tests {
         assert_eq!(io.wrmpyb, value_wrmpyb);
         assert_eq!(io.rdmpy, (io.wrmpya as u16) * (io.wrmpyb as u16));
 
-        let rdmpyl_value = io.read(rdmpyl_addr, &mut cpu, &mut ppu, &mut apu);
-        let rdmpyh_value = io.read(rdmpyh_addr, &mut cpu, &mut ppu, &mut apu);
-        assert_eq!(rdmpyl_value, (io.rdmpy as u8));
-        assert_eq!(rdmpyh_value, (io.rdmpy >> 8) as u8);
+        assert_eq!(io.read(rdmpyl_addr, &mut cpu, &mut ppu, &mut apu), *io.rdmpy.lo());
+        assert_eq!(io.read(rdmpyh_addr, &mut cpu, &mut ppu, &mut apu), *io.rdmpy.hi());
     }
 
     #[test]
@@ -806,14 +804,11 @@ mod tests {
         assert_eq!(io.rddiv, value_wrdiv / value_wrdivb as u16);
         assert_eq!(io.rdmpy, value_wrdiv % value_wrdivb as u16);
 
-        let rdmpyl_value = io.read(rdmpyl_addr, &mut cpu, &mut ppu, &mut apu);
-        let rdmpyh_value = io.read(rdmpyh_addr, &mut cpu, &mut ppu, &mut apu);
-        assert_eq!(rdmpyl_value, (io.rdmpy as u8));
-        assert_eq!(rdmpyh_value, (io.rdmpy >> 8) as u8);
-        let rddivl_value = io.read(rddivl_addr, &mut cpu, &mut ppu, &mut apu);
-        let rddivh_value = io.read(rddivh_addr, &mut cpu, &mut ppu, &mut apu);
-        assert_eq!(rddivl_value, (io.rddiv as u8));
-        assert_eq!(rddivh_value, (io.rddiv >> 8) as u8);
+        assert_eq!(io.read(rdmpyl_addr, &mut cpu, &mut ppu, &mut apu), *io.rdmpy.lo());
+        assert_eq!(io.read(rdmpyh_addr, &mut cpu, &mut ppu, &mut apu), *io.rdmpy.hi());
+
+        assert_eq!(io.read(rddivl_addr, &mut cpu, &mut ppu, &mut apu), *io.rddiv.lo());
+        assert_eq!(io.read(rddivh_addr, &mut cpu, &mut ppu, &mut apu), *io.rddiv.hi());
     }
 
     #[test]
@@ -933,22 +928,17 @@ mod tests {
         io.joy3 = value_joy3;
         io.joy4 = value_joy4;
 
-        let joy1l_value = io.read(joy1l_addr, &mut cpu, &mut ppu, &mut apu);
-        assert_eq!(joy1l_value, value_joy1 as u8);
-        let joy1h_value = io.read(joy1h_addr, &mut cpu, &mut ppu, &mut apu);
-        assert_eq!(joy1h_value, (value_joy1 >> 8) as u8);
-        let joy2l_value = io.read(joy2l_addr, &mut cpu, &mut ppu, &mut apu);
-        assert_eq!(joy2l_value, value_joy2 as u8);
-        let joy2h_value = io.read(joy2h_addr, &mut cpu, &mut ppu, &mut apu);
-        assert_eq!(joy2h_value, (value_joy2 >> 8) as u8);
-        let joy3l_value = io.read(joy3l_addr, &mut cpu, &mut ppu, &mut apu);
-        assert_eq!(joy3l_value, value_joy3 as u8);
-        let joy3h_value = io.read(joy3h_addr, &mut cpu, &mut ppu, &mut apu);
-        assert_eq!(joy3h_value, (value_joy3 >> 8) as u8);
-        let joy4l_value = io.read(joy4l_addr, &mut cpu, &mut ppu, &mut apu);
-        assert_eq!(joy4l_value, value_joy4 as u8);
-        let joy4h_value = io.read(joy4h_addr, &mut cpu, &mut ppu, &mut apu);
-        assert_eq!(joy4h_value, (value_joy4 >> 8) as u8);
+        assert_eq!(io.read(joy1l_addr, &mut cpu, &mut ppu, &mut apu), *value_joy1.lo());
+        assert_eq!(io.read(joy1h_addr, &mut cpu, &mut ppu, &mut apu), *value_joy1.hi());
+
+        assert_eq!(io.read(joy2l_addr, &mut cpu, &mut ppu, &mut apu), *value_joy2.lo());
+        assert_eq!(io.read(joy2h_addr, &mut cpu, &mut ppu, &mut apu), *value_joy2.hi());
+
+        assert_eq!(io.read(joy3l_addr, &mut cpu, &mut ppu, &mut apu), *value_joy3.lo());
+        assert_eq!(io.read(joy3h_addr, &mut cpu, &mut ppu, &mut apu), *value_joy3.hi());
+
+        assert_eq!(io.read(joy4l_addr, &mut cpu, &mut ppu, &mut apu), *value_joy4.lo());
+        assert_eq!(io.read(joy4h_addr, &mut cpu, &mut ppu, &mut apu), *value_joy4.hi());
     }
 
     #[test]
