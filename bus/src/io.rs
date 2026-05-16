@@ -160,6 +160,15 @@ pub struct Io {
     /// DMA/HDMA register banks for all 8 channels (`0x4300–0x437F`).
     /// Channel `n` occupies `0x43n0–0x43nF`.
     pub dma_channels: [DMAChannel; 8],
+
+    /// Internal open bus value, updated on every read and write to the I/O zone.
+    ///
+    /// > On real hardware, reads and writes maintain separate internal buses,
+    /// > and undriven bits decay independently. This is a simplified approximation.
+    ///
+    /// # Reference
+    /// [SNESdev Wiki — Open bus](https://snes.nesdev.org/wiki/Open_bus)
+    pub open_bus: u8,
 }
 
 /// Register state for a single SNES DMA/HDMA channel.
@@ -290,6 +299,8 @@ impl Default for Io {
             joy4: 0,
 
             dma_channels: Default::default(),
+
+            open_bus: 0,
         }
     }
 }
@@ -390,12 +401,12 @@ impl Io {
                     0xA => channel.nltr,
                     0xB | 0xF => channel.unused,
 
-                    _ => cpu.data_bus, // Open bus I believe, but not sure if this is the correct behavior
+                    _ => self.open_bus, // Open bus I believe, but not sure if this is the correct behavior
                 }
             }
 
             // Open Bus
-            _ => cpu.data_bus,
+            _ => self.open_bus,
         }
     }
 
@@ -626,23 +637,24 @@ impl Io {
     /// # Panics
     /// Panics if the address does not map to a valid I/O memory location.
     pub fn read(&mut self, addr: SnesAddress, cpu: &mut CPU, ppu: &mut PPU, apu: &mut Apu) -> u8 {
-        match addr.bank {
+        self.open_bus = match addr.bank {
             0x00..=0x3F | 0x80..=0xBF
                 if addr.addr >= IO_START_ADDRESS && addr.addr < IO_END_ADDRESS =>
             {
                 match addr.addr {
-                    0x2000..0x2100 => cpu.data_bus,
+                    0x2000..0x2100 => self.open_bus,
                     #[cfg(not(tarpaulin_include))]
                     0x2100..0x2140 => self.read_ppu(addr, ppu),
                     0x2140..0x4380 => self.read_cpu(addr, cpu, apu),
-                    0x4380..0x6000 => cpu.data_bus,
+                    0x4380..0x6000 => self.open_bus,
 
                     #[cfg(not(tarpaulin_include))]
                     _ => unreachable!(),
                 }
             }
             _ => Self::panic_invalid_addr(addr),
-        }
+        };
+        self.open_bus
     }
 
     /// Writes a byte to the I/O memory zone at the given `SnesAddress`.
@@ -659,6 +671,7 @@ impl Io {
         ppu: &mut PPU,
         apu: &mut Apu,
     ) {
+        self.open_bus = value;
         match addr.bank {
             0x00..=0x3F | 0x80..=0xBF
                 if addr.addr >= IO_START_ADDRESS && addr.addr < IO_END_ADDRESS =>
@@ -725,12 +738,12 @@ mod tests {
     fn test_read_from_open_bus() {
         let (mut io, mut cpu, mut ppu, mut apu) = init_all();
 
-        cpu.data_bus = 0x20;
+        io.open_bus = 0x20;
         let open_bus_addr = snes_addr!(0:0x5000);
         let read_value = io.read(open_bus_addr, &mut cpu, &mut ppu, &mut apu);
         assert_eq!(read_value, 0x20);
 
-        cpu.data_bus = 0x40;
+        io.open_bus = 0x40;
         let open_bus_addr = snes_addr!(0:0x4250);
         let read_value = io.read(open_bus_addr, &mut cpu, &mut ppu, &mut apu);
         assert_eq!(read_value, 0x40);
@@ -980,7 +993,7 @@ mod tests {
     fn test_dma_registers() {
         let (mut io, mut cpu, mut ppu, mut apu) = init_all();
         let cpu_open_bus_value = 0xE4;
-        cpu.data_bus = cpu_open_bus_value;
+        io.open_bus = cpu_open_bus_value;
 
         let mut value_inc = 0;
         for channel_nb in (0..8) {
@@ -1046,7 +1059,7 @@ mod tests {
                         assert_eq!(io.dma_channels[channel_nb as usize].unused, value_inc);
                         assert_eq!(read_value, value_inc);
                     }
-                    _ => assert_eq!(read_value, cpu_open_bus_value),
+                    _ => assert_eq!(read_value, value_inc),
                 }
 
                 value_inc += 1;

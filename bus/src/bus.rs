@@ -94,11 +94,11 @@ mod tests {
         cpu.data_bus = 0x20;
         let addr = snes_addr!(0:0x5000);
         let read_value = bus.read(addr, &mut cpu, &mut ppu, &mut apu);
-        assert_eq!(read_value, 0x20);
+        assert_eq!(read_value, 0);
 
         bus.write(addr, 0x40, &mut cpu, &mut ppu, &mut apu);
         let read_value = bus.read(addr, &mut cpu, &mut ppu, &mut apu);
-        assert_eq!(read_value, 0x20);
+        assert_eq!(read_value, 0x40);
     }
 
     #[test]
