@@ -37,8 +37,8 @@ impl PPU {
             // OAM
             // ==========================
             0x2101 => self.regs.objsel = value, // TODO
-            0x2102 => self.regs.oamaddl = value, // TODO
-            0x2103 => self.regs.oamaddh = value, // TODO
+            0x2102 => *self.regs.oamadd.lo_mut() = value, // TODO
+            0x2103 => *self.regs.oamadd.hi_mut() = value, // TODO
             0x2104 => self.regs.oamdata = value, // TODO
 
             // ==========================
@@ -163,7 +163,7 @@ impl PPU {
             0x2137 => Self::unimplemented_read_only(addr), // TODO
             0x213C => Self::unimplemented_read_only(addr), // TODO
             0x213D => Self::unimplemented_read_only(addr), // TODO
-            
+
             // ==========================
             // Status
             // ==========================
@@ -272,7 +272,7 @@ mod tests {
     fn test_write_oamaddl() {
         let mut ppu = PPU::new();
         ppu.write(0x2102, 0x7F);
-        assert_eq!(ppu.regs.oamaddl, 0x7F);
+        assert_eq!(*ppu.regs.oamadd.lo(), 0x7F);
     }
 
     /// Writing $2103 must update oamaddh.
@@ -280,7 +280,7 @@ mod tests {
     fn test_write_oamaddh() {
         let mut ppu = PPU::new();
         ppu.write(0x2103, 0x01);
-        assert_eq!(ppu.regs.oamaddh, 0x01);
+        assert_eq!(*ppu.regs.oamadd.hi(), 0x01);
     }
 
     /// Writing $2104 must update oamdata.

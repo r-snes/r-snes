@@ -9,11 +9,8 @@ pub struct PPURegisters {
     // $2101 - OBJSEL
     pub objsel: u8, // Bits: SSSNNbBB | OBJ sprite size (S), name secondary select (N), name base address (B).
 
-    // $2102 - OAMADDL
-    pub oamaddl: u8, // Bits: AAAAAAAA | OAM word address low
-
-    // $2103 - OAMADDH
-    pub oamaddh: u8, // Bits: P...B | Priority rotation (P), address high bit (B)
+    // $2102-$2103 - OAMADDL and OAMADDH
+    pub oamadd: u16, // Bits: ....P..B AAAAAAAA | OAM word address low
 
     // $2104 - OAMDATA
     pub oamdata: u8, // Bits: DDDDDDDD | OAM data write byte, increments OAMADD
@@ -203,8 +200,7 @@ impl PPURegisters {
         Self {
             inidisp: 0,
             objsel: 0,
-            oamaddl: 0,
-            oamaddh: 0,
+            oamadd: 0,
             oamdata: 0,
             bgmode: 0,
             mosaic: 0,
