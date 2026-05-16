@@ -138,6 +138,7 @@ impl Spc700 {
             0x8C => self.inst_dec_abs(mem),
 
             0xCF => self.inst_mul(mem), // MUL YA
+            0x9E => self.inst_div(mem), // DIV
 
             // Catch-all
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
@@ -726,5 +727,28 @@ impl Spc700 {
         self.regs.y = (result >> 8) as u8;
         self.set_zn_flags(self.regs.y);
         self.cycles += 9;
+    }
+
+    /// DIV YA,X — unsigned 16/8 divide: YA / X → A quotient, Y remainder.
+    /// V is set if the quotient overflows (> $FF) or divisor is zero.
+    /// H is set if (Y & $0F) >= (X & $0F).
+    /// N and Z are set from the quotient (A). 12 cycles.
+    fn inst_div(&mut self, _mem: &mut Memory) {
+        let ya = ((self.regs.y as u16) << 8) | self.regs.a as u16;
+        self.set_flag(FLAG_H, (self.regs.y & 0x0F) >= (self.regs.x & 0x0F));
+        if self.regs.x == 0 {
+            // Division by zero — quotient and remainder both $FF
+            self.regs.a = 0xFF;
+            self.regs.y = 0xFF;
+            self.set_flag(FLAG_V, true);
+        } else {
+            let q = ya / self.regs.x as u16;
+            let r = ya % self.regs.x as u16;
+            self.set_flag(FLAG_V, q > 0xFF);
+            self.regs.a = q as u8;
+            self.regs.y = r as u8;
+        }
+        self.set_zn_flags(self.regs.a);
+        self.cycles += 12;
     }
 }
