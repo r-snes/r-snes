@@ -69,11 +69,8 @@ pub struct PPURegisters {
     // $2115 - VMAIN
     pub vmain: u8, // Bits: M...RRII | VRAM address increment mode (M), remapping (R), increment size (I)
 
-    // $2116 - VMADDL
-    pub vmaddl: u8, // Bits: LLLLLLLL | VRAM word address low
-
-    // $2117 - VMADDH
-    pub vmaddh: u8, // Bits: hHHHHHHH | VRAM word address high
+    // $2116-2117 - VMADD
+    pub vmadd: u16,
 
     // $2118 - VMDATAL
     pub vmdatal: u8, // Bits: LLLLLLLL | VRAM data write low, increments VMADD
@@ -226,8 +223,7 @@ impl PPURegisters {
             bg3hofs: 0,
             bg3vofs: 0,
             vmain: 0,
-            vmaddl: 0,
-            vmaddh: 0,
+            vmadd: 0,
             vmdatal: 0,
             vmdatah: 0,
             m7sel: 0,
@@ -519,8 +515,7 @@ mod tests {
         let mut ppu = PPU::new();
         ppu.write(0x2116, 0x34);
         ppu.write(0x2117, 0x12);
-        assert_eq!(ppu.regs.vmaddl, 0x34);
-        assert_eq!(ppu.regs.vmaddh, 0x12);
+        assert_eq!(ppu.regs.vmadd, 0x1234);
     }
 
     /// Writing a word to VRAM via $2118/$2119 must store data and advance VMADD.
@@ -531,14 +526,13 @@ mod tests {
         ppu.write(0x2116, 0x00);
         ppu.write(0x2117, 0x00);
         ppu.write(0x2118, 0xAB); // low byte -> VMADD increments
-        let addr_after_low = u16::from(ppu.regs.vmaddl) | (u16::from(ppu.regs.vmaddh) << 8);
-        assert_eq!(addr_after_low, 0x0001);
+        assert_eq!(ppu.regs.vmadd, 0x0001);
+
         ppu.write(0x2116, 0x00);
         ppu.write(0x2117, 0x00);
         ppu.write(0x2115, 0x80); // increment on high byte write, step 1
         ppu.write(0x2119, 0xCD); // high byte -> VMADD increments
-        let addr_after_high = u16::from(ppu.regs.vmaddl) | (u16::from(ppu.regs.vmaddh) << 8);
-        assert_eq!(addr_after_high, 0x0001);
+        assert_eq!(ppu.regs.vmadd, 0x0001);
     }
 
     // ============================================================

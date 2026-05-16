@@ -19,15 +19,6 @@ impl VRAM {
     // Address increment logic
     // ============================================================
 
-    fn vmadd(vmaddl: u8, vmaddh: u8) -> u16 {
-        (vmaddl as u16) | ((vmaddh as u16 & 0x7F) << 8)
-    }
-
-    fn set_vmadd(addr: u16, vmaddl: &mut u8, vmaddh: &mut u8) {
-        *vmaddl = (addr & 0xFF) as u8;
-        *vmaddh = ((addr >> 8) & 0x7F) as u8;
-    }
-
     pub fn increment_amount(vmain: u8) -> u16 {
         match vmain & 0b11 {
             0 => 1,
@@ -45,68 +36,63 @@ impl VRAM {
         (vmain & 0x80) != 0
     }
 
-    fn increment_vmadd(vmain: u8, vmaddl: &mut u8, vmaddh: &mut u8) {
-        let addr = (Self::vmadd(*vmaddl, *vmaddh) + Self::increment_amount(vmain)) & 0x7FFF;
-        Self::set_vmadd(addr, vmaddl, vmaddh);
+    fn increment_vmadd(vmain: u8, vmadd: &mut u16) {
+        *vmadd = *vmadd + Self::increment_amount(vmain) & 0x7FFF;
     }
 
     // ============================================================
     // VMADD ($2116 / $2117)
     // ============================================================
-    
-    pub fn write_vmadd(&mut self, PPURegisters { vmaddl, vmaddh, .. }: &mut PPURegisters, addr: u16) {
-        *vmaddl = *addr.lo();
-        self.load_latch(*vmaddl, *vmaddh);
 
-        *vmaddh = *addr.hi() & 0x7F;
-        self.load_latch(*vmaddl, *vmaddh);
+    pub fn write_vmadd(&mut self, PPURegisters { vmadd, .. }: &mut PPURegisters, addr: u16) {
+        *vmadd.lo_mut() = *addr.lo();
+        self.load_latch(*vmadd);
+
+        *vmadd.hi_mut() = *addr.hi() & 0x7F;
+        self.load_latch(*vmadd);
     }
 
-    pub fn write_vmadd_low(&mut self, PPURegisters { vmaddl, vmaddh, .. }: &mut PPURegisters, value: u8) {
-        *vmaddl = value;
-        self.load_latch(*vmaddl, *vmaddh);
+    pub fn write_vmadd_low(&mut self, PPURegisters { vmadd, .. }: &mut PPURegisters, value: u8) {
+        *vmadd.lo_mut() = value;
+        self.load_latch(*vmadd);
     }
 
-    pub fn write_vmadd_high(&mut self, PPURegisters { vmaddl, vmaddh, .. }: &mut PPURegisters, value: u8) {
-        *vmaddh = value & 0x7F;
-        self.load_latch(*vmaddl, *vmaddh);
+    pub fn write_vmadd_high(&mut self, PPURegisters { vmadd, .. }: &mut PPURegisters, value: u8) {
+        *vmadd.hi_mut() = value & 0x7F;
+        self.load_latch(*vmadd);
     }
 
     // ============================================================
     // VRAM DATA WRITE ($2118 / $2119)
     // ============================================================
 
-    pub fn write_vmdata(&mut self, PPURegisters { vmain, vmaddl, vmaddh, .. }: &mut PPURegisters, value: u16) {
-        let addr = Self::vmadd(*vmaddl, *vmaddh) as usize;
-        *self.memory[addr].lo_mut() = *value.lo();
+    pub fn write_vmdata(&mut self, PPURegisters { vmain, vmadd, .. }: &mut PPURegisters, value: u16) {
+        *self.memory[*vmadd as usize].lo_mut() = *value.lo();
 
         if Self::increment_after_low(*vmain) {
-            Self::increment_vmadd(*vmain, vmaddl, vmaddh);
+            Self::increment_vmadd(*vmain, vmadd);
         }
 
-        let addr = Self::vmadd(*vmaddl, *vmaddh) as usize;
-        *self.memory[addr].hi_mut() = *value.hi();
+        *self.memory[*vmadd as usize].hi_mut() = *value.hi();
 
         if Self::increment_after_high(*vmain) {
-            Self::increment_vmadd(*vmain, vmaddl, vmaddh);
+            Self::increment_vmadd(*vmain, vmadd);
         }
     }
 
-    pub fn write_vmdatal(&mut self, PPURegisters { vmain, vmaddl, vmaddh, .. }: &mut PPURegisters, value: u8) {
-        let addr = Self::vmadd(*vmaddl, *vmaddh) as usize;
-        *self.memory[addr].lo_mut() = value;
+    pub fn write_vmdatal(&mut self, PPURegisters { vmain, vmadd, .. }: &mut PPURegisters, value: u8) {
+        *self.memory[*vmadd as usize].lo_mut() = value;
 
         if Self::increment_after_low(*vmain) {
-            Self::increment_vmadd(*vmain, vmaddl, vmaddh);
+            Self::increment_vmadd(*vmain, vmadd);
         }
     }
 
-    pub fn write_vmdatah(&mut self, PPURegisters { vmain, vmaddl, vmaddh, .. }: &mut PPURegisters, value: u8) {
-        let addr = Self::vmadd(*vmaddl, *vmaddh) as usize;
-        *self.memory[addr].hi_mut() = value;
+    pub fn write_vmdatah(&mut self, PPURegisters { vmain, vmadd, .. }: &mut PPURegisters, value: u8) {
+        *self.memory[*vmadd as usize].hi_mut() = value;
 
         if Self::increment_after_high(*vmain) {
-            Self::increment_vmadd(*vmain, vmaddl, vmaddh);
+            Self::increment_vmadd(*vmain, vmadd);
         }
     }
 
@@ -114,41 +100,41 @@ impl VRAM {
     // VRAM DATA READ ($2139 / $213A)
     // ============================================================
 
-    pub fn read_vmdata(&mut self, PPURegisters { vmain, vmaddl, vmaddh, .. }: &mut PPURegisters) -> u16 {
+    pub fn read_vmdata(&mut self, PPURegisters { vmain, vmadd, .. }: &mut PPURegisters) -> u16 {
         let lo = *self.vram_latch.lo();
 
         if Self::increment_after_low(*vmain) {
-            Self::increment_vmadd(*vmain, vmaddl, vmaddh);
-            self.load_latch(*vmaddl, *vmaddh);
+            Self::increment_vmadd(*vmain, vmadd);
+            self.load_latch(*vmadd);
         }
 
         let hi = *self.vram_latch.hi();
 
         if Self::increment_after_high(*vmain) {
-            Self::increment_vmadd(*vmain, vmaddl, vmaddh);
-            self.load_latch(*vmaddl, *vmaddh);
+            Self::increment_vmadd(*vmain, vmadd);
+            self.load_latch(*vmadd);
         }
 
         (lo as u16) | ((hi as u16) << 8)
     }
 
-    pub fn read_vmdatal(&mut self, PPURegisters { vmain, vmaddl, vmaddh, .. }: &mut PPURegisters) -> u8 {
+    pub fn read_vmdatal(&mut self, PPURegisters { vmain, vmadd, .. }: &mut PPURegisters) -> u8 {
         let value = *self.vram_latch.lo();
 
         if Self::increment_after_low(*vmain) {
-            Self::increment_vmadd(*vmain, vmaddl, vmaddh);
-            self.load_latch(*vmaddl, *vmaddh);
+            Self::increment_vmadd(*vmain, vmadd);
+            self.load_latch(*vmadd);
         }
 
         value
     }
 
-    pub fn read_vmdatah(&mut self, PPURegisters { vmain, vmaddl, vmaddh, .. }: &mut PPURegisters) -> u8 {
+    pub fn read_vmdatah(&mut self, PPURegisters { vmain, vmadd, .. }: &mut PPURegisters) -> u8 {
         let value = *self.vram_latch.hi();
 
         if Self::increment_after_high(*vmain) {
-            Self::increment_vmadd(*vmain, vmaddl, vmaddh);
-            self.load_latch(*vmaddl, *vmaddh);
+            Self::increment_vmadd(*vmain, vmadd);
+            self.load_latch(*vmadd);
         }
 
         value
@@ -158,8 +144,8 @@ impl VRAM {
     // Helpers
     // ============================================================
 
-    pub fn load_latch(&mut self, vmaddl: u8, vmaddh: u8) {
-        self.vram_latch = self.memory[Self::vmadd(vmaddl, vmaddh) as usize];
+    pub fn load_latch(&mut self, vmadd: u16) {
+        self.vram_latch = self.memory[vmadd as usize];
     }
 }
 
@@ -184,12 +170,14 @@ mod tests {
     // vmain = 0x83 -> increment by 128, increment after high byte write/read
     const VMAIN_INC128_AFTER_HIGH: u8 = 0x83;
 
-    fn make_regs(vmain: u8, vmaddl: u8, vmaddh: u8) -> PPURegisters {
-        let mut regs = PPURegisters::new();
-        regs.vmain = vmain;
-        regs.vmaddl = vmaddl;
-        regs.vmaddh = vmaddh;
-        regs
+    fn make_regs(vmain: u8, vmadd: u16) -> PPURegisters {
+        assert!(vmadd <= 0x7FFF, "make regs: vmadd of {vmadd:#.4X} > 0x7FFF");
+
+        PPURegisters {
+            vmain,
+            vmadd,
+            ..PPURegisters::new()
+        }
     }
 
     // ============================================================
@@ -286,12 +274,11 @@ mod tests {
         let mut vram = VRAM::new();
         // Pre-load a known word at address 0x0005
         vram.memory[0x0005] = 0xABCD;
-        let mut regs = make_regs(0, 0x00, 0x00);
- 
+        let mut regs = make_regs(0, 0x0000);
+
         vram.write_vmadd_low(&mut regs, 0x05);
- 
-        assert_eq!(regs.vmaddl, 0x05);
-        assert_eq!(regs.vmaddh, 0x00);
+
+        assert_eq!(regs.vmadd, 0x0005);
         assert_eq!(vram.vram_latch, 0xABCD);
     }
 
@@ -301,12 +288,12 @@ mod tests {
         let mut vram = VRAM::new();
         // Address 0x0100 (vmaddh=0x01, vmaddl=0x00)
         vram.memory[0x0100] = 0x1234;
-        let mut regs = make_regs(0, 0x00, 0x00);
+        let mut regs = make_regs(0, 0x0000);
 
         // Pass 0x81 – bit 7 must be masked off, resulting in vmaddh = 0x01 
         vram.write_vmadd_high(&mut regs, 0x81);
 
-        assert_eq!(regs.vmaddh, 0x01);
+        assert_eq!(*regs.vmadd.hi(), 0x01);
         assert_eq!(vram.vram_latch, 0x1234);
     }
 
@@ -314,11 +301,11 @@ mod tests {
     #[test]
     fn test_write_vmadd_high_does_not_touch_vmaddl() {
         let mut vram = VRAM::new();
-        let mut regs = make_regs(0, 0x42, 0x00);
- 
+        let mut regs = make_regs(0, 0x0042);
+
         vram.write_vmadd_high(&mut regs, 0x01);
- 
-        assert_eq!(regs.vmaddl, 0x42);
+
+        assert_eq!(*regs.vmadd.lo(), 0x42);
     }
 
     /// write_vmadd must set both vmaddl and vmaddh and reload the latch once.
@@ -326,12 +313,11 @@ mod tests {
     fn test_write_vmadd_sets_both_bytes_and_reloads_latch() {
         let mut vram = VRAM::new();
         vram.memory[0x0123] = 0xDEAD;
-        let mut regs = make_regs(0, 0x00, 0x00);
- 
+        let mut regs = make_regs(0, 0x0000);
+
         vram.write_vmadd(&mut regs, 0x0123);
- 
-        assert_eq!(regs.vmaddl, 0x23);
-        assert_eq!(regs.vmaddh, 0x01);
+
+        assert_eq!(regs.vmadd, 0x0123);
         assert_eq!(vram.vram_latch, 0xDEAD);
     }
 
@@ -339,12 +325,12 @@ mod tests {
     #[test]
     fn test_write_vmadd_masks_high_bit7() {
         let mut vram = VRAM::new();
-        let mut regs = make_regs(0, 0x00, 0x00);
- 
+        let mut regs = make_regs(0, 0x0000);
+
         vram.write_vmadd(&mut regs, 0xFF00);
 
         // 0xFF & 0x7F == 0x7F
-        assert_eq!(regs.vmaddh, 0x7F);
+        assert_eq!(*regs.vmadd.hi(), 0x7F);
     }
 
     /// write_vmadd must produce the same final state as write_vmadd_low followed by write_vmadd_high.
@@ -354,16 +340,15 @@ mod tests {
         let mut vram_b = VRAM::new();
         vram_a.memory[0x0245] = 0x1234;
         vram_b.memory[0x0245] = 0x1234;
- 
-        let mut regs_a = make_regs(0, 0x00, 0x00);
+
+        let mut regs_a = make_regs(0, 0x0000);
         vram_a.write_vmadd(&mut regs_a, 0x0245);
- 
-        let mut regs_b = make_regs(0, 0x00, 0x00);
+
+        let mut regs_b = make_regs(0, 0x0000);
         vram_b.write_vmadd_low(&mut regs_b, 0x45);
         vram_b.write_vmadd_high(&mut regs_b, 0x02);
- 
-        assert_eq!(regs_a.vmaddl, regs_b.vmaddl);
-        assert_eq!(regs_a.vmaddh, regs_b.vmaddh);
+
+        assert_eq!(regs_a.vmadd, regs_b.vmadd);
         assert_eq!(vram_a.vram_latch, vram_b.vram_latch);
     }
 
@@ -372,12 +357,11 @@ mod tests {
     fn test_write_vmadd_address_zero() {
         let mut vram = VRAM::new();
         vram.memory[0x0000] = 0xBEEF;
-        let mut regs = make_regs(0, 0xFF, 0xFF);
- 
+        let mut regs = make_regs(0, 0x7FFF);
+
         vram.write_vmadd(&mut regs, 0x0000);
- 
-        assert_eq!(regs.vmaddl, 0x00);
-        assert_eq!(regs.vmaddh, 0x00);
+
+        assert_eq!(regs.vmadd, 0x0000);
         assert_eq!(vram.vram_latch, 0xBEEF);
     }
 
@@ -389,8 +373,8 @@ mod tests {
     #[test]
     fn test_write_vmdatal_writes_low_byte() {
         let mut vram = VRAM::new();
-        let mut regs = make_regs(VMAIN_INC1_AFTER_LOW, 0x03, 0x00);
- 
+        let mut regs = make_regs(VMAIN_INC1_AFTER_LOW, 0x0003);
+
         vram.write_vmdatal(&mut regs, 0xBE);
 
         // The high byte should still be 0; only lo changed.
@@ -401,49 +385,45 @@ mod tests {
     #[test]
     fn test_write_vmdatal_increments_address_after_low() {
         let mut vram = VRAM::new();
-        let mut regs = make_regs(VMAIN_INC1_AFTER_LOW, 0x00, 0x00);
- 
+        let mut regs = make_regs(VMAIN_INC1_AFTER_LOW, 0x0000);
+
         vram.write_vmdatal(&mut regs, 0xFF);
 
         // Address should have advanced by 1 -> vmaddl == 1
-        assert_eq!(regs.vmaddl, 0x01);
-        assert_eq!(regs.vmaddh, 0x00);
+        assert_eq!(regs.vmadd, 0x0001);
     }
 
     /// After a low byte write with vmain bit7=1, the address must NOT increment.
     #[test]
     fn test_write_vmdatal_no_increment_when_high_mode() {
         let mut vram = VRAM::new();
-        let mut regs = make_regs(VMAIN_INC1_AFTER_HIGH, 0x00, 0x00);
- 
+        let mut regs = make_regs(VMAIN_INC1_AFTER_HIGH, 0x0000);
+
         vram.write_vmdatal(&mut regs, 0xFF);
- 
-        assert_eq!(regs.vmaddl, 0x00);
-        assert_eq!(regs.vmaddh, 0x00);
+
+        assert_eq!(regs.vmadd, 0x0000);
     }
 
     /// write_vmdatal with increment-by-32 must advance the address by 32.
     #[test]
     fn test_write_vmdatal_increment_by_32() {
         let mut vram = VRAM::new();
-        let mut regs = make_regs(VMAIN_INC32_AFTER_LOW, 0x00, 0x00);
- 
+        let mut regs = make_regs(VMAIN_INC32_AFTER_LOW, 0x0000);
+
         vram.write_vmdatal(&mut regs, 0x00);
- 
-        let addr = (regs.vmaddl as u16) | ((regs.vmaddh as u16) << 8);
-        assert_eq!(addr, 32);
+
+        assert_eq!(regs.vmadd, 32);
     }
 
     /// write_vmdatal with increment-by-128 must advance the address by 128.
     #[test]
     fn test_write_vmdatal_increment_by_128() {
         let mut vram = VRAM::new();
-        let mut regs = make_regs(VMAIN_INC128_AFTER_LOW, 0x00, 0x00);
- 
+        let mut regs = make_regs(VMAIN_INC128_AFTER_LOW, 0x0000);
+
         vram.write_vmdatal(&mut regs, 0x00);
- 
-        let addr = (regs.vmaddl as u16) | ((regs.vmaddh as u16) << 8);
-        assert_eq!(addr, 128);
+
+        assert_eq!(regs.vmadd, 128);
     }
 
     // ============================================================
@@ -454,10 +434,10 @@ mod tests {
     #[test]
     fn test_write_vmdatah_writes_high_byte() {
         let mut vram = VRAM::new();
-        let mut regs = make_regs(VMAIN_INC1_AFTER_HIGH, 0x03, 0x00);
- 
+        let mut regs = make_regs(VMAIN_INC1_AFTER_HIGH, 0x0003);
+
         vram.write_vmdatah(&mut regs, 0xEF);
- 
+
         assert_eq!((vram.memory[0x0003] >> 8) as u8, 0xEF);
     }
 
@@ -465,63 +445,58 @@ mod tests {
     #[test]
     fn test_write_vmdatah_increments_address_after_high() {
         let mut vram = VRAM::new();
-        let mut regs = make_regs(VMAIN_INC1_AFTER_HIGH, 0x00, 0x00);
- 
+        let mut regs = make_regs(VMAIN_INC1_AFTER_HIGH, 0x0000);
+
         vram.write_vmdatah(&mut regs, 0xFF);
- 
-        assert_eq!(regs.vmaddl, 0x01);
-        assert_eq!(regs.vmaddh, 0x00);
+
+        assert_eq!(regs.vmadd, 0x0001);
     }
 
     /// After a high byte write with vmain bit7=0, the address must NOT increment.
     #[test]
     fn test_write_vmdatah_no_increment_when_low_mode() {
         let mut vram = VRAM::new();
-        let mut regs = make_regs(VMAIN_INC1_AFTER_LOW, 0x00, 0x00);
- 
+        let mut regs = make_regs(VMAIN_INC1_AFTER_LOW, 0x0000);
+
         vram.write_vmdatah(&mut regs, 0xFF);
- 
-        assert_eq!(regs.vmaddl, 0x00);
-        assert_eq!(regs.vmaddh, 0x00);
+
+        assert_eq!(regs.vmadd, 0x0000);
     }
 
     /// write_vmdatah with increment-by-32 must advance the address by 32.
     #[test]
     fn test_write_vmdatah_increment_by_32() {
         let mut vram = VRAM::new();
-        let mut regs = make_regs(VMAIN_INC32_AFTER_HIGH, 0x00, 0x00);
- 
+        let mut regs = make_regs(VMAIN_INC32_AFTER_HIGH, 0x0000);
+
         vram.write_vmdatah(&mut regs, 0x00);
- 
-        let addr = (regs.vmaddl as u16) | ((regs.vmaddh as u16) << 8);
-        assert_eq!(addr, 32);
+
+        assert_eq!(regs.vmadd, 32);
     }
 
-    
     /// write_vmdatah with increment-by-128 must advance the address by 128.
     #[test]
     fn test_write_vmdatah_increment_by_128() {
         let mut vram = VRAM::new();
-        let mut regs = make_regs(VMAIN_INC128_AFTER_HIGH, 0x00, 0x00);
+        let mut regs = make_regs(VMAIN_INC128_AFTER_HIGH, 0x0000);
 
         vram.write_vmdatah(&mut regs, 0x00);
 
-        let addr = (regs.vmaddl as u16) | ((regs.vmaddh as u16) << 8);
-        assert_eq!(addr, 128);
+        assert_eq!(regs.vmadd, 128);
     }
 
     /// A paired low+high write at the same address must produce the expected full 16-bit word.
     #[test]
     fn test_write_low_then_high_builds_full_word() {
         let mut vram = VRAM::new();
-        let mut regs = make_regs(VMAIN_INC1_AFTER_HIGH, 0x00, 0x00);
- 
+        let mut regs = make_regs(VMAIN_INC1_AFTER_HIGH, 0x0000);
+
         vram.write_vmdatal(&mut regs, 0xCD);
         vram.write_vmdatah(&mut regs, 0xAB);
 
         assert_eq!(vram.memory[0x0000], 0xABCD);
         // Address must have advanced exactly once (after the high write)
-        assert_eq!(regs.vmaddl, 0x01);
+        assert_eq!(*regs.vmadd.lo(), 0x01);
     }
 
     // ============================================================
@@ -532,13 +507,12 @@ mod tests {
     #[test]
     fn test_write_vmdata_writes_full_word_in_high_mode() {
         let mut vram = VRAM::new();
-        let mut regs = make_regs(VMAIN_INC1_AFTER_HIGH, 0x05, 0x00);
- 
+        let mut regs = make_regs(VMAIN_INC1_AFTER_HIGH, 0x0005);
+
         vram.write_vmdata(&mut regs, 0xABCD);
- 
+
         assert_eq!(vram.memory[0x0005], 0xABCD);
-        assert_eq!(regs.vmaddl, 0x06);
-        assert_eq!(regs.vmaddh, 0x00);
+        assert_eq!(regs.vmadd, 0x0006);
     }
 
     /// write_vmdata with vmain bit7=1 must produce the same result as write_vmdatal + write_vmdatah.
@@ -546,17 +520,16 @@ mod tests {
     fn test_write_vmdata_equivalent_to_separate_writes_high_mode() {
         let mut vram_a = VRAM::new();
         let mut vram_b = VRAM::new();
- 
-        let mut regs_a = make_regs(VMAIN_INC1_AFTER_HIGH, 0x00, 0x00);
+
+        let mut regs_a = make_regs(VMAIN_INC1_AFTER_HIGH, 0x0000);
         vram_a.write_vmdata(&mut regs_a, 0x1234);
- 
-        let mut regs_b = make_regs(VMAIN_INC1_AFTER_HIGH, 0x00, 0x00);
+
+        let mut regs_b = make_regs(VMAIN_INC1_AFTER_HIGH, 0x0000);
         vram_b.write_vmdatal(&mut regs_b, 0x34);
         vram_b.write_vmdatah(&mut regs_b, 0x12);
- 
+
         assert_eq!(vram_a.memory[0x0000], vram_b.memory[0x0000]);
-        assert_eq!(regs_a.vmaddl, regs_b.vmaddl);
-        assert_eq!(regs_a.vmaddh, regs_b.vmaddh);
+        assert_eq!(regs_a.vmadd, regs_b.vmadd);
     }
 
     /// write_vmdata with vmain bit7=0 must write lo and hi to different words,
@@ -564,13 +537,13 @@ mod tests {
     #[test]
     fn test_write_vmdata_low_and_high_go_to_different_words_in_low_mode() {
         let mut vram = VRAM::new();
-        let mut regs = make_regs(VMAIN_INC1_AFTER_LOW, 0x00, 0x00);
- 
+        let mut regs = make_regs(VMAIN_INC1_AFTER_LOW, 0x0000);
+
         vram.write_vmdata(&mut regs, 0xABCD);
- 
+
         assert_eq!(vram.memory[0x0000] & 0x00FF, 0xCD);
         assert_eq!((vram.memory[0x0001] >> 8) as u8, 0xAB);
-        assert_eq!(regs.vmaddl, 0x01);
+        assert_eq!(*regs.vmadd.lo(), 0x01);
     }
 
     /// write_vmdata with vmain bit7=0 must produce the same result as separate low/high writes.
@@ -578,42 +551,39 @@ mod tests {
     fn test_write_vmdata_equivalent_to_separate_writes_low_mode() {
         let mut vram_a = VRAM::new();
         let mut vram_b = VRAM::new();
- 
-        let mut regs_a = make_regs(VMAIN_INC1_AFTER_LOW, 0x00, 0x00);
+
+        let mut regs_a = make_regs(VMAIN_INC1_AFTER_LOW, 0x0000);
         vram_a.write_vmdata(&mut regs_a, 0x5678);
- 
-        let mut regs_b = make_regs(VMAIN_INC1_AFTER_LOW, 0x00, 0x00);
+
+        let mut regs_b = make_regs(VMAIN_INC1_AFTER_LOW, 0x0000);
         vram_b.write_vmdatal(&mut regs_b, 0x78);
         vram_b.write_vmdatah(&mut regs_b, 0x56);
- 
+
         assert_eq!(vram_a.memory[0x0000], vram_b.memory[0x0000]);
         assert_eq!(vram_a.memory[0x0001], vram_b.memory[0x0001]);
-        assert_eq!(regs_a.vmaddl, regs_b.vmaddl);
-        assert_eq!(regs_a.vmaddh, regs_b.vmaddh);
+        assert_eq!(regs_a.vmadd, regs_b.vmadd);
     }
 
     /// write_vmdata with increment-by-32 must advance the address by 32 after the high byte.
     #[test]
     fn test_write_vmdata_increment_by_32() {
         let mut vram = VRAM::new();
-        let mut regs = make_regs(VMAIN_INC32_AFTER_HIGH, 0x00, 0x00);
+        let mut regs = make_regs(VMAIN_INC32_AFTER_HIGH, 0x0000);
 
         vram.write_vmdata(&mut regs, 0x0000);
 
-        let addr = (regs.vmaddl as u16) | ((regs.vmaddh as u16) << 8);
-        assert_eq!(addr, 32);
+        assert_eq!(regs.vmadd, 32);
     }
 
     /// write_vmdata with increment-by-128 must advance the address by 128 after the high byte.
     #[test]
     fn test_write_vmdata_increment_by_128() {
         let mut vram = VRAM::new();
-        let mut regs = make_regs(VMAIN_INC128_AFTER_HIGH, 0x00, 0x00);
+        let mut regs = make_regs(VMAIN_INC128_AFTER_HIGH, 0x0000);
 
         vram.write_vmdata(&mut regs, 0x0000);
 
-        let addr = (regs.vmaddl as u16) | ((regs.vmaddh as u16) << 8);
-        assert_eq!(addr, 128);
+        assert_eq!(regs.vmadd, 128);
     }
 
     // ============================================================
@@ -625,10 +595,10 @@ mod tests {
     fn test_read_vmdatal_returns_latched_low_byte() {
         let mut vram = VRAM::new();
         vram.memory[0x0000] = 0x1234;
-        let mut regs = make_regs(VMAIN_INC1_AFTER_LOW, 0x00, 0x00);
+        let mut regs = make_regs(VMAIN_INC1_AFTER_LOW, 0x0000);
 
         // Load the latch manually (simulates what write_vmadd_low would do)
-        vram.load_latch(regs.vmaddl, regs.vmaddh);
+        vram.load_latch(regs.vmadd);
 
         let val = vram.read_vmdatal(&mut regs);
 
@@ -644,15 +614,15 @@ mod tests {
         let mut vram = VRAM::new();
         vram.memory[0x0000] = 0x1234;
         vram.memory[0x0001] = 0x5678;
-        let mut regs = make_regs(VMAIN_INC1_AFTER_LOW, 0x00, 0x00);
+        let mut regs = make_regs(VMAIN_INC1_AFTER_LOW, 0x0000);
 
-        vram.load_latch(regs.vmaddl, regs.vmaddh); // latch = 0x1234
+        vram.load_latch(regs.vmadd); // latch = 0x1234
 
         // First read: returns lo of latch(0x1234)=0x34, then increments addr to 0x0001
         // and reloads latch with memory[0x0001]=0x5678
         let _ = vram.read_vmdatal(&mut regs);
 
-        assert_eq!(regs.vmaddl, 0x01, "address must have incremented to 0x0001");
+        assert_eq!(*regs.vmadd.lo(), 0x01, "address must have incremented to 0x0001");
         assert_eq!(vram.vram_latch, 0x5678, "latch must hold word at new address 0x0001");
     }
 
@@ -661,13 +631,13 @@ mod tests {
     fn test_read_vmdatal_no_increment_when_high_mode() {
         let mut vram = VRAM::new();
         vram.memory[0x0000] = 0xBEEF;
-        let mut regs = make_regs(VMAIN_INC1_AFTER_HIGH, 0x00, 0x00);
+        let mut regs = make_regs(VMAIN_INC1_AFTER_HIGH, 0x0000);
 
-        vram.load_latch(regs.vmaddl, regs.vmaddh);
+        vram.load_latch(regs.vmadd);
 
         let _ = vram.read_vmdatal(&mut regs);
 
-        assert_eq!(regs.vmaddl, 0x00);
+        assert_eq!(*regs.vmadd.lo(), 0x00);
         assert_eq!(vram.vram_latch, 0xBEEF);
     }
 
@@ -680,9 +650,9 @@ mod tests {
     fn test_read_vmdatah_returns_latched_high_byte() {
         let mut vram = VRAM::new();
         vram.memory[0x0000] = 0xABCD;
-        let mut regs = make_regs(VMAIN_INC1_AFTER_HIGH, 0x00, 0x00);
-        
-        vram.load_latch(regs.vmaddl, regs.vmaddh);
+        let mut regs = make_regs(VMAIN_INC1_AFTER_HIGH, 0x0000);
+
+        vram.load_latch(regs.vmadd);
 
         let val = vram.read_vmdatah(&mut regs);
 
@@ -696,14 +666,14 @@ mod tests {
         let mut vram = VRAM::new();
         vram.memory[0x0000] = 0xABCD;
         vram.memory[0x0001] = 0xDEAD;
-        let mut regs = make_regs(VMAIN_INC1_AFTER_HIGH, 0x00, 0x00);
-        vram.load_latch(regs.vmaddl, regs.vmaddh); // latch = 0xABCD
+        let mut regs = make_regs(VMAIN_INC1_AFTER_HIGH, 0x0000);
+        vram.load_latch(regs.vmadd); // latch = 0xABCD
 
         // First read: returns hi of latch(0xABCD)=0xAB, then increments addr to 0x0001
         // and reloads latch with memory[0x0001]=0xDEAD
         let _ = vram.read_vmdatah(&mut regs);
 
-        assert_eq!(regs.vmaddl, 0x01, "address must have incremented to 0x0001");
+        assert_eq!(*regs.vmadd.lo(), 0x01, "address must have incremented to 0x0001");
         assert_eq!(vram.vram_latch, 0xDEAD, "latch must hold word at new address 0x0001");
     }
 
@@ -712,12 +682,12 @@ mod tests {
     fn test_read_vmdatah_no_increment_when_low_mode() {
         let mut vram = VRAM::new();
         vram.memory[0x0000] = 0xCAFE;
-        let mut regs = make_regs(VMAIN_INC1_AFTER_LOW, 0x00, 0x00);
-        vram.load_latch(regs.vmaddl, regs.vmaddh);
- 
+        let mut regs = make_regs(VMAIN_INC1_AFTER_LOW, 0x0000);
+        vram.load_latch(regs.vmadd);
+
         let _ = vram.read_vmdatah(&mut regs);
- 
-        assert_eq!(regs.vmaddl, 0x00);
+
+        assert_eq!(*regs.vmadd.lo(), 0x00);
         assert_eq!(vram.vram_latch, 0xCAFE);
     }
 
@@ -731,13 +701,13 @@ mod tests {
         let mut vram = VRAM::new();
         vram.memory[0x0000] = 0xABCD;
         vram.memory[0x0001] = 0x1234;
-        let mut regs = make_regs(VMAIN_INC1_AFTER_HIGH, 0x00, 0x00);
-        vram.load_latch(regs.vmaddl, regs.vmaddh);
- 
+        let mut regs = make_regs(VMAIN_INC1_AFTER_HIGH, 0x0000);
+        vram.load_latch(regs.vmadd);
+
         let word = vram.read_vmdata(&mut regs);
- 
+
         assert_eq!(word, 0xABCD);
-        assert_eq!(regs.vmaddl, 0x01);
+        assert_eq!(*regs.vmadd.lo(), 0x01);
         assert_eq!(vram.vram_latch, 0x1234);
     }
 
@@ -748,18 +718,18 @@ mod tests {
         let mut vram_b = VRAM::new();
         vram_a.memory[0x0000] = 0xDEAD;
         vram_b.memory[0x0000] = 0xDEAD;
- 
-        let mut regs_a = make_regs(VMAIN_INC1_AFTER_HIGH, 0x00, 0x00);
-        vram_a.load_latch(regs_a.vmaddl, regs_a.vmaddh);
+
+        let mut regs_a = make_regs(VMAIN_INC1_AFTER_HIGH, 0x0000);
+        vram_a.load_latch(regs_a.vmadd);
         let word = vram_a.read_vmdata(&mut regs_a);
- 
-        let mut regs_b = make_regs(VMAIN_INC1_AFTER_HIGH, 0x00, 0x00);
-        vram_b.load_latch(regs_b.vmaddl, regs_b.vmaddh);
+
+        let mut regs_b = make_regs(VMAIN_INC1_AFTER_HIGH, 0x0000);
+        vram_b.load_latch(regs_b.vmadd);
         let lo = vram_b.read_vmdatal(&mut regs_b);
         let hi = vram_b.read_vmdatah(&mut regs_b);
- 
+
         assert_eq!(word, (lo as u16) | ((hi as u16) << 8));
-        assert_eq!(regs_a.vmaddl, regs_b.vmaddl);
+        assert_eq!(regs_a.vmadd.lo(), regs_b.vmadd.lo());
         assert_eq!(vram_a.vram_latch, vram_b.vram_latch);
     }
 
@@ -773,18 +743,18 @@ mod tests {
         vram_b.memory[0x0000] = 0x00CD;
         vram_a.memory[0x0001] = 0xAB00;
         vram_b.memory[0x0001] = 0xAB00;
- 
-        let mut regs_a = make_regs(VMAIN_INC1_AFTER_LOW, 0x00, 0x00);
-        vram_a.load_latch(regs_a.vmaddl, regs_a.vmaddh);
+
+        let mut regs_a = make_regs(VMAIN_INC1_AFTER_LOW, 0x0000);
+        vram_a.load_latch(regs_a.vmadd);
         let word = vram_a.read_vmdata(&mut regs_a);
- 
-        let mut regs_b = make_regs(VMAIN_INC1_AFTER_LOW, 0x00, 0x00);
-        vram_b.load_latch(regs_b.vmaddl, regs_b.vmaddh);
+
+        let mut regs_b = make_regs(VMAIN_INC1_AFTER_LOW, 0x0000);
+        vram_b.load_latch(regs_b.vmadd);
         let lo = vram_b.read_vmdatal(&mut regs_b);
         let hi = vram_b.read_vmdatah(&mut regs_b);
- 
+
         assert_eq!(word, (lo as u16) | ((hi as u16) << 8));
-        assert_eq!(regs_a.vmaddl, regs_b.vmaddl);
+        assert_eq!(regs_a.vmadd.lo(), regs_b.vmadd.lo());
         assert_eq!(vram_a.vram_latch, vram_b.vram_latch);
     }
 
@@ -792,33 +762,31 @@ mod tests {
     #[test]
     fn test_read_vmdata_increment_by_32() {
         let mut vram = VRAM::new();
-        let mut regs = make_regs(VMAIN_INC32_AFTER_HIGH, 0x00, 0x00);
-        vram.load_latch(regs.vmaddl, regs.vmaddh);
+        let mut regs = make_regs(VMAIN_INC32_AFTER_HIGH, 0x0000);
+        vram.load_latch(regs.vmadd);
 
         vram.read_vmdata(&mut regs);
 
-        let addr = (regs.vmaddl as u16) | ((regs.vmaddh as u16) << 8);
-        assert_eq!(addr, 32);
+        assert_eq!(regs.vmadd, 32);
     }
 
     /// read_vmdata with increment-by-128 must advance the address by 128.
     #[test]
     fn test_read_vmdata_increment_by_128() {
         let mut vram = VRAM::new();
-        let mut regs = make_regs(VMAIN_INC128_AFTER_HIGH, 0x00, 0x00);
-        vram.load_latch(regs.vmaddl, regs.vmaddh);
+        let mut regs = make_regs(VMAIN_INC128_AFTER_HIGH, 0x0000);
+        vram.load_latch(regs.vmadd);
 
         vram.read_vmdata(&mut regs);
 
-        let addr = (regs.vmaddl as u16) | ((regs.vmaddh as u16) << 8);
-        assert_eq!(addr, 128);
+        assert_eq!(regs.vmadd, 128);
     }
 
     /// A full write_vmdata + read_vmdata round-trip must return the original word.
     #[test]
     fn test_write_vmdata_read_vmdata_round_trip() {
         let mut vram = VRAM::new();
-        let mut regs = make_regs(VMAIN_INC1_AFTER_HIGH, 0x10, 0x00);
+        let mut regs = make_regs(VMAIN_INC1_AFTER_HIGH, 0x0010);
 
         vram.write_vmdata(&mut regs, 0xCAFE);
         vram.write_vmadd(&mut regs, 0x0010);
@@ -838,7 +806,7 @@ mod tests {
         let mut vram = VRAM::new();
         vram.memory[0x0200] = 0xF00D;
 
-        vram.load_latch(0x00, 0x02); // address = 0x0200
+        vram.load_latch(0x0200); // address = 0x0200
 
         assert_eq!(vram.vram_latch, 0xF00D);
     }
@@ -849,7 +817,7 @@ mod tests {
         let mut vram = VRAM::new();
         vram.memory[0x0000] = 0x1111;
 
-        vram.load_latch(0x00, 0x00);
+        vram.load_latch(0x0000);
 
         assert_eq!(vram.vram_latch, 0x1111);
     }
@@ -863,14 +831,13 @@ mod tests {
     fn test_address_wraps_at_0x7fff() {
         let mut vram = VRAM::new();
         vram.memory[0x0000] = 0xFFFF;
-        let mut regs = make_regs(VMAIN_INC1_AFTER_LOW, 0xFF, 0x7F);
+        let mut regs = make_regs(VMAIN_INC1_AFTER_LOW, 0x7FFF);
 
         // Write something at 0x7FFF
         vram.write_vmdatal(&mut regs, 0xAA);
 
         // Address must have wrapped to 0x0000
-        assert_eq!(regs.vmaddl, 0x00);
-        assert_eq!(regs.vmaddh, 0x00);
+        assert_eq!(regs.vmadd, 0x0000);
     }
 
     // ============================================================
@@ -881,7 +848,7 @@ mod tests {
     #[test]
     fn test_round_trip_write_then_read() {
         let mut vram = VRAM::new();
-        let mut regs = make_regs(VMAIN_INC1_AFTER_HIGH, 0x10, 0x00);
+        let mut regs = make_regs(VMAIN_INC1_AFTER_HIGH, 0x0010);
 
         // Write low byte (no increment yet: high-byte mode)
         vram.write_vmdatal(&mut regs, 0x56);
@@ -903,7 +870,7 @@ mod tests {
     #[test]
     fn test_sequential_writes_dont_corrupt_neighbours() {
         let mut vram = VRAM::new();
-        let mut regs = make_regs(VMAIN_INC1_AFTER_HIGH, 0x00, 0x00);
+        let mut regs = make_regs(VMAIN_INC1_AFTER_HIGH, 0x0000);
 
         // Write 0xAABB at address 0, 0xCCDD at address 1, using low-byte increment mode.
         vram.write_vmdatal(&mut regs, 0xBB);
