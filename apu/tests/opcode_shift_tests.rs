@@ -196,6 +196,54 @@ fn test_asl_dp_advances_pc_by_2() {
 }
 
 // ============================================================
+// ASL dp+X ($1B) — arithmetic shift left, direct page indexed by X
+// ============================================================
+
+#[test]
+fn test_asl_dp_x_shifts_indexed_address() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.x = 0x02;
+    mem.write8(0x0022, 0x01); // $0020 + X=$02 = $0022
+    mem.write8(0x0200, 0x1B);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(mem.read8(0x0022), 0x02);
+}
+
+#[test]
+fn test_asl_dp_x_bit7_goes_to_carry() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.x = 0x01;
+    mem.write8(0x0021, 0x80);
+    mem.write8(0x0200, 0x1B);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_C));
+    assert_eq!(mem.read8(0x0021), 0x00);
+}
+
+#[test]
+fn test_asl_dp_x_wraps_within_page() {
+    // offset $FF + X=$01 wraps to $00 within the page
+    let (mut cpu, mut mem) = make();
+    cpu.regs.x = 0x01;
+    mem.write8(0x0000, 0x01); // wrap target
+    mem.write8(0x0200, 0x1B);
+    mem.write8(0x0201, 0xFF);
+    cpu.step(&mut mem);
+    assert_eq!(mem.read8(0x0000), 0x02);
+}
+
+#[test]
+fn test_asl_dp_x_costs_5_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x1B);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 5);
+}
+
+// ============================================================
 // ASL !abs ($0C) — arithmetic shift left, absolute address
 // ============================================================
 
@@ -429,6 +477,42 @@ fn test_lsr_dp_uses_page_one_when_p_set() {
 fn test_lsr_dp_costs_5_cycles() {
     let (mut cpu, mut mem) = make();
     mem.write8(0x0200, 0x4B);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 5);
+}
+
+// ============================================================
+// LSR dp+X ($5B) — logical shift right, direct page indexed by X
+// ============================================================
+
+#[test]
+fn test_lsr_dp_x_shifts_indexed_address() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.x = 0x02;
+    mem.write8(0x0022, 0x04);
+    mem.write8(0x0200, 0x5B);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(mem.read8(0x0022), 0x02);
+}
+
+#[test]
+fn test_lsr_dp_x_bit0_goes_to_carry() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.x = 0x01;
+    mem.write8(0x0021, 0x01);
+    mem.write8(0x0200, 0x5B);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_C));
+    assert_eq!(mem.read8(0x0021), 0x00);
+}
+
+#[test]
+fn test_lsr_dp_x_costs_5_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x5B);
     mem.write8(0x0201, 0x20);
     cpu.step(&mut mem);
     assert_eq!(cpu.cycles, 5);
