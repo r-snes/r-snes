@@ -152,6 +152,9 @@ impl Spc700 {
             0x3C => self.inst_rol_a(), // ROL A
             0x2B => self.inst_rol_dp(mem), // ROL dp
             0x2C => self.inst_rol_abs(mem), // ROL !abs
+            0x7C => self.inst_ror_a(), // ROR A
+            0x6B => self.inst_ror_dp(mem), // ROR dp
+            0x6C => self.inst_ror_abs(mem), // ROR !abs
 
             // Catch-all
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
@@ -862,6 +865,42 @@ impl Spc700 {
         let old_carry = self.get_flag(FLAG_C) as u8;
         self.set_flag(FLAG_C, (val & 0x80) != 0);
         let result = (val << 1) | old_carry;
+        mem.write8(addr, result);
+        self.set_zn_flags(result);
+        self.cycles += 6;
+    }
+
+    /// ROR A — rotate right through carry on accumulator.
+    /// Old C → bit 7, bit 0 → new C. Sets N and Z from result. 2 cycles.
+    fn inst_ror_a(&mut self) {
+        let old_carry = self.get_flag(FLAG_C) as u8;
+        self.set_flag(FLAG_C, (self.regs.a & 0x01) != 0);
+        self.regs.a = (self.regs.a >> 1) | (old_carry << 7);
+        self.set_zn_flags(self.regs.a);
+        self.cycles += 2;
+    }
+
+    /// ROR dp — rotate right through carry on direct page byte.
+    /// Old C → bit 7, bit 0 → new C. Sets N and Z from result. 5 cycles.
+    fn inst_ror_dp(&mut self, mem: &mut Memory) {
+        let addr = self.dp_base() | self.read_immediate(mem) as u16;
+        let val = mem.read8_mut(addr);
+        let old_carry = self.get_flag(FLAG_C) as u8;
+        self.set_flag(FLAG_C, (val & 0x01) != 0);
+        let result = (val >> 1) | (old_carry << 7);
+        mem.write8(addr, result);
+        self.set_zn_flags(result);
+        self.cycles += 5;
+    }
+
+    /// ROR !abs — rotate right through carry on absolute address byte.
+    /// Old C → bit 7, bit 0 → new C. Sets N and Z from result. 6 cycles.
+    fn inst_ror_abs(&mut self, mem: &mut Memory) {
+        let addr = self.read_immediate16(mem);
+        let val = mem.read8_mut(addr);
+        let old_carry = self.get_flag(FLAG_C) as u8;
+        self.set_flag(FLAG_C, (val & 0x01) != 0);
+        let result = (val >> 1) | (old_carry << 7);
         mem.write8(addr, result);
         self.set_zn_flags(result);
         self.cycles += 6;
