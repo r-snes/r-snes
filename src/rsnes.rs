@@ -92,11 +92,8 @@ impl RSnes {
             } else {
                 (b_addr, a_addr)
             };
-            let byte = self
-                .bus
-                .read(src, &mut self.cpu, &mut self.ppu, &mut self.apu);
-            self.bus
-                .write(dest, byte, &mut self.cpu, &mut self.ppu, &mut self.apu);
+            let byte = self.bus.read(src, &mut self.ppu, &mut self.apu);
+            self.bus.write(dest, byte, &mut self.ppu, &mut self.apu);
 
             if fixed == 0 {
                 if decrement == 0 {
@@ -135,9 +132,7 @@ impl RSnes {
             }
             CycleResult::Read => {
                 let addr = *self.cpu.addr_bus();
-                let byte = self
-                    .bus
-                    .read(addr, &mut self.cpu, &mut self.ppu, &mut self.apu);
+                let byte = self.bus.read(addr, &mut self.ppu, &mut self.apu);
 
                 self.cpu.data_bus = byte;
 
@@ -148,8 +143,7 @@ impl RSnes {
                 let addr = *self.cpu.addr_bus();
                 let byte = self.cpu.data_bus;
 
-                self.bus
-                    .write(addr, byte, &mut self.cpu, &mut self.ppu, &mut self.apu);
+                self.bus.write(addr, byte, &mut self.ppu, &mut self.apu);
 
                 // Default to 6 cycles for now
                 self.cpu_master_cycles_to_wait = 6; // TODO : have the bus return the number of cycle to wait
