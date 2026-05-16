@@ -125,6 +125,10 @@ impl Spc700 {
             0xEF => self.inst_sleep(), // SLEEP
             0xFF => self.inst_stop(),  // STOP
 
+            // increment/decrement
+            0xBC => self.inst_inc_a(),
+            0x9C => self.inst_dec_a(),
+
             // Catch-all
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
         }
@@ -623,5 +627,19 @@ impl Spc700 {
     /// TODO: implement when interrupt handling is added (feature/ipl-boot-rom).
     fn inst_stop(&mut self) {
         todo!("STOP: permanent halt")
+    }
+
+    /// INC A — increment accumulator by 1. Sets N and Z. 2 cycles.
+    fn inst_inc_a(&mut self) {
+        self.regs.a = self.regs.a.wrapping_add(1);
+        self.set_zn_flags(self.regs.a);
+        self.cycles += 2;
+    }
+
+    /// DEC A — decrement accumulator by 1. Sets N and Z. 2 cycles.
+    fn inst_dec_a(&mut self) {
+        self.regs.a = self.regs.a.wrapping_sub(1);
+        self.set_zn_flags(self.regs.a);
+        self.cycles += 2;
     }
 }
