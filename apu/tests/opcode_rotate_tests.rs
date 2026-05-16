@@ -248,13 +248,13 @@ fn test_rol_abs_sets_negative_flag() {
 }
 
 #[test]
-fn test_rol_abs_costs_6_cycles() {
+fn test_rol_abs_costs_5_cycles() {
     let (mut cpu, mut mem) = make();
     mem.write8(0x0200, 0x2C);
     mem.write8(0x0201, 0x00);
     mem.write8(0x0202, 0x05);
     cpu.step(&mut mem);
-    assert_eq!(cpu.cycles, 6);
+    assert_eq!(cpu.cycles, 5);
 }
 
 #[test]
@@ -498,13 +498,13 @@ fn test_ror_abs_sets_negative_flag() {
 }
 
 #[test]
-fn test_ror_abs_costs_6_cycles() {
+fn test_ror_abs_costs_5_cycles() {
     let (mut cpu, mut mem) = make();
     mem.write8(0x0200, 0x6C);
     mem.write8(0x0201, 0x00);
     mem.write8(0x0202, 0x05);
     cpu.step(&mut mem);
-    assert_eq!(cpu.cycles, 6);
+    assert_eq!(cpu.cycles, 5);
 }
 
 #[test]
