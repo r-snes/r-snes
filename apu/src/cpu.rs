@@ -160,6 +160,10 @@ impl Spc700 {
             0x7B => self.inst_ror_dp_x(mem), // ROR dp X
             0x6C => self.inst_ror_abs(mem), // ROR !abs
 
+            // Flag operations
+            0x60 => self.inst_clrc(),
+            0x80 => self.inst_setc(),
+
             // Catch-all
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
         }
@@ -962,5 +966,17 @@ impl Spc700 {
         mem.write8(addr, result);
         self.set_zn_flags(result);
         self.cycles += 5;
+    }
+
+    /// CLRC — clear carry flag. 2 cycles.
+    fn inst_clrc(&mut self) {
+        self.set_flag(FLAG_C, false);
+        self.cycles += 2;
+    }
+
+    /// SETC — set carry flag. 2 cycles.
+    fn inst_setc(&mut self) {
+        self.set_flag(FLAG_C, true);
+        self.cycles += 2;
     }
 }
