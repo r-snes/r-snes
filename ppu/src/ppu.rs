@@ -80,10 +80,10 @@ impl PPU {
             // VRAM
             // ==========================
             0x2115 => self.regs.vmain = value,
-            0x2116 => self.vram.write_vmadd_low(&mut self.regs.vmaddl, &mut self.regs.vmaddh, value),
-            0x2117 => self.vram.write_vmadd_high(&mut self.regs.vmaddl, &mut self.regs.vmaddh, value),
-            0x2118 => self.vram.write_vmdatal(self.regs.vmain, &mut self.regs.vmaddl, &mut self.regs.vmaddh, value),
-            0x2119 => self.vram.write_vmdatah(self.regs.vmain, &mut self.regs.vmaddl, &mut self.regs.vmaddh, value),
+            0x2116 => self.vram.write_vmadd_low(&mut self.regs, value),
+            0x2117 => self.vram.write_vmadd_high(&mut self.regs, value),
+            0x2118 => self.vram.write_vmdatal(&mut self.regs, value),
+            0x2119 => self.vram.write_vmdatah(&mut self.regs, value),
 
             // ==========================
             // Mode 7
@@ -149,8 +149,8 @@ impl PPU {
             // ==========================
             // VRAM
             // ==========================
-            0x2139 => self.vram.read_vmdatal(self.regs.vmain, &mut self.regs.vmaddl, &mut self.regs.vmaddh),
-            0x213A => self.vram.read_vmdatah(self.regs.vmain, &mut self.regs.vmaddl, &mut self.regs.vmaddh),
+            0x2139 => self.vram.read_vmdatal(&mut self.regs),
+            0x213A => self.vram.read_vmdatah(&mut self.regs),
 
             // ==========================
             // CGRAM
