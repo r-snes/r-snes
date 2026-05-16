@@ -658,3 +658,98 @@ fn test_dec_abs_costs_6_cycles() {
     cpu.step(&mut mem);
     assert_eq!(cpu.cycles, 6);
 }
+
+// ============================================================
+// MUL YA ($CF) — unsigned 8×8 multiply Y * A → YA
+// ============================================================
+
+#[test]
+fn test_mul_basic_result() {
+    // $03 * $04 = $000C → Y=$00, A=$0C
+    let (mut cpu, mut mem) = make();
+    cpu.regs.y = 0x03;
+    cpu.regs.a = 0x04;
+    mem.write8(0x0200, 0xCF);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x0C);
+    assert_eq!(cpu.regs.y, 0x00);
+}
+
+#[test]
+fn test_mul_large_result() {
+    // $FF * $FF = $FE01 → Y=$FE, A=$01
+    let (mut cpu, mut mem) = make();
+    cpu.regs.y = 0xFF;
+    cpu.regs.a = 0xFF;
+    mem.write8(0x0200, 0xCF);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x01);
+    assert_eq!(cpu.regs.y, 0xFE);
+}
+
+#[test]
+fn test_mul_by_zero_gives_zero() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.y = 0xFF;
+    cpu.regs.a = 0x00;
+    mem.write8(0x0200, 0xCF);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x00);
+    assert_eq!(cpu.regs.y, 0x00);
+    assert!(cpu.get_flag(FLAG_Z));
+}
+
+#[test]
+fn test_mul_sets_zero_flag_from_y() {
+    // $01 * $01 = $0001 → Y=$00 → Z set
+    let (mut cpu, mut mem) = make();
+    cpu.regs.y = 0x01;
+    cpu.regs.a = 0x01;
+    mem.write8(0x0200, 0xCF);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.y, 0x00);
+    assert!(cpu.get_flag(FLAG_Z), "Z set when Y=0");
+    assert!(!cpu.get_flag(FLAG_N));
+}
+
+#[test]
+fn test_mul_sets_negative_flag_from_y() {
+    // $FF * $02 = $01FE → Y=$01, no N
+    // $FF * $80 = $7F80 → Y=$7F, no N
+    // $FF * $FF = $FE01 → Y=$FE → N set
+    let (mut cpu, mut mem) = make();
+    cpu.regs.y = 0xFF;
+    cpu.regs.a = 0xFF;
+    mem.write8(0x0200, 0xCF);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_N), "N set when Y bit 7 is 1");
+}
+
+#[test]
+fn test_mul_does_not_affect_carry() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.y = 0xFF;
+    cpu.regs.a = 0xFF;
+    cpu.regs.psw = FLAG_C;
+    mem.write8(0x0200, 0xCF);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_C));
+}
+
+#[test]
+fn test_mul_costs_9_cycles() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.y = 0x02;
+    cpu.regs.a = 0x03;
+    mem.write8(0x0200, 0xCF);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 9);
+}
+
+#[test]
+fn test_mul_advances_pc_by_1() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0xCF);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.pc, 0x0201);
+}
