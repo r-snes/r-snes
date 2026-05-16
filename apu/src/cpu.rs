@@ -798,7 +798,7 @@ impl Spc700 {
         let result = val << 1;
         mem.write8(addr, result);
         self.set_zn_flags(result);
-        self.cycles += 6;
+        self.cycles += 5;
     }
 
     /// LSR A — logical shift right on accumulator.
@@ -831,7 +831,7 @@ impl Spc700 {
         let result = val >> 1;
         mem.write8(addr, result);
         self.set_zn_flags(result);
-        self.cycles += 6;
+        self.cycles += 5;
     }
 
     /// ROL A — rotate left through carry on accumulator.
@@ -867,7 +867,7 @@ impl Spc700 {
         let result = (val << 1) | old_carry;
         mem.write8(addr, result);
         self.set_zn_flags(result);
-        self.cycles += 6;
+        self.cycles += 5;
     }
 
     /// ROR A — rotate right through carry on accumulator.
@@ -903,6 +903,6 @@ impl Spc700 {
         let result = (val >> 1) | (old_carry << 7);
         mem.write8(addr, result);
         self.set_zn_flags(result);
-        self.cycles += 6;
+        self.cycles += 5;
     }
 }
