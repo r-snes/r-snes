@@ -137,6 +137,8 @@ impl Spc700 {
             0xAC => self.inst_inc_abs(mem),
             0x8C => self.inst_dec_abs(mem),
 
+            0xCF => self.inst_mul(mem), // MUL YA
+
             // Catch-all
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
         }
@@ -713,5 +715,16 @@ impl Spc700 {
         mem.write8(addr, val);
         self.set_zn_flags(val);
         self.cycles += 6;
+    }
+
+    /// MUL YA — unsigned 8×8 multiply: Y * A → YA.
+    /// Y holds the high byte of the result, A the low byte.
+    /// N and Z are set from Y (the high byte). 9 cycles.
+    fn inst_mul(&mut self, _mem: &mut Memory) {
+        let result = (self.regs.y as u16) * (self.regs.a as u16);
+        self.regs.a = result as u8;
+        self.regs.y = (result >> 8) as u8;
+        self.set_zn_flags(self.regs.y);
+        self.cycles += 9;
     }
 }
