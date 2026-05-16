@@ -161,8 +161,11 @@ impl Spc700 {
             0x6C => self.inst_ror_abs(mem), // ROR !abs
 
             // Flag operations
-            0x60 => self.inst_clrc(),
-            0x80 => self.inst_setc(),
+            0x60 => self.inst_clrc(), // CLRC
+            0x80 => self.inst_setc(), // SETC
+            0xED => self.inst_notc(), // NOTC
+            0x20 => self.inst_clrp(), // CLRP
+            0x40 => self.inst_setp(), // SETP
 
             // Catch-all
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
@@ -977,6 +980,25 @@ impl Spc700 {
     /// SETC — set carry flag. 2 cycles.
     fn inst_setc(&mut self) {
         self.set_flag(FLAG_C, true);
+        self.cycles += 2;
+    }
+
+    /// NOTC — complement carry flag (toggle C). 3 cycles.
+    fn inst_notc(&mut self) {
+        let c = !self.get_flag(FLAG_C);
+        self.set_flag(FLAG_C, c);
+        self.cycles += 3;
+    }
+
+    /// CLRP — clear direct page flag. Direct page base → $0000. 2 cycles.
+    fn inst_clrp(&mut self) {
+        self.set_flag(FLAG_P, false);
+        self.cycles += 2;
+    }
+
+    /// SETP — set direct page flag. Direct page base → $0100. 2 cycles.
+    fn inst_setp(&mut self) {
+        self.set_flag(FLAG_P, true);
         self.cycles += 2;
     }
 }
