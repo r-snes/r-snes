@@ -166,6 +166,7 @@ impl Spc700 {
             0xED => self.inst_notc(), // NOTC
             0x20 => self.inst_clrp(), // CLRP
             0x40 => self.inst_setp(), // SETP
+            0xE0 => self.inst_clrv(), // CLRV
 
             // Catch-all
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
@@ -999,6 +1000,13 @@ impl Spc700 {
     /// SETP — set direct page flag. Direct page base → $0100. 2 cycles.
     fn inst_setp(&mut self) {
         self.set_flag(FLAG_P, true);
+        self.cycles += 2;
+    }
+
+    /// CLRV — clear overflow (V) and half-carry (H) flags. 2 cycles.
+    fn inst_clrv(&mut self) {
+        self.set_flag(FLAG_V, false);
+        self.set_flag(FLAG_H, false);
         self.cycles += 2;
     }
 }
