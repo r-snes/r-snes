@@ -753,3 +753,155 @@ fn test_mul_advances_pc_by_1() {
     cpu.step(&mut mem);
     assert_eq!(cpu.regs.pc, 0x0201);
 }
+
+// ============================================================
+// DIV YA,X ($9E) — unsigned 16/8 divide YA / X → A quot, Y rem
+// ============================================================
+
+#[test]
+fn test_div_basic_result() {
+    // $0006 / $02 = quotient $03, remainder $00
+    let (mut cpu, mut mem) = make();
+    cpu.regs.y = 0x00;
+    cpu.regs.a = 0x06;
+    cpu.regs.x = 0x02;
+    mem.write8(0x0200, 0x9E);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x03, "quotient");
+    assert_eq!(cpu.regs.y, 0x00, "remainder");
+}
+
+#[test]
+fn test_div_with_remainder() {
+    // $0007 / $02 = quotient $03, remainder $01
+    let (mut cpu, mut mem) = make();
+    cpu.regs.y = 0x00;
+    cpu.regs.a = 0x07;
+    cpu.regs.x = 0x02;
+    mem.write8(0x0200, 0x9E);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x03, "quotient");
+    assert_eq!(cpu.regs.y, 0x01, "remainder");
+}
+
+#[test]
+fn test_div_large_dividend() {
+    // $0190 / $02 = $C8 quotient, $00 remainder
+    let (mut cpu, mut mem) = make();
+    cpu.regs.y = 0x01;
+    cpu.regs.a = 0x90;
+    cpu.regs.x = 0x02;
+    mem.write8(0x0200, 0x9E);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0xC8);
+    assert_eq!(cpu.regs.y, 0x00);
+}
+
+#[test]
+fn test_div_sets_zero_flag() {
+    // $0000 / $01 = $00 quotient → Z set
+    let (mut cpu, mut mem) = make();
+    cpu.regs.y = 0x00;
+    cpu.regs.a = 0x00;
+    cpu.regs.x = 0x01;
+    mem.write8(0x0200, 0x9E);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_Z));
+    assert!(!cpu.get_flag(FLAG_N));
+}
+
+#[test]
+fn test_div_sets_negative_flag() {
+    // $0190 / $02 = $C8 → N set (bit 7 of quotient)
+    let (mut cpu, mut mem) = make();
+    cpu.regs.y = 0x01;
+    cpu.regs.a = 0x90;
+    cpu.regs.x = 0x02;
+    mem.write8(0x0200, 0x9E);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_N));
+}
+
+#[test]
+fn test_div_sets_overflow_when_quotient_exceeds_ff() {
+    // $0200 / $01 = $0200 — quotient > $FF → V set
+    let (mut cpu, mut mem) = make();
+    cpu.regs.y = 0x02;
+    cpu.regs.a = 0x00;
+    cpu.regs.x = 0x01;
+    mem.write8(0x0200, 0x9E);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_V), "V must be set when quotient > $FF");
+}
+
+#[test]
+fn test_div_clears_overflow_when_no_overflow() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_V;
+    cpu.regs.y = 0x00;
+    cpu.regs.a = 0x06;
+    cpu.regs.x = 0x02;
+    mem.write8(0x0200, 0x9E);
+    cpu.step(&mut mem);
+    assert!(!cpu.get_flag(FLAG_V));
+}
+
+#[test]
+fn test_div_by_zero_sets_overflow() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.y = 0x01;
+    cpu.regs.a = 0x00;
+    cpu.regs.x = 0x00;
+    mem.write8(0x0200, 0x9E);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_V), "V must be set on division by zero");
+    assert_eq!(cpu.regs.a, 0xFF);
+    assert_eq!(cpu.regs.y, 0xFF);
+}
+
+#[test]
+fn test_div_sets_half_carry() {
+    // H set when (Y & $0F) >= (X & $0F)
+    // Y=$00 ($0F nibble=0), X=$00 but div by zero path
+    // Use Y=$01 (nibble=$01), X=$01 (nibble=$01) → $01 >= $01 → H set
+    let (mut cpu, mut mem) = make();
+    cpu.regs.y = 0x01;
+    cpu.regs.a = 0x00;
+    cpu.regs.x = 0x01;
+    mem.write8(0x0200, 0x9E);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_H));
+}
+
+#[test]
+fn test_div_clears_half_carry() {
+    // Y=$00 (nibble=0), X=$01 (nibble=1) → $00 < $01 → H clear
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_H;
+    cpu.regs.y = 0x00;
+    cpu.regs.a = 0x06;
+    cpu.regs.x = 0x01;
+    mem.write8(0x0200, 0x9E);
+    cpu.step(&mut mem);
+    assert!(!cpu.get_flag(FLAG_H));
+}
+
+#[test]
+fn test_div_costs_12_cycles() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.y = 0x00;
+    cpu.regs.a = 0x06;
+    cpu.regs.x = 0x02;
+    mem.write8(0x0200, 0x9E);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 12);
+}
+
+#[test]
+fn test_div_advances_pc_by_1() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.x = 0x01;
+    mem.write8(0x0200, 0x9E);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.pc, 0x0201);
+}
