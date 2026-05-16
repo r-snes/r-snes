@@ -92,15 +92,15 @@ fn test_rol_a_sets_negative_flag() {
 }
 
 #[test]
-fn test_rol_a_full_rotation_8_steps() {
+fn test_rol_a_full_rotation_9_steps() {
     // Rotating $01 left 8 times with C=0 must return to $01
     let (mut cpu, mut mem) = make();
     cpu.regs.a = 0x01;
     cpu.regs.psw = 0x00;
-    for i in 0..8 {
+    for i in 0..9 {
         mem.write8(0x0200 + i, 0x3C);
     }
-    for _ in 0..8 {
+    for _ in 0..9 {
         cpu.step(&mut mem);
     }
     assert_eq!(cpu.regs.a, 0x01);
