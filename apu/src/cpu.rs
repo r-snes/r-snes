@@ -140,6 +140,11 @@ impl Spc700 {
             0xCF => self.inst_mul(mem), // MUL YA
             0x9E => self.inst_div(mem), // DIV
 
+            // Shift operations
+            0x1C => self.inst_asl_a(), // ASL A,
+            0x0B => self.inst_asl_dp(mem), // ASL dp
+            0x0C => self.inst_asl_abs(mem), // ASL !abs
+
             // Catch-all
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
         }
@@ -750,5 +755,38 @@ impl Spc700 {
         }
         self.set_zn_flags(self.regs.a);
         self.cycles += 12;
+    }
+
+    /// ASL A — arithmetic shift left on accumulator.
+    /// Bit 7 → C, 0 → bit 0. Sets N and Z from result. 2 cycles.
+    fn inst_asl_a(&mut self) {
+        self.set_flag(FLAG_C, (self.regs.a & 0x80) != 0);
+        self.regs.a <<= 1;
+        self.set_zn_flags(self.regs.a);
+        self.cycles += 2;
+    }
+
+    /// ASL dp — arithmetic shift left on direct page byte.
+    /// Bit 7 → C, 0 → bit 0. Sets N and Z from result. 5 cycles.
+    fn inst_asl_dp(&mut self, mem: &mut Memory) {
+        let addr = self.dp_base() | self.read_immediate(mem) as u16;
+        let val = mem.read8_mut(addr);
+        self.set_flag(FLAG_C, (val & 0x80) != 0);
+        let result = val << 1;
+        mem.write8(addr, result);
+        self.set_zn_flags(result);
+        self.cycles += 5;
+    }
+
+    /// ASL !abs — arithmetic shift left on absolute address byte.
+    /// Bit 7 → C, 0 → bit 0. Sets N and Z from result. 6 cycles.
+    fn inst_asl_abs(&mut self, mem: &mut Memory) {
+        let addr = self.read_immediate16(mem);
+        let val = mem.read8_mut(addr);
+        self.set_flag(FLAG_C, (val & 0x80) != 0);
+        let result = val << 1;
+        mem.write8(addr, result);
+        self.set_zn_flags(result);
+        self.cycles += 6;
     }
 }
