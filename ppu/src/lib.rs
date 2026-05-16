@@ -1,6 +1,8 @@
-pub mod utils;
-pub mod tile;
+pub mod constants;
+pub mod vram;
+pub mod cgram;
 pub mod ppu;
+pub mod registers;
+pub mod write_twice;
 
-#[cfg(test)]
-mod tests;
+pub mod rendering;
