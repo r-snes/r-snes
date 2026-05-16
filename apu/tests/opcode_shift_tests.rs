@@ -1,4 +1,4 @@
-/// Shift and rotate instruction tests
+/// Shift instruction tests
 ///
 /// Currently covers:
 ///   - ASL A ($1C)
@@ -271,6 +271,222 @@ fn test_asl_abs_costs_6_cycles() {
 fn test_asl_abs_advances_pc_by_3() {
     let (mut cpu, mut mem) = make();
     mem.write8(0x0200, 0x0C);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.pc, 0x0203);
+}
+
+// ============================================================
+// LSR A ($5C) — logical shift right, accumulator
+// ============================================================
+
+#[test]
+fn test_lsr_a_shifts_right_by_1() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x02;
+    mem.write8(0x0200, 0x5C);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x01);
+}
+
+#[test]
+fn test_lsr_a_bit0_goes_to_carry() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x01;
+    mem.write8(0x0200, 0x5C);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_C), "bit 0 must shift into carry");
+    assert_eq!(cpu.regs.a, 0x00);
+}
+
+#[test]
+fn test_lsr_a_clears_carry_when_bit0_clear() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x02;
+    cpu.regs.psw = FLAG_C;
+    mem.write8(0x0200, 0x5C);
+    cpu.step(&mut mem);
+    assert!(!cpu.get_flag(FLAG_C));
+}
+
+#[test]
+fn test_lsr_a_zero_into_bit7() {
+    // bit 7 must always be 0 after LSR
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0xFF;
+    mem.write8(0x0200, 0x5C);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a & 0x80, 0, "bit 7 must be 0 after LSR");
+    assert!(!cpu.get_flag(FLAG_N), "N must always be clear after LSR");
+}
+
+#[test]
+fn test_lsr_a_sets_zero_flag() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x01;
+    mem.write8(0x0200, 0x5C);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_Z));
+}
+
+#[test]
+fn test_lsr_a_clears_negative_flag() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x80;
+    cpu.regs.psw = FLAG_N;
+    mem.write8(0x0200, 0x5C);
+    cpu.step(&mut mem);
+    assert!(!cpu.get_flag(FLAG_N));
+    assert_eq!(cpu.regs.a, 0x40);
+}
+
+#[test]
+fn test_lsr_a_costs_2_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x5C);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 2);
+}
+
+#[test]
+fn test_lsr_a_advances_pc_by_1() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x5C);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.pc, 0x0201);
+}
+
+// ============================================================
+// LSR dp ($4B) — logical shift right, direct page
+// ============================================================
+
+#[test]
+fn test_lsr_dp_shifts_memory_right() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0020, 0x02);
+    mem.write8(0x0200, 0x4B);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(mem.read8(0x0020), 0x01);
+}
+
+#[test]
+fn test_lsr_dp_bit0_goes_to_carry() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0020, 0x01);
+    mem.write8(0x0200, 0x4B);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_C));
+    assert_eq!(mem.read8(0x0020), 0x00);
+}
+
+#[test]
+fn test_lsr_dp_clears_carry_when_bit0_clear() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C;
+    mem.write8(0x0020, 0x02);
+    mem.write8(0x0200, 0x4B);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert!(!cpu.get_flag(FLAG_C));
+}
+
+#[test]
+fn test_lsr_dp_never_sets_negative_flag() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_N;
+    mem.write8(0x0020, 0xFF);
+    mem.write8(0x0200, 0x4B);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert!(!cpu.get_flag(FLAG_N));
+}
+
+#[test]
+fn test_lsr_dp_sets_zero_flag() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0020, 0x01);
+    mem.write8(0x0200, 0x4B);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_Z));
+}
+
+#[test]
+fn test_lsr_dp_uses_page_one_when_p_set() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_P;
+    mem.write8(0x0120, 0x04);
+    mem.write8(0x0200, 0x4B);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(mem.read8(0x0120), 0x02);
+}
+
+#[test]
+fn test_lsr_dp_costs_5_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x4B);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 5);
+}
+
+// ============================================================
+// LSR !abs ($4C) — logical shift right, absolute address
+// ============================================================
+
+#[test]
+fn test_lsr_abs_shifts_memory_right() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0500, 0x04);
+    mem.write8(0x0200, 0x4C);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    cpu.step(&mut mem);
+    assert_eq!(mem.read8(0x0500), 0x02);
+}
+
+#[test]
+fn test_lsr_abs_bit0_goes_to_carry() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0500, 0x01);
+    mem.write8(0x0200, 0x4C);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_C));
+    assert_eq!(mem.read8(0x0500), 0x00);
+}
+
+#[test]
+fn test_lsr_abs_never_sets_negative_flag() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_N;
+    mem.write8(0x0500, 0xFF);
+    mem.write8(0x0200, 0x4C);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    cpu.step(&mut mem);
+    assert!(!cpu.get_flag(FLAG_N));
+}
+
+#[test]
+fn test_lsr_abs_costs_6_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x4C);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 6);
+}
+
+#[test]
+fn test_lsr_abs_advances_pc_by_3() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x4C);
     mem.write8(0x0201, 0x00);
     mem.write8(0x0202, 0x05);
     cpu.step(&mut mem);
