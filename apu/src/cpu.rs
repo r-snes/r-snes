@@ -132,6 +132,8 @@ impl Spc700 {
             0x1D => self.inst_dec_x(), // DEC X
             0xFC => self.inst_inc_y(), // INC Y
             0xDC => self.inst_dec_y(), // DEC Y
+            0xAB => self.inst_inc_dp(mem), // INC dp
+            0x8B => self.inst_dec_dp(mem), // DEC dp
 
             // Catch-all
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
@@ -673,5 +675,23 @@ impl Spc700 {
         self.regs.y = self.regs.y.wrapping_sub(1);
         self.set_zn_flags(self.regs.y);
         self.cycles += 2;
+    }
+
+    /// INC dp — increment byte at direct page address. Sets N and Z. 5 cycles.
+    fn inst_inc_dp(&mut self, mem: &mut Memory) {
+        let addr = self.dp_base() | self.read_immediate(mem) as u16;
+        let val = mem.read8_mut(addr).wrapping_add(1);
+        mem.write8(addr, val);
+        self.set_zn_flags(val);
+        self.cycles += 5;
+    }
+
+    /// DEC dp — decrement byte at direct page address. Sets N and Z. 5 cycles.
+    fn inst_dec_dp(&mut self, mem: &mut Memory) {
+        let addr = self.dp_base() | self.read_immediate(mem) as u16;
+        let val = mem.read8_mut(addr).wrapping_sub(1);
+        mem.write8(addr, val);
+        self.set_zn_flags(val);
+        self.cycles += 5;
     }
 }
