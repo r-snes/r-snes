@@ -130,6 +130,8 @@ impl Spc700 {
             0x9C => self.inst_dec_a(), // DEC A
             0x3D => self.inst_inc_x(), // INC X
             0x1D => self.inst_dec_x(), // DEC X
+            0xFC => self.inst_inc_y(), // INC Y
+            0xDC => self.inst_dec_y(), // DEC Y
 
             // Catch-all
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
@@ -656,6 +658,20 @@ impl Spc700 {
     fn inst_dec_x(&mut self) {
         self.regs.x = self.regs.x.wrapping_sub(1);
         self.set_zn_flags(self.regs.x);
+        self.cycles += 2;
+    }
+
+    /// INC Y — increment Y by 1. Sets N and Z. 2 cycles.
+    fn inst_inc_y(&mut self) {
+        self.regs.y = self.regs.y.wrapping_add(1);
+        self.set_zn_flags(self.regs.y);
+        self.cycles += 2;
+    }
+
+    /// DEC Y — decrement Y by 1. Sets N and Z. 2 cycles.
+    fn inst_dec_y(&mut self) {
+        self.regs.y = self.regs.y.wrapping_sub(1);
+        self.set_zn_flags(self.regs.y);
         self.cycles += 2;
     }
 }
