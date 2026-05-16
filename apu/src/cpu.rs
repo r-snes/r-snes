@@ -167,6 +167,8 @@ impl Spc700 {
             0x20 => self.inst_clrp(), // CLRP
             0x40 => self.inst_setp(), // SETP
             0xE0 => self.inst_clrv(), // CLRV
+            0xA0 => self.inst_ei(), // EI
+            0xC0 => self.inst_di(), // DI
 
             // Catch-all
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
@@ -1008,5 +1010,17 @@ impl Spc700 {
         self.set_flag(FLAG_V, false);
         self.set_flag(FLAG_H, false);
         self.cycles += 2;
+    }
+
+    /// EI — enable interrupts (set FLAG_I). 3 cycles.
+    fn inst_ei(&mut self) {
+        self.set_flag(FLAG_I, true);
+        self.cycles += 3;
+    }
+
+    /// DI — disable interrupts (clear FLAG_I). 3 cycles.
+    fn inst_di(&mut self) {
+        self.set_flag(FLAG_I, false);
+        self.cycles += 3;
     }
 }
