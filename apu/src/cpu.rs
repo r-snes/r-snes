@@ -143,17 +143,21 @@ impl Spc700 {
             // Shift operations
             0x1C => self.inst_asl_a(), // ASL A,
             0x0B => self.inst_asl_dp(mem), // ASL dp
+            0x1B => self.inst_asl_dp_x(mem), // ASL dp X
             0x0C => self.inst_asl_abs(mem), // ASL !abs
             0x5C => self.inst_lsr_a(), // LSR A
             0x4B => self.inst_lsr_dp(mem), // LSR dp
+            0x5B => self.inst_lsr_dp_x(mem), // LSR dp X
             0x4C => self.inst_lsr_abs(mem), // LSR !abs
 
             // Rotate operations
             0x3C => self.inst_rol_a(), // ROL A
             0x2B => self.inst_rol_dp(mem), // ROL dp
+            0x3B => self.inst_rol_dp_x(mem), // ROL dp X
             0x2C => self.inst_rol_abs(mem), // ROL !abs
             0x7C => self.inst_ror_a(), // ROR A
             0x6B => self.inst_ror_dp(mem), // ROR dp
+            0x7B => self.inst_ror_dp_x(mem), // ROR dp X
             0x6C => self.inst_ror_abs(mem), // ROR !abs
 
             // Catch-all
@@ -789,6 +793,19 @@ impl Spc700 {
         self.cycles += 5;
     }
 
+    /// ASL dp+X — arithmetic shift left on direct page + X byte.
+    /// Bit 7 → C, 0 → bit 0. Sets N and Z from result. 5 cycles.
+    fn inst_asl_dp_x(&mut self, mem: &mut Memory) {
+        let offset = self.read_immediate(mem) as u16;
+        let addr = self.dp_base() | (offset + self.regs.x as u16) & 0xFF;
+        let val = mem.read8_mut(addr);
+        self.set_flag(FLAG_C, (val & 0x80) != 0);
+        let result = val << 1;
+        mem.write8(addr, result);
+        self.set_zn_flags(result);
+        self.cycles += 5;
+    }
+
     /// ASL !abs — arithmetic shift left on absolute address byte.
     /// Bit 7 → C, 0 → bit 0. Sets N and Z from result. 6 cycles.
     fn inst_asl_abs(&mut self, mem: &mut Memory) {
@@ -814,6 +831,19 @@ impl Spc700 {
     /// Bit 0 → C, 0 → bit 7. Sets N and Z from result. 5 cycles.
     fn inst_lsr_dp(&mut self, mem: &mut Memory) {
         let addr = self.dp_base() | self.read_immediate(mem) as u16;
+        let val = mem.read8_mut(addr);
+        self.set_flag(FLAG_C, (val & 0x01) != 0);
+        let result = val >> 1;
+        mem.write8(addr, result);
+        self.set_zn_flags(result);
+        self.cycles += 5;
+    }
+
+    /// LSR dp+X — logical shift right on direct page + X byte.
+    /// Bit 0 → C, 0 → bit 7. Sets N and Z from result. 5 cycles.
+    fn inst_lsr_dp_x(&mut self, mem: &mut Memory) {
+        let offset = self.read_immediate(mem) as u16;
+        let addr = self.dp_base() | (offset + self.regs.x as u16) & 0xFF;
         let val = mem.read8_mut(addr);
         self.set_flag(FLAG_C, (val & 0x01) != 0);
         let result = val >> 1;
@@ -857,6 +887,20 @@ impl Spc700 {
         self.cycles += 5;
     }
 
+    /// ROL dp+X — rotate left through carry on direct page + X byte.
+    /// Old C → bit 0, bit 7 → new C. Sets N and Z from result. 5 cycles.
+    fn inst_rol_dp_x(&mut self, mem: &mut Memory) {
+        let offset = self.read_immediate(mem) as u16;
+        let addr = self.dp_base() | (offset + self.regs.x as u16) & 0xFF;
+        let val = mem.read8_mut(addr);
+        let old_carry = self.get_flag(FLAG_C) as u8;
+        self.set_flag(FLAG_C, (val & 0x80) != 0);
+        let result = (val << 1) | old_carry;
+        mem.write8(addr, result);
+        self.set_zn_flags(result);
+        self.cycles += 5;
+    }
+
     /// ROL !abs — rotate left through carry on absolute address byte.
     /// Old C → bit 0, bit 7 → new C. Sets N and Z from result. 6 cycles.
     fn inst_rol_abs(&mut self, mem: &mut Memory) {
@@ -884,6 +928,20 @@ impl Spc700 {
     /// Old C → bit 7, bit 0 → new C. Sets N and Z from result. 5 cycles.
     fn inst_ror_dp(&mut self, mem: &mut Memory) {
         let addr = self.dp_base() | self.read_immediate(mem) as u16;
+        let val = mem.read8_mut(addr);
+        let old_carry = self.get_flag(FLAG_C) as u8;
+        self.set_flag(FLAG_C, (val & 0x01) != 0);
+        let result = (val >> 1) | (old_carry << 7);
+        mem.write8(addr, result);
+        self.set_zn_flags(result);
+        self.cycles += 5;
+    }
+
+    /// ROR dp+X — rotate right through carry on direct page + X byte.
+    /// Old C → bit 7, bit 0 → new C. Sets N and Z from result. 5 cycles.
+    fn inst_ror_dp_x(&mut self, mem: &mut Memory) {
+        let offset = self.read_immediate(mem) as u16;
+        let addr = self.dp_base() | (offset + self.regs.x as u16) & 0xFF;
         let val = mem.read8_mut(addr);
         let old_carry = self.get_flag(FLAG_C) as u8;
         self.set_flag(FLAG_C, (val & 0x01) != 0);
