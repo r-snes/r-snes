@@ -134,6 +134,8 @@ impl Spc700 {
             0xDC => self.inst_dec_y(), // DEC Y
             0xAB => self.inst_inc_dp(mem), // INC dp
             0x8B => self.inst_dec_dp(mem), // DEC dp
+            0xAC => self.inst_inc_abs(mem),
+            0x8C => self.inst_dec_abs(mem),
 
             // Catch-all
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
@@ -693,5 +695,23 @@ impl Spc700 {
         mem.write8(addr, val);
         self.set_zn_flags(val);
         self.cycles += 5;
+    }
+
+    /// INC !abs — increment byte at absolute address. Sets N and Z. 6 cycles.
+    fn inst_inc_abs(&mut self, mem: &mut Memory) {
+        let addr = self.read_immediate16(mem);
+        let val = mem.read8_mut(addr).wrapping_add(1);
+        mem.write8(addr, val);
+        self.set_zn_flags(val);
+        self.cycles += 6;
+    }
+
+    /// DEC !abs — decrement byte at absolute address. Sets N and Z. 6 cycles.
+    fn inst_dec_abs(&mut self, mem: &mut Memory) {
+        let addr = self.read_immediate16(mem);
+        let val = mem.read8_mut(addr).wrapping_sub(1);
+        mem.write8(addr, val);
+        self.set_zn_flags(val);
+        self.cycles += 6;
     }
 }
