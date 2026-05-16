@@ -2,7 +2,6 @@ use crate::constants::SCANLINES_PER_FRAME;
 use crate::registers::PPURegisters;
 use crate::vram::VRAM;
 use crate::cgram::CGRAM;
-use crate::write_twice::WriteTwice;
 use common::u16_split::U16Split;
 
 pub struct PPU {
