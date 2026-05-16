@@ -144,6 +144,9 @@ impl Spc700 {
             0x1C => self.inst_asl_a(), // ASL A,
             0x0B => self.inst_asl_dp(mem), // ASL dp
             0x0C => self.inst_asl_abs(mem), // ASL !abs
+            0x5C => self.inst_lsr_a(), // LSR A
+            0x4B => self.inst_lsr_dp(mem), // LSR dp
+            0x4C => self.inst_lsr_abs(mem), // LSR !abs
 
             // Catch-all
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
@@ -785,6 +788,39 @@ impl Spc700 {
         let val = mem.read8_mut(addr);
         self.set_flag(FLAG_C, (val & 0x80) != 0);
         let result = val << 1;
+        mem.write8(addr, result);
+        self.set_zn_flags(result);
+        self.cycles += 6;
+    }
+
+    /// LSR A — logical shift right on accumulator.
+    /// Bit 0 → C, 0 → bit 7. Sets N and Z from result. 2 cycles.
+    fn inst_lsr_a(&mut self) {
+        self.set_flag(FLAG_C, (self.regs.a & 0x01) != 0);
+        self.regs.a >>= 1;
+        self.set_zn_flags(self.regs.a);
+        self.cycles += 2;
+    }
+
+    /// LSR dp — logical shift right on direct page byte.
+    /// Bit 0 → C, 0 → bit 7. Sets N and Z from result. 5 cycles.
+    fn inst_lsr_dp(&mut self, mem: &mut Memory) {
+        let addr = self.dp_base() | self.read_immediate(mem) as u16;
+        let val = mem.read8_mut(addr);
+        self.set_flag(FLAG_C, (val & 0x01) != 0);
+        let result = val >> 1;
+        mem.write8(addr, result);
+        self.set_zn_flags(result);
+        self.cycles += 5;
+    }
+
+    /// LSR !abs — logical shift right on absolute address byte.
+    /// Bit 0 → C, 0 → bit 7. Sets N and Z from result. 6 cycles.
+    fn inst_lsr_abs(&mut self, mem: &mut Memory) {
+        let addr = self.read_immediate16(mem);
+        let val = mem.read8_mut(addr);
+        self.set_flag(FLAG_C, (val & 0x01) != 0);
+        let result = val >> 1;
         mem.write8(addr, result);
         self.set_zn_flags(result);
         self.cycles += 6;
