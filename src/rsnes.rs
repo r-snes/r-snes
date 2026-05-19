@@ -65,7 +65,7 @@ impl RSnes {
         let mut a_addr = ch.a1t;
 
         // 0x0000 means 65536 bytes, u32 needed to not overflow
-        let mut remaining: u32 = {
+        let remaining: u32 = {
             let raw = ch.das;
             if raw == 0 { 0x10000 } else { raw as u32 }
         };

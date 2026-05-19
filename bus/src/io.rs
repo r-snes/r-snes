@@ -312,7 +312,7 @@ impl Io {
         );
     }
 
-    fn read_cpu(&mut self, addr: SnesAddress, apu: &mut Apu) -> u8 {
+    fn read_cpu(&mut self, addr: SnesAddress, _: &mut Apu) -> u8 {
         match addr.addr {
             // Data-from-APU register
             // TODO : Link with the actual apu component
@@ -409,7 +409,7 @@ impl Io {
         }
     }
 
-    fn write_cpu(&mut self, value: u8, addr: SnesAddress, apu: &mut Apu) {
+    fn write_cpu(&mut self, value: u8, addr: SnesAddress, _: &mut Apu) {
         match addr.addr {
             // Data-to-APU register
             #[cfg(not(tarpaulin_include))]
@@ -864,10 +864,10 @@ mod tests {
         io.open_bus = cpu_open_bus_value;
 
         let mut value_inc = 0;
-        for channel_nb in (0..8) {
+        for channel_nb in 0..8 {
             let channel_addr = snes_addr!(0:0x4300 + 0x10 * channel_nb);
 
-            for dma_reg in (0x0..=0xF) {
+            for dma_reg in 0x0..=0xF {
                 let reg_addr = snes_addr!(0:channel_addr.addr + dma_reg);
 
                 io.write(reg_addr, value_inc, &mut ppu, &mut apu);
