@@ -516,19 +516,14 @@ impl Io {
     /// Panics if the address does not map to a valid I/O memory location.
     pub fn read(&mut self, addr: SnesAddress, ppu: &mut PPU, apu: &mut Apu) -> u8 {
         self.open_bus = match addr.bank {
-            0x00..=0x3F | 0x80..=0xBF
-                if addr.addr >= IO_START_ADDRESS && addr.addr < IO_END_ADDRESS =>
-            {
-                match addr.addr {
-                    0x2000..0x2100 => self.open_bus,
-                    0x2100..0x2140 => ppu.read(addr.addr),
-                    0x2140..0x4380 => self.read_cpu(addr, apu),
-                    0x4380..0x6000 => self.open_bus,
+            0x00..=0x3F | 0x80..=0xBF => match addr.addr {
+                0x2000..0x2100 => self.open_bus,
+                0x2100..0x2140 => ppu.read(addr.addr),
+                0x2140..0x4380 => self.read_cpu(addr, apu),
+                0x4380..0x6000 => self.open_bus,
 
-                    #[cfg(not(tarpaulin_include))]
-                    _ => unreachable!(),
-                }
-            }
+                _ => Self::panic_invalid_addr(addr),
+            },
             _ => Self::panic_invalid_addr(addr),
         };
         self.open_bus
@@ -543,19 +538,14 @@ impl Io {
     pub fn write(&mut self, addr: SnesAddress, value: u8, ppu: &mut PPU, apu: &mut Apu) {
         self.open_bus = value;
         match addr.bank {
-            0x00..=0x3F | 0x80..=0xBF
-                if addr.addr >= IO_START_ADDRESS && addr.addr < IO_END_ADDRESS =>
-            {
-                match addr.addr {
-                    0x2000..0x2100 => {}
-                    0x2100..0x2140 => ppu.write(addr.addr, value),
-                    0x2140..0x4380 => self.write_cpu(value, addr, apu),
-                    0x4380..0x6000 => {}
+            0x00..=0x3F | 0x80..=0xBF => match addr.addr {
+                0x2000..0x2100 => {}
+                0x2100..0x2140 => ppu.write(addr.addr, value),
+                0x2140..0x4380 => self.write_cpu(value, addr, apu),
+                0x4380..0x6000 => {}
 
-                    #[cfg(not(tarpaulin_include))]
-                    _ => unreachable!(),
-                }
-            }
+                _ => Self::panic_invalid_addr(addr),
+            },
             _ => Self::panic_invalid_addr(addr),
         };
     }
