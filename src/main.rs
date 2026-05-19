@@ -5,7 +5,11 @@ use crate::{
     gui::{Gui, RSnesEvent},
     rsnes::RSnes,
 };
-use std::time::{Duration, Instant};
+use std::{
+    path::PathBuf,
+    time::{Duration, Instant},
+};
+use clap::Parser;
 
 fn gui_emu_loop(gui: &mut gui::Gui, emu: &mut rsnes::RSnes) {
     let mut frame_nb = 0_u64;
@@ -64,9 +68,8 @@ fn gui_emu_loop(gui: &mut gui::Gui, emu: &mut rsnes::RSnes) {
     println!("Frame rate : {}", frame_nb as f64 / program_duration);
 }
 
-fn gui_loop() -> Result<(), String> {
+fn gui_loop(mut emu: Option<RSnes>) -> Result<(), String> {
     let mut gui = gui::Gui::new()?;
-    let mut emu: Option<rsnes::RSnes> = None;
 
     let _ = gui.update(); // todo: potentially handle events returned by this?
 
@@ -88,7 +91,19 @@ fn gui_loop() -> Result<(), String> {
     Ok(())
 }
 
+#[derive(Parser)]
+#[command(about, long_about = None)]
+struct Cli {
+    pub rom: Option<PathBuf>,
+}
+
 fn main() -> Result<(), String> {
-    // TODO: CLI arg parsing: i.e. directly run with a rom passed as arg
-    gui_loop()
+    let cli = Cli::parse();
+
+    let emu = match cli.rom {
+        None => None,
+        Some(rom_path) => Some(RSnes::load_rom(&rom_path).map_err(|e| e.to_string())?),
+    };
+
+    gui_loop(emu)
 }
