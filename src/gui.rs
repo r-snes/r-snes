@@ -79,24 +79,37 @@ impl Gui {
         self.canvas.present();
     }
 
+    fn map_event(event: sdl2::event::Event) -> Option<RSnesEvent> {
+        match event {
+            | Event::Quit { .. }
+            | Event::KeyDown {
+                keycode: Some(Keycode::Escape),
+                ..
+            } => Some(RSnesEvent::Quit),
+
+            Event::KeyDown {
+                keycode: Some(Keycode::L),
+                ..
+            } => match rfd::FileDialog::new().pick_file() {
+                Some(path) => Some(RSnesEvent::LoadRom { path }),
+                None => None,
+            },
+
+            _ => None,
+        }
+    }
+
     fn handle_events(&mut self) -> impl Iterator<Item = RSnesEvent> {
-        self.event_pump
-            .poll_iter()
-            .filter_map(|event: Event| match event {
-                Event::Quit { .. }
-                | Event::KeyDown {
-                    keycode: Some(Keycode::Escape),
-                    ..
-                } => Some(RSnesEvent::Quit),
-                Event::KeyDown {
-                    keycode: Some(Keycode::L),
-                    ..
-                } => match rfd::FileDialog::new().pick_file() {
-                    Some(path) => Some(RSnesEvent::LoadRom { path }),
-                    None => None,
-                },
-                _ => None,
-            })
+        self.event_pump.poll_iter().filter_map(Self::map_event)
+    }
+
+    pub fn wait_for_event(&mut self) -> RSnesEvent {
+        loop {
+            match Self::map_event(self.event_pump.wait_event()) {
+                Some(e) => return e,
+                None => {}
+            }
+        }
     }
 
     fn draw_framebuffer(&mut self) -> Result<(), String> {

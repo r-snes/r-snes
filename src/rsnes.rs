@@ -15,7 +15,7 @@ pub struct RSnes {
     pub ppu: PPU,
     pub apu: Apu,
     pub master_cycles: u64,
-    pub cpu_master_cycles_to_wait: u16,
+    pub cpu_master_cycles_to_wait: u32,
 }
 
 impl RSnes {
