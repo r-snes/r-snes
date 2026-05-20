@@ -11,7 +11,7 @@ use std::{
 };
 use clap::Parser;
 
-fn gui_emu_loop(gui: &mut gui::Gui, emu: &mut rsnes::RSnes) {
+fn gui_emu_loop(gui: &mut gui::Gui, mut emu: rsnes::RSnes) {
     let mut frame_nb = 0_u64;
     let exec_start = Instant::now();
 
@@ -53,7 +53,7 @@ fn gui_emu_loop(gui: &mut gui::Gui, emu: &mut rsnes::RSnes) {
         for state_event in gui.update() {
             match state_event {
                 RSnesEvent::LoadRom { path } => match rsnes::RSnes::load_rom(&path) {
-                    Ok(emu_) => *emu = emu_,
+                    Ok(emu_) => emu = emu_,
                     Err(err) => eprintln!("Error loading ROM: {}", err),
                 },
                 RSnesEvent::Quit => break 'emu_loop,
@@ -74,17 +74,20 @@ fn gui_loop(mut emu: Option<RSnes>) -> Result<(), String> {
     let _ = gui.update(); // todo: potentially handle events returned by this?
 
     loop {
-        if let Some(emu) = &mut emu {
-            gui_emu_loop(&mut gui, emu);
+        // move out of the `Option` in case it's `Some`
+        // so that we can pass by value in the emu loop,
+        // guaranteeing that the `RSnes` is destructed when
+        // we leave the loop
+        match emu.take() {
+            None => match gui.wait_for_event() {
+                RSnesEvent::LoadRom { path } => match rsnes::RSnes::load_rom(&path) {
+                    Ok(some_emu) => emu = Some(some_emu),
+                    Err(err) => println!("Error loading ROM: {}", err),
+                },
+                RSnesEvent::Quit => break,
+            }
 
-            // then reset framebuffer to logo (once game is closed)
-        };
-        match gui.wait_for_event() {
-            RSnesEvent::LoadRom { path } => match rsnes::RSnes::load_rom(&path) {
-                Ok(some_emu) => emu = Some(some_emu),
-                Err(err) => println!("Error loading ROM: {}", err),
-            },
-            RSnesEvent::Quit => break,
+            Some(emu) => gui_emu_loop(&mut gui, emu),
         }
     }
 
