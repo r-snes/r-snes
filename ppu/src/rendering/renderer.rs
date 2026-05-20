@@ -1,8 +1,11 @@
 use crate::constants::*;
 use crate::ppu::PPU;
 
+/// Raw byte array of the framebuffer in RGB888
+pub type RawFramebuffer = [u8; SCREEN_WIDTH * SCREEN_HEIGHT * 3];
+
 pub struct Renderer {
-    pub framebuffer: Box<[u8; SCREEN_WIDTH * SCREEN_HEIGHT * 3]>,
+    pub framebuffer: Box<RawFramebuffer>,
     pub current_brightness: u8,
 
     brightness_delay: u8,

@@ -50,7 +50,7 @@ fn gui_emu_loop(gui: &mut gui::Gui, mut emu: rsnes::RSnes) {
 
         frame_accum -= Gui::FRAME_DURATION;
 
-        for state_event in gui.update() {
+        for state_event in gui.update(&emu.ppu_renderer.framebuffer) {
             match state_event {
                 RSnesEvent::LoadRom { path } => match rsnes::RSnes::load_rom(&path) {
                     Ok(emu_) => emu = emu_,
@@ -70,8 +70,10 @@ fn gui_emu_loop(gui: &mut gui::Gui, mut emu: rsnes::RSnes) {
 
 fn gui_loop(mut emu: Option<RSnes>) -> Result<(), String> {
     let mut gui = gui::Gui::new()?;
+    const DEFAULT_FRAMEBUFFER : &ppu::rendering::RawFramebuffer = include_bytes!("../logo_framebuffer.raw");
 
-    let _ = gui.update(); // todo: potentially handle events returned by this?
+    gui.draw_framebuffer(DEFAULT_FRAMEBUFFER)?;
+    gui.present();
 
     loop {
         // move out of the `Option` in case it's `Some`
@@ -87,7 +89,13 @@ fn gui_loop(mut emu: Option<RSnes>) -> Result<(), String> {
                 RSnesEvent::Quit => break,
             }
 
-            Some(emu) => gui_emu_loop(&mut gui, emu),
+            Some(emu) => {
+                gui_emu_loop(&mut gui, emu);
+
+                // re-render default framebuffer after game has exited
+                gui.draw_framebuffer(DEFAULT_FRAMEBUFFER)?;
+                gui.present();
+            }
         }
     }
 
