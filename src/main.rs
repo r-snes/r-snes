@@ -9,6 +9,7 @@ use std::{
     path::PathBuf,
     time::{Duration, Instant},
 };
+#[cfg(feature = "cli")]
 use clap::Parser;
 
 fn gui_emu_loop(gui: &mut gui::Gui, mut emu: rsnes::RSnes) {
@@ -102,14 +103,29 @@ fn gui_loop(mut emu: Option<RSnes>) -> Result<(), String> {
     Ok(())
 }
 
-#[derive(Parser)]
-#[command(about, long_about = None)]
+#[cfg_attr(feature = "cli", derive(Parser))]
+#[cfg_attr(feature = "cli", command(about, long_about = None))]
+#[derive(Default)]
 struct Cli {
     pub rom: Option<PathBuf>,
 }
 
 fn main() -> Result<(), String> {
-    let cli = Cli::parse();
+    let cli;
+    #[cfg(feature = "cli")]
+    {
+        cli = Cli::parse();
+    }
+
+    #[cfg(not(feature = "cli"))]
+    {
+        cli = Cli::default();
+
+        if std::env::args().len() != 0 {
+            eprintln!("CLI feature disabled at compile time, CLI arguments are ignored");
+        }
+    }
+
 
     let emu = match cli.rom {
         None => None,
