@@ -7,7 +7,7 @@ const DSP_CYCLES_PER_SAMPLE: u32 = 32;
 
 pub struct Apu {
     pub cpu:    Spc700,
-    pub memory: Memory,   // Memory::dsp is the *only* Dsp — there is no separate field
+    pub memory: Memory,
     pub timers: Timers,
 
     /// Total CPU cycles elapsed since APU creation.
@@ -41,8 +41,7 @@ impl Apu {
     ///   - The timers      (every cycle)
     ///   - The DSP         (once every 32 cycles → 32 kHz)
     ///
-    /// All DSP access goes through `self.memory.dsp`; there is no
-    /// separate Dsp field on Apu.
+    /// All DSP access goes through `self.memory.dsp`;
     pub fn step(&mut self, cycles: u32) {
         for _ in 0..cycles {
             self.cpu.step(&mut self.memory);
