@@ -2,15 +2,17 @@ use crate::constants::VRAM_SIZE;
 use crate::registers::PPURegisters;
 use common::u16_split::U16Split;
 
+pub type RawVRAM = [u16; VRAM_SIZE / 2];
+
 pub struct VRAM {
-    pub memory: Box<[u16; VRAM_SIZE / 2]>, // VRAM stored as u16 words
+    pub memory: Box<RawVRAM>, // VRAM stored as u16 words
     pub vram_latch: u16, // word latch for reads
 }
 
 impl VRAM {
     pub fn new() -> Self {
         Self {
-            memory: Box::new([0; VRAM_SIZE / 2]),
+            memory: Box::new([0; _]),
             vram_latch: 0,
         }
     }
