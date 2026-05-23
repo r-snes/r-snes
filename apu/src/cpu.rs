@@ -40,7 +40,7 @@ impl Spc700 {
     }
 
     pub fn step(&mut self, mem: &mut Memory) {
-        let opcode = mem.read8(self.regs.pc);
+        let opcode = mem.read8_mut(self.regs.pc);
         self.regs.pc = self.regs.pc.wrapping_add(1);
 
         match opcode {
@@ -112,9 +112,12 @@ impl Spc700 {
         }
     }
 
-    /// Reads the next byte from memory and increments the program counter.
-    fn read_immediate(&mut self, mem: &Memory) -> u8 {
-        let value = mem.read8(self.regs.pc);
+    /// Read the next byte from memory at PC and advance PC by 1.
+    ///
+    /// Uses `read8_mut` so that reads of `$FD–$FF` (timer counters)
+    /// correctly clear the counter, matching hardware behaviour.
+    fn read_immediate(&mut self, mem: &mut Memory) -> u8 {
+        let value = mem.read8_mut(self.regs.pc);
         self.regs.pc = self.regs.pc.wrapping_add(1);
         value
     }
@@ -147,133 +150,90 @@ impl Spc700 {
         self.cycles += 2;
     }
 
-    pub fn inst_lda_imm(&mut self, mem: &Memory) {
+    pub fn inst_lda_imm(&mut self, mem: &mut Memory) {
         self.regs.a = self.read_immediate(mem);
         self.set_zn_flags(self.regs.a);
         self.cycles += 2;
     }
 
-    pub fn inst_ldx_imm(&mut self, mem: &Memory) {
+    pub fn inst_ldx_imm(&mut self, mem: &mut Memory) {
         self.regs.x = self.read_immediate(mem);
         self.set_zn_flags(self.regs.x);
         self.cycles += 2;
     }
 
-    pub fn inst_ldy_imm(&mut self, mem: &Memory) {
+    pub fn inst_ldy_imm(&mut self, mem: &mut Memory) {
         self.regs.y = self.read_immediate(mem);
         self.set_zn_flags(self.regs.y);
         self.cycles += 2;
     }
 
     pub fn inst_sta_abs(&mut self, mem: &mut Memory) {
-        // Read the 16-bit address in little-endian
-        let lo = mem.read8(self.regs.pc) as u16;
-        let hi = mem.read8(self.regs.pc.wrapping_add(1)) as u16;
-        let addr = lo | (hi << 8);
-    
-        // Move PC past the operand
-        self.regs.pc = self.regs.pc.wrapping_add(2);
-    
-        // Store A into memory
+        let addr = self.read_immediate16(mem);
         mem.write8(addr, self.regs.a);
-    
-        // Increment cycles
         self.cycles += 4;
     }
-    
+
     pub fn inst_stx_abs(&mut self, mem: &mut Memory) {
-        let lo = mem.read8(self.regs.pc) as u16;
-        let hi = mem.read8(self.regs.pc.wrapping_add(1)) as u16;
-        let addr = lo | (hi << 8);
-    
-        self.regs.pc = self.regs.pc.wrapping_add(2);
-    
+        let addr = self.read_immediate16(mem);
         mem.write8(addr, self.regs.x);
         self.cycles += 4;
     }
-    
+
     pub fn inst_sty_abs(&mut self, mem: &mut Memory) {
-        let lo = mem.read8(self.regs.pc) as u16;
-        let hi = mem.read8(self.regs.pc.wrapping_add(1)) as u16;
-        let addr = lo | (hi << 8);
-    
-        self.regs.pc = self.regs.pc.wrapping_add(2);
-    
+        let addr = self.read_immediate16(mem);
         mem.write8(addr, self.regs.y);
         self.cycles += 4;
     }
 
     pub fn inst_lda_abs(&mut self, mem: &mut Memory) {
-        let lo = mem.read8(self.regs.pc) as u16;
-        let hi = mem.read8(self.regs.pc.wrapping_add(1)) as u16;
-        let addr = lo | (hi << 8);
-    
-        self.regs.pc = self.regs.pc.wrapping_add(2);
-        self.regs.a = mem.read8(addr as u16);
+        let addr = self.read_immediate16(mem);
+        self.regs.a = mem.read8_mut(addr);
         self.set_zn_flags(self.regs.a);
         self.cycles += 4;
     }
-    
+
     pub fn inst_ldx_abs(&mut self, mem: &mut Memory) {
-        let lo = mem.read8(self.regs.pc) as u16;
-        let hi = mem.read8(self.regs.pc.wrapping_add(1)) as u16;
-        let addr = lo | (hi << 8);
-    
-        self.regs.pc = self.regs.pc.wrapping_add(2);
-        self.regs.x = mem.read8(addr as u16);
+        let addr = self.read_immediate16(mem);
+        self.regs.x = mem.read8_mut(addr);
         self.set_zn_flags(self.regs.x);
         self.cycles += 4;
     }
-    
+
     pub fn inst_ldy_abs(&mut self, mem: &mut Memory) {
-        let lo = mem.read8(self.regs.pc) as u16;
-        let hi = mem.read8(self.regs.pc.wrapping_add(1)) as u16;
-        let addr = lo | (hi << 8);
-    
-        self.regs.pc = self.regs.pc.wrapping_add(2);
-        self.regs.y = mem.read8(addr as u16);
+        let addr = self.read_immediate16(mem);
+        self.regs.y = mem.read8_mut(addr);
         self.set_zn_flags(self.regs.y);
         self.cycles += 4;
     }    
 
-    // Load accumulator from direct page
+    // Load from direct page
     pub fn inst_lda_dp(&mut self, mem: &mut Memory) {
-        let offset = mem.read8(self.regs.pc) as u16;
-        self.regs.pc = self.regs.pc.wrapping_add(1);
-    
+        let offset = self.read_immediate(mem) as u16;
         let addr = self.dp_base() | offset;
-        self.regs.a = mem.read8(addr);
-    
+        self.regs.a = mem.read8_mut(addr);
         self.set_zn_flags(self.regs.a);
         self.cycles += 3;
     }
-    
+
     pub fn inst_ldx_dp(&mut self, mem: &mut Memory) {
-        let offset = mem.read8(self.regs.pc) as u16;
-        self.regs.pc = self.regs.pc.wrapping_add(1);
-    
+        let offset = self.read_immediate(mem) as u16;
         let addr = self.dp_base() | offset;
-        self.regs.x = mem.read8(addr);
-    
+        self.regs.x = mem.read8_mut(addr);
         self.set_zn_flags(self.regs.x);
         self.cycles += 3;
     }
-    
+
     pub fn inst_ldy_dp(&mut self, mem: &mut Memory) {
-        let offset = mem.read8(self.regs.pc) as u16;
-        self.regs.pc = self.regs.pc.wrapping_add(1);
-    
+        let offset = self.read_immediate(mem) as u16;
         let addr = self.dp_base() | offset;
-        self.regs.y = mem.read8(addr);
-    
+        self.regs.y = mem.read8_mut(addr);
         self.set_zn_flags(self.regs.y);
         self.cycles += 3;
     }
     
     pub fn inst_sta_dp(&mut self, mem: &mut Memory) {
-        let offset = mem.read8(self.regs.pc) as u16;
-        self.regs.pc = self.regs.pc.wrapping_add(1);
-    
+        let offset = self.read_immediate(mem) as u16;
         let addr = self.dp_base() | offset;
         mem.write8(addr, self.regs.a);
     
@@ -281,9 +241,7 @@ impl Spc700 {
     }
     
     pub fn inst_stx_dp(&mut self, mem: &mut Memory) {
-        let offset = mem.read8(self.regs.pc) as u16;
-        self.regs.pc = self.regs.pc.wrapping_add(1);
-    
+        let offset = self.read_immediate(mem) as u16;
         let addr = self.dp_base() | offset;
         mem.write8(addr, self.regs.x);
     
@@ -291,9 +249,7 @@ impl Spc700 {
     }
     
     pub fn inst_sty_dp(&mut self, mem: &mut Memory) {
-        let offset = mem.read8(self.regs.pc) as u16;
-        self.regs.pc = self.regs.pc.wrapping_add(1);
-    
+        let offset = self.read_immediate(mem) as u16;
         let addr = self.dp_base() | offset;
         mem.write8(addr, self.regs.y);
     
