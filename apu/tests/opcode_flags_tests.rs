@@ -452,3 +452,197 @@ fn test_ei_di_round_trip() {
     cpu.step(&mut mem);
     assert!(!cpu.get_flag(FLAG_I));
 }
+
+// ============================================================
+// DAA ($DF) — decimal adjust after BCD addition
+// ============================================================
+
+#[test]
+fn test_daa_no_adjustment_needed() {
+    // $05 + $03 = $08 — valid BCD, no adjustment needed
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x08;
+    cpu.regs.psw = 0x00;
+    mem.write8(0x0200, 0xDF);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x08);
+}
+
+#[test]
+fn test_daa_adjusts_low_nibble() {
+    // $08 + $05 = $0D — low nibble > 9, add 6 → $13
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x0D;
+    cpu.regs.psw = 0x00;
+    mem.write8(0x0200, 0xDF);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x13);
+}
+
+#[test]
+fn test_daa_adjusts_high_nibble() {
+    // result > $99 — add $60, set carry
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0xA0;
+    cpu.regs.psw = 0x00;
+    mem.write8(0x0200, 0xDF);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x00);
+    assert!(cpu.get_flag(FLAG_C));
+}
+
+#[test]
+fn test_daa_adjusts_with_carry_set() {
+    // carry set from prior ADC — always add $60
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x10;
+    cpu.regs.psw = FLAG_C;
+    mem.write8(0x0200, 0xDF);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x70);
+    assert!(cpu.get_flag(FLAG_C));
+}
+
+#[test]
+fn test_daa_adjusts_with_half_carry_set() {
+    // H set from prior ADC — always add $06
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x10;
+    cpu.regs.psw = FLAG_H;
+    mem.write8(0x0200, 0xDF);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x16);
+}
+
+#[test]
+fn test_daa_sets_zero_flag() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x9A;
+    cpu.regs.psw = 0x00;
+    mem.write8(0x0200, 0xDF);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_Z));
+}
+
+#[test]
+fn test_daa_sets_negative_flag() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x80;
+    cpu.regs.psw = 0x00;
+    mem.write8(0x0200, 0xDF);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_N));
+}
+
+#[test]
+fn test_daa_costs_3_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0xDF);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 3);
+}
+
+#[test]
+fn test_daa_advances_pc_by_1() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0xDF);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.pc, 0x0201);
+}
+
+// ============================================================
+// DAS ($BE) — decimal adjust after BCD subtraction
+// ============================================================
+
+#[test]
+fn test_das_no_adjustment_needed() {
+    // Valid BCD result with C and H set — no adjustment needed
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x08;
+    cpu.regs.psw = FLAG_C | FLAG_H;
+    mem.write8(0x0200, 0xBE);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x08);
+}
+
+#[test]
+fn test_das_adjusts_low_nibble() {
+    // H clear — subtract 6 from low nibble
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x0F;
+    cpu.regs.psw = FLAG_C;
+    mem.write8(0x0200, 0xBE);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x09);
+}
+
+#[test]
+fn test_das_adjusts_high_nibble() {
+    // C clear — subtract $60, clear carry
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x70;
+    cpu.regs.psw = FLAG_H;
+    mem.write8(0x0200, 0xBE);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x10);
+    assert!(!cpu.get_flag(FLAG_C));
+}
+
+#[test]
+fn test_das_adjusts_with_carry_clear() {
+    // C clear always subtracts $60
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x80;
+    cpu.regs.psw = FLAG_H;
+    mem.write8(0x0200, 0xBE);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x20);
+    assert!(!cpu.get_flag(FLAG_C));
+}
+
+#[test]
+fn test_das_adjusts_with_half_carry_clear() {
+    // H clear always subtracts $06
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x1F;
+    cpu.regs.psw = FLAG_C;
+    mem.write8(0x0200, 0xBE);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x19);
+}
+
+#[test]
+fn test_das_sets_zero_flag() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x66;
+    cpu.regs.psw = 0x00;
+    mem.write8(0x0200, 0xBE);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_Z));
+}
+
+#[test]
+fn test_das_sets_negative_flag() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0xFF;
+    cpu.regs.psw = FLAG_C | FLAG_H;
+    mem.write8(0x0200, 0xBE);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_N));
+}
+
+#[test]
+fn test_das_costs_3_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0xBE);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 3);
+}
+
+#[test]
+fn test_das_advances_pc_by_1() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0xBE);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.pc, 0x0201);
+}
