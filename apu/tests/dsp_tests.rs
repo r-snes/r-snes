@@ -290,7 +290,7 @@ fn test_step_voice_goes_off_after_non_looping_end_block() {
     // At pitch=0x1000 we advance 1 sample per tick; 16 samples = 16 ticks minimum.
     let mut went_off = false;
     for _ in 0..200 {
-        mem.dsp.step(&*mem.ram);
+        mem.dsp.step(&mem.ram);
         if mem.dsp.voices[0].adsr.envelope_phase == EnvelopePhase::Off
             || (!mem.dsp.voices[0].key_on
                 && mem.dsp.voices[0].adsr.envelope_phase == EnvelopePhase::Release)
@@ -323,7 +323,7 @@ fn test_step_looping_voice_stays_active() {
 
     // Run for 500 ticks; voice must never go Off.
     for i in 0..500 {
-        mem.dsp.step(&*mem.ram);
+        mem.dsp.step(&mem.ram);
         assert_ne!(
             mem.dsp.voices[0].adsr.envelope_phase, EnvelopePhase::Off,
             "looping voice went silent at tick {i}"
@@ -337,7 +337,7 @@ fn test_step_pitch_counter_advances() {
     setup_single_voice_end_block(&mut mem);
 
     let counter_before = mem.dsp.voices[0].pitch_counter;
-    mem.dsp.step(&*mem.ram);
+    mem.dsp.step(&mem.ram);
     // pitch=0x1000 is added each tick; counter wraps at 0x1000 so
     // after one tick from zero the high nibble has consumed one sample
     // and the counter resets to 0. What matters: key_on went true.
@@ -346,7 +346,7 @@ fn test_step_pitch_counter_advances() {
 
 #[test]
 fn test_step_advances_envelope_over_multiple_ticks() {
-    // Verify step(&[u8]) correctly advances the envelope over 10 ticks,
+    // Verify step(&RawARAM) correctly advances the envelope over 10 ticks,
     // covering decode_next_block and ram_read8.
     let dir_page: u8  = 0x01;
     let brr_addr: u16 = 0x0200;
@@ -360,7 +360,7 @@ fn test_step_advances_envelope_over_multiple_ticks() {
     dsp_gw(&mut mem, 0x4C, 0x01);
 
     for _ in 0..10 {
-        mem.dsp.step(&*mem.ram);
+        mem.dsp.step(&mem.ram);
     }
 
     assert!(
@@ -380,7 +380,7 @@ fn test_step_out_of_range_ram_address_does_not_panic() {
     dsp_vw(&mut mem, 0, 0x6, 0xE0);
     dsp_gw(&mut mem, 0x4C, 0x01);
 
-    mem.dsp.step(&*mem.ram); // must not panic
+    mem.dsp.step(&mem.ram); // must not panic
 }
 
 // ============================================================
@@ -606,7 +606,7 @@ fn test_envx_updated_after_step() {
 
     // Advance until the envelope leaves Attack (level > 0).
     for _ in 0..200 {
-        mem.dsp.step(&*mem.ram);
+        mem.dsp.step(&mem.ram);
         if mem.dsp.voices[0].adsr.envelope_level > 0 {
             break;
         }
@@ -633,7 +633,7 @@ fn test_envx_tracks_envelope_level_directly() {
     mem.dsp.voices[0].adsr.envelope_level = 0x400;
     mem.dsp.voices[0].adsr.sustain_rate   = 0; // hold forever
 
-    mem.dsp.step(&*mem.ram);
+    mem.dsp.step(&mem.ram);
 
     let expected = (0x400u16 >> 4) as u8; // = 0x40
     assert_eq!(mem.dsp.read_reg(0x08), expected);
@@ -649,7 +649,7 @@ fn test_envx_max_value_is_0x7f() {
     mem.dsp.voices[0].adsr.envelope_level = 0x7FF;
     mem.dsp.voices[0].adsr.sustain_rate   = 0;
 
-    mem.dsp.step(&*mem.ram);
+    mem.dsp.step(&mem.ram);
 
     assert_eq!(mem.dsp.read_reg(0x08), 0x7F, "ENVX max must be 0x7F");
 }
@@ -681,7 +681,7 @@ fn test_envx_all_8_voices_independent() {
         mem.dsp.voices[v as usize].key_on              = true;
     }
 
-    mem.dsp.step(&*mem.ram);
+    mem.dsp.step(&mem.ram);
 
     for v in 0usize..8 {
         let expected = (mem.dsp.voices[v].adsr.envelope_level >> 4) as u8;
@@ -712,7 +712,7 @@ fn test_outx_reflects_top_byte_of_current_sample() {
     mem.dsp.voices[0].adsr.sustain_rate   = 0;
     mem.dsp.voices[0].current_sample      = 0x1234;
 
-    mem.dsp.step(&*mem.ram);
+    mem.dsp.step(&mem.ram);
 
     // After step the BRR buffer will have been consumed and current_sample
     // updated from decoded data. We test the register reflects *that* value.
@@ -737,7 +737,7 @@ fn test_outx_positive_and_negative_samples() {
     mem.dsp.voices[0].brr.buffer_fill   = 16;
     mem.dsp.voices[0].brr.nibble_idx    = 0;
 
-    mem.dsp.step(&*mem.ram);
+    mem.dsp.step(&mem.ram);
     let outx_pos = mem.dsp.read_reg(0x09) as i8;
     assert!(outx_pos > 0, "positive sample → positive OUTX top byte");
 
@@ -746,7 +746,7 @@ fn test_outx_positive_and_negative_samples() {
     mem.dsp.voices[0].brr.buffer_fill   = 16;
     mem.dsp.voices[0].brr.nibble_idx    = 0;
 
-    mem.dsp.step(&*mem.ram);
+    mem.dsp.step(&mem.ram);
     let outx_neg = mem.dsp.read_reg(0x09) as i8;
     assert!(outx_neg < 0, "negative sample → negative OUTX top byte");
 }
@@ -769,7 +769,7 @@ fn test_endx_set_when_end_block_reached() {
     // Run until the voice either goes silent or ENDX is set.
     let mut endx_set = false;
     for _ in 0..200 {
-        mem.dsp.step(&*mem.ram);
+        mem.dsp.step(&mem.ram);
         if mem.dsp.read_reg(0x7C) & 0x01 != 0 {
             endx_set = true;
             break;
@@ -797,7 +797,7 @@ fn test_endx_set_for_correct_voice_bit() {
     dsp_gw(&mut mem, 0x4C, 0b00001000);    // KON voice 3 only
 
     for _ in 0..200 {
-        mem.dsp.step(&*mem.ram);
+        mem.dsp.step(&mem.ram);
         let endx = mem.dsp.read_reg(0x7C);
         if endx != 0 {
             assert_eq!(endx & 0b00001000, 0b00001000, "bit 3 must be set for voice 3");
@@ -816,7 +816,7 @@ fn test_endx_cleared_on_kon() {
 
     // Run until ENDX bit 0 is set.
     for _ in 0..200 {
-        mem.dsp.step(&*mem.ram);
+        mem.dsp.step(&mem.ram);
         if mem.dsp.read_reg(0x7C) & 0x01 != 0 {
             break;
         }
@@ -853,7 +853,7 @@ fn test_endx_looping_sample_still_sets_bit() {
 
     let mut endx_set = false;
     for _ in 0..200 {
-        mem.dsp.step(&*mem.ram);
+        mem.dsp.step(&mem.ram);
         if mem.dsp.read_reg(0x7C) & 0x01 != 0 {
             endx_set = true;
             break;
@@ -892,7 +892,7 @@ fn test_endx_multiple_voices_independent_bits() {
     dsp_gw(&mut mem, 0x4C, 0b00000101); // KON voices 0 and 2
 
     for _ in 0..200 {
-        mem.dsp.step(&*mem.ram);
+        mem.dsp.step(&mem.ram);
     }
 
     let endx = mem.dsp.read_reg(0x7C);

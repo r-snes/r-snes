@@ -1,3 +1,5 @@
+use crate::memory::RawARAM;
+
 /// BRR playback state for one voice.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Brr {
@@ -114,13 +116,13 @@ pub fn decode_brr_nibble(nibble: i8, shift: u8, filter: u8, prev1: i16, prev2: i
 
 /// Read one byte from a raw RAM slice; returns 0 for out-of-range addresses.
 #[inline(always)]
-pub(super) fn ram_read8(ram: &[u8], addr: u16) -> u8 {
+pub(super) fn ram_read8(ram: &RawARAM, addr: u16) -> u8 {
     ram.get(addr as usize).copied().unwrap_or(0)
 }
 
 /// Decode all 16 samples from one 9-byte BRR block.
 ///
-/// Takes a plain `&[u8]` RAM slice so the DSP can read sample data
+/// Takes a plain `&RawARAM` RAM slice so the DSP can read sample data
 /// without needing to borrow the full `Memory` struct.
 ///
 /// BRR block layout (header byte = SSSSFFEX):
@@ -133,7 +135,7 @@ pub(super) fn ram_read8(ram: &[u8], addr: u16) -> u8 {
 /// `prev1` and `prev2` are updated in place so history carries forward.
 /// Returns (samples[16], end_flag, loop_flag).
 pub fn decode_brr_block(
-    ram: &[u8],
+    ram: &RawARAM,
     addr: u16,
     prev1: &mut i16,
     prev2: &mut i16,

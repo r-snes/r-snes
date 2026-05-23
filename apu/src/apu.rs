@@ -50,7 +50,7 @@ impl Apu {
             self.dsp_cycles += 1;
             if self.dsp_cycles >= DSP_CYCLES_PER_SAMPLE {
                 self.dsp_cycles = 0;
-                self.memory.dsp.step(&*self.memory.ram);
+                self.memory.dsp.step(&self.memory.ram);
             }
 
             self.cycles += 1;

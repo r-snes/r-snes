@@ -10,6 +10,8 @@ pub use voice::Voice;
 
 use common::u16_split::U16Split;
 
+use crate::memory::RawARAM;
+
 /// The SNES DSP: 8 voices, ADSR envelopes, BRR decoding, stereo mix.
 pub struct Dsp {
     /// 128 DSP registers (indexed 0x00–0x7F).
@@ -202,9 +204,9 @@ impl Dsp {
     /// `ram` is a direct slice of the 64 KB APU RAM. The DSP only reads
     /// from RAM (BRR sample data and the DIR table); it never writes to it.
     ///
-    /// Takes `&[u8]` rather than `&Memory` so the caller can pass
+    /// Takes `&RawARAM` rather than `&Memory` so the caller can pass
     /// `&memory.ram` without conflicting with the `&mut memory.dsp` borrow.
-    pub fn step(&mut self, ram: &[u8]) {
+    pub fn step(&mut self, ram: &RawARAM) {
         // Split borrows so we can pass &mut voice and &mut self.registers
         // into Voice::step() simultaneously — the borrow checker allows
         // borrowing separate struct fields at the same time.
