@@ -183,6 +183,8 @@ impl PPU {
         if self.scanline >= SCANLINES_PER_FRAME {
             self.scanline = 0;
             self.frame_ready = true;
+        } else {
+            self.frame_ready = false;
         }
     }
 

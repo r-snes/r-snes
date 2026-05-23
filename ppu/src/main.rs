@@ -104,11 +104,11 @@ fn main() {
             ppu.step_scanline();
         }
 
-        texture.update(None, &renderer.framebuffer[..], SCREEN_WIDTH * 3).unwrap();
-        canvas.copy(&texture, None, None).unwrap();
-        canvas.present();
-
-        ppu.frame_ready = false;
+        if ppu.frame_ready {
+            texture.update(None, &renderer.framebuffer[..], SCREEN_WIDTH * 3).unwrap();
+            canvas.copy(&texture, None, None).unwrap();
+            canvas.present();
+        }
     }
     println!("\n>> Nice and clean.");
 }
