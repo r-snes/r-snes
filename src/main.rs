@@ -7,6 +7,7 @@ use crate::{
 };
 #[cfg(feature = "cli")]
 use clap::Parser;
+use ppu::constants::SCREEN_HEIGHT;
 use std::{
     path::PathBuf,
     time::{Duration, Instant},
@@ -48,8 +49,15 @@ fn gui_emu_loop(gui: &mut gui::Gui, mut emu: rsnes::RSnes) -> Option<RSnesEvent>
         if frame_accum < Gui::FRAME_DURATION {
             continue;
         }
-
         frame_accum -= Gui::FRAME_DURATION;
+
+        // temporary: render full PPU frame for each GUI frame
+        for y in 0..SCREEN_HEIGHT {
+            emu.ppu_renderer.render_scanline(&mut emu.ppu, y);
+            emu.ppu.step_scanline();
+        }
+        // temporary: toggle VBLANK each rendered frame
+        emu.bus.io.rdnmi = !emu.bus.io.rdnmi;
 
         for state_event in gui.update(&emu.ppu_renderer.framebuffer) {
             match state_event {
