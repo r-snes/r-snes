@@ -175,6 +175,9 @@ impl Spc700 {
             // MOV — register indirect
             0xE6 => self.inst_mov_a_ix(mem),   // MOV A,(X)
             0xC6 => self.inst_mov_ix_a(mem),   // MOV (X),A
+            0xBF => self.inst_mov_a_ixp(mem),  // MOV A,(X)+
+            0xAF => self.inst_mov_ixp_a(mem),  // MOV (X)+,A
+            0xF4 => self.inst_mov_a_dp_x(mem), // MOV A,dp+X
 
             // Catch-all
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
@@ -1076,6 +1079,35 @@ impl Spc700 {
     fn inst_mov_ix_a(&mut self, mem: &mut Memory) {
         let addr = self.dp_base() | self.regs.x as u16;
         mem.write8(addr, self.regs.a);
+        self.cycles += 4;
+    }
+
+    /// MOV A,(X)+ — load A from dp address in X, then increment X.
+    /// Sets N and Z. 4 cycles.
+    fn inst_mov_a_ixp(&mut self, mem: &mut Memory) {
+        let addr = self.dp_base() | self.regs.x as u16;
+        self.regs.a = mem.read8_mut(addr);
+        self.set_zn_flags(self.regs.a);
+        self.regs.x = self.regs.x.wrapping_add(1);
+        self.cycles += 4;
+    }
+
+    /// MOV (X)+,A — store A to dp address in X, then increment X.
+    /// No flags affected. 4 cycles.
+    fn inst_mov_ixp_a(&mut self, mem: &mut Memory) {
+        let addr = self.dp_base() | self.regs.x as u16;
+        mem.write8(addr, self.regs.a);
+        self.regs.x = self.regs.x.wrapping_add(1);
+        self.cycles += 4;
+    }
+
+    /// MOV A,dp+X — load A from direct page address + X.
+    /// Sets N and Z. 4 cycles.
+    fn inst_mov_a_dp_x(&mut self, mem: &mut Memory) {
+        let offset = self.read_immediate(mem) as u16;
+        let addr = self.dp_base() | (offset + self.regs.x as u16) & 0xFF;
+        self.regs.a = mem.read8_mut(addr);
+        self.set_zn_flags(self.regs.a);
         self.cycles += 4;
     }
 }
