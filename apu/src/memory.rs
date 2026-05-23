@@ -19,7 +19,7 @@ use common::u16_split::U16Split;
 pub struct Memory {
     /// 64 KB APU RAM.  All addresses that are not intercepted as I/O
     /// read/write from/to this array.
-    pub ram: [u8; 64 * 1024],
+    pub ram: Box<[u8; 64 * 1024]>, // 64KB APU RAM,
 
     /// The DSP register file.  Accessed by the CPU exclusively through
     /// the $F2/$F3 address-latch protocol (real hardware) or the direct
@@ -64,7 +64,7 @@ pub struct Memory {
 impl Memory {
     pub fn new() -> Self {
         Self {
-            ram:       [0u8; 64 * 1024],
+            ram:       Box::new([0u8; 64 * 1024]),
             dsp:       Dsp::new(),
             dsp_addr:  0,
             control:   0,
