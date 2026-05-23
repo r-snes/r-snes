@@ -108,7 +108,7 @@ const INSTR_CYC1: [InstrCycle; 256] = [
     /* 3d */ InstrCycle(and::absx_cyc1, "and::absx_cyc1"),
     /* 3e */ InstrCycle(rol_absx_cyc1, "rol_absx_cyc1"),
     /* 3f */ InstrCycle(and::abslx_cyc1, "and::abslx_cyc1"),
-    /* 40 */ InstrCycle(todo_opcode!(0x40), "todo(0x40)"),
+    /* 40 */ InstrCycle(rti_cyc1, "rti_cyc1"),
     /* 41 */ InstrCycle(eor::dxind_cyc1, "eor::dxind_cyc1"),
     /* 42 */ InstrCycle(wdm_cyc1, "wdm_cyc1"),
     /* 43 */ InstrCycle(eor::sr_cyc1, "eor::sr_cyc1"),
