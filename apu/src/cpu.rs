@@ -178,6 +178,10 @@ impl Spc700 {
             0xBF => self.inst_mov_a_ixp(mem),  // MOV A,(X)+
             0xAF => self.inst_mov_ixp_a(mem),  // MOV (X)+,A
             0xF4 => self.inst_mov_a_dp_x(mem), // MOV A,dp+X
+            0xF5 => self.inst_mov_a_abs_x(mem), // MOV A,!abs+X
+            0xF6 => self.inst_mov_a_abs_y(mem), // MOV A,!abs+Y
+            0xE7 => self.inst_mov_a_dp_x_ind(mem), // MOV A,[dp+X]
+            0xF7 => self.inst_mov_a_dp_ind_y(mem), // MOV A,[dp]+Y
 
             // Catch-all
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
@@ -1109,5 +1113,54 @@ impl Spc700 {
         self.regs.a = mem.read8_mut(addr);
         self.set_zn_flags(self.regs.a);
         self.cycles += 4;
+    }
+
+    /// MOV A,!abs+X — load A from absolute address + X.
+    /// Sets N and Z. 5 cycles.
+    fn inst_mov_a_abs_x(&mut self, mem: &mut Memory) {
+        let base = self.read_immediate16(mem);
+        let addr = base.wrapping_add(self.regs.x as u16);
+        self.regs.a = mem.read8_mut(addr);
+        self.set_zn_flags(self.regs.a);
+        self.cycles += 5;
+    }
+
+    /// MOV A,!abs+Y — load A from absolute address + Y.
+    /// Sets N and Z. 5 cycles.
+    fn inst_mov_a_abs_y(&mut self, mem: &mut Memory) {
+        let base = self.read_immediate16(mem);
+        let addr = base.wrapping_add(self.regs.y as u16);
+        self.regs.a = mem.read8_mut(addr);
+        self.set_zn_flags(self.regs.a);
+        self.cycles += 5;
+    }
+
+    /// MOV A,[dp+X] — load A from address stored at dp+X (indexed indirect).
+    /// Reads 16-bit pointer from dp+X, then loads A from that address.
+    /// Sets N and Z. 6 cycles.
+    fn inst_mov_a_dp_x_ind(&mut self, mem: &mut Memory) {
+        let offset = self.read_immediate(mem) as u16;
+        let ptr_addr = self.dp_base() | (offset + self.regs.x as u16) & 0xFF;
+        let lo = mem.read8_mut(ptr_addr) as u16;
+        let hi = mem.read8_mut(ptr_addr.wrapping_add(1)) as u16;
+        let addr = (hi << 8) | lo;
+        self.regs.a = mem.read8_mut(addr);
+        self.set_zn_flags(self.regs.a);
+        self.cycles += 6;
+    }
+
+    /// MOV A,[dp]+Y — load A from address stored at dp, indexed by Y (indirect indexed).
+    /// Reads 16-bit pointer from dp, adds Y, then loads A from that address.
+    /// Sets N and Z. 6 cycles.
+    fn inst_mov_a_dp_ind_y(&mut self, mem: &mut Memory) {
+        let offset = self.read_immediate(mem) as u16;
+        let ptr_addr = self.dp_base() | offset;
+        let lo = mem.read8_mut(ptr_addr) as u16;
+        let hi = mem.read8_mut(ptr_addr.wrapping_add(1)) as u16;
+        let base = (hi << 8) | lo;
+        let addr = base.wrapping_add(self.regs.y as u16);
+        self.regs.a = mem.read8_mut(addr);
+        self.set_zn_flags(self.regs.a);
+        self.cycles += 6;
     }
 }
