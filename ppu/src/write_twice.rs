@@ -2,7 +2,7 @@
 /// First write stores the low byte; second write commits lo+hi to the target.
 pub struct WriteTwice {
     latch: u8,
-    written: bool,
+    pub written: bool,
 }
 
 impl WriteTwice {

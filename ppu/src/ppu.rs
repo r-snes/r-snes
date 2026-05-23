@@ -99,8 +99,8 @@ impl PPU {
             // ==========================
             // CGRAM
             // ==========================
-            0x2121 => self.cgram.write_addr(value),
-            0x2122 => self.cgram.write_data(value),
+            0x2121 => self.cgram.write_addr(&mut self.regs, value),
+            0x2122 => self.cgram.write_data(&mut self.regs, value),
 
             // ==========================
             // Window
@@ -155,7 +155,7 @@ impl PPU {
             // ==========================
             // CGRAM
             // ==========================
-            0x213B => self.cgram.read_data(),
+            0x213B => self.cgram.read_data(&mut self.regs),
 
             // ==========================
             // Counters
