@@ -82,9 +82,8 @@ impl Memory {
         match addr {
             // ---- SPC700 I/O ports ($00F0–$00FF) ----
 
-            // $F0 TEST — write-only; reads return 0xFF on hardware but 0 is
-            // safe for emulation purposes since no game reads it.
-            0x00F0 => 0x00,
+            // $F0 TEST — write-only; reads return 0xFF.
+            0x00F0 => 0xFF,
 
             // $F1 CONTROL — write-only on real hardware; return 0.
             0x00F1 => 0x00,
