@@ -139,6 +139,7 @@ duplicate! {
 }
 
 cpu_instr_no_inc_pc!(stp {
+    panic!("reached STP instruction");
     meta END_CYCLE Internal;
     meta END_CYCLE Internal;
 });

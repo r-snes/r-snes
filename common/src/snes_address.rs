@@ -33,7 +33,7 @@ impl From<usize> for SnesAddress {
 impl std::fmt::Debug for SnesAddress {
     #[cfg(not(tarpaulin_include))]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::write!(f, "SnesAddress {{ ${:x}:{:x} }}", self.bank, self.addr)
+        std::write!(f, "${:02x}:{:04x}", self.bank, self.addr)
     }
 }
 

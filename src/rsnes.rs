@@ -25,19 +25,8 @@ pub struct RSnes {
     pub cpu_master_cycles_to_wait: u16,
 
     pub debug: bool,
-    pub debug_log: VecDeque<String>,
 }
 
-macro_rules! debug_log {
-    ($self:expr, $($arg:tt)*) => {
-        if $self.debug {
-            if $self.debug_log.len() >= 1000 {  // keep last 1000 lines
-                $self.debug_log.pop_front();
-            }
-            $self.debug_log.push_back(format!($($arg)*));
-        }
-    };
-}
 impl RSnes {
     pub const MASTER_CLOCK_HZ: u64 = 21_477_300;
     pub const MASTER_CYCLE_DURATION: f64 = 1.0 / Self::MASTER_CLOCK_HZ as f64;
@@ -59,8 +48,7 @@ impl RSnes {
             master_cycles: 0,
             cpu_master_cycles_to_wait: 0,
 
-            debug: true,
-            debug_log: VecDeque::new(),
+            debug: false,
         })
     }
 
@@ -103,12 +91,6 @@ impl RSnes {
             (1, 0) => "decrement",
             _ => unreachable!(),
         };
-        debug_log!(
-            self,
-            "starting DMA at {:?} ({}) of {remaining} bytes",
-            a_addr,
-            aaaaa
-        );
 
         let b_offsets: &[u8] = match mode {
             0 => &[0],
@@ -158,7 +140,6 @@ impl RSnes {
             // Each byte transferred takes 8 master cycles - ROUGH WAY TO HANDLE IT, TO CHANGE LATER
             // self.cpu_master_cycles_to_wait = self.cpu_master_cycles_to_wait.wrapping_add(8);
         }
-        debug_log!(self, "DMA done");
 
         // Reset DMA channel registers
         let ch = &mut self.bus.io.dma_channels[channel_nb as usize];
@@ -181,26 +162,17 @@ impl RSnes {
             self.dma_transfer();
         }
 
-        if self.debug {
-            debug_log!(self, "Next cycle: {}", self.cpu.next_cycle.1);
-            if std::ptr::fn_addr_eq(
-                self.cpu.next_cycle.0,
-                cpu::instrs::uncategorised::stp_cyc2
-                    as for<'a> fn(&'a mut CPU) -> (CycleResult, InstrCycle),
-            ) {
-                for line in &self.debug_log {
-                    println!("{}", line);
-                }
-                panic!("Reached PC 0x1004, stopping emulation");
-            }
+        let cyc = self.cpu.cycle();
+        if self.cpu.regs().PB == 0x01 && self.cpu.regs().PC == 0xEF09 {
+            eprintln!("=====================REACHED TEST 0x243 !!! ================");
+            // self.debug = true;
         }
-
-        match self.cpu.cycle() {
+        match cyc {
             CycleResult::Internal => {
                 self.cpu_master_cycles_to_wait = 6; // TODO : Confirm internal cpu cycle is 6 master cycles
 
                 if self.debug {
-                    debug_log!(self, "Internal cycle");
+                    eprint!("\x1B[34mInternal cycle;\x1B[0m\t\t\t");
                 }
             }
             CycleResult::Read => {
@@ -212,7 +184,7 @@ impl RSnes {
                 self.cpu.data_bus = byte;
 
                 if self.debug {
-                    debug_log!(self, "Read from {:?} -> {:#04x}", addr, byte);
+                    eprint!("\x1B[32mRead from \x1B[1m{:?} -> {:#04x};\t\x1B[0m", addr, byte);
                 }
 
                 // Default to 6 cycles for now
@@ -226,12 +198,16 @@ impl RSnes {
                     .write(addr, byte, &mut self.cpu, &mut self.ppu, &mut self.apu);
 
                 if self.debug {
-                    debug_log!(self, "Write to {:?} -> {:#04x}", addr, byte);
+                    eprint!("\x1B[31mWrite to  \x1B[1m{:?} -> {:#04x};\t\x1B[0m", addr, byte);
                 }
 
                 // Default to 6 cycles for now
                 self.cpu_master_cycles_to_wait = 6; // TODO : have the bus return the number of cycle to wait
             }
+        }
+
+        if self.debug {
+            eprintln!("→ Next cycle: {}", self.cpu.next_cycle.1);
         }
     }
 
