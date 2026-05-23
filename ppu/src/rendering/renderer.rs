@@ -21,7 +21,7 @@ impl Renderer {
     pub fn render_scanline(&mut self, ppu: &PPU, y: usize) {
         // Hardware force blank: output black
         if ppu.force_blank() {
-            Self::render_full_black(self, y);
+            self.render_full_black(y);
             return;
         }
 
@@ -31,7 +31,7 @@ impl Renderer {
         match ppu.regs.bg_mode() {
             1 => self.render_scanline_mode1(ppu, y),
             mode => {
-                Self::render_full_black(self, y);
+                self.render_full_black(y);
                 println!("PPU mode {} not implemented", mode);
             }
         }
