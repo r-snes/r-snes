@@ -172,6 +172,10 @@ impl Spc700 {
             0xDF => self.inst_daa(), // DAA
             0xBE => self.inst_das(), // DAS
  
+            // MOV — register indirect
+            0xE6 => self.inst_mov_a_ix(mem),   // MOV A,(X)
+            0xC6 => self.inst_mov_ix_a(mem),   // MOV (X),A
+
             // Catch-all
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
         }
@@ -1056,5 +1060,22 @@ impl Spc700 {
         self.regs.a = a;
         self.set_zn_flags(self.regs.a);
         self.cycles += 3;
+    }
+
+    /// MOV A,(X) — load A from address pointed to by X in direct page.
+    /// Sets N and Z. 3 cycles.
+    fn inst_mov_a_ix(&mut self, mem: &mut Memory) {
+        let addr = self.dp_base() | self.regs.x as u16;
+        self.regs.a = mem.read8_mut(addr);
+        self.set_zn_flags(self.regs.a);
+        self.cycles += 3;
+    }
+
+    /// MOV (X),A — store A to address pointed to by X in direct page.
+    /// No flags affected. 4 cycles.
+    fn inst_mov_ix_a(&mut self, mem: &mut Memory) {
+        let addr = self.dp_base() | self.regs.x as u16;
+        mem.write8(addr, self.regs.a);
+        self.cycles += 4;
     }
 }
