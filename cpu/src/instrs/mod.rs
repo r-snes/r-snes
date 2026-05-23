@@ -1,18 +1,18 @@
-pub(crate) mod instr_tab;
+pub mod instr_tab;
 
-pub(crate) mod prelude;
+pub mod prelude;
 #[cfg(test)]
 pub(crate) mod test_prelude;
 
-mod arithmetic;
 mod algorithms;
+mod arithmetic;
 
 mod branches;
 mod flags;
 mod interrupts;
 mod jumps;
 mod loads;
-mod stores;
 mod stack;
+mod stores;
 mod transfers;
-mod uncategorised;
+pub mod uncategorised;

@@ -1,7 +1,4 @@
-use crate::{
-    instrs::instr_tab::*,
-    registers::Registers,
-};
+use crate::{instrs::instr_tab::*, registers::Registers};
 use common::snes_address::SnesAddress;
 use instr_metalang_procmacro::cpu_instr_no_inc_pc;
 
@@ -37,7 +34,7 @@ pub struct CPU {
 
     /// Member variable that holds a function pointer that will be called the next
     /// time time [`Self::cycle`] is called.
-    pub(crate) next_cycle: InstrCycle,
+    pub next_cycle: InstrCycle,
 }
 
 /// The result of a CPU cycle.

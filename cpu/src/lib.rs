@@ -1,4 +1,4 @@
-pub mod registers;
 pub mod cpu;
-mod instrs;
+pub mod instrs;
 mod reg;
+pub mod registers;

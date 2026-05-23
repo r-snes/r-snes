@@ -3,12 +3,16 @@ use bus::Bus;
 use common::snes_address::SnesAddress;
 use cpu::cpu::CPU;
 use cpu::cpu::CycleResult;
+use cpu::instrs::instr_tab::*;
+use ppu::constants::*;
 use ppu::ppu::PPU;
 use ppu::renderer::Renderer;
-use ppu::constants::*;
+use std::collections::VecDeque;
 use std::error::Error;
 use std::path::Path;
 use std::path::PathBuf;
+
+use cpu::instrs::uncategorised::stp::stp_cyc1;
 
 pub struct RSnes {
     pub _rom_path: PathBuf,
@@ -19,8 +23,21 @@ pub struct RSnes {
     pub apu: Apu,
     pub master_cycles: u64,
     pub cpu_master_cycles_to_wait: u16,
+
+    pub debug: bool,
+    pub debug_log: VecDeque<String>,
 }
 
+macro_rules! debug_log {
+    ($self:expr, $($arg:tt)*) => {
+        if $self.debug {
+            if $self.debug_log.len() >= 1000 {  // keep last 1000 lines
+                $self.debug_log.pop_front();
+            }
+            $self.debug_log.push_back(format!($($arg)*));
+        }
+    };
+}
 impl RSnes {
     pub const MASTER_CLOCK_HZ: u64 = 21_477_300;
     pub const MASTER_CYCLE_DURATION: f64 = 1.0 / Self::MASTER_CLOCK_HZ as f64;
@@ -41,6 +58,9 @@ impl RSnes {
             apu,
             master_cycles: 0,
             cpu_master_cycles_to_wait: 0,
+
+            debug: true,
+            debug_log: VecDeque::new(),
         })
     }
 
@@ -83,8 +103,12 @@ impl RSnes {
             (1, 0) => "decrement",
             _ => unreachable!(),
         };
-        println!("starting DMA at {:?} ({}) of {remaining} bytes", a_addr, aaaaa);
-
+        debug_log!(
+            self,
+            "starting DMA at {:?} ({}) of {remaining} bytes",
+            a_addr,
+            aaaaa
+        );
 
         let b_offsets: &[u8] = match mode {
             0 => &[0],
@@ -134,7 +158,7 @@ impl RSnes {
             // Each byte transferred takes 8 master cycles - ROUGH WAY TO HANDLE IT, TO CHANGE LATER
             // self.cpu_master_cycles_to_wait = self.cpu_master_cycles_to_wait.wrapping_add(8);
         }
-        println!("DMA done");
+        debug_log!(self, "DMA done");
 
         // Reset DMA channel registers
         let ch = &mut self.bus.io.dma_channels[channel_nb as usize];
@@ -157,9 +181,28 @@ impl RSnes {
             self.dma_transfer();
         }
 
+        if self.debug {
+            println!("{}", std::any::type_name_of_val(&self.cpu.next_cycle.0));
+            // if self.cpu.regs().PC == 0x1004 {
+            if std::ptr::fn_addr_eq(
+                self.cpu.next_cycle.0,
+                cpu::instrs::uncategorised::stp_cyc2
+                    as for<'a> fn(&'a mut CPU) -> (CycleResult, InstrCycle),
+            ) {
+                for line in &self.debug_log {
+                    println!("{}", line);
+                }
+                panic!("Reached PC 0x1004, stopping emulation");
+            }
+        }
+
         match self.cpu.cycle() {
             CycleResult::Internal => {
                 self.cpu_master_cycles_to_wait = 6; // TODO : Confirm internal cpu cycle is 6 master cycles
+
+                if self.debug {
+                    debug_log!(self, "Internal cycle");
+                }
             }
             CycleResult::Read => {
                 let addr = *self.cpu.addr_bus();
@@ -168,6 +211,10 @@ impl RSnes {
                     .read(addr, &mut self.cpu, &mut self.ppu, &mut self.apu);
 
                 self.cpu.data_bus = byte;
+
+                if self.debug {
+                    debug_log!(self, "Read from {:?} -> {:#04x}", addr, byte);
+                }
 
                 // Default to 6 cycles for now
                 self.cpu_master_cycles_to_wait = 6; // TODO : have the bus return the number of cycle to wait
@@ -178,6 +225,10 @@ impl RSnes {
 
                 self.bus
                     .write(addr, byte, &mut self.cpu, &mut self.ppu, &mut self.apu);
+
+                if self.debug {
+                    debug_log!(self, "Write to {:?} -> {:#04x}", addr, byte);
+                }
 
                 // Default to 6 cycles for now
                 self.cpu_master_cycles_to_wait = 6; // TODO : have the bus return the number of cycle to wait

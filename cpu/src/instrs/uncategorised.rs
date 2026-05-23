@@ -1,12 +1,9 @@
-//! Module which defines many instructions which don't quite fit into
+//! Module which defines ons which don't quite fit into
 //! a bigger category, at least don't *yet* fit into a category with other
 //! currently implemented instructions.
 
-use instr_metalang_procmacro::{
-    cpu_instr,
-    cpu_instr_no_inc_pc,
-};
 use duplicate::duplicate;
+use instr_metalang_procmacro::{cpu_instr, cpu_instr_no_inc_pc};
 
 // `NOP`: "no-op" (no operation). Literally does nothing
 cpu_instr!(nop {
@@ -143,6 +140,7 @@ duplicate! {
 
 cpu_instr_no_inc_pc!(stp {
     meta END_CYCLE Internal;
+    meta END_CYCLE Internal;
 });
 
 #[cfg(test)]
@@ -179,7 +177,10 @@ mod tests {
         expect_internal_cycle(&mut cpu, "no-op");
 
         expected_regs.PC = expected_regs.PC + 1;
-        assert_eq!(cpu.registers, expected_regs, "Only PC should have been touched");
+        assert_eq!(
+            cpu.registers, expected_regs,
+            "Only PC should have been touched"
+        );
 
         expect_opcode_fetch_cycle(&mut cpu);
     }
@@ -194,7 +195,12 @@ mod tests {
         let mut cpu = CPU::new(regs);
 
         expect_opcode_fetch(&mut cpu, 0x42);
-        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3457), 0x00, "idle (ignored read)");
+        expect_read_cycle(
+            &mut cpu,
+            snes_addr!(0x12:0x3457),
+            0x00,
+            "idle (ignored read)",
+        );
         expect_opcode_fetch_cycle(&mut cpu);
 
         expected_regs.PC = 0x3458;
@@ -261,7 +267,12 @@ mod tests {
 
         expect_opcode_fetch(&mut cpu, 0xe2);
         //                                                     -V----ZC
-        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3457), 0b01000011, "bits to set in P");
+        expect_read_cycle(
+            &mut cpu,
+            snes_addr!(0x12:0x3457),
+            0b01000011,
+            "bits to set in P",
+        );
         expect_internal_cycle(&mut cpu, "idle after setting flags");
         expect_opcode_fetch_cycle(&mut cpu);
 
@@ -283,7 +294,12 @@ mod tests {
 
         expect_opcode_fetch(&mut cpu, 0xc2);
         //                                                     N-----Z-
-        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3457), 0b10000010, "bits to clear in P");
+        expect_read_cycle(
+            &mut cpu,
+            snes_addr!(0x12:0x3457),
+            0b10000010,
+            "bits to clear in P",
+        );
         expect_internal_cycle(&mut cpu, "idle after clearing flags");
         expect_opcode_fetch_cycle(&mut cpu);
 
@@ -393,7 +409,12 @@ mod tests {
             );
             expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3457), 0x99, "dest bank");
             expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3458), 0x88, "source bank");
-            expect_read_cycle(&mut cpu, snes_addr!(0x88:src), i, &format!("source byte {i}"));
+            expect_read_cycle(
+                &mut cpu,
+                snes_addr!(0x88:src),
+                i,
+                &format!("source byte {i}"),
+            );
             expect_write_cycle(&mut cpu, snes_addr!(0x99:dst), i, &format!("dest byte {i}"));
 
             dst -= 1;

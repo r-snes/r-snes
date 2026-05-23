@@ -2,19 +2,11 @@ use crate::cpu::{CPU, CycleResult};
 use common::snes_address::SnesAddress;
 
 use crate::instrs::{
-    arithmetic::*,
-    branches::*,
-    flags::*,
-    interrupts::*,
-    jumps::*,
-    loads::*,
-    stack::*,
-    stores::*,
-    transfers::*,
-    uncategorised::*,
+    arithmetic::*, branches::*, flags::*, interrupts::*, jumps::*, loads::*, stack::*, stores::*,
+    transfers::*, uncategorised::*,
 };
 
-pub(crate) struct InstrCycle(pub fn(&mut CPU) -> (CycleResult, InstrCycle));
+pub struct InstrCycle(pub fn(&mut CPU) -> (CycleResult, InstrCycle));
 
 impl From<fn(&mut CPU) -> (CycleResult, InstrCycle)> for InstrCycle {
     fn from(value: fn(&mut CPU) -> (CycleResult, InstrCycle)) -> Self {
@@ -27,10 +19,13 @@ pub(crate) fn opcode_fetch(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
         bank: cpu.registers.PB,
         addr: cpu.registers.PC,
     };
-
     (
         CycleResult::Read,
-        InstrCycle(|next_cyc_cpu| (INSTR_CYC1[next_cyc_cpu.data_bus as usize].0)(next_cyc_cpu)),
+        InstrCycle(|next_cyc_cpu| {
+            let opcode = next_cyc_cpu.data_bus as usize;
+            let func = INSTR_CYC1[opcode].0;
+            (func)(next_cyc_cpu)
+        }),
     )
 }
 
@@ -39,7 +34,7 @@ macro_rules! todo_opcode {
         |_| {
             todo!("opcode {:#2x} not yet implemented!", $oc);
         }
-    }
+    };
 }
 
 const INSTR_CYC1: [InstrCycle; 256] = [
@@ -263,6 +258,7 @@ const INSTR_CYC1: [InstrCycle; 256] = [
     /* d9 */ InstrCycle(cmp::absy_cyc1),
     /* da */ InstrCycle(phx_cyc1),
     /* db */ InstrCycle(stp_cyc1),
+    // /* db */ InstrCycle(todo_opcode!(0xdb)),
     /* dc */ InstrCycle(jml_cyc1),
     /* dd */ InstrCycle(cmp::absx_cyc1),
     /* de */ InstrCycle(dec_absx_cyc1),

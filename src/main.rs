@@ -69,7 +69,13 @@ fn main() -> Result<(), String> {
                         if let Some(ref mut app) = rsnes_app {
                             println!("space down");
                             app.bus.io.hvbjoy = 0;
-                            app.bus.io.joy1 = 0xFF;
+                            // app.bus.io.joy1 = 0xFF;
+                            if app.bus.io.joy1 == 0xFF {
+                                app.bus.io.joy1 = 0
+                            } else {
+                                app.bus.io.joy1 = 0xFF
+                            };
+                            // app.debug = false;
                         }
                     }
                     RSnesEvent::ButtonUp => {
@@ -77,6 +83,7 @@ fn main() -> Result<(), String> {
                             println!("space up");
                             app.bus.io.hvbjoy = 0;
                             app.bus.io.joy1 = 0;
+                            // app.debug = true;
                         }
                     }
                     RSnesEvent::Quit => break 'emulation_loop,
