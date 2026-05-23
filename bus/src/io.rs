@@ -1,4 +1,3 @@
-use crate::constants::{IO_END_ADDRESS, IO_START_ADDRESS};
 use apu::Apu;
 use common::{snes_addr, snes_address::SnesAddress, u16_split::U16Split};
 use ppu::ppu::PPU;
