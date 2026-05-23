@@ -346,7 +346,7 @@ fn test_step_pitch_counter_advances() {
 
 #[test]
 fn test_step_advances_envelope_over_multiple_ticks() {
-    // Verify step(&[u8]) correctly advances the envelope over 10 ticks,
+    // Verify step(&RawARAM) correctly advances the envelope over 10 ticks,
     // covering decode_next_block and ram_read8.
     let dir_page: u8  = 0x01;
     let brr_addr: u16 = 0x0200;

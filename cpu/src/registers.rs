@@ -21,6 +21,9 @@ pub struct Registers {
     /// Processor status register: contains various CPU flags
     pub P: RegisterP,
 
+    /// Emulation flag: indicates whether or not the CPU is in emulation mode
+    pub E: bool,
+
     /// Program bank register: stores the bank address of current execution
     pub PB: u8,
 
@@ -68,15 +71,10 @@ pub struct RegisterP {
     ///
     /// When switching from 0 to 1, the high byte of both registers resets to 0
     ///
-    /// Only exists in native mode (E=1), replaced by the B flag in emulation mode.\
+    /// The X flag only exists in native mode (E=1), replaced by the B flag in emulation mode.\
     /// Reset to 1 when switching to native mode
+    /// This boolean should thus be treated as the B flag when in emulation mode
     pub X: bool,
-
-    /// Emulation flag: whether the CPU is in 8-bit compatibility mode
-    pub E: bool,
-
-    /// Break flag
-    pub B: bool,
 }
 
 /// Implementation of the default state of the CPU registers on power-on or reset
@@ -90,6 +88,7 @@ impl Default for Registers {
             X: 0,
             Y: 0,
             P: RegisterP::default(),
+            E: false,
             PB: 0,
             PC: 0,
             S: 0,
@@ -109,15 +108,42 @@ impl Default for RegisterP {
             I: false,
             M: false,
             X: false,
-            E: false,
-            B: false,
         }
+    }
+}
+
+impl From<u8> for RegisterP {
+    fn from(p: u8) -> Self {
+        Self {
+            C: p & 1 << 0 != 0,
+            Z: p & 1 << 1 != 0,
+            I: p & 1 << 2 != 0,
+            D: p & 1 << 3 != 0,
+            X: p & 1 << 4 != 0,
+            M: p & 1 << 5 != 0,
+            V: p & 1 << 6 != 0,
+            N: p & 1 << 7 != 0,
+        }
+    }
+}
+
+impl Into<u8> for RegisterP {
+    fn into(self) -> u8 {
+        u8::from(self.C) << 0
+            | u8::from(self.Z) << 1
+            | u8::from(self.I) << 2
+            | u8::from(self.D) << 3
+            | u8::from(self.X) << 4
+            | u8::from(self.M) << 5
+            | u8::from(self.V) << 6
+            | u8::from(self.N) << 7
     }
 }
 
 impl fmt::Debug for Registers {
     #[cfg(not(tarpaulin_include))]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        std::write!(f, "{} ", if self.E { "Emu" } else { "Nat" })?;
         std::write!(
             f,
             "{{ A: {:#06x}, X: {:#06x}, Y: {:#06x}, DB: {:#04x}, D: {:#06x}, S: {:#06x}, PB: {:#04x}, PC: {:#06x}, P: ({:?}) }}",
@@ -137,7 +163,6 @@ impl fmt::Debug for Registers {
 impl fmt::Debug for RegisterP {
     #[cfg(not(tarpaulin_include))]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        std::write!(f, "{} ", if self.E { "Emu" } else { "Nat" })?;
         for (flag, c) in [
             (self.N, 'N'),
             (self.V, 'V'),

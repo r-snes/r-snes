@@ -1,6 +1,9 @@
 use crate::dsp::Dsp;
 use common::u16_split::U16Split;
 
+/// 64 KB APU RAM
+pub type RawARAM = [u8; 64 * 1024];
+
 /// SPC700 memory map, covering the relevant I/O region `$00F0–$00FF`:
 ///
 /// ```text
@@ -19,7 +22,7 @@ use common::u16_split::U16Split;
 pub struct Memory {
     /// 64 KB APU RAM.  All addresses that are not intercepted as I/O
     /// read/write from/to this array.
-    pub ram: [u8; 64 * 1024],
+    pub ram: Box<RawARAM>, // 64KB APU RAM,
 
     /// The DSP register file.  Accessed by the CPU exclusively through
     /// the $F2/$F3 address-latch protocol (real hardware) or the direct
@@ -64,7 +67,7 @@ pub struct Memory {
 impl Memory {
     pub fn new() -> Self {
         Self {
-            ram:       [0u8; 64 * 1024],
+            ram:       Box::new([0; _]),
             dsp:       Dsp::new(),
             dsp_addr:  0,
             control:   0,
@@ -79,9 +82,8 @@ impl Memory {
         match addr {
             // ---- SPC700 I/O ports ($00F0–$00FF) ----
 
-            // $F0 TEST — write-only; reads return 0xFF on hardware but 0 is
-            // safe for emulation purposes since no game reads it.
-            0x00F0 => 0x00,
+            // $F0 TEST — write-only; reads return 0xFF.
+            0x00F0 => 0xFF,
 
             // $F1 CONTROL — write-only on real hardware; return 0.
             0x00F1 => 0x00,

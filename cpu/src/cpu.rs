@@ -170,7 +170,7 @@ cpu_instr_no_inc_pc!(reset {
     cpu.registers.P.X = true;
     cpu.registers.P.D = false;
     cpu.registers.P.I = true;
-    cpu.registers.P.E = true;
+    cpu.registers.E = true;
 
     cpu.addr_bus = snes_addr!(0:0xfffc);
     meta FETCH16_INTO cpu.registers.PC;
