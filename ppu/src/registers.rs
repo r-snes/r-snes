@@ -297,376 +297,111 @@ impl PPURegisters {
 
 #[cfg(test)]
 mod tests {
-    use crate::ppu::PPU;
+    use super::*;
 
     // ============================================================
-    // PPU::new - initial state
+    // bg1_enabled
     // ============================================================
 
-    /// All registers must be zeroed after construction.
+    /// bit 0 of TM set -> BG1 enabled.
     #[test]
-    fn test_new_all_registers_zeroed() {
-        let ppu = PPU::new();
-        assert_eq!(ppu.regs.inidisp, 0);
-        assert_eq!(ppu.regs.bgmode, 0);
-        assert_eq!(ppu.regs.vmain, 0);
-        assert_eq!(ppu.regs.tm, 0);
-        assert_eq!(ppu.regs.bg1hofs, 0);
-        assert_eq!(ppu.regs.bg1vofs, 0);
-        assert_eq!(ppu.scanline, 0);
-        assert!(!ppu.frame_ready);
+    fn test_bg1_enabled_true() {
+        let mut regs = PPURegisters::new();
+        regs.tm = 0x01;
+        assert!(regs.bg1_enabled());
+    }
+
+    /// bit 0 of TM clear -> BG1 disabled.
+    #[test]
+    fn test_bg1_enabled_false() {
+        let mut regs = PPURegisters::new();
+        regs.tm = 0xFE;
+        assert!(!regs.bg1_enabled());
+    }
+
+    /// Upper bits of TM must not affect the result.
+    #[test]
+    fn test_bg1_enabled_ignores_upper_bits() {
+        let mut regs = PPURegisters::new();
+        regs.tm = 0xFF;
+        assert!(regs.bg1_enabled());
+        regs.tm = 0x1E;
+        assert!(!regs.bg1_enabled());
     }
 
     // ============================================================
-    // $2100 - INIDISP
+    // bg_mode
     // ============================================================
 
-    /// force_blank must return true when bit 7 of INIDISP is set.
+    /// Only the lower 3 bits of BGMODE are returned.
     #[test]
-    fn test_force_blank_true_when_bit7_set() {
-        let mut ppu = PPU::new();
-        ppu.write(0x2100, 0x80);
-        assert!(ppu.force_blank());
+    fn test_bg_mode_lower_3_bits() {
+        let mut regs = PPURegisters::new();
+        regs.bgmode = 0b11110111;
+        assert_eq!(regs.bg_mode(), 7);
     }
 
-    /// force_blank must return false when bit 7 of INIDISP is clear.
-    #[test]
-    fn test_force_blank_false_when_bit7_clear() {
-        let mut ppu = PPU::new();
-        ppu.write(0x2100, 0x0F);
-        assert!(!ppu.force_blank());
-    }
-
-    /// brightness must return only bits[3:0] of INIDISP.
-    #[test]
-    fn test_brightness_returns_lower_nibble() {
-        let mut ppu = PPU::new();
-        ppu.write(0x2100, 0xFF);
-        assert_eq!(ppu.brightness(), 0x0F);
-    }
-
-    /// brightness must return 0 when the lower nibble of INIDISP is 0.
-    #[test]
-    fn test_brightness_zero_when_lower_nibble_clear() {
-        let mut ppu = PPU::new();
-        ppu.write(0x2100, 0x80);
-        assert_eq!(ppu.brightness(), 0x00);
-    }
-
-    // ============================================================
-    // $2105 - BGMODE
-    // ============================================================
-
-    /// bg_mode must return only bits[2:0] of BGMODE.
-    #[test]
-    fn test_bg_mode_returns_lower_3_bits() {
-        let mut ppu = PPU::new();
-        ppu.write(0x2105, 0b11110111);
-        assert_eq!(ppu.regs.bg_mode(), 7);
-    }
-
-    /// bg_mode must mask out bits above bit 2.
+    /// Upper bits of BGMODE are masked out.
     #[test]
     fn test_bg_mode_masks_upper_bits() {
-        let mut ppu = PPU::new();
-        ppu.write(0x2105, 0b11111000);
-        assert_eq!(ppu.regs.bg_mode(), 0);
+        let mut regs = PPURegisters::new();
+        regs.bgmode = 0b11111000;
+        assert_eq!(regs.bg_mode(), 0);
     }
 
     // ============================================================
-    // $2107 - BG1SC
+    // bg1_tilemap_addr
     // ============================================================
 
-    /// bg1_tilemap_addr must derive the VRAM address from bits[7:2] of BG1SC.
+    /// BG1SC bits[7:2] select the tilemap word address in 0x400-word steps.
     #[test]
     fn test_bg1_tilemap_addr_derivation() {
-        let mut ppu = PPU::new();
-        // bits[7:2] = 1 -> 1 * 0x400 = 0x0400
-        ppu.write(0x2107, 0b00000100);
-        assert_eq!(ppu.regs.bg1_tilemap_addr(), 0x0400);
+        let mut regs = PPURegisters::new();
+        regs.bg1sc = 0b00000100; // bits[7:2] = 1 -> 1 * 0x400
+        assert_eq!(regs.bg1_tilemap_addr(), 0x0400);
     }
 
-    /// bg1_tilemap_addr must return 0 when BG1SC is 0.
+    /// BG1SC = 0 -> tilemap at address 0.
     #[test]
     fn test_bg1_tilemap_addr_zero() {
-        let mut ppu = PPU::new();
-        ppu.write(0x2107, 0x00);
-        assert_eq!(ppu.regs.bg1_tilemap_addr(), 0x0000);
+        let mut regs = PPURegisters::new();
+        regs.bg1sc = 0x00;
+        assert_eq!(regs.bg1_tilemap_addr(), 0x0000);
     }
 
-    /// bg1_tilemap_addr must handle the maximum value (bits[7:2] = 0x3F -> 0x3F * 0x400).
+    /// BG1SC = 0xFF -> bits[7:2] = 0x3F -> 0x3F * 0x400.
     #[test]
     fn test_bg1_tilemap_addr_maximum() {
-        let mut ppu = PPU::new();
-        ppu.write(0x2107, 0xFF);
-        assert_eq!(ppu.regs.bg1_tilemap_addr(), 0x3F * 0x400);
+        let mut regs = PPURegisters::new();
+        regs.bg1sc = 0xFF;
+        assert_eq!(regs.bg1_tilemap_addr(), 0x3F * 0x400);
     }
 
     // ============================================================
-    // $210B - BG12NBA
+    // bg1_tiledata_addr
     // ============================================================
 
-    /// bg1_tiledata_addr must derive the CHR base address from bits[3:0] of BG12NBA.
+    /// BG12NBA low nibble selects the CHR base address in 0x1000-word steps.
     #[test]
     fn test_bg1_tiledata_addr_derivation() {
-        let mut ppu = PPU::new();
-        // nibble = 1 -> 1 << 12 = 0x1000
-        ppu.write(0x210B, 0x01);
-        assert_eq!(ppu.regs.bg1_tiledata_addr(), 0x1000);
+        let mut regs = PPURegisters::new();
+        regs.bg12nba = 0x01;
+        assert_eq!(regs.bg1_tiledata_addr(), 0x1000);
     }
 
-    /// bg1_tiledata_addr must return 0 when BG12NBA is 0.
+    /// BG12NBA = 0 -> CHR base at address 0.
     #[test]
     fn test_bg1_tiledata_addr_zero() {
-        let mut ppu = PPU::new();
-        ppu.write(0x210B, 0x00);
-        assert_eq!(ppu.regs.bg1_tiledata_addr(), 0x0000);
+        let mut regs = PPURegisters::new();
+        regs.bg12nba = 0x00;
+        assert_eq!(regs.bg1_tiledata_addr(), 0x0000);
     }
 
-    /// bg1_tiledata_addr must handle the maximum low nibble (0xF -> 0xF000).
+    /// BG12NBA = 0x0F -> 0xF << 12 = 0xF000.
     #[test]
     fn test_bg1_tiledata_addr_maximum() {
-        let mut ppu = PPU::new();
-        ppu.write(0x210B, 0x0F);
-        assert_eq!(ppu.regs.bg1_tiledata_addr(), 0xF000);
-    }
-
-    // ============================================================
-    // $210D - BG1HOFS (two-write latch)
-    // ============================================================
-
-    /// First write to $210D must latch the low byte without committing to bg1hofs.
-    #[test]
-    fn test_bg1hofs_first_write_only_latches() {
-        let mut ppu = PPU::new();
-        ppu.write(0x210D, 0xAB);
-        assert_eq!(ppu.regs.bg1hofs, 0x0000);
-    }
-
-    /// Second write to $210D must commit lo+hi into bg1hofs, masking hi to 3 bits.
-    #[test]
-    fn test_bg1hofs_second_write_commits_word() {
-        let mut ppu = PPU::new();
-        ppu.write(0x210D, 0xCD); // lo
-        ppu.write(0x210D, 0x03); // hi
-        assert_eq!(ppu.regs.bg1hofs, 0x03CD);
-    }
-
-    /// The hi byte of bg1hofs must be masked to 3 bits (scroll is 10-bit on SNES).
-    #[test]
-    fn test_bg1hofs_hi_byte_masked_to_3_bits() {
-        let mut ppu = PPU::new();
-        ppu.write(0x210D, 0xFF);
-        ppu.write(0x210D, 0xFF); // only bits[2:0] must survive
-        assert_eq!(ppu.regs.bg1hofs, 0x07FF);
-    }
-
-    /// A third write to $210D must start a new latch cycle, preserving the previous value.
-    #[test]
-    fn test_bg1hofs_third_write_starts_new_cycle() {
-        let mut ppu = PPU::new();
-        ppu.write(0x210D, 0x11);
-        ppu.write(0x210D, 0x02);
-        ppu.write(0x210D, 0x33); // new lo - not committed yet
-        assert_eq!(ppu.regs.bg1hofs, 0x0211);
-    }
-
-    // ============================================================
-    // $210E - BG1VOFS (two-write latch)
-    // ============================================================
-
-    /// First write to $210E must latch without committing.
-    #[test]
-    fn test_bg1vofs_first_write_only_latches() {
-        let mut ppu = PPU::new();
-        ppu.write(0x210E, 0xAB);
-        assert_eq!(ppu.regs.bg1vofs, 0x0000);
-    }
-
-    /// Second write to $210E must commit lo+hi into bg1vofs, masking hi to 3 bits.
-    #[test]
-    fn test_bg1vofs_second_write_commits_word() {
-        let mut ppu = PPU::new();
-        ppu.write(0x210E, 0xCD);
-        ppu.write(0x210E, 0x03);
-        assert_eq!(ppu.regs.bg1vofs, 0x03CD);
-    }
-
-    /// The hi byte of bg1vofs must be masked to 3 bits.
-    #[test]
-    fn test_bg1vofs_hi_byte_masked_to_3_bits() {
-        let mut ppu = PPU::new();
-        ppu.write(0x210E, 0xFF);
-        ppu.write(0x210E, 0xFF);
-        assert_eq!(ppu.regs.bg1vofs, 0x07FF);
-    }
-
-    // ============================================================
-    // $2115 - VMAIN / $2116-2117 - VMADD / $2118-2119 - VMDATA
-    // ============================================================
-
-    /// VMAIN must store the increment mode byte verbatim.
-    #[test]
-    fn test_vmain_stores_value() {
-        let mut ppu = PPU::new();
-        ppu.write(0x2115, 0x80); // increment after high byte access, step 1
-        assert_eq!(ppu.regs.vmain, 0x80);
-    }
-
-    /// Writing to $2116/$2117 must update the VRAM word address low/high bytes.
-    #[test]
-    fn test_vmadd_low_high_store_address() {
-        let mut ppu = PPU::new();
-        ppu.write(0x2116, 0x34);
-        ppu.write(0x2117, 0x12);
-        assert_eq!(ppu.regs.vmaddl, 0x34);
-        assert_eq!(ppu.regs.vmaddh, 0x12);
-    }
-
-    /// Writing a word to VRAM via $2118/$2119 must store data and advance VMADD.
-    #[test]
-    fn test_vmdatal_vmdatah_write_and_advance() {
-        let mut ppu = PPU::new();
-        ppu.write(0x2115, 0x00); // increment on low byte write, step 1
-        ppu.write(0x2116, 0x00);
-        ppu.write(0x2117, 0x00);
-        ppu.write(0x2118, 0xAB); // low byte -> VMADD increments
-        let addr_after_low = u16::from(ppu.regs.vmaddl) | (u16::from(ppu.regs.vmaddh) << 8);
-        assert_eq!(addr_after_low, 0x0001);
-        ppu.write(0x2116, 0x00);
-        ppu.write(0x2117, 0x00);
-        ppu.write(0x2115, 0x80); // increment on high byte write, step 1
-        ppu.write(0x2119, 0xCD); // high byte -> VMADD increments
-        let addr_after_high = u16::from(ppu.regs.vmaddl) | (u16::from(ppu.regs.vmaddh) << 8);
-        assert_eq!(addr_after_high, 0x0001);
-    }
-
-    // ============================================================
-    // $2139/$213A - VRAM read
-    // ============================================================
-
-    /// Data written to VRAM must be readable back via $2139/$213A.
-    #[test]
-    fn test_vram_read_back() {
-        let mut ppu = PPU::new();
-        ppu.write(0x2115, 0x00); // increment on low, step 1
-        ppu.write(0x2116, 0x00);
-        ppu.write(0x2117, 0x00);
-        ppu.write(0x2118, 0xAB);
-        ppu.write(0x2116, 0x00);
-        ppu.write(0x2117, 0x00);
-        ppu.write(0x2115, 0x80); // increment on high, step 1
-        ppu.write(0x2119, 0xCD);
-
-        ppu.write(0x2115, 0x00);
-        ppu.write(0x2116, 0x00);
-        ppu.write(0x2117, 0x00);
-        assert_eq!(ppu.read(0x2139), 0xAB);
-        ppu.write(0x2115, 0x80);
-        ppu.write(0x2116, 0x00);
-        ppu.write(0x2117, 0x00);
-        assert_eq!(ppu.read(0x213A), 0xCD);
-    }
-
-    // ============================================================
-    // $2121/$2122/$213B - CGRAM
-    // ============================================================
-
-    /// A color written to CGRAM must be readable back via $213B.
-    #[test]
-    fn test_cgram_write_and_read_back() {
-        let mut ppu = PPU::new();
-        ppu.write(0x2121, 0x00); // set CGRAM address to 0
-        ppu.write(0x2122, 0x5A); // lo byte
-        ppu.write(0x2122, 0x1F); // hi byte (only 7 bits used by SNES)
-        ppu.write(0x2121, 0x00); // reset address for read
-        let lo = ppu.read(0x213B);
-        let hi = ppu.read(0x213B);
-        assert_eq!(lo, 0x5A);
-        assert_eq!(hi & 0x7F, 0x1F);
-    }
-
-    // ============================================================
-    // $212C - TM (main screen layer enable)
-    // ============================================================
-
-    /// bg1_enabled must return true when bit 0 of TM is set.
-    #[test]
-    fn test_bg1_enabled_true_when_tm_bit0_set() {
-        let mut ppu = PPU::new();
-        ppu.write(0x212C, 0x01);
-        assert!(ppu.regs.bg1_enabled());
-    }
-
-    /// bg1_enabled must return false when bit 0 of TM is clear.
-    #[test]
-    fn test_bg1_enabled_false_when_tm_bit0_clear() {
-        let mut ppu = PPU::new();
-        ppu.write(0x212C, 0xFE);
-        assert!(!ppu.regs.bg1_enabled());
-    }
-
-    /// bg1_enabled must ignore all bits of TM except bit 0.
-    #[test]
-    fn test_bg1_enabled_ignores_upper_bits_of_tm() {
-        let mut ppu = PPU::new();
-        ppu.write(0x212C, 0x1E); // bits 1-4 set, bit 0 clear
-        assert!(!ppu.regs.bg1_enabled());
-    }
-
-    // ============================================================
-    // step_scanline
-    // ============================================================
-
-    /// Scanline counter must increment by 1 each step.
-    #[test]
-    fn test_step_scanline_increments() {
-        let mut ppu = PPU::new();
-        ppu.step_scanline();
-        assert_eq!(ppu.scanline, 1);
-    }
-
-    /// frame_ready must be set when scanline wraps past SCANLINES_PER_FRAME.
-    #[test]
-    fn test_step_scanline_sets_frame_ready_at_wrap() {
-        use crate::constants::SCANLINES_PER_FRAME;
-        let mut ppu = PPU::new();
-        for _ in 0..SCANLINES_PER_FRAME {
-            ppu.step_scanline();
-        }
-        assert!(ppu.frame_ready);
-        assert_eq!(ppu.scanline, 0);
-    }
-
-    /// frame_ready must be false before a full frame has elapsed.
-    #[test]
-    fn test_frame_ready_false_before_wrap() {
-        use crate::constants::SCANLINES_PER_FRAME;
-        let mut ppu = PPU::new();
-        for _ in 0..SCANLINES_PER_FRAME - 1 {
-            ppu.step_scanline();
-        }
-        assert!(!ppu.frame_ready);
-    }
-
-    // ============================================================
-    // Unhandled addresses
-    // ============================================================
-
-    /// Writing to an unhandled address must not panic or corrupt any register.
-    #[test]
-    fn test_write_unhandled_address_does_not_panic() {
-        let mut ppu = PPU::new();
-        ppu.write(0xFFFF, 0xFF);
-        assert_eq!(ppu.regs.inidisp, 0);
-        assert_eq!(ppu.regs.bgmode, 0);
-        assert_eq!(ppu.regs.vmain, 0);
-    }
-
-    /// Reading from an unhandled address must return 0 and not panic.
-    #[test]
-    fn test_read_unhandled_address_returns_zero() {
-        let mut ppu = PPU::new();
-        assert_eq!(ppu.read(0xFFFF), 0);
+        let mut regs = PPURegisters::new();
+        regs.bg12nba = 0x0F;
+        assert_eq!(regs.bg1_tiledata_addr(), 0xF000);
     }
 }

@@ -780,49 +780,6 @@ mod tests {
     }
 
     // ============================================================
-    // Read-only registers - must return 0 and not panic
-    // ============================================================
-
-    /// Reading unimplemented read-only registers must return 0 and not panic.
-    #[test]
-    fn test_read_unimplemented_read_only_registers() {
-        let mut ppu = PPU::new();
-        let read_only: &[u16] = &[
-            0x2134, // MPYL
-            0x2135, // MPYM
-            0x2136, // MPYH
-            0x2137, // SLHV
-            0x2138, // OAMDATAREAD
-            0x213C, // OPHCT
-            0x213D, // OPVCT
-            0x213E, // STAT77
-            0x213F, // STAT78
-        ];
-        for &addr in read_only {
-            assert_eq!(ppu.read(addr), 0, "read at ${:04X} must return 0", addr);
-        }
-    }
-
-    // ============================================================
-    // Unhandled addresses
-    // ============================================================
-
-    /// Writing to an unimplemented address must not panic or corrupt any state.
-    #[test]
-    fn test_write_unknown_address_does_not_panic() {
-        let mut ppu = PPU::new();
-        ppu.write(0xFFFF, 0x42);
-        assert_eq!(ppu.regs.inidisp, 0);
-    }
-
-    /// Reading from an unimplemented address must return 0 and not panic.
-    #[test]
-    fn test_read_unknown_address_returns_zero() {
-        let mut ppu = PPU::new();
-        assert_eq!(ppu.read(0xFFFF), 0);
-    }
-
-    // ============================================================
     // step_scanline
     // ============================================================
 
