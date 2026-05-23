@@ -182,8 +182,7 @@ impl RSnes {
         }
 
         if self.debug {
-            println!("{}", std::any::type_name_of_val(&self.cpu.next_cycle.0));
-            // if self.cpu.regs().PC == 0x1004 {
+            debug_log!(self, "Next cycle: {}", self.cpu.next_cycle.1);
             if std::ptr::fn_addr_eq(
                 self.cpu.next_cycle.0,
                 cpu::instrs::uncategorised::stp_cyc2

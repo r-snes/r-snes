@@ -47,7 +47,7 @@ fn gen_cycle_functions(name: &Ident, instr_body: InstrBody) -> TokenStream {
                 pub fn #func_name(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
                     #body
 
-                    (#cyc_type, InstrCycle(#next_func_name))
+                    (#cyc_type, InstrCycle(#next_func_name, stringify!(#func_name)))
                 }
             }
         })

@@ -64,7 +64,7 @@ impl CPU {
             addr_bus2: SnesAddress::default(),
             data_bus: 0,
             internal_data_bus: 0,
-            next_cycle: InstrCycle(opcode_fetch),
+            next_cycle: InstrCycle(opcode_fetch, "opcode fetch"),
         }
     }
 
@@ -143,7 +143,7 @@ impl CPU {
     /// the address contained at 0:FFFC in bank 0
     pub fn reset(&mut self) {
         // set the next cycle to be the reset sequence defined below
-        self.next_cycle = InstrCycle(reset_cyc1);
+        self.next_cycle = InstrCycle(reset_cyc1, "reset");
     }
 
     /// Construct a freshly reset CPU, as it would be on power-on
