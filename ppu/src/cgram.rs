@@ -48,8 +48,8 @@ impl CGRAM {
     pub fn read_data(&mut self, PPURegisters { cgdata_latch, .. }: &mut PPURegisters) -> u8 {
         let word = self.memory[self.word_addr as usize];
         let value = match cgdata_latch.phase {
-            Phase::Low  => *word.lo(),
-            Phase::High => *word.hi() | (self.ppu_open_bus & 0x80),
+            BytePhase::Low  => *word.lo(),
+            BytePhase::High => *word.hi() | (self.ppu_open_bus & 0x80),
         };
 
         if cgdata_latch.phase.is_high() {
