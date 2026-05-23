@@ -4,7 +4,7 @@ use crate::rendering::renderer::*;
 
 pub trait Mode1Render {
     fn render_scanline_mode1(&mut self, ppu: &PPU, y: usize);
-    fn decode_4bpp_tile_pixel_from(vram: &[u16], tile_word_base: usize, x: usize, y: usize) -> u8;
+    fn decode_4bpp_tile_pixel_from(vram: &Box<[u16; VRAM_SIZE / 2]>, tile_word_base: usize, x: usize, y: usize) -> u8;
 }
 
 impl Mode1Render for Renderer {
@@ -64,7 +64,7 @@ impl Mode1Render for Renderer {
         }
     }
 
-    fn decode_4bpp_tile_pixel_from(vram: &[u16], tile_word_base: usize, x: usize, y: usize) -> u8 {
+    fn decode_4bpp_tile_pixel_from(vram: &Box<[u16; VRAM_SIZE / 2]>, tile_word_base: usize, x: usize, y: usize) -> u8 {
         // Planes 0+1: words 0-7
         let w01 = vram[tile_word_base + y];
         let p0 = (w01 & 0xFF) as u8; // lo byte = plane 0
@@ -109,7 +109,7 @@ mod tests {
     /// All-zero tile data must decode to color index 0 (transparent) for every pixel.
     #[test]
     fn test_decode_4bpp_all_zero_is_transparent() {
-        let vram = vec![0u16; 512];
+        let vram = Box::new([0u16; VRAM_SIZE / 2]);
         for y in 0..8 {
             for x in 0..8 {
                 let idx = Renderer::decode_4bpp_tile_pixel_from(&vram, 0, x, y);
@@ -121,7 +121,7 @@ mod tests {
     /// A tile with all bitplanes set to 0xFF must decode to color index 15 for every pixel.
     #[test]
     fn test_decode_4bpp_all_ones_is_color_15() {
-        let mut vram = vec![0u16; 512];
+        let mut vram = Box::new([0u16; VRAM_SIZE / 2]);
         // All planes 0xFF for all 8 rows
         for y in 0..8 {
             vram[y] = 0xFFFF; // planes 0+1
@@ -138,7 +138,7 @@ mod tests {
     /// Plane 0 only (bit 0 of color index) must be extracted from the low byte of words 0-7.
     #[test]
     fn test_decode_4bpp_plane0_only() {
-        let mut vram = vec![0u16; 512];
+        let mut vram = Box::new([0u16; VRAM_SIZE / 2]);
         // Row 0: plane 0 lo = 0b10000000 (only leftmost pixel set), plane 1/2/3 = 0
         vram[0] = 0x0080; // lo=0x80 (plane 0), hi=0x00 (plane 1)
         let idx_x0 = Renderer::decode_4bpp_tile_pixel_from(&vram, 0, 0, 0);
@@ -150,7 +150,7 @@ mod tests {
     /// Plane 1 only must contribute bit 1 of the color index.
     #[test]
     fn test_decode_4bpp_plane1_only() {
-        let mut vram = vec![0u16; 512];
+        let mut vram = Box::new([0u16; VRAM_SIZE / 2]);
         // Row 0: plane 1 hi = 0xFF, plane 0 lo = 0x00
         vram[0] = 0xFF00; // lo=0x00 (plane 0), hi=0xFF (plane 1)
         for x in 0..8 {
@@ -162,7 +162,7 @@ mod tests {
     /// Plane 2 only must contribute bit 2 of the color index.
     #[test]
     fn test_decode_4bpp_plane2_only() {
-        let mut vram = vec![0u16; 512];
+        let mut vram = Box::new([0u16; VRAM_SIZE / 2]);
         vram[8] = 0x00FF; // planes 2+3 row 0: plane 2 lo = 0xFF, plane 3 hi = 0x00
         for x in 0..8 {
             let idx = Renderer::decode_4bpp_tile_pixel_from(&vram, 0, x, 0);
@@ -173,7 +173,7 @@ mod tests {
     /// Plane 3 only must contribute bit 3 of the color index.
     #[test]
     fn test_decode_4bpp_plane3_only() {
-        let mut vram = vec![0u16; 512];
+        let mut vram = Box::new([0u16; VRAM_SIZE / 2]);
         vram[8] = 0xFF00; // planes 2+3 row 0: plane 2 lo = 0x00, plane 3 hi = 0xFF
         for x in 0..8 {
             let idx = Renderer::decode_4bpp_tile_pixel_from(&vram, 0, x, 0);
@@ -184,7 +184,7 @@ mod tests {
     /// Pixels are addressed right-to-left within a byte (bit 7 = x=0, bit 0 = x=7).
     #[test]
     fn test_decode_4bpp_bit_order_right_to_left() {
-        let mut vram = vec![0u16; 512];
+        let mut vram = Box::new([0u16; VRAM_SIZE / 2]);
         // Set only bit 0 of plane 0 row 0 -> only x=7 should be set
         vram[0] = 0x0001;
         let idx_x7 = Renderer::decode_4bpp_tile_pixel_from(&vram, 0, 7, 0);
@@ -196,7 +196,7 @@ mod tests {
     /// decode_4bpp_tile_pixel_from must use the correct row offset (y selects the word row).
     #[test]
     fn test_decode_4bpp_correct_row_selected() {
-        let mut vram = vec![0u16; 512];
+        let mut vram = Box::new([0u16; VRAM_SIZE / 2]);
         // Set plane 0 full for row 3 only
         vram[3] = 0x00FF;
         for y in 0..8 {
@@ -212,7 +212,7 @@ mod tests {
     /// tile_word_base offset must correctly index into VRAM (non-zero base).
     #[test]
     fn test_decode_4bpp_nonzero_tile_base() {
-        let mut vram = vec![0u16; 1024];
+        let mut vram = Box::new([0u16; VRAM_SIZE / 2]);
         let base = 64usize;
         // All planes 0xFF at base
         for y in 0..8 {
@@ -287,7 +287,7 @@ mod tests {
     /// flip_x must mirror the pixel horizontally within the tile (fine_x = 7 - fine_x).
     #[test]
     fn test_render_mode1_flip_x_mirrors_pixel() {
-        let mut vram = vec![0u16; 0x8000];
+        let mut vram = Box::new([0u16; VRAM_SIZE / 2]);
         // Tile 0: only the rightmost pixel (x=7, bit 0) is set on row 0
         vram[0] = 0x0001; // plane 0 row 0: bit 0 set -> only x=7 lit
 
@@ -307,7 +307,7 @@ mod tests {
     /// flip_y must mirror the pixel vertically within the tile (fine_y = 7 - fine_y).
     #[test]
     fn test_render_mode1_flip_y_mirrors_pixel() {
-        let mut vram = vec![0u16; 0x8000];
+        let mut vram = Box::new([0u16; VRAM_SIZE / 2]);
         // Only row 7 is set
         vram[7] = 0xFFFF; // plane 0+1 row 7 all set
 
