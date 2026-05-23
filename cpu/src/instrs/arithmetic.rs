@@ -329,7 +329,7 @@ mod tests {
 
         regs.P.Z = true;
         regs.P.N = true;
-        regs.P.V = true;
+        regs.P.C = true;
 
         let mut expected_regs = regs.clone();
         let mut cpu = CPU::new(regs);
@@ -347,7 +347,8 @@ mod tests {
         expected_regs.PC = 0x3459;
         expected_regs.P.Z = false;
         expected_regs.P.N = false;
-        expected_regs.P.V = false;
+        expected_regs.P.C = false;
+        assert_eq!(*cpu.regs(), expected_regs);
     }
 
     #[test]
@@ -359,7 +360,7 @@ mod tests {
 
         regs.P.Z = true;
         regs.P.N = true;
-        regs.P.V = true;
+        regs.P.C = true;
 
         let mut expected_regs = regs.clone();
         let mut cpu = CPU::new(regs);
@@ -375,7 +376,8 @@ mod tests {
         expected_regs.PC = 0x3459;
         expected_regs.P.Z = false;
         expected_regs.P.N = false;
-        expected_regs.P.V = false;
+        expected_regs.P.C = false;
+        assert_eq!(*cpu.regs(), expected_regs);
     }
 
     #[test]
@@ -389,7 +391,7 @@ mod tests {
 
         regs.P.Z = true;
         regs.P.N = true;
-        regs.P.V = true;
+        regs.P.C = true;
 
         let mut expected_regs = regs.clone();
         let mut cpu = CPU::new(regs);
@@ -402,6 +404,7 @@ mod tests {
         expected_regs.PC = 0x3457;
         expected_regs.P.Z = false;
         expected_regs.P.N = false;
-        expected_regs.P.V = false;
+        expected_regs.P.C = false;
+        assert_eq!(*cpu.regs(), expected_regs);
     }
 }

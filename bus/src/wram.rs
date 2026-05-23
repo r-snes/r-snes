@@ -1,5 +1,5 @@
 use crate::constants::WRAM_SIZE;
-use crate::memory_region::MemoryRegion;
+
 use common::snes_address::SnesAddress;
 
 /// WRAM (Work RAM) - 128 KiB (2 full banks)
@@ -13,7 +13,7 @@ use common::snes_address::SnesAddress;
 ///
 /// Warning: bank 0x7F is not mirrored, so `0x7F1000` is independent.
 pub struct Wram {
-    data: Box<[u8; WRAM_SIZE]>,
+    pub data: Box<[u8; WRAM_SIZE]>,
 }
 
 impl Wram {
@@ -47,14 +47,14 @@ impl Wram {
     }
 }
 
-impl MemoryRegion for Wram {
+impl Wram {
     /// Reads a byte from WRAM at the given `SnesAddress`.
     ///
     /// The address is first translated to an internal WRAM offset using `to_offset`.
     ///
     /// # Panics
     /// Panics if the address is invalid or out of bounds.
-    fn read(&self, addr: SnesAddress) -> u8 {
+    pub fn read(&self, addr: SnesAddress) -> u8 {
         let offset = Self::to_offset(addr);
 
         return *self.data.get(offset).expect(&format!(
@@ -69,7 +69,7 @@ impl MemoryRegion for Wram {
     ///
     /// # Panics
     /// Panics if the address is invalid or out of bounds.
-    fn write(&mut self, addr: SnesAddress, value: u8) {
+    pub fn write(&mut self, addr: SnesAddress, value: u8) {
         let offset = Self::to_offset(addr);
         if offset < self.data.len() {
             self.data[offset] = value;
