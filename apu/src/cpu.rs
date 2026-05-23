@@ -170,6 +170,7 @@ impl Spc700 {
             0xA0 => self.inst_ei(), // EI
             0xC0 => self.inst_di(), // DI
             0xDF => self.inst_daa(), // DAA
+            0xBE => self.inst_das(), // DAS
  
             // Catch-all
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
@@ -1035,6 +1036,22 @@ impl Spc700 {
         }
         if self.get_flag(FLAG_H) || (a & 0x0F) > 0x09 {
             a = a.wrapping_add(0x06);
+        }
+        self.regs.a = a;
+        self.set_zn_flags(self.regs.a);
+        self.cycles += 3;
+    }
+
+    /// DAS — decimal adjust A after BCD subtraction.
+    /// Adjusts A to a valid BCD value after SBC. Sets N, Z, and C. 3 cycles.
+    fn inst_das(&mut self) {
+        let mut a = self.regs.a;
+        if !self.get_flag(FLAG_C) || a > 0x99 {
+            a = a.wrapping_sub(0x60);
+            self.set_flag(FLAG_C, false);
+        }
+        if !self.get_flag(FLAG_H) || (a & 0x0F) > 0x09 {
+            a = a.wrapping_sub(0x06);
         }
         self.regs.a = a;
         self.set_zn_flags(self.regs.a);
