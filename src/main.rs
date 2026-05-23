@@ -5,14 +5,14 @@ use crate::{
     gui::{Gui, RSnesEvent},
     rsnes::RSnes,
 };
+#[cfg(feature = "cli")]
+use clap::Parser;
 use std::{
     path::PathBuf,
     time::{Duration, Instant},
 };
-#[cfg(feature = "cli")]
-use clap::Parser;
 
-fn gui_emu_loop(gui: &mut gui::Gui, mut emu: rsnes::RSnes) {
+fn gui_emu_loop(gui: &mut gui::Gui, mut emu: rsnes::RSnes) -> Option<RSnesEvent> {
     let mut frame_nb = 0_u64;
     let exec_start = Instant::now();
 
@@ -20,7 +20,7 @@ fn gui_emu_loop(gui: &mut gui::Gui, mut emu: rsnes::RSnes) {
     let mut frame_accum: f64 = 0.0;
     let mut master_cycle_accum: f64 = 0.0;
 
-    'emu_loop: loop {
+    let closing_ev = 'emu_loop: loop {
         // Get new delta based on current Instant::now()
         let current_instant = Instant::now();
         let delta = current_instant.duration_since(last_instant).as_secs_f64();
@@ -57,21 +57,25 @@ fn gui_emu_loop(gui: &mut gui::Gui, mut emu: rsnes::RSnes) {
                     Ok(emu_) => emu = emu_,
                     Err(err) => eprintln!("Error loading ROM: {}", err),
                 },
-                RSnesEvent::Quit => break 'emu_loop,
+                RSnesEvent::Quit => break 'emu_loop Some(RSnesEvent::Quit),
+                RSnesEvent::Close => break 'emu_loop None,
             }
         }
         frame_nb += 1;
-    }
+    };
 
     let time = Instant::now();
     let program_duration = time.duration_since(exec_start).as_secs_f64();
     println!("Game duration : {}", program_duration);
     println!("Frame rate : {}", frame_nb as f64 / program_duration);
+
+    closing_ev
 }
 
 fn gui_loop(mut emu: Option<RSnes>) -> Result<(), String> {
     let mut gui = gui::Gui::new()?;
-    const DEFAULT_FRAMEBUFFER : &ppu::rendering::RawFramebuffer = include_bytes!("../logo_framebuffer.raw");
+    const DEFAULT_FRAMEBUFFER: &ppu::rendering::RawFramebuffer =
+        include_bytes!("../logo_framebuffer.raw");
 
     gui.draw_framebuffer(DEFAULT_FRAMEBUFFER)?;
     gui.present();
@@ -81,22 +85,30 @@ fn gui_loop(mut emu: Option<RSnes>) -> Result<(), String> {
         // so that we can pass by value in the emu loop,
         // guaranteeing that the `RSnes` is destructed when
         // we leave the loop
-        match emu.take() {
-            None => match gui.wait_for_event() {
-                RSnesEvent::LoadRom { path } => match rsnes::RSnes::load_rom(&path) {
-                    Ok(some_emu) => emu = Some(some_emu),
-                    Err(err) => println!("Error loading ROM: {}", err),
-                },
-                RSnesEvent::Quit => break,
-            }
+        let ev = match emu.take() {
+            None => Some(gui.wait_for_event()),
 
             Some(emu) => {
-                gui_emu_loop(&mut gui, emu);
+                let ret_ev = gui_emu_loop(&mut gui, emu);
 
-                // re-render default framebuffer after game has exited
-                gui.draw_framebuffer(DEFAULT_FRAMEBUFFER)?;
-                gui.present();
+                if ret_ev != Some(RSnesEvent::Quit) {
+                    // re-render default framebuffer after game has exited
+                    gui.draw_framebuffer(DEFAULT_FRAMEBUFFER)?;
+                    gui.present();
+                }
+
+                ret_ev
             }
+        };
+        let Some(ev) = ev else {
+            continue;
+        };
+        match ev {
+            RSnesEvent::LoadRom { path } => match rsnes::RSnes::load_rom(&path) {
+                Ok(some_emu) => emu = Some(some_emu),
+                Err(err) => println!("Error loading ROM: {}", err),
+            },
+            RSnesEvent::Quit | RSnesEvent::Close => break,
         }
     }
 
@@ -125,7 +137,6 @@ fn main() -> Result<(), String> {
             eprintln!("CLI feature disabled at compile time, CLI arguments are ignored");
         }
     }
-
 
     let emu = match cli.rom {
         None => None,

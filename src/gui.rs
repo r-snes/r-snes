@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 
-use ppu::constants::{SCREEN_WIDTH, SCREEN_HEIGHT};
+use ppu::constants::{SCREEN_HEIGHT, SCREEN_WIDTH};
 
 pub struct Gui {
     _sdl_ctx: sdl2::Sdl,
@@ -11,8 +11,15 @@ pub struct Gui {
     event_pump: sdl2::EventPump,
 }
 
+#[derive(PartialEq, Eq)]
 pub enum RSnesEvent {
+    /// Load a new ROM, showing a file picker (closes current game)
     LoadRom { path: PathBuf },
+
+    /// Close the currently open game (or quit if no game open)
+    Close,
+
+    /// Quit the emulator program altogether
     Quit,
 }
 
@@ -57,20 +64,36 @@ impl Gui {
     }
 
     fn map_event(event: sdl2::event::Event) -> Option<RSnesEvent> {
+        use sdl2::keyboard::Mod;
+
         match event {
-            | Event::Quit { .. }
-            | Event::KeyDown {
-                keycode: Some(Keycode::Escape),
+            Event::Quit { .. } => Some(RSnesEvent::Quit),
+            Event::KeyDown {
+                keycode: Some(Keycode::Q),
+                keymod,
                 ..
-            } => Some(RSnesEvent::Quit),
+            } if keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => {
+                Some(RSnesEvent::Quit)
+            },
+
+            Event::KeyDown {
+                keycode: Some(Keycode::Escape),
+                repeat: false,
+                ..
+            } => {
+                Some(RSnesEvent::Close)
+            }
 
             Event::KeyDown {
                 keycode: Some(Keycode::L),
+                keymod,
                 ..
-            } => match rfd::FileDialog::new().pick_file() {
-                Some(path) => Some(RSnesEvent::LoadRom { path }),
-                None => None,
-            },
+            } if keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => {
+                match rfd::FileDialog::new().pick_file() {
+                    Some(path) => Some(RSnesEvent::LoadRom { path }),
+                    None => None,
+                }
+            }
 
             _ => None,
         }
@@ -89,7 +112,10 @@ impl Gui {
         }
     }
 
-    pub fn draw_framebuffer(&mut self, framebuffer: &ppu::rendering::RawFramebuffer) -> Result<(), String> {
+    pub fn draw_framebuffer(
+        &mut self,
+        framebuffer: &ppu::rendering::RawFramebuffer,
+    ) -> Result<(), String> {
         use sdl2::pixels::PixelFormatEnum;
 
         let texture_creator = self.canvas.texture_creator();
@@ -111,7 +137,10 @@ impl Gui {
         Ok(())
     }
 
-    pub fn update(&mut self, framebuffer: &ppu::rendering::RawFramebuffer) -> impl Iterator<Item = RSnesEvent> + use<'_> {
+    pub fn update(
+        &mut self,
+        framebuffer: &ppu::rendering::RawFramebuffer,
+    ) -> impl Iterator<Item = RSnesEvent> + use<'_> {
         self.clear(30, 30, 35);
         let _ = self.draw_framebuffer(framebuffer); // TODO: Handle error properly
         self.present();
