@@ -63,16 +63,16 @@ impl Apu {
     /// Steps the APU internally for each sample so that CPU, timers, and DSP
     /// all advance in lock-step.  Returns a `Vec` of `(left, right)` pairs.
     pub fn render_audio(&mut self, num_samples: usize) -> Vec<(i16, i16)> {
-        let mut buf = Vec::with_capacity(num_samples);
+        let mut buff = Vec::with_capacity(num_samples);
 
         for _ in 0..num_samples {
             // Advance the full APU by one DSP period (32 CPU cycles = 1 sample).
             self.step(DSP_CYCLES_PER_SAMPLE);
 
             // Collect the stereo output from the DSP as an explicit (L, R) pair.
-            buf.push(self.memory.dsp.render_audio_single());
+            buff.push(self.memory.dsp.render_audio_single());
         }
 
-        buf
+        buff
     }
 }
