@@ -228,6 +228,8 @@ fn test1_sine() {
 
     // DIR register
     dsp_global_write(&mut mem, 0x5D, dir_page);
+    dsp_global_write(&mut mem, 0x0C, 127); // MVOLL — master left  volume
+    dsp_global_write(&mut mem, 0x1C, 127); // MVOLR — master right volume
 
     // Voice 0: SRCN=0, pitch=0x1000 (native rate), full volume both channels
     dsp_voice_write(&mut mem, 0, 0x4, 0);           // SRCN
@@ -279,6 +281,8 @@ fn test2_8voices() {
 
     let dir_page: u8 = 0x01;
     dsp_global_write(&mut mem, 0x5D, dir_page);
+    dsp_global_write(&mut mem, 0x0C, 127); // MVOLL — master left  volume
+    dsp_global_write(&mut mem, 0x1C, 127); // MVOLR — master right volume
 
     // One looping square wave sample shared by all voices (SRCN 0).
     let brr_start: u16 = 0x0200;
@@ -343,6 +347,8 @@ fn test3_adsr() {
 
     let dir_page: u8 = 0x01;
     dsp_global_write(&mut mem, 0x5D, dir_page);
+    dsp_global_write(&mut mem, 0x0C, 127); // MVOLL — master left  volume
+    dsp_global_write(&mut mem, 0x1C, 127); // MVOLR — master right volume
 
     // One long looping sine wave sample
     let brr_start: u16 = 0x0200;
@@ -411,6 +417,8 @@ fn test4_loop() {
 
     let dir_page: u8 = 0x01;
     dsp_global_write(&mut mem, 0x5D, dir_page);
+    dsp_global_write(&mut mem, 0x0C, 127); // MVOLL — master left  volume
+    dsp_global_write(&mut mem, 0x1C, 127); // MVOLR — master right volume
 
     // Sample: 3 blocks.
     //   Block 0: silence (will pass through once)
@@ -475,6 +483,8 @@ fn test5_stereo() {
 
     let dir_page: u8 = 0x01;
     dsp_global_write(&mut mem, 0x5D, dir_page);
+    dsp_global_write(&mut mem, 0x0C, 127); // MVOLL — master left  volume
+    dsp_global_write(&mut mem, 0x1C, 127); // MVOLR — master right volume
 
     // Two different tones so you can tell them apart
     let brr_lo: u16 = 0x0200; // 220 Hz (A3) — left channel
