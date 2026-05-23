@@ -1,30 +1,59 @@
 /// Two-write latch used by registers like BG1HOFS, BG1VOFS, CGDATA.
-/// First write stores the low byte; second write commits lo+hi to the target.
+/// Models a hardware flipflop: first access = low byte, second = high byte.
 pub struct WriteTwice {
     latch: u8,
-    pub written: bool,
+    pub phase: BytePhase,
+}
+
+/// Helper enum to keep track of the byte phase
+#[derive(Debug, PartialEq, Eq)]
+pub enum BytePhase {
+    /// Next read/write affects the low byte of the addressed word
+    Low,
+
+    /// Next read/write affects the high byte of the addressed word
+    High,
+}
+
+impl BytePhase {
+    pub fn flip(&mut self) {
+        *self = match self {
+            BytePhase::Low => BytePhase::High,
+            BytePhase::High => BytePhase::Low,
+        };
+    }
+
+    pub fn is_high(&self) -> bool {
+        *self == BytePhase::High
+    }
 }
 
 impl WriteTwice {
     pub fn new() -> Self {
-        Self { latch: 0, written: false }
+        Self {
+            latch: 0,
+            phase: BytePhase::Low
+        }
     }
 
     /// Feed one byte. Returns `Some((lo, hi))` on the second write, `None` on the first.
     pub fn write(&mut self, value: u8) -> Option<(u8, u8)> {
-        if !self.written {
-            self.latch = value;
-            self.written = true;
-            None
-        } else {
-            let lo = self.latch;
-            self.written = false;
-            Some((lo, value))
+        match self.phase {
+            BytePhase::Low => {
+                self.latch = value;
+                self.phase = BytePhase::High;
+                None
+            }
+            BytePhase::High => {
+                let lo = self.latch;
+                self.phase = BytePhase::Low;
+                Some((lo, value))
+            }
         }
     }
 
     pub fn reset(&mut self) {
-        self.written = false;
+        self.phase = BytePhase::Low;
     }
 }
 

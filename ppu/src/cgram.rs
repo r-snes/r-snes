@@ -1,5 +1,6 @@
 use crate::constants::CGRAM_SIZE;
 use crate::registers::PPURegisters;
+use crate::write_twice::BytePhase;
 use common::u16_split::U16Split;
 
 pub struct CGRAM {
@@ -46,16 +47,15 @@ impl CGRAM {
 
     pub fn read_data(&mut self, PPURegisters { cgdata_latch, .. }: &mut PPURegisters) -> u8 {
         let word = self.memory[self.word_addr as usize];
-        let value = if !cgdata_latch.written {
-            *word.lo()
-        } else {
-            *word.hi() | (self.ppu_open_bus & 0x80)
+        let value = match cgdata_latch.phase {
+            Phase::Low  => *word.lo(),
+            Phase::High => *word.hi() | (self.ppu_open_bus & 0x80),
         };
 
-        if cgdata_latch.written {
+        if cgdata_latch.phase.is_high() {
             self.word_addr = self.word_addr.wrapping_add(1);
         }
-        cgdata_latch.written = !cgdata_latch.written;
+        cgdata_latch.phase.flip();
         self.ppu_open_bus = value;
         value
     }
