@@ -1,6 +1,5 @@
 use crate::constants::*;
 use crate::ppu::PPU;
-use crate::rendering::mode_1::Mode1Render;
 
 pub struct Renderer {
     pub framebuffer: Box<[u8; SCREEN_WIDTH * SCREEN_HEIGHT * 3]>,

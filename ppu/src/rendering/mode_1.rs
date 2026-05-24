@@ -1,15 +1,10 @@
 use crate::constants::*;
 use crate::ppu::PPU;
 use crate::vram::RawVRAM;
-use crate::rendering::renderer::*;
+use crate::rendering::renderer::Renderer;
 
-pub trait Mode1Render {
-    fn render_scanline_mode1(&mut self, ppu: &PPU, y: usize);
-    fn decode_4bpp_tile_pixel_from(vram: &RawVRAM, tile_word_base: usize, x: usize, y: usize) -> u8;
-}
-
-impl Mode1Render for Renderer {
-    fn render_scanline_mode1(&mut self, ppu: &PPU, y: usize) {
+impl Renderer {
+    pub fn render_scanline_mode1(&mut self, ppu: &PPU, y: usize) {
         // VRAM word addresses
         let tilemap_base = ppu.regs.bg1_tilemap_addr(); // tilemap
         let tiledata_base = ppu.regs.bg1_tiledata_addr(); // CHR data
