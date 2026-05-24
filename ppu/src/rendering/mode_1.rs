@@ -66,15 +66,11 @@ impl Mode1Render for Renderer {
     }
 
     fn decode_4bpp_tile_pixel_from(vram: &RawVRAM, tile_word_base: usize, x: usize, y: usize) -> u8 {
-        // Planes 0+1: words 0-7
-        let w01 = vram[tile_word_base + y];
-        let p0 = (w01 & 0xFF) as u8; // lo byte = plane 0
-        let p1 = (w01 >> 8) as u8; // hi byte = plane 1
+        // Planes 0+1: p0 = low byte, p1 = high byte
+        let [p0, p1] = vram[tile_word_base + y].to_le_bytes();
 
         // Planes 2+3: words 8-15
-        let w23 = vram[tile_word_base + 8 + y];
-        let p2 = (w23 & 0xFF) as u8; // lo byte = plane 2
-        let p3 = (w23 >> 8) as u8; // hi byte = plane 3
+        let [p2, p3] = vram[tile_word_base + y + 8].to_le_bytes();
 
         let bit = 7 - x;
         ((p0 >> bit) & 1)
