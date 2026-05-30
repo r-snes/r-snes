@@ -26,7 +26,7 @@ impl Renderer {
             let fine_y = py & 7;
 
             // ==========================================================================
-            // Read tilemap entry: tilemap_base is a word address => byte address = * 2
+            // Read tilemap entry
             // ==========================================================================
             let map_word_addr = tilemap_base as usize + tile_row * 32 + tile_col;
             let entry = ppu.vram.memory[map_word_addr];
