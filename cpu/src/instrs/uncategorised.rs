@@ -141,6 +141,10 @@ duplicate! {
     });
 }
 
+cpu_instr_no_inc_pc!(stp {
+    meta END_CYCLE Internal;
+});
+
 #[cfg(test)]
 mod tests {
     use crate::instrs::test_prelude::*;
