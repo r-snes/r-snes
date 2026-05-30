@@ -1,6 +1,6 @@
 # R-SNES CPU software architecture documentation
 
-This is a complete documentation of the relevant decisions made in this crate.
+This is a complete documentation of the relevant design decisions made in this crate.
 
 <div class="warning markdown-alert markdown-alert-warning"> <!-- we use selectors recognised by github AND rustdoc so it works in both -->
 <!-- We have to use raw HTML links (and other elements) here because rustdoc doesn't parse markdown inside of HTML elements -->
