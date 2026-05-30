@@ -67,6 +67,14 @@ fn gui_emu_loop(gui: &mut gui::Gui, mut emu: rsnes::RSnes) -> Option<RSnesEvent>
                 },
                 RSnesEvent::Quit => break 'emu_loop Some(RSnesEvent::Quit),
                 RSnesEvent::Close => break 'emu_loop None,
+                RSnesEvent::ButtonDown => {
+                    emu.bus.io.hvbjoy = 0;
+                    emu.bus.io.joy1 = !0;
+                }
+                RSnesEvent::ButtonUp => {
+                    emu.bus.io.hvbjoy = 0;
+                    emu.bus.io.joy1 = 0;
+                }
             }
         }
         frame_nb += 1;
@@ -117,6 +125,7 @@ fn gui_loop(mut emu: Option<RSnes>) -> Result<(), String> {
                 Err(err) => println!("Error loading ROM: {}", err),
             },
             RSnesEvent::Quit | RSnesEvent::Close => break,
+            _ => {}
         }
     }
 

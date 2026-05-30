@@ -21,6 +21,12 @@ pub enum RSnesEvent {
 
     /// Quit the emulator program altogether
     Quit,
+
+    /// An key mapped to an emulated button has been pressed
+    ButtonDown,
+
+    /// An key mapped to an emulated button has been released
+    ButtonUp,
 }
 
 #[cfg(not(tarpaulin_include))]
@@ -72,17 +78,13 @@ impl Gui {
                 keycode: Some(Keycode::Q),
                 keymod,
                 ..
-            } if keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => {
-                Some(RSnesEvent::Quit)
-            },
+            } if keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => Some(RSnesEvent::Quit),
 
             Event::KeyDown {
                 keycode: Some(Keycode::Escape),
                 repeat: false,
                 ..
-            } => {
-                Some(RSnesEvent::Close)
-            }
+            } => Some(RSnesEvent::Close),
 
             Event::KeyDown {
                 keycode: Some(Keycode::L),
@@ -94,6 +96,22 @@ impl Gui {
                     None => None,
                 }
             }
+
+            Event::KeyDown {
+                keycode: Some(Keycode::Space),
+                repeat: false,
+                keymod,
+                ..
+            } if !keymod
+                .intersects(Mod::LCTRLMOD | Mod::RCTRLMOD | Mod::LALTMOD | Mod::RALTMOD) =>
+            {
+                Some(RSnesEvent::ButtonDown)
+            }
+
+            Event::KeyUp {
+                keycode: Some(Keycode::Space),
+                ..
+            } => Some(RSnesEvent::ButtonUp),
 
             _ => None,
         }
