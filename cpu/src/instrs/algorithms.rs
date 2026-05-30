@@ -30,7 +30,7 @@ pub fn cmp<T: Reg>(a: &mut T, idb: T, p: &mut RegisterP) {
 
 pub fn adc<T: Reg>(a: &mut T, idb: T, p: &mut RegisterP) {
     if p.D {
-        todo!("decimal mode is not supported yet");
+        eprintln!("decimal mode is not supported yet");
     } else {
         let (res, carry_out) = a.carrying_add(idb, p.C);
 
