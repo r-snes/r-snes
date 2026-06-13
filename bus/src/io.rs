@@ -1,4 +1,3 @@
-use crate::constants::{IO_END_ADDRESS, IO_START_ADDRESS};
 use apu::Apu;
 use common::{snes_addr, snes_address::SnesAddress, u16_split::U16Split};
 use ppu::ppu::PPU;
@@ -312,7 +311,7 @@ impl Io {
         );
     }
 
-    fn read_cpu(&mut self, addr: SnesAddress, apu: &mut Apu) -> u8 {
+    fn read_cpu(&mut self, addr: SnesAddress, _: &mut Apu) -> u8 {
         match addr.addr {
             // Data-from-APU register
             // TODO : Link with the actual apu component
@@ -409,7 +408,7 @@ impl Io {
         }
     }
 
-    fn write_cpu(&mut self, value: u8, addr: SnesAddress, apu: &mut Apu) {
+    fn write_cpu(&mut self, value: u8, addr: SnesAddress, _: &mut Apu) {
         match addr.addr {
             // Data-to-APU register
             #[cfg(not(tarpaulin_include))]
@@ -505,127 +504,6 @@ impl Io {
             _ => {}
         }
     }
-
-    #[cfg(not(tarpaulin_include))]
-    fn read_ppu(&mut self, addr: SnesAddress, ppu: &mut PPU) -> u8 {
-        match addr.addr {
-            // MPY result (24-bit)
-            0x2134 => todo!("0x2134 : MPYL read"),
-            0x2135 => todo!("0x2135 : MPYM read"),
-            0x2136 => todo!("0x2136 : MPYH read"),
-
-            // Latch H/V counter
-            0x2137 => todo!("0x2137 : SLHV read"),
-
-            // OAM read
-            0x2138 => todo!("0x2138 : OAMDATAREAD"),
-
-            // VRAM read
-            0x2139 => todo!("0x2139 : VMDATALREAD"),
-            0x213A => todo!("0x213A : VMDATAHREAD"),
-
-            // CGRAM read (2-step)
-            0x213B => todo!("0x213B : CGDATAREAD"),
-
-            // H/V counters (2-step reads)
-            0x213C => todo!("0x213C : OPHCT read"),
-            0x213D => todo!("0x213D : OPVCT read"),
-
-            // Status registers
-            0x213E => todo!("0x213E : STAT77 read"),
-            0x213F => todo!("0x213F : STAT78 read"),
-
-            // Open bus, may need to have a custom ppu open bus
-            _ => 0,
-        }
-    }
-
-    #[cfg(not(tarpaulin_include))]
-    fn write_ppu(&mut self, value: u8, addr: SnesAddress, ppu: &mut PPU) {
-        match addr.addr {
-            // Display / OBJ
-            0x2100 => todo!("0x2100 : INIDISP write"),
-            0x2101 => todo!("0x2101 : OBJSEL write"),
-
-            // OAM
-            0x2102 => todo!("0x2102 : OAMADDL write"),
-            0x2103 => todo!("0x2103 : OAMADDH write"),
-            0x2104 => todo!("0x2104 : OAMDATA write"),
-
-            // BG mode / mosaic
-            0x2105 => todo!("0x2105 : BGMODE write"),
-            0x2106 => todo!("0x2106 : MOSAIC write"),
-
-            // BG tilemap
-            0x2107 => todo!("0x2107 : BG1SC write"),
-            0x2108 => todo!("0x2108 : BG2SC write"),
-            0x2109 => todo!("0x2109 : BG3SC write"),
-            0x210A => todo!("0x210A : BG4SC write"),
-
-            // BG CHR base
-            0x210B => todo!("0x210B : BG12NBA write"),
-            0x210C => todo!("0x210C : BG34NBA write"),
-
-            // Scroll registers (W8x2)
-            0x210D => todo!("0x210D : BG1HOFS / M7HOFS write"),
-            0x210E => todo!("0x210E : BG1VOFS / M7VOFS write"),
-            0x210F => todo!("0x210F : BG2HOFS write"),
-            0x2110 => todo!("0x2110 : BG2VOFS write"),
-            0x2111 => todo!("0x2111 : BG3HOFS write"),
-            0x2112 => todo!("0x2112 : BG3VOFS write"),
-            0x2113 => todo!("0x2113 : BG4HOFS write"),
-            0x2114 => todo!("0x2114 : BG4VOFS write"),
-
-            // VRAM access
-            0x2115 => todo!("0x2115 : VMAIN write"),
-            0x2116 => todo!("0x2116 : VMADDL write"),
-            0x2117 => todo!("0x2117 : VMADDH write"),
-            0x2118 => todo!("0x2118 : VMDATAL write"),
-            0x2119 => todo!("0x2119 : VMDATAH write"),
-
-            // Mode 7
-            0x211A => todo!("0x211A : M7SEL write"),
-            0x211B => todo!("0x211B : M7A write"),
-            0x211C => todo!("0x211C : M7B write"),
-            0x211D => todo!("0x211D : M7C write"),
-            0x211E => todo!("0x211E : M7D write"),
-            0x211F => todo!("0x211F : M7X write"),
-            0x2120 => todo!("0x2120 : M7Y write"),
-
-            // CGRAM
-            0x2121 => todo!("0x2121 : CGADD write"),
-            0x2122 => todo!("0x2122 : CGDATA write"),
-
-            // Window registers
-            0x2123 => todo!("0x2123 : W12SEL write"),
-            0x2124 => todo!("0x2124 : W34SEL write"),
-            0x2125 => todo!("0x2125 : WOBJSEL write"),
-            0x2126 => todo!("0x2126 : WH0 write"),
-            0x2127 => todo!("0x2127 : WH1 write"),
-            0x2128 => todo!("0x2128 : WH2 write"),
-            0x2129 => todo!("0x2129 : WH3 write"),
-
-            // Window logic
-            0x212A => todo!("0x212A : WBGLOG write"),
-            0x212B => todo!("0x212B : WOBJLOG write"),
-
-            // Screen enable
-            0x212C => todo!("0x212C : TM write"),
-            0x212D => todo!("0x212D : TS write"),
-            0x212E => todo!("0x212E : TMW write"),
-            0x212F => todo!("0x212F : TSW write"),
-
-            // Color math
-            0x2130 => todo!("0x2130 : CGWSEL write"),
-            0x2131 => todo!("0x2131 : CGADSUB write"),
-            0x2132 => todo!("0x2132 : COLDATA write"),
-
-            // Screen settings
-            0x2133 => todo!("0x2133 : SETINI write"),
-
-            _ => {}
-        }
-    }
 }
 
 impl Io {
@@ -637,20 +515,14 @@ impl Io {
     /// Panics if the address does not map to a valid I/O memory location.
     pub fn read(&mut self, addr: SnesAddress, ppu: &mut PPU, apu: &mut Apu) -> u8 {
         self.open_bus = match addr.bank {
-            0x00..=0x3F | 0x80..=0xBF
-                if addr.addr >= IO_START_ADDRESS && addr.addr < IO_END_ADDRESS =>
-            {
-                match addr.addr {
-                    0x2000..0x2100 => self.open_bus,
-                    #[cfg(not(tarpaulin_include))]
-                    0x2100..0x2140 => self.read_ppu(addr, ppu),
-                    0x2140..0x4380 => self.read_cpu(addr, apu),
-                    0x4380..0x6000 => self.open_bus,
+            0x00..=0x3F | 0x80..=0xBF => match addr.addr {
+                0x2000..0x2100 => self.open_bus,
+                0x2100..0x2140 => ppu.read(addr.addr),
+                0x2140..0x4380 => self.read_cpu(addr, apu),
+                0x4380..0x6000 => self.open_bus,
 
-                    #[cfg(not(tarpaulin_include))]
-                    _ => unreachable!(),
-                }
-            }
+                _ => Self::panic_invalid_addr(addr),
+            },
             _ => Self::panic_invalid_addr(addr),
         };
         self.open_bus
@@ -665,20 +537,14 @@ impl Io {
     pub fn write(&mut self, addr: SnesAddress, value: u8, ppu: &mut PPU, apu: &mut Apu) {
         self.open_bus = value;
         match addr.bank {
-            0x00..=0x3F | 0x80..=0xBF
-                if addr.addr >= IO_START_ADDRESS && addr.addr < IO_END_ADDRESS =>
-            {
-                match addr.addr {
-                    0x2000..0x2100 => {}
-                    #[cfg(not(tarpaulin_include))]
-                    0x2100..0x2140 => self.write_ppu(value, addr, ppu),
-                    0x2140..0x4380 => self.write_cpu(value, addr, apu),
-                    0x4380..0x6000 => {}
+            0x00..=0x3F | 0x80..=0xBF => match addr.addr {
+                0x2000..0x2100 => {}
+                0x2100..0x2140 => ppu.write(addr.addr, value),
+                0x2140..0x4380 => self.write_cpu(value, addr, apu),
+                0x4380..0x6000 => {}
 
-                    #[cfg(not(tarpaulin_include))]
-                    _ => unreachable!(),
-                }
-            }
+                _ => Self::panic_invalid_addr(addr),
+            },
             _ => Self::panic_invalid_addr(addr),
         };
     }
@@ -987,10 +853,10 @@ mod tests {
         io.open_bus = cpu_open_bus_value;
 
         let mut value_inc = 0;
-        for channel_nb in (0..8) {
+        for channel_nb in 0..8 {
             let channel_addr = snes_addr!(0:0x4300 + 0x10 * channel_nb);
 
-            for dma_reg in (0x0..=0xF) {
+            for dma_reg in 0x0..=0xF {
                 let reg_addr = snes_addr!(0:channel_addr.addr + dma_reg);
 
                 io.write(reg_addr, value_inc, &mut ppu, &mut apu);
