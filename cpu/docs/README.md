@@ -29,7 +29,7 @@ impl CPU {
 ```
 (this public API implies that the CPU has arbitrary access the entire addressable space during each cycle, which isn't the case, but we'll come back to this later)
 
-However, in the SNES, CPU cycles may take a different amount of time (counted in master cycles, which take a fixed amount of time) depending on what *type* of cycle the CPU performed. There are three types of cycles: read, write and internal.
+However, in the SNES, CPU cycles may take a different amount of time (counted in master cycles, which take a fixed amount of time) depending on what type of cycle the CPU performed. There are three types of cycles: read, write and internal.
 
 So we create this basic enum:
 ```rust
