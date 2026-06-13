@@ -133,7 +133,7 @@ impl<'a> PluginPermRequest<'a> {
 
 #[cfg(test)]
 mod tests {
-    use piccolo::ExternError;
+    use crate::permission::Permission;
 
     use super::*;
 
@@ -152,7 +152,7 @@ mod tests {
     fn load_empty_plugin() {
         let plugin = Plugin::load_from_raw(b"return { permissions = {}}", None).unwrap();
 
-        // nothing else to assert yet, we just expect the plugin to load properly
+        assert!(plugin.table.perms.is_none(), "empty perm table gives 0 permission");
     }
 
     #[test]

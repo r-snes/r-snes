@@ -115,7 +115,7 @@ mod test {
     fn build_from_lua<T, F>(lua_str: &str, f: F) -> T
     where F: for<'gc> FnOnce(Context<'gc>, Value<'gc>) -> T {
         let mut lua = Lua::empty();
-        
+
         let ex = lua.try_enter(|ctx| {
             let closure = Closure::load(ctx, None, format!("return {}", lua_str).as_bytes())?;
             let ex = Executor::start(ctx, closure.into(), ());
