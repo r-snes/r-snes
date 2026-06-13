@@ -299,13 +299,13 @@ The logic is rather simple, so that it's simple to implement and easily predicta
 Meta instr expansions can contain both cycle code (code that will end up in one of the cycle functions) and cycle boundaries. This means that, if at a given point in parsing an `InstrBody`, we have two completed cycles and some code to be placed at the beginning of the third, a meta instr expansion can, for example:
 
 - Just append code in the third cycle<br>
-  This is what some `SET_ADDRMODE_*` meta instrs do (immediate and stack for example, because they don't need cycles to know the address of the operand, so they just set a value in the address bus).
+  → This is what some `SET_ADDRMODE_*` meta instrs do (immediate and stack for example, because they don't need cycles to know the address of the operand, so they just set a value in the address bus).
 - Just "close" the third cycle as it is, assigning it a cycle type<br>
-  This is what the `END_CYCLE` meta-instruction does, closing the cycle with a cycle type given as parameter.
+  → This is what the `END_CYCLE` meta-instruction does, closing the cycle with a cycle type given as parameter.
 - Append code in the third cycle and close it with a given type<br>
-  This is what the `FETCH8_IMM` meta instr does: it places the address bus to point at an immediate operand, and marks the cycle as `Read`.
+  → This is what the `FETCH8_IMM` meta instr does: it places the address bus to point at an immediate operand, and marks the cycle as `Read`.
 - Close the third cycle (giving it a type), and start writing code in the fourth cycle<br>
-  This is what the `FETCH8_IMM_INTO` meta instr does, it first generates the same thing as `FETCH8_IMM` (by calling it directly), and then generates an assignment from the read value to the destination passed as argument in the next cycle.
+  → This is what the `FETCH8_IMM_INTO` meta instr does, it first generates the same thing as `FETCH8_IMM` (by calling it directly), and then generates an assignment from the read value to the destination passed as argument in the next cycle.
 - Do the same for any number of cycles: for example append some code in the third, completely generate the fourth and fifth cycles, then start putting some code in the sixth.
 
 This is the nice thing about meta instructions: they are composable, across cycles: we can use them to factor out logic that spans more than one cycle in a way that allows reuse without duplication.
