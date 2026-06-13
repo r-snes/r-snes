@@ -34,7 +34,7 @@ pub struct PluginTable {
     /// Actions which can be run manually by the user
     pub actions: PluginActions,
 
-    /// The lua function that will be run when the plugin is successully
+    /// The lua function that will be run when the plugin is successfully
     /// loaded, right after the user accepted the permission request
     pub init: Option<picc::StashedClosure>,
 }
@@ -174,28 +174,37 @@ impl Plugin {
         }
     }
 
+    /// Run the init action registered in the plugin table
     pub fn run_init(&mut self) -> Result<(), picc::ExternError> {
-        if let Some(ref init) = self.table.init {
-            return Self::run_lua(&mut self.lua, init);
-        }
-        Ok(())
+        Self::run_option_lua(&mut self.lua, &self.table.init)
     }
 
+    /// Run the default action registered in the plugin table
     pub fn run_default(&mut self) -> Result<(), picc::ExternError> {
-        if let Some(ref default) = self.table.actions.default {
-            return Self::run_lua(&mut self.lua, default);
-        }
-        Ok(())
+        Self::run_option_lua(&mut self.lua, &self.table.actions.default)
     }
 
+    /// Run an Option-wrapped stashed lua function, returning Ok(())
+    /// in case there was None
+    pub fn run_option_lua<F>(lua: &mut picc::Lua, stashed: &Option<F>) -> Result<(), picc::ExternError>
+    where
+        F: for<'gc> picc::stash::Fetchable<Fetched<'gc>: Into<picc::Function<'gc>>>,
+    {
+        let Some(stashed) = stashed.as_ref() else {
+            return Ok(());
+        };
+        Self::run_lua(lua, stashed)
+    }
+
+    /// Runs a stashed lua function in the given lua context
     pub fn run_lua<F, R>(lua: &mut picc::Lua, stashed: &F) -> Result<R, picc::ExternError>
     where
         F: for<'gc> picc::stash::Fetchable<Fetched<'gc>: Into<picc::Function<'gc>>>,
         R: for<'gc> picc::FromMultiValue<'gc>
     {
         let ex = lua.enter(|ctx| {
-            let func = ctx.fetch(stashed);
-            let ex = piccolo::Executor::start(ctx, func.into(), ());
+            let func = ctx.fetch(stashed).into();
+            let ex = piccolo::Executor::start(ctx, func, ());
 
             ctx.stash(ex)
         });
