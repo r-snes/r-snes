@@ -394,7 +394,8 @@ if post_instr.is_empty() {
 
 We could also generate a named function in place of a closure and pass that instead, either way works.
 
-Also, the nice thing with this `InstrBody` type is that we're actually able to use it as the return type of `MetaInstruction::expand()`: meta instrs which just append code to the current cycle but don't create any new cycles can return an `InstrBody` with an empty `cycles` vector but some code in `post_instr`, and meta instrs which want to close a cycle without adding code in it can simply return a `cycles` vector containing a single `Cycle`, which has an empty body, so that when concatenating into another `InstrBody`, it will basically take its `post_instr`, and move it into a new `Cycle` in the `cycles` vector.<br>
+Also, the nice thing with this `InstrBody` type is that we're actually able to use it as the return type of `MetaInstruction::expand()`: meta instrs which just append code to the current cycle but don't create any new cycles can return an `InstrBody` with an empty `cycles` vector but some code in `post_instr`, and meta instrs which want to close a cycle without adding code in it can simply return a `cycles` vector containing a single `Cycle`, which has an empty body, so that when concatenating into another `InstrBody`, it will basically take its `post_instr`, and move it into a new `Cycle` in the `cycles` vector.
+
 This is what is done in this `AddAssign` impl:
 
 ```rust
