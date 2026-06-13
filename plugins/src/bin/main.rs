@@ -30,9 +30,9 @@ impl eframe::App for PermRequestApp<'_, '_> {
 fn main() -> eframe::Result {
     // Load the Lua file
     let filename = "./plugin.lua";
-    let plugin = Plugin::load(std::path::Path::new(filename));
+    let plugin = Plugin::load_from_file(std::path::Path::new(filename));
 
-    let plugin = match plugin {
+    let mut plugin = match plugin {
         Err(e) => {
             dbg!(e);
             std::process::exit(1);
@@ -47,7 +47,7 @@ fn main() -> eframe::Result {
         ..Default::default()
     };
 
-    let title = format!("Loading plugin {}", plugin.path.display());
+    let title = format!("Loading plugin {}", plugin.path.as_ref().unwrap().display());
     let mut perm_request = plugin.perm_request();
 
     eframe::run_native(
@@ -59,7 +59,14 @@ fn main() -> eframe::Result {
     if perm_request.allow_all {
         println!("\x1B[1;32m✔\x1B[0m permissions granted");
     } else {
-        println!("\x1B[1;31m✘\x1B[0m permission denied");
+        println!("\x1B[1;31m✘\x1B[0m permission denied, exiting");
+        return Ok(());
+    }
+
+    plugin.run_init().unwrap();
+
+    for _ in 1..=5 {
+        plugin.run_default().unwrap();
     }
 
     Ok(())
