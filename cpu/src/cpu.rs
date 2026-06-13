@@ -7,7 +7,7 @@ use instr_metalang_procmacro::cpu_instr_no_inc_pc;
 
 /// Resumable main CPU of the SNES, a 65C816
 ///
-/// The primary way to use this CPU is through the [`cycle`] function,
+/// The primary way to use this CPU is through the [`Self::cycle`] function,
 /// which allows to resume execution between cycles, and inspecting
 /// what kind of cycle (memory access or internal) the CPU just finished.
 pub struct CPU {
@@ -87,8 +87,11 @@ impl CPU {
     /// This function is the core part of the public API to this struct.
     /// See the following example usage:
     ///
-    /// ```rs
-    /// let mut cpu = CPU::new(Registers::default);
+    /// ```no_run
+    /// # use cpu::cpu::{CPU, CycleResult};
+    /// # use cpu::registers::Registers;
+    ///
+    /// let mut cpu = CPU::poweron();
     ///
     /// // Example RAM, would be much more complicated in practice
     /// let mut ram = [0u8; 65536 * 256];
@@ -98,36 +101,36 @@ impl CPU {
     ///         // The CPU completed an internal cycle, no action required
     ///         CycleResult::Internal => {
     ///             // sleep for the amount of time for internal cycles
-    ///         },
+    ///         }
     ///
     ///         // The CPU wants to read from memory
     ///         CycleResult::Read => {
     ///             // Get the read address
-    ///             let addr = *cpu.address_bus();
+    ///             let addr = *cpu.addr_bus();
     ///
     ///             // Read the byte from RAM
-    ///             let byte = ram[(addr.bank << 16) | addr.addr];
+    ///             let byte = ram[((addr.bank as usize) << 16) | addr.addr as usize];
     ///
     ///             // Inject the byte from RAM into the CPU data bus
     ///             cpu.data_bus = byte;
     ///
     ///             // sleep for the amount of time depending on the read address
-    ///         },
+    ///         }
     ///
     ///         // The CPU wants to write to memory
     ///         CycleResult::Write => {
     ///             // Get the write address
-    ///             let addr = *cpu.address_bus();
+    ///             let addr = *cpu.addr_bus();
     ///
     ///             // Get the byte to write
     ///             let byte = cpu.data_bus;
     ///
     ///             // Inject the byte from the CPU data bus into RAM
-    ///             ram[(addr.bank << 16) | addr.addr] = byte;
+    ///             ram[((addr.bank as usize) << 16) | addr.addr as usize] = byte;
     ///
     ///             // sleep for the amount of time depending on the write address
     ///         }
-    ///     },
+    ///     }
     /// }
     /// ```
     ///
