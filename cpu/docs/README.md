@@ -4,7 +4,7 @@ This is a complete documentation of the relevant design decisions made in this c
 
 <div class="warning markdown-alert markdown-alert-warning"> <!-- we use selectors recognised by github AND rustdoc so it works in both -->
 <!-- We have to use raw HTML links (and other elements) here because rustdoc doesn't parse markdown inside of HTML elements -->
-If you’re just looking for information on how to use this crate, go to the documentation of the <a href="../cpu/struct.CPU.html" title="struct cpu::cpu::CPU"><code>CPU</code></a> struct, or directly to the documentation of <a href="../cpu/struct.CPU.html#method.cycle" title="method cpu::cpu::CPU::cycle"><code>CPU::cycle</code></a> (which is probably all you need to use the CPU in client code)
+If you’re just looking for information on how to use this crate, go to the documentation of the <a href="../cpu/struct.CPU.html" title="struct cpu::cpu::CPU"><code>CPU</code></a> struct, or directly to the documentation of <a href="../cpu/struct.CPU.html#method.cycle" title="method cpu::cpu::CPU::cycle"><code>CPU::cycle</code></a> (which is probably all you need to use the CPU in client code).
 </div>
 
 Below are explanations and justifications of the public API of the crate, the internal design of the `cycle` function, and the meta-language used to actually implement instructions. The particular implementations of instructions are not discussed however.
@@ -82,7 +82,7 @@ impl CPU {
 ```
 
 The idea is that all data transfers go through the public `data_bus` member: when the cycle returns a `Write`, client code using the CPU writes the byte contained in the data bus at the address returned by `addr_bus`, whereas when the CPU returns a read cycle, the client code should write the value in the public `data_bus` field (this is why it is public).
-This way, client code can know where the CPU is accessing memory, and we directly encode the "one byte per cycle" constraint in our API in such a way that it is impossible to break the rule when implementing instruction.
+This way, client code can know where the CPU is accessing memory, and we directly encode the "one byte per cycle" constraint in our API in such a way that it is impossible to break the rule when implementing instructions.
 
 ## Internals
 
@@ -145,7 +145,7 @@ impl CPU {
 
 By returning arbitrary function pointers, we are able to account for whatever hardware quirk we may discover we need to implement, of which we found many. The two main categories are:
 
-- Some instructions have "conditional idles" (branch instructions for example), which means they will optionally spend an internal cycle more than usual depending on some condition (for branch instructions: when the condition to branch out is met for example)
+- Some instructions have "conditional idles" (branch instructions for example), which means they will optionally spend an internal cycle more than usual depending on some condition (for branch instructions: when the condition to branch out is met for example).
 - All instructions which read or write the A, X or Y registers to memory will have 1 less cycle when the register (A, X, or Y) is in 8-bit mode compared to when it is in 16-bit mode, because we can only transfer one byte of the register per cycle.
 
 ### Meta-language
@@ -219,7 +219,7 @@ cpu_instr!(lda_imm {
 In a vacuum this seems like a whole lot of magic, but it actually concisely describes all an immediate LDA needs to do:
 
 - `meta SET_OP_SIZE AccMem` set the "variable width" operations to depend on the size of A (which is the case for instructions touching A (the accumulator) or memory, hence the name `AccMem`). This basically "tells" the code generator that in the case it needs to create logical branches based on the size of a variable-width operand, it should use the condition `!cpu.registers.E && !cpu.registers.P.M` (`true` for the 16-bit case).
-- `meta SET_ADDRMODE_IMM` properly sets the address bus to point to an "immediate" operand (an operand located right after the opcode of the instruction)
+- `meta SET_ADDRMODE_IMM` properly sets the address bus to point to an "immediate" operand (an operand located right after the opcode of the instruction).
 - `meta FETCH_OP_INTO cpu.registers.A` fetches a variable-width operand (which we previously set to depend on `AccMem`) into the `A` register. Quite notably, this will implicitly (automatically) generate "cycle boundaries", properly requesting read cycles, and then assigning the read value in its destination at the start of the next cycle.
 - `meta SET_NZ_OP cpu.registers.A` sets the `N` and `Z` registers depending on the size of a variable-width operand (using the variable width we set to `AccMem`), `cpu.registers.A` in this case. This is needed especially for the `N` flag, because the comparison isn't the same between a `u8` and a `u16`: `u8` needs `N = op > 0x7f`, `u16` needs `N = op > 0x7fff`.
 
@@ -255,7 +255,7 @@ pub(crate) struct Cycle {
 }
 ```
 
-This is really simple: an instruction body is a list of cycles, which all have a fixed cycle type, and a given function body (the rust code which will be the body of the cycle function)
+This is really simple: an instruction body is a list of cycles, which all have a fixed cycle type, and a given function body (the rust code which will be the body of the cycle function).
 
 Then an abstraction we need quite early on are meta-instructions: the basic building block of the meta language. In the language itself, meta-instructions are things which start with the `meta` keyword, then any number of tokens until a semicolon.
 
@@ -293,19 +293,19 @@ impl InstrBody {
 The logic is rather simple, so that it's simple to implement and easily predictable. We start with an empty `InstrBody` (using the `default()` constructor), then in a loop, we (in order):
 
 - Append to the `InstrBody` (in the current cycle we are building up) any tokens found until we encounter a `meta` keyword (which denotes the start of a meta instruction). This is here to allow us to insert any rust code between meta instructions, and it will appear verbatim in the cycle function.
-- (break out of the loop now if there are no more tokens, which will happen if some `InstrBody` ends with raw rust code instead of a meta instruction)
+- (break out of the loop now if there are no more tokens, which will happen if some `InstrBody` ends with raw rust code instead of a meta instruction.)
 - Parse the meta-instruction we found (between the `meta` keyword and the next semicolon, and then `expand` it into the `InstrBody` we're building up.
 
 Meta instr expansions can contain both cycle code (code that will end up in one of the cycle functions) and cycle boundaries. This means that, if at a given point in parsing an `InstrBody`, we have two completed cycles and some code to be placed at the beginning of the third, a meta instr expansion can, for example:
 
 - Just append code in the third cycle<br>
-  This is what some `SET_ADDRMODE_*` meta instrs do (immediate and stack for example, because they don't need cycles to know the address of the operand, so they just set a value in the address bus)
+  This is what some `SET_ADDRMODE_*` meta instrs do (immediate and stack for example, because they don't need cycles to know the address of the operand, so they just set a value in the address bus).
 - Just "close" the third cycle as it is, assigning it a cycle type<br>
   This is what the `END_CYCLE` meta-instruction does, closing the cycle with a cycle type given as parameter.
 - Append code in the third cycle and close it with a given type<br>
-  This is what the `FETCH8_IMM` meta instr does: it places the address bus to point at an immediate operand, and marks the cycle as `Read`
+  This is what the `FETCH8_IMM` meta instr does: it places the address bus to point at an immediate operand, and marks the cycle as `Read`.
 - Close the third cycle (giving it a type), and start writing code in the fourth cycle<br>
-  This is what the `FETCH8_IMM_INTO` meta instr does, it first generates the same thing as `FETCH8_IMM` (by calling it directly), and then generates an assignment from the read value to the destination passed as argument in the next cycle
+  This is what the `FETCH8_IMM_INTO` meta instr does, it first generates the same thing as `FETCH8_IMM` (by calling it directly), and then generates an assignment from the read value to the destination passed as argument in the next cycle.
 - Do the same for any number of cycles: for example append some code in the third, completely generate the fourth and fifth cycles, then start putting some code in the sixth.
 
 This is the nice thing about meta instructions: they are composable, across cycles: we can use them to factor out logic that spans more than one cycle in a way that allows reuse without duplication.
@@ -517,7 +517,7 @@ pub(crate) enum VarWidth<T, U = ()> {
 ```
 (don't pay too much attention to the `data: U` yet, it's almost always `()` anyways)
 
-Then, we change `InstrBody::parse()` function to return a `VarWidth<InstrBody>`, and meta instr expansions also are `VarWidth<InstrBody>`, so that we can have meta instrs that generate differente code in the 8-bit branch and the 16-bit branch
+Then, we change `InstrBody::parse()` function to return a `VarWidth<InstrBody>`, and meta instr expansions also are `VarWidth<InstrBody>`, so that we can have meta instrs that generate differente code in the 8-bit branch and the 16-bit branch.
 
 We're able to allow easy composition of `VarWidth`s with the following `AddAssign` impls:
 
