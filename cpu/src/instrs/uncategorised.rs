@@ -141,9 +141,15 @@ duplicate! {
     });
 }
 
-cpu_instr_no_inc_pc!(stp {
-    meta END_CYCLE Internal;
-});
+pub(crate) use stp::*;
+mod stp {
+    use crate::instrs::prelude::*;
+
+    pub(crate) fn stp_cyc1(_: &mut CPU) -> (CycleResult, InstrCycle) {
+        // just return internal cycles indefinitely
+        (Internal, InstrCycle(stp_cyc1))
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -450,5 +456,20 @@ mod tests {
         expected_regs.Y = 1;
 
         assert_eq!(*cpu.regs(), expected_regs);
+    }
+
+    #[test]
+    fn stp_spin_loops() {
+        let mut regs = Registers::default();
+        regs.PB = 0x12;
+        regs.PC = 0x3456;
+
+        let mut cpu = CPU::new(regs);
+
+        expect_opcode_fetch(&mut cpu, 0xdb);
+
+        for _ in 0..100 {
+            expect_internal_cycle(&mut cpu, "spin loop");
+        }
     }
 }
