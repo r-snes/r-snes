@@ -9,6 +9,7 @@ mod algorithms;
 
 mod branches;
 mod flags;
+mod interrupts;
 mod jumps;
 mod loads;
 mod stores;
