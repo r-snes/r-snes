@@ -1,8 +1,11 @@
 use crate::constants::*;
 use crate::ppu::PPU;
 
+/// Raw byte array of the framebuffer in RGB888
+pub type RawFramebuffer = [u8; SCREEN_WIDTH * SCREEN_HEIGHT * 3];
+
 pub struct Renderer {
-    pub framebuffer: Box<[u8; SCREEN_WIDTH * SCREEN_HEIGHT * 3]>,
+    pub framebuffer: Box<RawFramebuffer>,
     pub current_brightness: u8,
 
     brightness_delay: u8,
@@ -12,7 +15,7 @@ impl Renderer {
     pub fn new() -> Self {
         Self {
             framebuffer: Box::new([0; SCREEN_WIDTH * SCREEN_HEIGHT * 3]),
-            current_brightness: 15, // full brightness 
+            current_brightness: 15, // full brightness
             brightness_delay: 0,
         }
     }
@@ -28,6 +31,7 @@ impl Renderer {
         self.update_brightness(ppu.brightness());
 
         match ppu.regs.bg_mode() {
+            0 => self.render_scanline_mode0(ppu, y),
             1 => self.render_scanline_mode1(ppu, y),
             mode => {
                 self.render_full_black(y);
