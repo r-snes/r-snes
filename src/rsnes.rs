@@ -1,8 +1,12 @@
+#[cfg(feature = "plugins")]
+mod rsnes_plugin;
+
 use apu::Apu;
 use bus::Bus;
 use common::snes_address::SnesAddress;
 use cpu::cpu::CPU;
 use cpu::cpu::CycleResult;
+
 use ppu::ppu::PPU;
 use std::error::Error;
 use std::path::Path;
@@ -161,6 +165,7 @@ impl RSnes {
         self.master_cycles += 1;
     }
 }
+
 
 #[cfg(test)]
 mod tests {

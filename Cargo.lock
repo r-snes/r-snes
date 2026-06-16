@@ -2638,6 +2638,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "piccolo-util"
+version = "0.3.3"
+source = "git+https://github.com/kyren/piccolo#ce709eb1dae5c543cbc78e7e12bb80249d88c55f"
+dependencies = [
+ "gc-arena",
+ "piccolo",
+ "serde",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "pin-project"
 version = "1.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2887,6 +2898,9 @@ dependencies = [
  "clap",
  "common",
  "cpu",
+ "piccolo",
+ "piccolo-util",
+ "plugins",
  "ppu",
  "rfd",
  "sdl2",

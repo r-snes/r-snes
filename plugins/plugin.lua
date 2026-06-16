@@ -1,14 +1,18 @@
 return {
     permissions = "all",
     init = function()
-        i = 10
-        print("plugin initialised: i =", i)
+        print("loaded rsnes? type: " .. type(rsnes))
+        print("loaded regs? type: " .. type(regs))
+
+        print("plugin: addrbus is currently " .. regs.bus_bank .. ":" .. regs.bus_addr)
+        print("plugin: PB:PC is currently " .. regs.pb .. ":" .. regs.pc)
+        regs.pb = 0xaa
+        print("plugin: PB:PC is currently " .. regs.pb .. ":" .. regs.pc)
     end,
 
     actions = {
         default = function()
-            i = i + 1
-            print("ran plugin default action, i =", i)
+            print("ran plugin default action")
         end,
     }
 }
