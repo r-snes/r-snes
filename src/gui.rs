@@ -11,7 +11,7 @@ pub struct Gui {
     event_pump: sdl2::EventPump,
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Debug)]
 pub enum RSnesEvent {
     /// Load a new ROM, showing a file picker (closes current game)
     LoadRom { path: PathBuf },
