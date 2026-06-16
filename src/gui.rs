@@ -14,7 +14,9 @@ pub struct Gui {
 #[derive(PartialEq, Eq, Debug)]
 pub enum RSnesEvent {
     /// Load a new ROM, showing a file picker (closes current game)
-    LoadRom { path: PathBuf },
+    LoadRom {
+        path: PathBuf,
+    },
 
     /// Close the currently open game (or quit if no game open)
     Close,
@@ -27,6 +29,9 @@ pub enum RSnesEvent {
 
     /// An key mapped to an emulated button has been released
     ButtonUp,
+
+    /// Run the `default` action of a plugin (if a plugin is loaded, and if it defines one)
+    RunPluginDefault,
 }
 
 #[cfg(not(tarpaulin_include))]
@@ -112,6 +117,16 @@ impl Gui {
                 keycode: Some(Keycode::Space),
                 ..
             } => Some(RSnesEvent::ButtonUp),
+
+            Event::KeyDown {
+                keycode: Some(Keycode::R),
+                keymod,
+                ..
+            } if !keymod
+                .intersects(Mod::LCTRLMOD | Mod::RCTRLMOD | Mod::LALTMOD | Mod::RALTMOD) =>
+            {
+                Some(RSnesEvent::RunPluginDefault)
+            }
 
             _ => None,
         }

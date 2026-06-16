@@ -40,14 +40,32 @@ fn gui_emu_loop(gui: &mut gui::Gui, mut emu: rsnes::RSnes) -> Option<RSnesEvent>
         plugin.run_init().unwrap();
     }
 
-    #[cfg(feature = "plugins")]
-    let mut emu = emu_rc.borrow_mut();
-    #[cfg(not(feature = "plugins"))]
-    let mut emu = &mut emu;
+    struct Emu {
+        #[cfg(not(feature="plugins"))]
+        emu: RSnes,
 
-    println!("actual addr is {:?}", emu.cpu.addr_bus());
+        #[cfg(feature="plugins")]
+        emu: Rc<RefCell<RSnes>>,
+    }
+
+    impl Emu {
+        fn get_mut(&mut self) -> impl DerefMut<Target = RSnes> {
+            #[cfg(feature= "plugins")]
+            return self.emu.borrow_mut();
+
+            #[cfg(not(feature= "plugins"))]
+            return &mut self.emu;
+        }
+    }
+
+    #[cfg(feature = "plugins")]
+    let mut emu = Emu { emu: emu_rc };
+    #[cfg(not(feature = "plugins"))]
+    let mut emu = Emu { emu };
 
     let closing_ev = 'emu_loop: loop {
+        let mut emu_mut = emu.get_mut();
+
         // Get new delta based on current Instant::now()
         let current_instant = Instant::now();
         let delta = current_instant.duration_since(last_instant).as_secs_f64();
@@ -68,7 +86,7 @@ fn gui_emu_loop(gui: &mut gui::Gui, mut emu: rsnes::RSnes) -> Option<RSnesEvent>
 
         while master_cycle_accum >= RSnes::MASTER_CYCLE_DURATION {
             master_cycle_accum -= RSnes::MASTER_CYCLE_DURATION;
-            emu.update();
+            emu_mut.update();
         }
 
         // Window update if frame treshold is crossed
@@ -79,14 +97,16 @@ fn gui_emu_loop(gui: &mut gui::Gui, mut emu: rsnes::RSnes) -> Option<RSnesEvent>
 
         // temporary: render full PPU frame for each GUI frame
         for y in 0..SCREEN_HEIGHT {
-            let RSnes { ppu, ppu_renderer, .. } = &mut *emu;
+            let RSnes { ppu, ppu_renderer, .. } = &mut *emu_mut;
             ppu_renderer.render_scanline(ppu, y);
-            emu.ppu.step_scanline();
+            emu_mut.ppu.step_scanline();
         }
         // temporary: toggle VBLANK each rendered frame
-        emu.bus.io.rdnmi = !emu.bus.io.rdnmi;
+        emu_mut.bus.io.rdnmi = !emu_mut.bus.io.rdnmi;
 
-        for state_event in gui.update(&emu.ppu_renderer.framebuffer) {
+        let events = gui.update(&emu_mut.ppu_renderer.framebuffer);
+        drop(emu_mut); // release the RefCell so that we're able to call plugins
+        for state_event in events {
             match state_event {
                 // RSnesEvent::LoadRom { path } => match rsnes::RSnes::load_rom(&path) {
                 //     Ok(emu_) => emu = emu_,
@@ -95,13 +115,21 @@ fn gui_emu_loop(gui: &mut gui::Gui, mut emu: rsnes::RSnes) -> Option<RSnesEvent>
                 RSnesEvent::Quit => break 'emu_loop Some(RSnesEvent::Quit),
                 RSnesEvent::Close => break 'emu_loop None,
                 RSnesEvent::ButtonDown => {
-                    emu.bus.io.hvbjoy = 0;
-                    emu.bus.io.joy1 = !0;
+                    let mut emu_mut = emu.get_mut();
+                    emu_mut.bus.io.hvbjoy = 0;
+                    emu_mut.bus.io.joy1 = !0;
                 }
                 RSnesEvent::ButtonUp => {
-                    emu.bus.io.hvbjoy = 0;
-                    emu.bus.io.joy1 = 0;
+                    let mut emu_mut = emu.get_mut();
+                    emu_mut.bus.io.hvbjoy = 0;
+                    emu_mut.bus.io.joy1 = 0;
                 }
+
+                #[cfg(feature = "plugins")]
+                RSnesEvent::RunPluginDefault => {
+                    plugin.run_default().unwrap();
+                }
+
                 e => println!("ignored event: {e:?}"),
             }
         }
