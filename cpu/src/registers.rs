@@ -127,16 +127,16 @@ impl From<u8> for RegisterP {
     }
 }
 
-impl Into<u8> for RegisterP {
-    fn into(self) -> u8 {
-        u8::from(self.C) << 0
-            | u8::from(self.Z) << 1
-            | u8::from(self.I) << 2
-            | u8::from(self.D) << 3
-            | u8::from(self.X) << 4
-            | u8::from(self.M) << 5
-            | u8::from(self.V) << 6
-            | u8::from(self.N) << 7
+impl From<RegisterP> for u8 {
+    fn from(val: RegisterP) -> Self {
+        u8::from(val.C) << 0
+            | u8::from(val.Z) << 1
+            | u8::from(val.I) << 2
+            | u8::from(val.D) << 3
+            | u8::from(val.X) << 4
+            | u8::from(val.M) << 5
+            | u8::from(val.V) << 6
+            | u8::from(val.N) << 7
     }
 }
 
