@@ -7,10 +7,13 @@ use crate::{
 };
 #[cfg(feature = "cli")]
 use clap::Parser;
+#[cfg(feature = "plugins")]
+use plugins::plugin::Plugin;
 use ppu::constants::SCREEN_HEIGHT;
+#[cfg(feature = "plugins")]
+use std::{cell::RefCell, rc::Rc};
 use std::{
-    path::PathBuf,
-    time::{Duration, Instant},
+    ops::DerefMut, path::{Path, PathBuf}, time::{Duration, Instant}
 };
 
 fn gui_emu_loop(gui: &mut gui::Gui, mut emu: rsnes::RSnes) -> Option<RSnesEvent> {
@@ -20,6 +23,29 @@ fn gui_emu_loop(gui: &mut gui::Gui, mut emu: rsnes::RSnes) -> Option<RSnesEvent>
     let mut last_instant = Instant::now();
     let mut frame_accum: f64 = 0.0;
     let mut master_cycle_accum: f64 = 0.0;
+
+    #[cfg(feature = "plugins")]
+    let mut plugin = Plugin::load_from_file(Path::new("./plugin.lua")).unwrap();
+
+    for _ in 0..100 {
+        emu.update();
+    }
+
+    #[cfg(feature = "plugins")]
+    let emu_rc = Rc::new(RefCell::new(emu));
+
+    #[cfg(feature = "plugins")]
+    {
+        RSnes::inject_into_lua(emu_rc.clone(), &mut plugin);
+        plugin.run_init().unwrap();
+    }
+
+    #[cfg(feature = "plugins")]
+    let mut emu = emu_rc.borrow_mut();
+    #[cfg(not(feature = "plugins"))]
+    let mut emu = &mut emu;
+
+    println!("actual addr is {:?}", emu.cpu.addr_bus());
 
     let closing_ev = 'emu_loop: loop {
         // Get new delta based on current Instant::now()
@@ -53,7 +79,8 @@ fn gui_emu_loop(gui: &mut gui::Gui, mut emu: rsnes::RSnes) -> Option<RSnesEvent>
 
         // temporary: render full PPU frame for each GUI frame
         for y in 0..SCREEN_HEIGHT {
-            emu.ppu_renderer.render_scanline(&mut emu.ppu, y);
+            let RSnes { ppu, ppu_renderer, .. } = &mut *emu;
+            ppu_renderer.render_scanline(ppu, y);
             emu.ppu.step_scanline();
         }
         // temporary: toggle VBLANK each rendered frame
@@ -61,10 +88,10 @@ fn gui_emu_loop(gui: &mut gui::Gui, mut emu: rsnes::RSnes) -> Option<RSnesEvent>
 
         for state_event in gui.update(&emu.ppu_renderer.framebuffer) {
             match state_event {
-                RSnesEvent::LoadRom { path } => match rsnes::RSnes::load_rom(&path) {
-                    Ok(emu_) => emu = emu_,
-                    Err(err) => eprintln!("Error loading ROM: {}", err),
-                },
+                // RSnesEvent::LoadRom { path } => match rsnes::RSnes::load_rom(&path) {
+                //     Ok(emu_) => emu = emu_,
+                //     Err(err) => eprintln!("Error loading ROM: {}", err),
+                // },
                 RSnesEvent::Quit => break 'emu_loop Some(RSnesEvent::Quit),
                 RSnesEvent::Close => break 'emu_loop None,
                 RSnesEvent::ButtonDown => {
@@ -75,6 +102,7 @@ fn gui_emu_loop(gui: &mut gui::Gui, mut emu: rsnes::RSnes) -> Option<RSnesEvent>
                     emu.bus.io.hvbjoy = 0;
                     emu.bus.io.joy1 = 0;
                 }
+                e => println!("ignored event: {e:?}"),
             }
         }
         frame_nb += 1;
