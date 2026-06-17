@@ -32,7 +32,7 @@ fn gui_emu_loop(gui: &mut gui::Gui, emu: rsnes::RSnes) -> Option<RSnesEvent> {
 
     #[cfg(feature = "plugins")]
     {
-        RSnes::inject_into_lua(emu_rc.clone(), &mut plugin);
+        RSnes::inject_into_lua(&emu_rc, &mut plugin);
         plugin.run_init().unwrap();
     }
 
