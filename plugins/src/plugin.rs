@@ -7,6 +7,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use std::fs as fs;
+use common::snes_address::SnesAddress;
 use piccolo as picc;
 use piccolo::io as p_io;
 
@@ -34,6 +35,9 @@ pub struct PluginTable {
     /// Actions which can be run manually by the user
     pub actions: PluginActions,
 
+    /// Actions which are run automatically on certain events
+    pub autoactions: PluginAutoActions,
+
     /// The lua function that will be run when the plugin is successfully
     /// loaded, right after the user accepted the permission request
     pub init: Option<picc::StashedClosure>,
@@ -48,6 +52,13 @@ pub struct PluginActions {
     /// The "default" action of the plugin, which can be called manually
     /// by the user as many times as they want
     pub default: Option<picc::StashedClosure>,
+}
+
+/// Plugin "autoactions" (lua functions) which are to be run
+/// automatically on certain events
+#[derive(Debug, Default)]
+pub struct PluginAutoActions {
+    pub on_instr: Option<picc::StashedClosure>,
 }
 
 impl<'gc> picc::FromValue<'gc> for PluginTable {
@@ -85,6 +96,7 @@ impl<'gc> picc::FromValue<'gc> for PluginTable {
                     })?,
 
                 b"actions" => ret.actions = FromValue::from_value(ctx, value)?,
+                b"autoactions" => ret.autoactions = FromValue::from_value(ctx, value)?,
 
                 _ => eprintln!("found unknow key in plugin table: [{:?}]", key.debug_lossy()),
             }
@@ -119,6 +131,42 @@ impl<'gc> picc::FromValue<'gc> for PluginActions {
                     Value::Function(Function::Closure(c)) => Some(ctx.stash(c)),
                     v => return Err(picc::TypeError {
                         expected: "default function or nil",
+                        found: v.type_name(),
+                    }),
+                },
+                _ => eprintln!("found unknow key in plugin table: [{:?}]", key.debug_lossy()),
+            }
+        }
+
+        Ok(ret)
+    }
+}
+
+impl<'gc> picc::FromValue<'gc> for PluginAutoActions {
+    fn from_value(ctx: picc::Context<'gc>, value: picc::Value<'gc>) -> Result<Self, picc::TypeError> {
+        use picc::*;
+
+        let picc::Value::Table(tab) = value else {
+            return Err(picc::TypeError {
+                expected: "table",
+                found: value.type_name()
+            });
+        };
+
+        let mut ret = Self::default();
+
+        for (key, value) in tab {
+            let Value::String(key) = key else {
+                eprintln!("found unexpected non-string key [{}]", key.display());
+                continue;
+            };
+
+            match key.as_bytes() {
+                b"on_instr" => ret.on_instr = match value {
+                    Value::Nil => None,
+                    Value::Function(Function::Closure(c)) => Some(ctx.stash(c)),
+                    v => return Err(picc::TypeError {
+                        expected: "on_instr function or nil",
                         found: v.type_name(),
                     }),
                 },
@@ -184,9 +232,21 @@ impl Plugin {
         Self::run_option_lua(&mut self.lua, &self.table.actions.default)
     }
 
+    /// Run the default action registered in the plugin table
+    pub fn run_on_instr(&mut self, opcode: u8, addr: SnesAddress) -> Result<(), picc::ExternError> {
+        Self::run_option_lua_with_args(
+            &mut self.lua,
+            &self.table.autoactions.on_instr,
+            (opcode, addr.bank, addr.addr),
+        )
+    }
+
     /// Run an Option-wrapped stashed lua function, returning Ok(())
     /// in case there was None
-    pub fn run_option_lua<F>(lua: &mut picc::Lua, stashed: &Option<F>) -> Result<(), picc::ExternError>
+    pub fn run_option_lua<F>(
+        lua: &mut picc::Lua,
+        stashed: &Option<F>
+    ) -> Result<(), picc::ExternError>
     where
         F: for<'gc> picc::stash::Fetchable<Fetched<'gc>: Into<picc::Function<'gc>>>,
     {
@@ -196,15 +256,48 @@ impl Plugin {
         Self::run_lua(lua, stashed)
     }
 
-    /// Runs a stashed lua function in the given lua context
-    pub fn run_lua<F, R>(lua: &mut picc::Lua, stashed: &F) -> Result<R, picc::ExternError>
+    /// Run an Option-wrapped stashed lua function, returning Ok(())
+    /// in case there was None
+    pub fn run_option_lua_with_args<F, A>(
+        lua: &mut picc::Lua,
+        stashed: &Option<F>,
+        args: A
+    ) -> Result<(), picc::ExternError>
     where
         F: for<'gc> picc::stash::Fetchable<Fetched<'gc>: Into<picc::Function<'gc>>>,
-        R: for<'gc> picc::FromMultiValue<'gc>
+        A: for<'gc> picc::IntoMultiValue<'gc>,
+    {
+        let Some(stashed) = stashed.as_ref() else {
+            return Ok(());
+        };
+        Self::run_lua_with_args(lua, stashed, args)
+    }
+
+    pub fn run_lua<F, R>(
+        lua: &mut picc::Lua,
+        stashed: &F
+    ) -> Result<R, picc::ExternError>
+    where
+        F: for<'gc> picc::stash::Fetchable<Fetched<'gc>: Into<picc::Function<'gc>>>,
+        R: for<'gc> picc::FromMultiValue<'gc>,
+    {
+        Self::run_lua_with_args(lua, stashed, ())
+    }
+
+    /// Runs a stashed lua function in the given lua context
+    pub fn run_lua_with_args<F, R, A>(
+        lua: &mut picc::Lua,
+        stashed: &F,
+        args: A
+    ) -> Result<R, picc::ExternError>
+    where
+        F: for<'gc> picc::stash::Fetchable<Fetched<'gc>: Into<picc::Function<'gc>>>,
+        R: for<'gc> picc::FromMultiValue<'gc>,
+        A: for<'gc> picc::IntoMultiValue<'gc>,
     {
         let ex = lua.enter(|ctx| {
             let func = ctx.fetch(stashed).into();
-            let ex = piccolo::Executor::start(ctx, func, ());
+            let ex = piccolo::Executor::start(ctx, func, args);
 
             ctx.stash(ex)
         });

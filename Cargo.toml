@@ -21,9 +21,10 @@ members = [
 [workspace.dependencies]
 piccolo = { git = "https://github.com/kyren/piccolo" }
 piccolo-util = { git = "https://github.com/kyren/piccolo" }
+common = { version = "0.1.0", path = "./common"}
 
 [dependencies]
-common = { version = "0.1.0", path = "./common"}
+common.workspace = true
 bus = { version = "0.1.0", path = "./bus"}
 cpu = { version = "0.1.0", path = "./cpu"}
 ppu = { version = "0.1.0", path = "./ppu"}
