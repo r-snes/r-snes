@@ -71,6 +71,7 @@ pub struct InternalPermissions {
     pub cpu: CpuPermissions,
     pub ppu: PpuPermissions,
     pub bus: BusPermissions,
+    pub input: bool,
 }
 
 #[derive(..PermTree)]
