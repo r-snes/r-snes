@@ -16,7 +16,7 @@ use std::{
     ops::DerefMut, path::{Path, PathBuf}, time::{Duration, Instant}
 };
 
-fn gui_emu_loop(gui: &mut gui::Gui, mut emu: rsnes::RSnes) -> Option<RSnesEvent> {
+fn gui_emu_loop(gui: &mut gui::Gui, emu: rsnes::RSnes) -> Option<RSnesEvent> {
     let mut frame_nb = 0_u64;
     let exec_start = Instant::now();
 
@@ -26,10 +26,6 @@ fn gui_emu_loop(gui: &mut gui::Gui, mut emu: rsnes::RSnes) -> Option<RSnesEvent>
 
     #[cfg(feature = "plugins")]
     let mut plugin = Plugin::load_from_file(Path::new("./plugin.lua")).unwrap();
-
-    for _ in 0..100 {
-        emu.update();
-    }
 
     #[cfg(feature = "plugins")]
     let emu_rc = Rc::new(RefCell::new(emu));
@@ -84,9 +80,19 @@ fn gui_emu_loop(gui: &mut gui::Gui, mut emu: rsnes::RSnes) -> Option<RSnesEvent>
             ));
         }
 
+        drop(emu_mut); // release to be able to run plugin `on_instr`
         while master_cycle_accum >= RSnes::MASTER_CYCLE_DURATION {
+            let mut emu_mut = emu.get_mut();
+
             master_cycle_accum -= RSnes::MASTER_CYCLE_DURATION;
             emu_mut.update();
+
+            let cond = emu_mut.is_cpu_instr_start();
+            if let Some(opcode) = cond {
+                let addr = *emu_mut.cpu.addr_bus();
+                drop(emu_mut);
+                plugin.run_on_instr(opcode, addr).unwrap();
+            }
         }
 
         // Window update if frame treshold is crossed
@@ -94,6 +100,8 @@ fn gui_emu_loop(gui: &mut gui::Gui, mut emu: rsnes::RSnes) -> Option<RSnesEvent>
             continue;
         }
         frame_accum -= Gui::FRAME_DURATION;
+
+        let mut emu_mut = emu.get_mut();
 
         // temporary: render full PPU frame for each GUI frame
         for y in 0..SCREEN_HEIGHT {
