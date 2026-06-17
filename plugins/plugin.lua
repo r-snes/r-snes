@@ -1,15 +1,15 @@
 return {
-    permissions = "all",
+    permissions = { internal = { "cpu", "input" } },
+
     init = function()
         print("loaded rsnes? type: " .. type(rsnes))
         print("loaded regs? type: " .. type(rsnes.cpu))
+        print("loaded regs? type: " .. type(rsnes.input))
 
         print("plugin: addrbus is currently " .. rsnes.cpu.bus_bank .. ":" .. rsnes.cpu.bus_addr)
         print("plugin: PB:PC is currently " .. rsnes.cpu.pb .. ":" .. rsnes.cpu.pc)
         rsnes.cpu.pb = 0xaa
         print("plugin: PB:PC is currently " .. rsnes.cpu.pb .. ":" .. rsnes.cpu.pc)
-
-        instrs = {}
 
         test_results = {}
         test_idx = 0
@@ -17,12 +17,6 @@ return {
 
     actions = {
         default = function()
-            -- print("program so far:")
-
-            -- for addr,data in pairs(instrs) do
-            --     print(addr, data[1] .. "×" .. data[2])
-            -- end
-
             print("test results:")
             local ok=0
             local ko=0
@@ -42,9 +36,6 @@ return {
 
     autoactions = {
         on_instr = function(opcode, pb, pc)
-            -- -- we're never interested in anything where pb is not 0
-            -- if (pb ~= 0) then return end
-
             -- init_test addr: start of a test mark as success by default
             if (pc == 0x8132) then
                 test_results[test_idx] = true
@@ -54,16 +45,14 @@ return {
             -- fail addr: test completed and failed, mark as failed
             if (pc == 0x81AE) then
                 test_results[test_idx - 1] = false
+                rsnes.input.press_a() -- we need to press then release to go next
                 return
             end
-
-            -- local addr = (pb << 16) + pc
-
-            -- if (instrs[addr] == nil) then
-            --     instrs[addr] = { opcode, 1 }
-            -- else
-            --     instrs[addr][2] = instrs[addr][2] + 1
-            -- end
+            -- wait_release addr: test ROM is waiting for A to be released
+            if (pc == 0x824E) then
+                rsnes.input.release_a() -- release A to go to next test
+                return
+            end
         end,
     },
 }

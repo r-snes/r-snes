@@ -13,14 +13,17 @@ impl RSnes {
     /// Injects emulator callbacks in the lua VM contained
     /// in the Plugin parameter, taking into account the
     /// permission table of the plugin
-    pub fn inject_into_lua(emu: Rc<RefCell<Self>>, plugin: &mut Plugin) {
+    pub fn inject_into_lua(emu: &Rc<RefCell<Self>>, plugin: &mut Plugin) {
         plugin.lua.load_core();
         plugin.lua.enter(|ctx| {
             let rsnes = Table::new(&ctx);
             ctx.set_global("rsnes", rsnes);
 
             if plugin.table.perms.internal.cpu.registers {
-                rsnes.set_field(ctx, "cpu", Self::create_regs_table(ctx, emu));
+                rsnes.set_field(ctx, "cpu", Self::create_regs_table(ctx, emu.clone()));
+            }
+            if plugin.table.perms.internal.input {
+                rsnes.set_field(ctx, "input", Self::create_input_table(ctx, emu));
             }
         });
     }
@@ -74,6 +77,38 @@ impl RSnes {
                 };
 
                 stack.replace(ctx, val);
+                Ok(piccolo::CallbackReturn::Return)
+            }),
+        );
+
+        ret
+    }
+
+    fn create_input_table<'gc>(ctx: Context<'gc>, emu: &Rc<RefCell<Self>>) -> Table<'gc> {
+        let ret = Table::new(ctx.mutation());
+
+        let clone = emu.clone();
+        ret.set_field(
+            ctx,
+            "press_a",
+            Callback::from_fn(ctx.mutation(), move |_, _, _| {
+                let mut emu = clone.borrow_mut();
+
+                emu.bus.io.hvbjoy = 0;
+                emu.bus.io.joy1 = !0;
+                Ok(piccolo::CallbackReturn::Return)
+            }),
+        );
+
+        let clone = emu.clone();
+        ret.set_field(
+            ctx,
+            "release_a",
+            Callback::from_fn(ctx.mutation(), move |_, _, _| {
+                let mut emu = clone.borrow_mut();
+
+                emu.bus.io.hvbjoy = 0;
+                emu.bus.io.joy1 = 0;
                 Ok(piccolo::CallbackReturn::Return)
             }),
         );
