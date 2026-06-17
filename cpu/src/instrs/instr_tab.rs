@@ -30,8 +30,12 @@ pub(crate) fn opcode_fetch(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
 
     (
         CycleResult::Read,
-        InstrCycle(|next_cyc_cpu| (INSTR_CYC1[next_cyc_cpu.data_bus as usize].0)(next_cyc_cpu)),
+        InstrCycle(opcode_dispatch),
     )
+}
+
+pub(crate) fn opcode_dispatch(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
+    (INSTR_CYC1[cpu.data_bus as usize].0)(cpu)
 }
 
 macro_rules! todo_opcode {

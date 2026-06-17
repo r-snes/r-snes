@@ -164,6 +164,14 @@ impl RSnes {
 
         self.master_cycles += 1;
     }
+
+    pub fn is_cpu_instr_start(&mut self) -> Option<u8> {
+        if self.cpu_master_cycles_to_wait != 0 || !self.cpu.is_instr_start() {
+            None
+        } else {
+            Some(self.bus.read(*self.cpu.addr_bus(), &mut self.ppu, &mut self.apu))
+        }
+    }
 }
 
 

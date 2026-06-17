@@ -82,6 +82,13 @@ impl CPU {
         &self.addr_bus
     }
 
+    pub fn is_instr_start(&self) -> bool {
+        std::ptr::fn_addr_eq(
+            self.next_cycle.0,
+            opcode_dispatch as for<'a> fn(&'a mut CPU) -> (CycleResult, InstrCycle),
+        )
+    }
+
     /// Execute a single CPU cycle.
     ///
     /// This function is the core part of the public API to this struct.
