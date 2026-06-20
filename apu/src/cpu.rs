@@ -280,6 +280,19 @@ impl Spc700 {
             0x98 => self.inst_adc_dp_imm(mem),
             0x99 => self.inst_adc_ix_iy(mem),
 
+            // SBC — all addressing modes
+            0xA4 => self.inst_sbc_a_dp(mem),
+            0xA5 => self.inst_sbc_a_abs(mem),
+            0xA6 => self.inst_sbc_a_ix(mem),
+            0xA7 => self.inst_sbc_a_dp_x_ind(mem),
+            0xA9 => self.inst_sbc_dp_dp(mem),
+            0xB4 => self.inst_sbc_a_dp_x(mem),
+            0xB5 => self.inst_sbc_a_abs_x(mem),
+            0xB6 => self.inst_sbc_a_abs_y(mem),
+            0xB7 => self.inst_sbc_a_dp_ind_y(mem),
+            0xB8 => self.inst_sbc_dp_imm(mem),
+            0xB9 => self.inst_sbc_ix_iy(mem),
+
             // Catch-all
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
         }
@@ -2092,5 +2105,94 @@ impl Spc700 {
         self.set_flag(FLAG_H, (dst & 0x0F) >= (src & 0x0F) + borrow_in);
 
         result_u8
+    }
+
+    fn inst_sbc_a_dp(&mut self, mem: &mut Memory) {
+        let addr = self.dp_base() | self.read_immediate(mem) as u16;
+        let val = mem.read8_mut(addr);
+        self.regs.a = self.sbc_flags(self.regs.a, val);
+        self.cycles += 3;
+    }
+
+    fn inst_sbc_a_abs(&mut self, mem: &mut Memory) {
+        let addr = self.read_immediate16(mem);
+        let val = mem.read8_mut(addr);
+        self.regs.a = self.sbc_flags(self.regs.a, val);
+        self.cycles += 4;
+    }
+
+    fn inst_sbc_a_ix(&mut self, mem: &mut Memory) {
+        let addr = self.dp_base() | self.regs.x as u16;
+        let val = mem.read8_mut(addr);
+        self.regs.a = self.sbc_flags(self.regs.a, val);
+        self.cycles += 3;
+    }
+
+    fn inst_sbc_a_dp_x_ind(&mut self, mem: &mut Memory) {
+        let offset = self.read_immediate(mem) as u16;
+        let ptr_addr = self.dp_base() | (offset + self.regs.x as u16) & 0xFF;
+        let lo = mem.read8_mut(ptr_addr) as u16;
+        let hi = mem.read8_mut(ptr_addr.wrapping_add(1)) as u16;
+        let addr = (hi << 8) | lo;
+        let val = mem.read8_mut(addr);
+        self.regs.a = self.sbc_flags(self.regs.a, val);
+        self.cycles += 6;
+    }
+
+    fn inst_sbc_dp_dp(&mut self, mem: &mut Memory) {
+        let (addr, dst, src) = self.read_dp_dp(mem);
+        let result = self.sbc_flags(dst, src);
+        mem.write8(addr, result);
+        self.cycles += 6;
+    }
+
+    fn inst_sbc_a_dp_x(&mut self, mem: &mut Memory) {
+        let offset = self.read_immediate(mem) as u16;
+        let addr = self.dp_base() | (offset + self.regs.x as u16) & 0xFF;
+        let val = mem.read8_mut(addr);
+        self.regs.a = self.sbc_flags(self.regs.a, val);
+        self.cycles += 4;
+    }
+
+    fn inst_sbc_a_abs_x(&mut self, mem: &mut Memory) {
+        let base = self.read_immediate16(mem);
+        let addr = base.wrapping_add(self.regs.x as u16);
+        let val = mem.read8_mut(addr);
+        self.regs.a = self.sbc_flags(self.regs.a, val);
+        self.cycles += 5;
+    }
+
+    fn inst_sbc_a_abs_y(&mut self, mem: &mut Memory) {
+        let base = self.read_immediate16(mem);
+        let addr = base.wrapping_add(self.regs.y as u16);
+        let val = mem.read8_mut(addr);
+        self.regs.a = self.sbc_flags(self.regs.a, val);
+        self.cycles += 5;
+    }
+
+    fn inst_sbc_a_dp_ind_y(&mut self, mem: &mut Memory) {
+        let offset = self.read_immediate(mem) as u16;
+        let ptr_addr = self.dp_base() | offset;
+        let lo = mem.read8_mut(ptr_addr) as u16;
+        let hi = mem.read8_mut(ptr_addr.wrapping_add(1)) as u16;
+        let base = (hi << 8) | lo;
+        let addr = base.wrapping_add(self.regs.y as u16);
+        let val = mem.read8_mut(addr);
+        self.regs.a = self.sbc_flags(self.regs.a, val);
+        self.cycles += 6;
+    }
+
+    fn inst_sbc_dp_imm(&mut self, mem: &mut Memory) {
+        let (addr, dst, src) = self.read_dp_imm(mem);
+        let result = self.sbc_flags(dst, src);
+        mem.write8(addr, result);
+        self.cycles += 5;
+    }
+
+    fn inst_sbc_ix_iy(&mut self, mem: &mut Memory) {
+        let (addr, dst, src) = self.read_ix_iy(mem);
+        let result = self.sbc_flags(dst, src);
+        mem.write8(addr, result);
+        self.cycles += 5;
     }
 }

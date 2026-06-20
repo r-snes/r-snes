@@ -2003,3 +2003,456 @@ fn test_adc_ix_iy_costs_5_cycles() {
     cpu.step(&mut mem);
     assert_eq!(cpu.cycles, 5);
 }
+
+// ============================================================
+// ADC half-carry (FLAG_H) regression coverage
+// ============================================================
+
+#[test]
+fn test_adc_a_dp_sets_half_carry_on_nibble_overflow() {
+    // $0F + $01 = $10 — carry out of bit 3
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x0F;
+    mem.write8(0x0020, 0x01);
+    mem.write8(0x0200, 0x84);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(apu::cpu::FLAG_H));
+}
+
+#[test]
+fn test_adc_a_dp_clears_half_carry_without_nibble_overflow() {
+    // $01 + $01 = $02 — no carry out of bit 3
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x01;
+    mem.write8(0x0020, 0x01);
+    mem.write8(0x0200, 0x84);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert!(!cpu.get_flag(apu::cpu::FLAG_H));
+}
+
+#[test]
+fn test_adc_a_dp_half_carry_includes_carry_in() {
+    // $0E + $00 + carry-in(1) = $0F+1 = $10 — carry out of bit 3 only
+    // because of the incoming carry
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C;
+    cpu.regs.a = 0x0E;
+    mem.write8(0x0020, 0x01);
+    mem.write8(0x0200, 0x84);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(apu::cpu::FLAG_H));
+}
+
+// ============================================================
+// SBC A,dp ($A4)
+// ============================================================
+
+#[test]
+fn test_sbc_a_dp_basic() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C; // C set = no borrow-in
+    cpu.regs.a = 0x15;
+    mem.write8(0x0020, 0x05);
+    mem.write8(0x0200, 0xA4);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x10);
+}
+
+#[test]
+fn test_sbc_a_dp_subtracts_borrow_in() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = 0; // C clear = borrow-in present
+    cpu.regs.a = 0x15;
+    mem.write8(0x0020, 0x05);
+    mem.write8(0x0200, 0xA4);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x0F);
+}
+
+#[test]
+fn test_sbc_a_dp_clears_carry_on_borrow() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C;
+    cpu.regs.a = 0x00;
+    mem.write8(0x0020, 0x01);
+    mem.write8(0x0200, 0xA4);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert!(!cpu.get_flag(FLAG_C));
+    assert_eq!(cpu.regs.a, 0xFF);
+}
+
+#[test]
+fn test_sbc_a_dp_sets_zero_flag() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C;
+    cpu.regs.a = 0x05;
+    mem.write8(0x0020, 0x05);
+    mem.write8(0x0200, 0xA4);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_Z));
+}
+
+#[test]
+fn test_sbc_a_dp_sets_overflow_flag() {
+    // $80 - $01 = $7F — neg-pos=pos, signed overflow
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C;
+    cpu.regs.a = 0x80;
+    mem.write8(0x0020, 0x01);
+    mem.write8(0x0200, 0xA4);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_V));
+}
+
+#[test]
+fn test_sbc_a_dp_sets_half_borrow_clear_on_nibble_underflow() {
+    // $10 - $01: low nibble $0 - $1 underflows -> half-borrow occurred -> H clear
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C;
+    cpu.regs.a = 0x10;
+    mem.write8(0x0020, 0x01);
+    mem.write8(0x0200, 0xA4);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert!(!cpu.get_flag(apu::cpu::FLAG_H));
+}
+
+#[test]
+fn test_sbc_a_dp_sets_half_borrow_set_without_nibble_underflow() {
+    // $15 - $05: low nibble $5 - $5 = 0, no underflow -> H set
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C;
+    cpu.regs.a = 0x15;
+    mem.write8(0x0020, 0x05);
+    mem.write8(0x0200, 0xA4);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(apu::cpu::FLAG_H));
+}
+
+#[test]
+fn test_sbc_a_dp_uses_dp_base() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_P | FLAG_C;
+    cpu.regs.a = 0x15;
+    mem.write8(0x0120, 0x05);
+    mem.write8(0x0200, 0xA4);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x10);
+}
+
+#[test]
+fn test_sbc_a_dp_costs_3_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0xA4);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 3);
+}
+
+// ============================================================
+// SBC A,!abs ($A5)
+// ============================================================
+
+#[test]
+fn test_sbc_a_abs_basic() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C;
+    cpu.regs.a = 0x15;
+    mem.write8(0x0500, 0x05);
+    mem.write8(0x0200, 0xA5);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x10);
+}
+
+#[test]
+fn test_sbc_a_abs_costs_4_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0xA5);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 4);
+}
+
+// ============================================================
+// SBC A,(X) ($A6)
+// ============================================================
+
+#[test]
+fn test_sbc_a_ix_basic() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C;
+    cpu.regs.a = 0x15;
+    cpu.regs.x = 0x20;
+    mem.write8(0x0020, 0x05);
+    mem.write8(0x0200, 0xA6);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x10);
+}
+
+#[test]
+fn test_sbc_a_ix_costs_3_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0xA6);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 3);
+}
+
+// ============================================================
+// SBC A,[dp+X] ($A7)
+// ============================================================
+
+#[test]
+fn test_sbc_a_dp_x_ind_basic() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C;
+    cpu.regs.a = 0x15;
+    cpu.regs.x = 0x02;
+    mem.write8(0x0022, 0x00);
+    mem.write8(0x0023, 0x05);
+    mem.write8(0x0500, 0x05);
+    mem.write8(0x0200, 0xA7);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x10);
+}
+
+#[test]
+fn test_sbc_a_dp_x_ind_costs_6_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0020, 0x00);
+    mem.write8(0x0021, 0x05);
+    mem.write8(0x0200, 0xA7);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 6);
+}
+
+// ============================================================
+// SBC dd,ds ($A9)
+// ============================================================
+
+#[test]
+fn test_sbc_dp_dp_basic() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C;
+    mem.write8(0x0030, 0x05); // src
+    mem.write8(0x0040, 0x15); // dst
+    mem.write8(0x0200, 0xA9);
+    mem.write8(0x0201, 0x30);
+    mem.write8(0x0202, 0x40);
+    cpu.step(&mut mem);
+    assert_eq!(mem.read8(0x0040), 0x10);
+}
+
+#[test]
+fn test_sbc_dp_dp_does_not_modify_source() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C;
+    mem.write8(0x0030, 0x05);
+    mem.write8(0x0040, 0x15);
+    mem.write8(0x0200, 0xA9);
+    mem.write8(0x0201, 0x30);
+    mem.write8(0x0202, 0x40);
+    cpu.step(&mut mem);
+    assert_eq!(mem.read8(0x0030), 0x05);
+}
+
+#[test]
+fn test_sbc_dp_dp_costs_6_cycles() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C;
+    mem.write8(0x0030, 0x00);
+    mem.write8(0x0040, 0x00);
+    mem.write8(0x0200, 0xA9);
+    mem.write8(0x0201, 0x30);
+    mem.write8(0x0202, 0x40);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 6);
+}
+
+// ============================================================
+// SBC A,dp+X ($B4)
+// ============================================================
+
+#[test]
+fn test_sbc_a_dp_x_basic() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C;
+    cpu.regs.a = 0x15;
+    cpu.regs.x = 0x02;
+    mem.write8(0x0022, 0x05);
+    mem.write8(0x0200, 0xB4);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x10);
+}
+
+#[test]
+fn test_sbc_a_dp_x_costs_4_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0xB4);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 4);
+}
+
+// ============================================================
+// SBC A,!abs+X ($B5) / SBC A,!abs+Y ($B6)
+// ============================================================
+
+#[test]
+fn test_sbc_a_abs_x_basic() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C;
+    cpu.regs.a = 0x15;
+    cpu.regs.x = 0x02;
+    mem.write8(0x0502, 0x05);
+    mem.write8(0x0200, 0xB5);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x10);
+}
+
+#[test]
+fn test_sbc_a_abs_x_costs_5_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0xB5);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 5);
+}
+
+#[test]
+fn test_sbc_a_abs_y_basic() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C;
+    cpu.regs.a = 0x15;
+    cpu.regs.y = 0x03;
+    mem.write8(0x0503, 0x05);
+    mem.write8(0x0200, 0xB6);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x10);
+}
+
+#[test]
+fn test_sbc_a_abs_y_costs_5_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0xB6);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 5);
+}
+
+// ============================================================
+// SBC A,[dp]+Y ($B7)
+// ============================================================
+
+#[test]
+fn test_sbc_a_dp_ind_y_basic() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C;
+    cpu.regs.a = 0x15;
+    cpu.regs.y = 0x03;
+    mem.write8(0x0020, 0x00);
+    mem.write8(0x0021, 0x05);
+    mem.write8(0x0503, 0x05);
+    mem.write8(0x0200, 0xB7);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x10);
+}
+
+#[test]
+fn test_sbc_a_dp_ind_y_costs_6_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0020, 0x00);
+    mem.write8(0x0021, 0x05);
+    mem.write8(0x0200, 0xB7);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 6);
+}
+
+// ============================================================
+// SBC dp,#imm ($B8)
+// ============================================================
+
+#[test]
+fn test_sbc_dp_imm_basic() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C;
+    mem.write8(0x0020, 0x15);
+    mem.write8(0x0200, 0xB8);
+    mem.write8(0x0201, 0x05); // immediate
+    mem.write8(0x0202, 0x20); // dp offset
+    cpu.step(&mut mem);
+    assert_eq!(mem.read8(0x0020), 0x10);
+}
+
+#[test]
+fn test_sbc_dp_imm_costs_5_cycles() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C;
+    mem.write8(0x0020, 0x00);
+    mem.write8(0x0200, 0xB8);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 5);
+}
+
+// ============================================================
+// SBC (X),(Y) ($B9)
+// ============================================================
+
+#[test]
+fn test_sbc_ix_iy_basic() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C;
+    cpu.regs.x = 0x20;
+    cpu.regs.y = 0x30;
+    mem.write8(0x0020, 0x15); // dst (X)
+    mem.write8(0x0030, 0x05); // src (Y)
+    mem.write8(0x0200, 0xB9);
+    cpu.step(&mut mem);
+    assert_eq!(mem.read8(0x0020), 0x10);
+}
+
+#[test]
+fn test_sbc_ix_iy_does_not_modify_y_address() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C;
+    cpu.regs.x = 0x20;
+    cpu.regs.y = 0x30;
+    mem.write8(0x0020, 0x15);
+    mem.write8(0x0030, 0x05);
+    mem.write8(0x0200, 0xB9);
+    cpu.step(&mut mem);
+    assert_eq!(mem.read8(0x0030), 0x05);
+}
+
+#[test]
+fn test_sbc_ix_iy_costs_5_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0xB9);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 5);
+}
