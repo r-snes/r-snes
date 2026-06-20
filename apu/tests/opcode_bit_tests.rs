@@ -4,8 +4,18 @@
 /// Currently covers:
 /// - SET1/CLR1 d.bit ($02,$12,$22,$32,$42,$52,$62,$72,$82,$92,$A2,$B2,$C2,$D2,$E2,$F2)
 /// - BBS/BBC d.bit,rel ($03,$13,$23,$33,$43,$53,$63,$73,$83,$93,$A3,$B3,$C3,$D3,$E3,$F3)
+/// - TSET1 !a ($0E)
+/// - TCLR1 !a ($4E)
+/// - MOV1 C,m.b ($AA)
+/// - MOV1 m.b,C ($CA)
+/// - OR1 C,m.b ($0A)
+/// - OR1 m.b,C ($2A)
+/// - AND1 C,m.b ($4A)
+/// - AND1 m.b,C ($6A)
+/// - EOR1 C,m.b ($8A)
+/// - NOT1 m.b ($EA)
 
-use apu::cpu::{Spc700, FLAG_N, FLAG_P, FLAG_Z};
+use apu::cpu::{Spc700, FLAG_N, FLAG_P, FLAG_Z, FLAG_C};
 use apu::Memory;
 
 // ============================================================
@@ -594,4 +604,451 @@ fn test_bbc_taken_costs_7_cycles() {
     mem.write8(0x0202, 0x05);
     cpu.step(&mut mem);
     assert_eq!(cpu.cycles, 7);
+}
+
+// ============================================================
+// TSET1 !a ($0E)
+// ============================================================
+
+#[test]
+fn test_tset1_ors_a_into_memory() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0b0000_1111;
+    mem.write8(0x0500, 0b1111_0000);
+    mem.write8(0x0200, 0x0E);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    cpu.step(&mut mem);
+    assert_eq!(mem.read8(0x0500), 0xFF);
+}
+
+#[test]
+fn test_tset1_sets_zero_flag_when_a_equals_data() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x42;
+    mem.write8(0x0500, 0x42);
+    mem.write8(0x0200, 0x0E);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_Z));
+}
+
+#[test]
+fn test_tset1_sets_negative_flag() {
+    // A - data wraps negative when data > A
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x00;
+    mem.write8(0x0500, 0x01);
+    mem.write8(0x0200, 0x0E);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_N));
+}
+
+#[test]
+fn test_tset1_does_not_modify_a() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x0F;
+    mem.write8(0x0500, 0xF0);
+    mem.write8(0x0200, 0x0E);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x0F);
+}
+
+#[test]
+fn test_tset1_costs_6_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x0E);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 6);
+}
+
+// ============================================================
+// TCLR1 !a ($4E)
+// ============================================================
+
+#[test]
+fn test_tclr1_clears_a_bits_in_memory() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0b0000_1111;
+    mem.write8(0x0500, 0xFF);
+    mem.write8(0x0200, 0x4E);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    cpu.step(&mut mem);
+    assert_eq!(mem.read8(0x0500), 0b1111_0000);
+}
+
+#[test]
+fn test_tclr1_sets_zero_flag_when_a_equals_data() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x42;
+    mem.write8(0x0500, 0x42);
+    mem.write8(0x0200, 0x4E);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_Z));
+}
+
+#[test]
+fn test_tclr1_preserves_bits_not_in_a() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0b0000_0001;
+    mem.write8(0x0500, 0b1010_1011);
+    mem.write8(0x0200, 0x4E);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    cpu.step(&mut mem);
+    assert_eq!(mem.read8(0x0500), 0b1010_1010);
+}
+
+#[test]
+fn test_tclr1_costs_6_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x4E);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 6);
+}
+
+// ============================================================
+// MOV1 C,m.b ($AA)
+// ============================================================
+
+#[test]
+fn test_mov1_c_mb_loads_set_bit() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0100, 0b0000_1000); // bit 3 set
+    mem.write8(0x0200, 0xAA);
+    mem.write8(0x0201, 0x00); // packed lo: addr=$0100, bit=3 -> packed=0x6100
+    mem.write8(0x0202, 0x61);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_C));
+}
+
+#[test]
+fn test_mov1_c_mb_loads_clear_bit() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C; // pre-set, must be cleared
+    mem.write8(0x0100, 0b0000_0000); // bit 3 clear
+    mem.write8(0x0200, 0xAA);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x61);
+    cpu.step(&mut mem);
+    assert!(!cpu.get_flag(FLAG_C));
+}
+
+#[test]
+fn test_mov1_c_mb_does_not_modify_memory() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0100, 0b0000_1000);
+    mem.write8(0x0200, 0xAA);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x61);
+    cpu.step(&mut mem);
+    assert_eq!(mem.read8(0x0100), 0b0000_1000);
+}
+
+#[test]
+fn test_mov1_c_mb_costs_4_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0xAA);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x61);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 4);
+}
+
+// ============================================================
+// MOV1 m.b,C ($CA)
+// ============================================================
+
+#[test]
+fn test_mov1_mb_c_sets_bit_when_carry_set() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C;
+    mem.write8(0x0100, 0x00);
+    mem.write8(0x0200, 0xCA);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x61); // addr=$0100, bit=3
+    cpu.step(&mut mem);
+    assert_eq!(mem.read8(0x0100), 0b0000_1000);
+}
+
+#[test]
+fn test_mov1_mb_c_clears_bit_when_carry_clear() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0100, 0xFF);
+    mem.write8(0x0200, 0xCA);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x61);
+    cpu.step(&mut mem);
+    assert_eq!(mem.read8(0x0100), 0b1111_0111);
+}
+
+#[test]
+fn test_mov1_mb_c_preserves_other_bits() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C;
+    mem.write8(0x0100, 0b1010_0010);
+    mem.write8(0x0200, 0xCA);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x61); // sets bit 3
+    cpu.step(&mut mem);
+    assert_eq!(mem.read8(0x0100), 0b1010_1010);
+}
+
+#[test]
+fn test_mov1_mb_c_costs_6_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0xCA);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x61);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 6);
+}
+
+// ============================================================
+// OR1 C,m.b ($0A) / OR1 C,/m.b ($2A)
+// ============================================================
+
+#[test]
+fn test_or1_c_mb_sets_carry_when_bit_set() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0100, 0b0000_1000);
+    mem.write8(0x0200, 0x0A);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x61);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_C));
+}
+
+#[test]
+fn test_or1_c_mb_keeps_carry_clear_when_both_clear() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0100, 0x00);
+    mem.write8(0x0200, 0x0A);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x61);
+    cpu.step(&mut mem);
+    assert!(!cpu.get_flag(FLAG_C));
+}
+
+#[test]
+fn test_or1_c_mb_costs_5_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x0A);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x61);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 5);
+}
+
+#[test]
+fn test_or1_c_not_mb_sets_carry_when_bit_clear() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0100, 0x00); // bit 3 clear -> inverted = set
+    mem.write8(0x0200, 0x2A);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x61);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_C));
+}
+
+#[test]
+fn test_or1_c_not_mb_keeps_carry_clear_when_bit_set() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0100, 0b0000_1000); // bit 3 set -> inverted = clear
+    mem.write8(0x0200, 0x2A);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x61);
+    cpu.step(&mut mem);
+    assert!(!cpu.get_flag(FLAG_C));
+}
+
+#[test]
+fn test_or1_c_not_mb_costs_5_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x2A);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x61);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 5);
+}
+
+// ============================================================
+// AND1 C,m.b ($4A) / AND1 C,/m.b ($6A)
+// ============================================================
+
+#[test]
+fn test_and1_c_mb_keeps_carry_when_both_set() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C;
+    mem.write8(0x0100, 0b0000_1000);
+    mem.write8(0x0200, 0x4A);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x61);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_C));
+}
+
+#[test]
+fn test_and1_c_mb_clears_carry_when_bit_clear() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C;
+    mem.write8(0x0100, 0x00);
+    mem.write8(0x0200, 0x4A);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x61);
+    cpu.step(&mut mem);
+    assert!(!cpu.get_flag(FLAG_C));
+}
+
+#[test]
+fn test_and1_c_mb_costs_4_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x4A);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x61);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 4);
+}
+
+#[test]
+fn test_and1_c_not_mb_keeps_carry_when_carry_set_and_bit_clear() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C;
+    mem.write8(0x0100, 0x00); // bit clear -> inverted = set
+    mem.write8(0x0200, 0x6A);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x61);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_C));
+}
+
+#[test]
+fn test_and1_c_not_mb_clears_carry_when_bit_set() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C;
+    mem.write8(0x0100, 0b0000_1000); // bit set -> inverted = clear
+    mem.write8(0x0200, 0x6A);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x61);
+    cpu.step(&mut mem);
+    assert!(!cpu.get_flag(FLAG_C));
+}
+
+#[test]
+fn test_and1_c_not_mb_costs_4_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x6A);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x61);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 4);
+}
+
+// ============================================================
+// EOR1 C,m.b ($8A)
+// ============================================================
+
+#[test]
+fn test_eor1_c_mb_toggles_carry_when_bit_set() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C;
+    mem.write8(0x0100, 0b0000_1000);
+    mem.write8(0x0200, 0x8A);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x61);
+    cpu.step(&mut mem);
+    assert!(!cpu.get_flag(FLAG_C), "C XOR 1 with C=1 should clear");
+}
+
+#[test]
+fn test_eor1_c_mb_keeps_carry_when_bit_clear() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C;
+    mem.write8(0x0100, 0x00);
+    mem.write8(0x0200, 0x8A);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x61);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_C), "C XOR 0 with C=1 should stay set");
+}
+
+#[test]
+fn test_eor1_c_mb_costs_5_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x8A);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x61);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 5);
+}
+
+// ============================================================
+// NOT1 m.b ($EA)
+// ============================================================
+
+#[test]
+fn test_not1_mb_toggles_set_bit_to_clear() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0100, 0b0000_1000);
+    mem.write8(0x0200, 0xEA);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x61);
+    cpu.step(&mut mem);
+    assert_eq!(mem.read8(0x0100), 0x00);
+}
+
+#[test]
+fn test_not1_mb_toggles_clear_bit_to_set() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0100, 0x00);
+    mem.write8(0x0200, 0xEA);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x61);
+    cpu.step(&mut mem);
+    assert_eq!(mem.read8(0x0100), 0b0000_1000);
+}
+
+#[test]
+fn test_not1_mb_preserves_other_bits() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0100, 0b1010_0010);
+    mem.write8(0x0200, 0xEA);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x61); // toggles bit 3
+    cpu.step(&mut mem);
+    assert_eq!(mem.read8(0x0100), 0b1010_1010);
+}
+
+#[test]
+fn test_not1_mb_does_not_modify_flags() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_N | FLAG_Z;
+    mem.write8(0x0100, 0x00);
+    mem.write8(0x0200, 0xEA);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x61);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.psw, FLAG_N | FLAG_Z);
+}
+
+#[test]
+fn test_not1_mb_costs_5_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0xEA);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x61);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 5);
 }
