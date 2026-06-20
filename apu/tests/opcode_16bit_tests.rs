@@ -103,12 +103,14 @@ fn test_movw_ya_dp_clears_negative_flag() {
 
 #[test]
 fn test_movw_ya_dp_high_byte_at_dp_plus_1() {
-    // Confirm the high byte is read from addr+1, not addr again
+    // Confirm the high byte is read from addr+1, not addr again.
+    // Offset $7E/$7F sit in plain RAM, away from both the opcode's own
+    // location ($0200) and the reserved I/O window ($00F0-$00FF).
     let (mut cpu, mut mem) = make();
-    mem.write8(0x00FF, 0x11); // low byte at offset $FF
-    mem.write8(0x0100, 0x22); // high byte at offset $FF+1 = $100 (no page wrap for dp+1)
+    mem.write8(0x007E, 0x11); // low byte at offset $7E
+    mem.write8(0x007F, 0x22); // high byte at offset $7E+1 = $7F
     mem.write8(0x0200, 0xBA);
-    mem.write8(0x0201, 0xFF);
+    mem.write8(0x0201, 0x7E);
     cpu.step(&mut mem);
     assert_eq!(cpu.regs.a, 0x11);
     assert_eq!(cpu.regs.y, 0x22);
