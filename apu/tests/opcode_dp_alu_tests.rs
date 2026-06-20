@@ -1152,3 +1152,489 @@ fn test_eor_ix_iy_costs_5_cycles() {
     cpu.step(&mut mem);
     assert_eq!(cpu.cycles, 5);
 }
+
+// ============================================================
+// CMP A,dp ($64)
+// ============================================================
+
+#[test]
+fn test_cmp_a_dp_equal_sets_zero_and_carry() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x10;
+    mem.write8(0x0020, 0x10);
+    mem.write8(0x0200, 0x64);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_Z));
+    assert!(cpu.get_flag(FLAG_C));
+}
+
+#[test]
+fn test_cmp_a_dp_greater_sets_carry_not_zero() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x20;
+    mem.write8(0x0020, 0x10);
+    mem.write8(0x0200, 0x64);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_C));
+    assert!(!cpu.get_flag(FLAG_Z));
+}
+
+#[test]
+fn test_cmp_a_dp_less_clears_carry() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x05;
+    mem.write8(0x0020, 0x10);
+    mem.write8(0x0200, 0x64);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert!(!cpu.get_flag(FLAG_C));
+}
+
+#[test]
+fn test_cmp_a_dp_does_not_modify_a() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x20;
+    mem.write8(0x0020, 0x10);
+    mem.write8(0x0200, 0x64);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x20, "CMP must not modify A");
+}
+
+#[test]
+fn test_cmp_a_dp_costs_3_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x64);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 3);
+}
+
+// ============================================================
+// CMP A,!abs ($65)
+// ============================================================
+
+#[test]
+fn test_cmp_a_abs_basic() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x20;
+    mem.write8(0x0500, 0x10);
+    mem.write8(0x0200, 0x65);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_C));
+}
+
+#[test]
+fn test_cmp_a_abs_costs_4_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x65);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 4);
+}
+
+// ============================================================
+// CMP A,(X) ($66)
+// ============================================================
+
+#[test]
+fn test_cmp_a_ix_basic() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x20;
+    cpu.regs.x = 0x20;
+    mem.write8(0x0020, 0x10);
+    mem.write8(0x0200, 0x66);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_C));
+}
+
+#[test]
+fn test_cmp_a_ix_costs_3_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x66);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 3);
+}
+
+// ============================================================
+// CMP A,[dp+X] ($67)
+// ============================================================
+
+#[test]
+fn test_cmp_a_dp_x_ind_basic() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x20;
+    cpu.regs.x = 0x02;
+    mem.write8(0x0022, 0x00);
+    mem.write8(0x0023, 0x05);
+    mem.write8(0x0500, 0x10);
+    mem.write8(0x0200, 0x67);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_C));
+}
+
+#[test]
+fn test_cmp_a_dp_x_ind_costs_6_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0020, 0x00);
+    mem.write8(0x0021, 0x05);
+    mem.write8(0x0200, 0x67);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 6);
+}
+
+// ============================================================
+// CMP dd,ds ($69)
+// ============================================================
+
+#[test]
+fn test_cmp_dp_dp_basic() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0030, 0x10); // src
+    mem.write8(0x0040, 0x20); // dst
+    mem.write8(0x0200, 0x69);
+    mem.write8(0x0201, 0x30);
+    mem.write8(0x0202, 0x40);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_C));
+}
+
+#[test]
+fn test_cmp_dp_dp_does_not_write_back() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0030, 0x10);
+    mem.write8(0x0040, 0x20);
+    mem.write8(0x0200, 0x69);
+    mem.write8(0x0201, 0x30);
+    mem.write8(0x0202, 0x40);
+    cpu.step(&mut mem);
+    assert_eq!(mem.read8(0x0040), 0x20, "dst memory must be unchanged");
+}
+
+#[test]
+fn test_cmp_dp_dp_costs_6_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0030, 0x00);
+    mem.write8(0x0040, 0x00);
+    mem.write8(0x0200, 0x69);
+    mem.write8(0x0201, 0x30);
+    mem.write8(0x0202, 0x40);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 6);
+}
+
+// ============================================================
+// CMP A,dp+X ($74)
+// ============================================================
+
+#[test]
+fn test_cmp_a_dp_x_basic() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x20;
+    cpu.regs.x = 0x02;
+    mem.write8(0x0022, 0x10);
+    mem.write8(0x0200, 0x74);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_C));
+}
+
+#[test]
+fn test_cmp_a_dp_x_costs_4_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x74);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 4);
+}
+
+// ============================================================
+// CMP A,!abs+X ($75) / CMP A,!abs+Y ($76)
+// ============================================================
+
+#[test]
+fn test_cmp_a_abs_x_basic() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x20;
+    cpu.regs.x = 0x02;
+    mem.write8(0x0502, 0x10);
+    mem.write8(0x0200, 0x75);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_C));
+}
+
+#[test]
+fn test_cmp_a_abs_x_costs_5_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x75);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 5);
+}
+
+#[test]
+fn test_cmp_a_abs_y_basic() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x20;
+    cpu.regs.y = 0x03;
+    mem.write8(0x0503, 0x10);
+    mem.write8(0x0200, 0x76);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_C));
+}
+
+#[test]
+fn test_cmp_a_abs_y_costs_5_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x76);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 5);
+}
+
+// ============================================================
+// CMP A,[dp]+Y ($77)
+// ============================================================
+
+#[test]
+fn test_cmp_a_dp_ind_y_basic() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x20;
+    cpu.regs.y = 0x03;
+    mem.write8(0x0020, 0x00);
+    mem.write8(0x0021, 0x05);
+    mem.write8(0x0503, 0x10);
+    mem.write8(0x0200, 0x77);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_C));
+}
+
+#[test]
+fn test_cmp_a_dp_ind_y_costs_6_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0020, 0x00);
+    mem.write8(0x0021, 0x05);
+    mem.write8(0x0200, 0x77);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 6);
+}
+
+// ============================================================
+// CMP dp,#imm ($78)
+// ============================================================
+
+#[test]
+fn test_cmp_dp_imm_basic() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0020, 0x20);
+    mem.write8(0x0200, 0x78);
+    mem.write8(0x0201, 0x10); // immediate
+    mem.write8(0x0202, 0x20); // dp offset
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_C));
+}
+
+#[test]
+fn test_cmp_dp_imm_does_not_write_back() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0020, 0x20);
+    mem.write8(0x0200, 0x78);
+    mem.write8(0x0201, 0x10);
+    mem.write8(0x0202, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(mem.read8(0x0020), 0x20, "dp memory must be unchanged");
+}
+
+#[test]
+fn test_cmp_dp_imm_costs_5_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0020, 0x00);
+    mem.write8(0x0200, 0x78);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 5);
+}
+
+// ============================================================
+// CMP (X),(Y) ($79)
+// ============================================================
+
+#[test]
+fn test_cmp_ix_iy_basic() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.x = 0x20;
+    cpu.regs.y = 0x30;
+    mem.write8(0x0020, 0x20);
+    mem.write8(0x0030, 0x10);
+    mem.write8(0x0200, 0x79);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_C));
+}
+
+#[test]
+fn test_cmp_ix_iy_costs_5_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x79);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 5);
+}
+
+// ============================================================
+// CMP X,#imm ($C8) / CMP Y,#imm ($AD)
+// ============================================================
+
+#[test]
+fn test_cmp_x_imm_basic() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.x = 0x20;
+    mem.write8(0x0200, 0xC8);
+    mem.write8(0x0201, 0x10);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_C));
+}
+
+#[test]
+fn test_cmp_x_imm_does_not_modify_x() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.x = 0x20;
+    mem.write8(0x0200, 0xC8);
+    mem.write8(0x0201, 0x10);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.x, 0x20);
+}
+
+#[test]
+fn test_cmp_x_imm_costs_2_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0xC8);
+    mem.write8(0x0201, 0x00);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 2);
+}
+
+#[test]
+fn test_cmp_y_imm_basic() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.y = 0x20;
+    mem.write8(0x0200, 0xAD);
+    mem.write8(0x0201, 0x10);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_C));
+}
+
+#[test]
+fn test_cmp_y_imm_costs_2_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0xAD);
+    mem.write8(0x0201, 0x00);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 2);
+}
+
+// ============================================================
+// CMP X,dp ($3E) / CMP X,!abs ($1E)
+// ============================================================
+
+#[test]
+fn test_cmp_x_dp_basic() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.x = 0x20;
+    mem.write8(0x0020, 0x10);
+    mem.write8(0x0200, 0x3E);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_C));
+}
+
+#[test]
+fn test_cmp_x_dp_costs_3_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x3E);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 3);
+}
+
+#[test]
+fn test_cmp_x_abs_basic() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.x = 0x20;
+    mem.write8(0x0500, 0x10);
+    mem.write8(0x0200, 0x1E);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_C));
+}
+
+#[test]
+fn test_cmp_x_abs_costs_4_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x1E);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 4);
+}
+
+// ============================================================
+// CMP Y,dp ($7E) / CMP Y,!abs ($5E)
+// ============================================================
+
+#[test]
+fn test_cmp_y_dp_basic() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.y = 0x20;
+    mem.write8(0x0020, 0x10);
+    mem.write8(0x0200, 0x7E);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_C));
+}
+
+#[test]
+fn test_cmp_y_dp_costs_3_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x7E);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 3);
+}
+
+#[test]
+fn test_cmp_y_abs_basic() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.y = 0x20;
+    mem.write8(0x0500, 0x10);
+    mem.write8(0x0200, 0x5E);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_C));
+}
+
+#[test]
+fn test_cmp_y_abs_costs_4_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x5E);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 4);
+}
