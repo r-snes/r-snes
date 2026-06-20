@@ -351,6 +351,7 @@ impl Spc700 {
             0xFE => self.inst_dbnz_y(mem),         // DBNZ Y,rel
             0x0F => self.inst_brk(mem),            // BRK
 
+            0x9F => self.inst_xcn_a(), // XCN A
             // Catch-all
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
         }
@@ -2486,5 +2487,13 @@ impl Spc700 {
         self.set_flag(FLAG_I, true);
         self.regs.pc = mem.read16(0xFFDE);
         self.cycles += 8;
+    }
+
+    /// XCN A — exchange the high and low nibbles of A.
+    /// Sets N and Z from the result. 5 cycles.
+    fn inst_xcn_a(&mut self) {
+        self.regs.a = (self.regs.a >> 4) | (self.regs.a << 4);
+        self.set_zn_flags(self.regs.a);
+        self.cycles += 5;
     }
 }
