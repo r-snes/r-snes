@@ -81,6 +81,50 @@ impl Spc700 {
             0x08 => self.inst_ora_imm(mem), // ORA #imm
             0x48 => self.inst_eor_imm(mem), // EOR #imm
         
+            // Branches
+            0x2F => self.inst_bra(mem), // BRA rel
+            0xF0 => self.inst_beq(mem), // BEQ rel
+            0xD0 => self.inst_bne(mem), // BNE rel
+            0x10 => self.inst_bpl(mem), // BPL rel
+            0x30 => self.inst_bmi(mem), // BMI rel
+            0x50 => self.inst_bvc(mem), // BVC rel
+            0x70 => self.inst_bvs(mem), // BVS rel
+            0x90 => self.inst_bcc(mem), // BCC rel
+            0xB0 => self.inst_bcs(mem), // BCS rel
+
+            // Subroutine calls and returns
+            0x3F => self.inst_call(mem), // CALL !abs
+            0x6F => self.inst_ret(mem),  // RET
+            0x4F => self.inst_pcall(mem), // PCALL !abs
+            0x01 => self.inst_tcall(mem, 0),
+            0x11 => self.inst_tcall(mem, 1),
+            0x21 => self.inst_tcall(mem, 2),
+            0x31 => self.inst_tcall(mem, 3),
+            0x41 => self.inst_tcall(mem, 4),
+            0x51 => self.inst_tcall(mem, 5),
+            0x61 => self.inst_tcall(mem, 6),
+            0x71 => self.inst_tcall(mem, 7),
+            0x81 => self.inst_tcall(mem, 8),
+            0x91 => self.inst_tcall(mem, 9),
+            0xA1 => self.inst_tcall(mem, 10),
+            0xB1 => self.inst_tcall(mem, 11),
+            0xC1 => self.inst_tcall(mem, 12),
+            0xD1 => self.inst_tcall(mem, 13),
+            0xE1 => self.inst_tcall(mem, 14),
+            0xF1 => self.inst_tcall(mem, 15),
+
+            // Stack operations
+            0x2D => self.inst_push_a(mem), // PUSH A
+            0xAE => self.inst_pop_a(mem),  // POP A
+            0x4D => self.inst_push_x(mem), // PUSH X
+            0xCE => self.inst_pop_x(mem),  // POP X
+            0x6D => self.inst_push_y(mem), // PUSH Y
+            0xEE => self.inst_pop_y(mem),  // POP Y
+            0x0D => self.inst_push_psw(mem), // PUSH PSW
+            0x8E => self.inst_pop_psw(mem),  // POP PSW
+            0xEF => self.inst_sleep(), // SLEEP
+            0xFF => self.inst_stop(),  // STOP
+
             // Catch-all
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
         }
@@ -326,5 +370,258 @@ impl Spc700 {
         self.regs.a ^= self.read_immediate(mem);
         self.set_zn_flags(self.regs.a);
         self.cycles += 2;
+    }
+
+    /// BRA rel — branch always.
+    /// Reads a signed 8-bit offset relative to the instruction after BRA
+    /// Always taken. 4 cycles.
+    fn inst_bra(&mut self, mem: &mut Memory) {
+        let offset = self.read_immediate(mem) as i8;
+        self.regs.pc = self.regs.pc.wrapping_add(offset as u16);
+        self.cycles += 4;
+    }
+
+    /// BEQ rel — branch if Zero flag is set (last result was zero).
+    /// 4 cycles if taken, 2 cycles if not taken.
+    fn inst_beq(&mut self, mem: &mut Memory) {
+        let offset = self.read_immediate(mem) as i8;
+        if self.get_flag(FLAG_Z) {
+            self.regs.pc = self.regs.pc.wrapping_add(offset as u16);
+            self.cycles += 4;
+        } else {
+            self.cycles += 2;
+        }
+    }
+
+    /// BNE rel — branch if Zero flag is clear.
+    /// 4 cycles if taken, 2 cycles if not taken.
+    fn inst_bne(&mut self, mem: &mut Memory) {
+        let offset = self.read_immediate(mem) as i8;
+        if !self.get_flag(FLAG_Z) {
+            self.regs.pc = self.regs.pc.wrapping_add(offset as u16);
+            self.cycles += 4;
+        } else {
+            self.cycles += 2;
+        }
+    }
+
+    /// BPL rel — branch if Negative flag is clear
+    /// 4 cycles if taken, 2 cycles if not taken.
+    fn inst_bpl(&mut self, mem: &mut Memory) {
+        let offset = self.read_immediate(mem) as i8;
+        if !self.get_flag(FLAG_N) {
+            self.regs.pc = self.regs.pc.wrapping_add(offset as u16);
+            self.cycles += 4;
+        } else {
+            self.cycles += 2;
+        }
+    }
+
+    /// BMI rel — branch if Negative flag is set
+    /// 4 cycles if taken, 2 cycles if not taken.
+    fn inst_bmi(&mut self, mem: &mut Memory) {
+        let offset = self.read_immediate(mem) as i8;
+        if self.get_flag(FLAG_N) {
+            self.regs.pc = self.regs.pc.wrapping_add(offset as u16);
+            self.cycles += 4;
+        } else {
+            self.cycles += 2;
+        }
+    }
+
+    /// BVC rel — branch if Overflow flag is clear.
+    /// 4 cycles if taken, 2 cycles if not taken.
+    fn inst_bvc(&mut self, mem: &mut Memory) {
+        let offset = self.read_immediate(mem) as i8;
+        if !self.get_flag(FLAG_V) {
+            self.regs.pc = self.regs.pc.wrapping_add(offset as u16);
+            self.cycles += 4;
+        } else {
+            self.cycles += 2;
+        }
+    }
+
+    /// BVS rel — branch if Overflow flag is set.
+    /// 4 cycles if taken, 2 cycles if not taken.
+    fn inst_bvs(&mut self, mem: &mut Memory) {
+        let offset = self.read_immediate(mem) as i8;
+        if self.get_flag(FLAG_V) {
+            self.regs.pc = self.regs.pc.wrapping_add(offset as u16);
+            self.cycles += 4;
+        } else {
+            self.cycles += 2;
+        }
+    }
+
+    /// BCC rel — branch if Carry flag is clear.
+    /// 4 cycles if taken, 2 cycles if not taken.
+    fn inst_bcc(&mut self, mem: &mut Memory) {
+        let offset = self.read_immediate(mem) as i8;
+        if !self.get_flag(FLAG_C) {
+            self.regs.pc = self.regs.pc.wrapping_add(offset as u16);
+            self.cycles += 4;
+        } else {
+            self.cycles += 2;
+        }
+    }
+
+    /// BCS rel — branch if Carry flag is set.
+    /// 4 cycles if taken, 2 cycles if not taken.
+    fn inst_bcs(&mut self, mem: &mut Memory) {
+        let offset = self.read_immediate(mem) as i8;
+        if self.get_flag(FLAG_C) {
+            self.regs.pc = self.regs.pc.wrapping_add(offset as u16);
+            self.cycles += 4;
+        } else {
+            self.cycles += 2;
+        }
+    }
+
+    // =========================================================
+    // STACK HELPERS
+    //
+    // The SPC700 stack lives at $0100–$01FF regardless of FLAG_P.
+    // SP points to the next free slot.
+    // PUSH: write to $0100|SP, then decrement SP.
+    // POP:  increment SP, then read from $0100|SP.
+    // =========================================================
+ 
+    fn stack_push(&mut self, mem: &mut Memory, value: u8) {
+        mem.write8(0x0100 | self.regs.sp as u16, value);
+        self.regs.sp = self.regs.sp.wrapping_sub(1);
+    }
+ 
+    fn stack_pop(&mut self, mem: &mut Memory) -> u8 {
+        self.regs.sp = self.regs.sp.wrapping_add(1);
+        mem.read8_mut(0x0100 | self.regs.sp as u16)
+    }
+ 
+    // =========================================================
+    // SUBROUTINE CALLS AND RETURNS
+    // =========================================================
+ 
+    /// CALL !abs — push PC (high then low), jump to 16-bit target.
+    /// 3 bytes: opcode + 16-bit target address. 8 cycles.
+    fn inst_call(&mut self, mem: &mut Memory) {
+        let target = self.read_immediate16(mem);
+        // Push return address: high byte first, then low byte.
+        // RET will pop low then high to reconstruct PC correctly.
+        let pc_hi = (self.regs.pc >> 8) as u8;
+        let pc_lo = (self.regs.pc & 0xFF) as u8;
+        self.stack_push(mem, pc_hi);
+        self.stack_push(mem, pc_lo);
+        self.regs.pc = target;
+        self.cycles += 8;
+    }
+
+    /// RET — pop return address (low then high) and jump to it.
+    ///
+    /// 1 byte. 5 cycles.
+    fn inst_ret(&mut self, mem: &mut Memory) {
+        let lo = self.stack_pop(mem) as u16;
+        let hi = self.stack_pop(mem) as u16;
+        self.regs.pc = (hi << 8) | lo;
+        self.cycles += 5;
+    }
+
+     /// PCALL u — push return address, jump to $FF00 + u.
+    /// Used to call routines in the SPC700 high page without a full
+    /// 16-bit address. 2 bytes: opcode + u. 6 cycles.
+    fn inst_pcall(&mut self, mem: &mut Memory) {
+        let u = self.read_immediate(mem);
+        let target = 0xFF00 | u as u16;
+        let pc_hi = (self.regs.pc >> 8) as u8;
+        let pc_lo = (self.regs.pc & 0xFF) as u8;
+        self.stack_push(mem, pc_hi);
+        self.stack_push(mem, pc_lo);
+        self.regs.pc = target;
+        self.cycles += 6;
+    }
+
+    /// TCALL n — call via vector table entry at $FFDE - (n * 2).
+    /// Reads the 16-bit target address from the table (little-endian),
+    /// pushes the return address, and jumps to the target.
+    /// 16 variants: n = 0–15, opcode = (n << 4) | 0x01.
+    /// 1 byte. 8 cycles.
+    fn inst_tcall(&mut self, mem: &mut Memory, n: u8) {
+        let vector_addr = 0xFFDE_u16.wrapping_sub(n as u16 * 2);
+        let lo = mem.read8_mut(vector_addr)     as u16;
+        let hi = mem.read8_mut(vector_addr + 1) as u16;
+        let target = (hi << 8) | lo;
+        let pc_hi = (self.regs.pc >> 8) as u8;
+        let pc_lo = (self.regs.pc & 0xFF) as u8;
+        self.stack_push(mem, pc_hi);
+        self.stack_push(mem, pc_lo);
+        self.regs.pc = target;
+        self.cycles += 8;
+    }
+
+    // =========================================================
+    // STACK — PUSH / POP
+    //
+    // PUSH: write register to $0100|SP, decrement SP. 4 cycles.
+    // POP:  increment SP, read from $0100|SP into register. 4 cycles.
+    // Neither instruction affects any flags.
+    // =========================================================
+ 
+    /// PUSH A — push accumulator onto the stack. 4 cycles.
+    fn inst_push_a(&mut self, mem: &mut Memory) {
+        self.stack_push(mem, self.regs.a);
+        self.cycles += 4;
+    }
+
+    /// POP A — pop accumulator from the stack. 4 cycles.
+    fn inst_pop_a(&mut self, mem: &mut Memory) {
+        self.regs.a = self.stack_pop(mem);
+        self.cycles += 4;
+    }
+
+    /// PUSH X — push X register onto the stack. 4 cycles.
+    fn inst_push_x(&mut self, mem: &mut Memory) {
+        self.stack_push(mem, self.regs.x);
+        self.cycles += 4;
+    }
+
+    /// POP X — pop X register from the stack. 4 cycles.
+    fn inst_pop_x(&mut self, mem: &mut Memory) {
+        self.regs.x = self.stack_pop(mem);
+        self.cycles += 4;
+    }
+
+    /// PUSH Y — push Y register onto the stack. 4 cycles.
+    fn inst_push_y(&mut self, mem: &mut Memory) {
+        self.stack_push(mem, self.regs.y);
+        self.cycles += 4;
+    }
+
+    /// POP Y — pop Y register from the stack. 4 cycles.
+    fn inst_pop_y(&mut self, mem: &mut Memory) {
+        self.regs.y = self.stack_pop(mem);
+        self.cycles += 4;
+    }
+
+    /// PUSH PSW — push processor status word onto the stack. 4 cycles.
+    fn inst_push_psw(&mut self, mem: &mut Memory) {
+        self.stack_push(mem, self.regs.psw);
+        self.cycles += 4;
+    }
+
+    /// POP PSW — pop processor status word from the stack. 4 cycles.
+    /// Unlike POP A/X/Y, this restores all flags simultaneously.
+    fn inst_pop_psw(&mut self, mem: &mut Memory) {
+        self.regs.psw = self.stack_pop(mem);
+        self.cycles += 4;
+    }
+
+    /// SLEEP — halt CPU until an interrupt fires.
+    /// TODO: implement when interrupt handling is added (feature/ipl-boot-rom).
+    fn inst_sleep(&mut self) {
+        todo!("SLEEP: halt until interrupt")
+    }
+
+    /// STOP — halt CPU permanently.
+    /// TODO: implement when interrupt handling is added (feature/ipl-boot-rom).
+    fn inst_stop(&mut self) {
+        todo!("STOP: permanent halt")
     }
 }
