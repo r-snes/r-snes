@@ -266,6 +266,20 @@ impl Spc700 {
             0x1E => self.inst_cmp_x_abs(mem),
             0x7E => self.inst_cmp_y_dp(mem),
             0x5E => self.inst_cmp_y_abs(mem),
+
+            // ADC — all addressing modes
+            0x84 => self.inst_adc_a_dp(mem),
+            0x85 => self.inst_adc_a_abs(mem),
+            0x86 => self.inst_adc_a_ix(mem),
+            0x87 => self.inst_adc_a_dp_x_ind(mem),
+            0x89 => self.inst_adc_dp_dp(mem),
+            0x94 => self.inst_adc_a_dp_x(mem),
+            0x95 => self.inst_adc_a_abs_x(mem),
+            0x96 => self.inst_adc_a_abs_y(mem),
+            0x97 => self.inst_adc_a_dp_ind_y(mem),
+            0x98 => self.inst_adc_dp_imm(mem),
+            0x99 => self.inst_adc_ix_iy(mem),
+
             // Catch-all
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
         }
@@ -1983,5 +1997,109 @@ impl Spc700 {
         let val = mem.read8_mut(addr);
         self.cmp_flags(self.regs.y, val);
         self.cycles += 4;
+    }
+
+    /// Shared ADC computation — adds src + dst + carry-in, sets C, V, Z, N
+    /// (matches the existing ADC A,#imm behaviour — no H flag). Returns the
+    /// result byte for the caller to write back.
+    fn adc_flags(&mut self, dst: u8, src: u8) -> u8 {
+        let carry_in = if self.get_flag(FLAG_C) { 1u16 } else { 0u16 };
+        let result = dst as u16 + src as u16 + carry_in;
+        let result_u8 = result as u8;
+
+        self.set_flag(FLAG_C, result > 0xFF);
+        self.set_zn_flags(result_u8);
+        self.set_flag(FLAG_V, (!(dst ^ src) & (dst ^ result_u8) & 0x80) != 0);
+
+        result_u8
+    }
+
+    fn inst_adc_a_dp(&mut self, mem: &mut Memory) {
+    let addr = self.dp_base() | self.read_immediate(mem) as u16;
+    let val = mem.read8_mut(addr);
+    self.regs.a = self.adc_flags(self.regs.a, val);
+    self.cycles += 3;
+    }
+
+    fn inst_adc_a_abs(&mut self, mem: &mut Memory) {
+        let addr = self.read_immediate16(mem);
+        let val = mem.read8_mut(addr);
+        self.regs.a = self.adc_flags(self.regs.a, val);
+        self.cycles += 4;
+    }
+
+    fn inst_adc_a_ix(&mut self, mem: &mut Memory) {
+        let addr = self.dp_base() | self.regs.x as u16;
+        let val = mem.read8_mut(addr);
+        self.regs.a = self.adc_flags(self.regs.a, val);
+        self.cycles += 3;
+    }
+
+    fn inst_adc_a_dp_x_ind(&mut self, mem: &mut Memory) {
+        let offset = self.read_immediate(mem) as u16;
+        let ptr_addr = self.dp_base() | (offset + self.regs.x as u16) & 0xFF;
+        let lo = mem.read8_mut(ptr_addr) as u16;
+        let hi = mem.read8_mut(ptr_addr.wrapping_add(1)) as u16;
+        let addr = (hi << 8) | lo;
+        let val = mem.read8_mut(addr);
+        self.regs.a = self.adc_flags(self.regs.a, val);
+        self.cycles += 6;
+    }
+
+    fn inst_adc_dp_dp(&mut self, mem: &mut Memory) {
+        let (addr, dst, src) = self.read_dp_dp(mem);
+        let result = self.adc_flags(dst, src);
+        mem.write8(addr, result);
+        self.cycles += 6;
+    }
+
+    fn inst_adc_a_dp_x(&mut self, mem: &mut Memory) {
+        let offset = self.read_immediate(mem) as u16;
+        let addr = self.dp_base() | (offset + self.regs.x as u16) & 0xFF;
+        let val = mem.read8_mut(addr);
+        self.regs.a = self.adc_flags(self.regs.a, val);
+        self.cycles += 4;
+    }
+
+    fn inst_adc_a_abs_x(&mut self, mem: &mut Memory) {
+        let base = self.read_immediate16(mem);
+        let addr = base.wrapping_add(self.regs.x as u16);
+        let val = mem.read8_mut(addr);
+        self.regs.a = self.adc_flags(self.regs.a, val);
+        self.cycles += 5;
+    }
+
+    fn inst_adc_a_abs_y(&mut self, mem: &mut Memory) {
+        let base = self.read_immediate16(mem);
+        let addr = base.wrapping_add(self.regs.y as u16);
+        let val = mem.read8_mut(addr);
+        self.regs.a = self.adc_flags(self.regs.a, val);
+        self.cycles += 5;
+    }
+
+    fn inst_adc_a_dp_ind_y(&mut self, mem: &mut Memory) {
+        let offset = self.read_immediate(mem) as u16;
+        let ptr_addr = self.dp_base() | offset;
+        let lo = mem.read8_mut(ptr_addr) as u16;
+        let hi = mem.read8_mut(ptr_addr.wrapping_add(1)) as u16;
+        let base = (hi << 8) | lo;
+        let addr = base.wrapping_add(self.regs.y as u16);
+        let val = mem.read8_mut(addr);
+        self.regs.a = self.adc_flags(self.regs.a, val);
+        self.cycles += 6;
+    }
+
+    fn inst_adc_dp_imm(&mut self, mem: &mut Memory) {
+        let (addr, dst, src) = self.read_dp_imm(mem);
+        let result = self.adc_flags(dst, src);
+        mem.write8(addr, result);
+        self.cycles += 5;
+    }
+
+    fn inst_adc_ix_iy(&mut self, mem: &mut Memory) {
+        let (addr, dst, src) = self.read_ix_iy(mem);
+        let result = self.adc_flags(dst, src);
+        mem.write8(addr, result);
+        self.cycles += 5;
     }
 }

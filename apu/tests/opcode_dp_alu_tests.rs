@@ -4,9 +4,7 @@
 /// added: OR, AND, EOR, CMP, ADC, SBC, each across all addressing modes.
 ///
 /// Currently covers:
-/// - OR  family ($04,$05,$06,$07,$09,$14,$15,$16,$17,$18,$19)
-/// - AND family ($24,$25,$26,$27,$29,$34,$35,$36,$37,$38,$39)
-/// - EOR family ($44,$45,$46,$47,$49,$54,$55,$56,$57,$58,$59)
+///   - OR  family ($04,$05,$06,$07,$09,$14,$15,$16,$17,$18,$19)
 
 use apu::cpu::{Spc700, FLAG_C, FLAG_N, FLAG_P, FLAG_V, FLAG_Z};
 use apu::Memory;
@@ -1637,4 +1635,371 @@ fn test_cmp_y_abs_costs_4_cycles() {
     mem.write8(0x0202, 0x05);
     cpu.step(&mut mem);
     assert_eq!(cpu.cycles, 4);
+}
+
+// ============================================================
+// ADC A,dp ($84)
+// ============================================================
+
+#[test]
+fn test_adc_a_dp_basic() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x10;
+    mem.write8(0x0020, 0x05);
+    mem.write8(0x0200, 0x84);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x15);
+}
+
+#[test]
+fn test_adc_a_dp_adds_carry_in() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_C;
+    cpu.regs.a = 0x10;
+    mem.write8(0x0020, 0x05);
+    mem.write8(0x0200, 0x84);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x16);
+}
+
+#[test]
+fn test_adc_a_dp_sets_carry_on_overflow() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0xFF;
+    mem.write8(0x0020, 0x01);
+    mem.write8(0x0200, 0x84);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x00);
+    assert!(cpu.get_flag(FLAG_C));
+}
+
+#[test]
+fn test_adc_a_dp_sets_zero_flag() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0xFF;
+    mem.write8(0x0020, 0x01);
+    mem.write8(0x0200, 0x84);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_Z));
+}
+
+#[test]
+fn test_adc_a_dp_sets_overflow_flag() {
+    // $7F + $01 = $80 — pos+pos=neg, signed overflow
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x7F;
+    mem.write8(0x0020, 0x01);
+    mem.write8(0x0200, 0x84);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_V));
+}
+
+#[test]
+fn test_adc_a_dp_uses_dp_base() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_P;
+    cpu.regs.a = 0x10;
+    mem.write8(0x0120, 0x05);
+    mem.write8(0x0200, 0x84);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x15);
+}
+
+#[test]
+fn test_adc_a_dp_costs_3_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x84);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 3);
+}
+
+// ============================================================
+// ADC A,!abs ($85)
+// ============================================================
+
+#[test]
+fn test_adc_a_abs_basic() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x10;
+    mem.write8(0x0500, 0x05);
+    mem.write8(0x0200, 0x85);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x15);
+}
+
+#[test]
+fn test_adc_a_abs_costs_4_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x85);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 4);
+}
+
+// ============================================================
+// ADC A,(X) ($86)
+// ============================================================
+
+#[test]
+fn test_adc_a_ix_basic() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x10;
+    cpu.regs.x = 0x20;
+    mem.write8(0x0020, 0x05);
+    mem.write8(0x0200, 0x86);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x15);
+}
+
+#[test]
+fn test_adc_a_ix_costs_3_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x86);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 3);
+}
+
+// ============================================================
+// ADC A,[dp+X] ($87)
+// ============================================================
+
+#[test]
+fn test_adc_a_dp_x_ind_basic() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x10;
+    cpu.regs.x = 0x02;
+    mem.write8(0x0022, 0x00);
+    mem.write8(0x0023, 0x05);
+    mem.write8(0x0500, 0x05);
+    mem.write8(0x0200, 0x87);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x15);
+}
+
+#[test]
+fn test_adc_a_dp_x_ind_costs_6_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0020, 0x00);
+    mem.write8(0x0021, 0x05);
+    mem.write8(0x0200, 0x87);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 6);
+}
+
+// ============================================================
+// ADC dd,ds ($89)
+// ============================================================
+
+#[test]
+fn test_adc_dp_dp_basic() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0030, 0x05); // src
+    mem.write8(0x0040, 0x10); // dst
+    mem.write8(0x0200, 0x89);
+    mem.write8(0x0201, 0x30);
+    mem.write8(0x0202, 0x40);
+    cpu.step(&mut mem);
+    assert_eq!(mem.read8(0x0040), 0x15);
+}
+
+#[test]
+fn test_adc_dp_dp_does_not_modify_source() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0030, 0x05);
+    mem.write8(0x0040, 0x10);
+    mem.write8(0x0200, 0x89);
+    mem.write8(0x0201, 0x30);
+    mem.write8(0x0202, 0x40);
+    cpu.step(&mut mem);
+    assert_eq!(mem.read8(0x0030), 0x05);
+}
+
+#[test]
+fn test_adc_dp_dp_costs_6_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0030, 0x00);
+    mem.write8(0x0040, 0x00);
+    mem.write8(0x0200, 0x89);
+    mem.write8(0x0201, 0x30);
+    mem.write8(0x0202, 0x40);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 6);
+}
+
+// ============================================================
+// ADC A,dp+X ($94)
+// ============================================================
+
+#[test]
+fn test_adc_a_dp_x_basic() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x10;
+    cpu.regs.x = 0x02;
+    mem.write8(0x0022, 0x05);
+    mem.write8(0x0200, 0x94);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x15);
+}
+
+#[test]
+fn test_adc_a_dp_x_costs_4_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x94);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 4);
+}
+
+// ============================================================
+// ADC A,!abs+X ($95) / ADC A,!abs+Y ($96)
+// ============================================================
+
+#[test]
+fn test_adc_a_abs_x_basic() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x10;
+    cpu.regs.x = 0x02;
+    mem.write8(0x0502, 0x05);
+    mem.write8(0x0200, 0x95);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x15);
+}
+
+#[test]
+fn test_adc_a_abs_x_costs_5_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x95);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 5);
+}
+
+#[test]
+fn test_adc_a_abs_y_basic() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x10;
+    cpu.regs.y = 0x03;
+    mem.write8(0x0503, 0x05);
+    mem.write8(0x0200, 0x96);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x15);
+}
+
+#[test]
+fn test_adc_a_abs_y_costs_5_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x96);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 5);
+}
+
+// ============================================================
+// ADC A,[dp]+Y ($97)
+// ============================================================
+
+#[test]
+fn test_adc_a_dp_ind_y_basic() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0x10;
+    cpu.regs.y = 0x03;
+    mem.write8(0x0020, 0x00);
+    mem.write8(0x0021, 0x05);
+    mem.write8(0x0503, 0x05);
+    mem.write8(0x0200, 0x97);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x15);
+}
+
+#[test]
+fn test_adc_a_dp_ind_y_costs_6_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0020, 0x00);
+    mem.write8(0x0021, 0x05);
+    mem.write8(0x0200, 0x97);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 6);
+}
+
+// ============================================================
+// ADC dp,#imm ($98)
+// ============================================================
+
+#[test]
+fn test_adc_dp_imm_basic() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0020, 0x10);
+    mem.write8(0x0200, 0x98);
+    mem.write8(0x0201, 0x05); // immediate
+    mem.write8(0x0202, 0x20); // dp offset
+    cpu.step(&mut mem);
+    assert_eq!(mem.read8(0x0020), 0x15);
+}
+
+#[test]
+fn test_adc_dp_imm_costs_5_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0020, 0x00);
+    mem.write8(0x0200, 0x98);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 5);
+}
+
+// ============================================================
+// ADC (X),(Y) ($99)
+// ============================================================
+
+#[test]
+fn test_adc_ix_iy_basic() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.x = 0x20;
+    cpu.regs.y = 0x30;
+    mem.write8(0x0020, 0x10); // dst (X)
+    mem.write8(0x0030, 0x05); // src (Y)
+    mem.write8(0x0200, 0x99);
+    cpu.step(&mut mem);
+    assert_eq!(mem.read8(0x0020), 0x15);
+}
+
+#[test]
+fn test_adc_ix_iy_does_not_modify_y_address() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.x = 0x20;
+    cpu.regs.y = 0x30;
+    mem.write8(0x0020, 0x10);
+    mem.write8(0x0030, 0x05);
+    mem.write8(0x0200, 0x99);
+    cpu.step(&mut mem);
+    assert_eq!(mem.read8(0x0030), 0x05);
+}
+
+#[test]
+fn test_adc_ix_iy_costs_5_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x99);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 5);
 }
