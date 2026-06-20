@@ -209,6 +209,19 @@ impl Spc700 {
             0xBB => self.inst_inc_dp_x(mem), // INC dp+X
             0x9B => self.inst_dec_dp_x(mem), // DEC dp+X
 
+            // OR — all addressing modes
+            0x04 => self.inst_or_a_dp(mem),
+            0x05 => self.inst_or_a_abs(mem),
+            0x06 => self.inst_or_a_ix(mem),
+            0x07 => self.inst_or_a_dp_x_ind(mem),
+            0x09 => self.inst_or_dp_dp(mem),
+            0x14 => self.inst_or_a_dp_x(mem),
+            0x15 => self.inst_or_a_abs_x(mem),
+            0x16 => self.inst_or_a_abs_y(mem),
+            0x17 => self.inst_or_a_dp_ind_y(mem),
+            0x18 => self.inst_or_dp_imm(mem),
+            0x19 => self.inst_or_ix_iy(mem),
+
             // Catch-all
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
         }
@@ -1476,6 +1489,138 @@ impl Spc700 {
         let val = mem.read8_mut(addr).wrapping_sub(1);
         mem.write8(addr, val);
         self.set_zn_flags(val);
+        self.cycles += 5;
+    }
+
+    // =========================================================
+    // Shared dp-ALU operand helpers
+    //
+    // Used by OR/AND/EOR/CMP/ADC/SBC across their dp,dp / dp,#imm /
+    // (X),(Y) addressing modes. All return (write_addr, dst_value, src_value)
+    // so each instruction just applies its own operation to (dst, src) and
+    // writes the result to write_addr.
+    // =========================================================
+
+    /// `OP dd,ds` — note the byte order in the instruction stream is
+    /// src-offset first, dst-offset second (opposite of the "dd,ds" mnemonic
+    /// reading order). Same convention as MOV dp,dp.
+    fn read_dp_dp(&mut self, mem: &mut Memory) -> (u16, u8, u8) {
+        let src_off = self.read_immediate(mem) as u16;
+        let dst_off = self.read_immediate(mem) as u16;
+        let base = self.dp_base();
+        let src = mem.read8_mut(base | src_off);
+        let dst = mem.read8_mut(base | dst_off);
+        (base | dst_off, dst, src)
+    }
+
+    /// `OP dp,#imm` — immediate byte first, then the dp offset.
+    fn read_dp_imm(&mut self, mem: &mut Memory) -> (u16, u8, u8) {
+        let imm = self.read_immediate(mem);
+        let dst_off = self.read_immediate(mem) as u16;
+        let base = self.dp_base();
+        let dst = mem.read8_mut(base | dst_off);
+        (base | dst_off, dst, imm)
+    }
+
+    /// `OP (X),(Y)` — X supplies the destination address, Y the source.
+    fn read_ix_iy(&mut self, mem: &mut Memory) -> (u16, u8, u8) {
+        let base = self.dp_base();
+        let x_addr = base | self.regs.x as u16;
+        let y_addr = base | self.regs.y as u16;
+        let x_val = mem.read8_mut(x_addr);
+        let y_val = mem.read8_mut(y_addr);
+        (x_addr, x_val, y_val)
+    }
+
+    fn inst_or_a_dp(&mut self, mem: &mut Memory) {
+    let addr = self.dp_base() | self.read_immediate(mem) as u16;
+    self.regs.a |= mem.read8_mut(addr);
+    self.set_zn_flags(self.regs.a);
+    self.cycles += 3;
+    }
+
+    fn inst_or_a_abs(&mut self, mem: &mut Memory) {
+        let addr = self.read_immediate16(mem);
+        self.regs.a |= mem.read8_mut(addr);
+        self.set_zn_flags(self.regs.a);
+        self.cycles += 4;
+    }
+
+    fn inst_or_a_ix(&mut self, mem: &mut Memory) {
+        let addr = self.dp_base() | self.regs.x as u16;
+        self.regs.a |= mem.read8_mut(addr);
+        self.set_zn_flags(self.regs.a);
+        self.cycles += 3;
+    }
+
+    fn inst_or_a_dp_x_ind(&mut self, mem: &mut Memory) {
+        let offset = self.read_immediate(mem) as u16;
+        let ptr_addr = self.dp_base() | (offset + self.regs.x as u16) & 0xFF;
+        let lo = mem.read8_mut(ptr_addr) as u16;
+        let hi = mem.read8_mut(ptr_addr.wrapping_add(1)) as u16;
+        let addr = (hi << 8) | lo;
+        self.regs.a |= mem.read8_mut(addr);
+        self.set_zn_flags(self.regs.a);
+        self.cycles += 6;
+    }
+
+    fn inst_or_dp_dp(&mut self, mem: &mut Memory) {
+        let (addr, dst, src) = self.read_dp_dp(mem);
+        let result = dst | src;
+        mem.write8(addr, result);
+        self.set_zn_flags(result);
+        self.cycles += 6;
+    }
+
+    fn inst_or_a_dp_x(&mut self, mem: &mut Memory) {
+        let offset = self.read_immediate(mem) as u16;
+        let addr = self.dp_base() | (offset + self.regs.x as u16) & 0xFF;
+        self.regs.a |= mem.read8_mut(addr);
+        self.set_zn_flags(self.regs.a);
+        self.cycles += 4;
+    }
+
+    fn inst_or_a_abs_x(&mut self, mem: &mut Memory) {
+        let base = self.read_immediate16(mem);
+        let addr = base.wrapping_add(self.regs.x as u16);
+        self.regs.a |= mem.read8_mut(addr);
+        self.set_zn_flags(self.regs.a);
+        self.cycles += 5;
+    }
+
+    fn inst_or_a_abs_y(&mut self, mem: &mut Memory) {
+        let base = self.read_immediate16(mem);
+        let addr = base.wrapping_add(self.regs.y as u16);
+        self.regs.a |= mem.read8_mut(addr);
+        self.set_zn_flags(self.regs.a);
+        self.cycles += 5;
+    }
+
+    fn inst_or_a_dp_ind_y(&mut self, mem: &mut Memory) {
+        let offset = self.read_immediate(mem) as u16;
+        let ptr_addr = self.dp_base() | offset;
+        let lo = mem.read8_mut(ptr_addr) as u16;
+        let hi = mem.read8_mut(ptr_addr.wrapping_add(1)) as u16;
+        let base = (hi << 8) | lo;
+        let addr = base.wrapping_add(self.regs.y as u16);
+        self.regs.a |= mem.read8_mut(addr);
+        self.set_zn_flags(self.regs.a);
+        self.cycles += 6;
+    }
+
+    fn inst_or_dp_imm(&mut self, mem: &mut Memory) {
+        let (addr, dst, src) = self.read_dp_imm(mem);
+        let result = dst | src;
+        mem.write8(addr, result);
+        self.set_zn_flags(result);
+        self.cycles += 5;
+    }
+
+    fn inst_or_ix_iy(&mut self, mem: &mut Memory) {
+        let (addr, dst, src) = self.read_ix_iy(mem);
+        let result = dst | src;
+        mem.write8(addr, result);
+        self.set_zn_flags(result);
         self.cycles += 5;
     }
 }
