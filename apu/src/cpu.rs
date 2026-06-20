@@ -293,6 +293,24 @@ impl Spc700 {
             0xB8 => self.inst_sbc_dp_imm(mem),
             0xB9 => self.inst_sbc_ix_iy(mem),
 
+            // SET1/CLR1 — bit set/clear, direct page, 8 positions each
+            0x02 => self.inst_set1(mem, 0),
+            0x12 => self.inst_clr1(mem, 0),
+            0x22 => self.inst_set1(mem, 1),
+            0x32 => self.inst_clr1(mem, 1),
+            0x42 => self.inst_set1(mem, 2),
+            0x52 => self.inst_clr1(mem, 2),
+            0x62 => self.inst_set1(mem, 3),
+            0x72 => self.inst_clr1(mem, 3),
+            0x82 => self.inst_set1(mem, 4),
+            0x92 => self.inst_clr1(mem, 4),
+            0xA2 => self.inst_set1(mem, 5),
+            0xB2 => self.inst_clr1(mem, 5),
+            0xC2 => self.inst_set1(mem, 6),
+            0xD2 => self.inst_clr1(mem, 6),
+            0xE2 => self.inst_set1(mem, 7),
+            0xF2 => self.inst_clr1(mem, 7),
+
             // Catch-all
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
         }
@@ -2194,5 +2212,23 @@ impl Spc700 {
         let result = self.sbc_flags(dst, src);
         mem.write8(addr, result);
         self.cycles += 5;
+    }
+
+    /// SET1 d.bit — set the given bit (0-7) at a direct page address.
+    /// No flags affected. 4 cycles.
+    fn inst_set1(&mut self, mem: &mut Memory, bit: u8) {
+        let addr = self.dp_base() | self.read_immediate(mem) as u16;
+        let val = mem.read8_mut(addr) | (1 << bit);
+        mem.write8(addr, val);
+        self.cycles += 4;
+    }
+
+    /// CLR1 d.bit — clear the given bit (0-7) at a direct page address.
+    /// No flags affected. 4 cycles.
+    fn inst_clr1(&mut self, mem: &mut Memory, bit: u8) {
+        let addr = self.dp_base() | self.read_immediate(mem) as u16;
+        let val = mem.read8_mut(addr) & !(1 << bit);
+        mem.write8(addr, val);
+        self.cycles += 4;
     }
 }
