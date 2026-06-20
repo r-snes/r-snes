@@ -1,15 +1,25 @@
 /// Control flow instruction tests
 /// Currently covers:
-///   - BRA ($2F) — branch always
-///   - BEQ ($F0) — branch if Z set
-///  - BNE ($D0) — branch if Z clear
-///  - BPL ($10) — branch if N clear
+/// - BRA ($2F) — branch always
+/// - BEQ ($F0) — branch if Z set
+/// - BNE ($D0) — branch if Z clear
+/// - BPL ($10) — branch if N clear
 /// - BMI ($30) — branch if N set
 /// - BVC ($50) — branch if V clear
 /// - BVS ($70) — branch if V set
 /// - BCC ($90) — branch if C clear
 /// - BCS ($B0) — branch if C set
 /// - CALL ($3F) — absolute subroutine call
+/// - RET ($4F) — return from subroutine
+/// - PCALL ($6F) — absolute indirect call (jump to subroutine with return address pushed)
+/// - TCALL ($5F) — absolute tail call (jump to subroutine without pushing return address)
+/// - PUSH A ($1F) — push A to stack
+/// - POP A ($0F) — pop A from stack
+/// - PUSH X ($9F) — push X to stack
+/// - POP X ($8F) — pop X from stack
+/// - PUSH Y ($BF) — push Y to stack
+/// - POP Y ($AF) — pop Y from stack
+/// - SLEEP ($DB) — sleep until interrupt
 
 use apu::cpu::{Spc700, FLAG_C, FLAG_N, FLAG_Z, FLAG_V};
 use apu::Memory;
