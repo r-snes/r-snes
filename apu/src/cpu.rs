@@ -182,6 +182,21 @@ impl Spc700 {
             0xF6 => self.inst_mov_a_abs_y(mem), // MOV A,!abs+Y
             0xE7 => self.inst_mov_a_dp_x_ind(mem), // MOV A,[dp+X]
             0xF7 => self.inst_mov_a_dp_ind_y(mem), // MOV A,[dp]+Y
+            0xD4 => self.inst_mov_dp_x_a(mem), // MOV dp+X,A
+            0xD5 => self.inst_mov_abs_x_a(mem), // MOV !abs+X,A
+            0xD6 => self.inst_mov_abs_y_a(mem), // MOV !abs+Y,A
+            0xC7 => self.inst_mov_dp_x_ind_a(mem), // MOV [dp+X],A
+            0xD7 => self.inst_mov_dp_ind_y_a(mem), // MOV [dp]+Y,A
+            0xF9 => self.inst_mov_x_dp_y(mem), // MOV X,dp+Y
+            0xD9 => self.inst_mov_dp_y_x(mem), // MOV dp+Y,X
+            0xFB => self.inst_mov_y_dp_x(mem), // MOV Y,dp+X
+            0xDB => self.inst_mov_dp_x_y(mem), // MOV dp+X,Y
+            0xCB => self.inst_mov_dp_y(mem), // MOV dp,Y
+            0xD8 => self.inst_mov_dp_x(mem), // MOV dp,X
+            0x8F => self.inst_mov_dp_imm(mem), // MOV dp,#imm
+            0xFA => self.inst_mov_dp_dp(mem),  // MOV dp,dp
+            0x9D => self.inst_mov_x_sp(), // MOV X,SP
+            0xBD => self.inst_mov_sp_x(), // MOV SP,X
 
             // Catch-all
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
@@ -1162,5 +1177,149 @@ impl Spc700 {
         self.regs.a = mem.read8_mut(addr);
         self.set_zn_flags(self.regs.a);
         self.cycles += 6;
+    }
+
+    /// MOV dp+X,A — store A to direct page address + X.
+    /// No flags affected. 5 cycles.
+    fn inst_mov_dp_x_a(&mut self, mem: &mut Memory) {
+        let offset = self.read_immediate(mem) as u16;
+        let addr = self.dp_base() | (offset + self.regs.x as u16) & 0xFF;
+        mem.write8(addr, self.regs.a);
+        self.cycles += 5;
+    }
+
+    /// MOV !abs+X,A — store A to absolute address + X.
+    /// No flags affected. 6 cycles.
+    fn inst_mov_abs_x_a(&mut self, mem: &mut Memory) {
+        let base = self.read_immediate16(mem);
+        let addr = base.wrapping_add(self.regs.x as u16);
+        mem.write8(addr, self.regs.a);
+        self.cycles += 6;
+    }
+
+    /// MOV !abs+Y,A — store A to absolute address + Y.
+    /// No flags affected. 6 cycles.
+    fn inst_mov_abs_y_a(&mut self, mem: &mut Memory) {
+        let base = self.read_immediate16(mem);
+        let addr = base.wrapping_add(self.regs.y as u16);
+        mem.write8(addr, self.regs.a);
+        self.cycles += 6;
+    }
+
+    /// MOV [dp+X],A — store A to address stored at dp+X (indexed indirect).
+    /// Reads 16-bit pointer from dp+X, then stores A at that address.
+    /// No flags affected. 7 cycles.
+    fn inst_mov_dp_x_ind_a(&mut self, mem: &mut Memory) {
+        let offset = self.read_immediate(mem) as u16;
+        let ptr_addr = self.dp_base() | (offset + self.regs.x as u16) & 0xFF;
+        let lo = mem.read8_mut(ptr_addr) as u16;
+        let hi = mem.read8_mut(ptr_addr.wrapping_add(1)) as u16;
+        let addr = (hi << 8) | lo;
+        mem.write8(addr, self.regs.a);
+        self.cycles += 7;
+    }
+
+    /// MOV [dp]+Y,A — store A to address stored at dp, indexed by Y (indirect indexed).
+    /// Reads 16-bit pointer from dp, adds Y, then stores A at that address.
+    /// No flags affected. 7 cycles.
+    fn inst_mov_dp_ind_y_a(&mut self, mem: &mut Memory) {
+        let offset = self.read_immediate(mem) as u16;
+        let ptr_addr = self.dp_base() | offset;
+        let lo = mem.read8_mut(ptr_addr) as u16;
+        let hi = mem.read8_mut(ptr_addr.wrapping_add(1)) as u16;
+        let base = (hi << 8) | lo;
+        let addr = base.wrapping_add(self.regs.y as u16);
+        mem.write8(addr, self.regs.a);
+        self.cycles += 7;
+    }
+
+    /// MOV X,dp+Y — load X from direct page address + Y.
+    /// Sets N and Z. 4 cycles.
+    fn inst_mov_x_dp_y(&mut self, mem: &mut Memory) {
+        let offset = self.read_immediate(mem) as u16;
+        let addr = self.dp_base() | (offset + self.regs.y as u16) & 0xFF;
+        self.regs.x = mem.read8_mut(addr);
+        self.set_zn_flags(self.regs.x);
+        self.cycles += 4;
+    }
+
+    /// MOV dp+Y,X — store X to direct page address + Y.
+    /// No flags affected. 5 cycles.
+    fn inst_mov_dp_y_x(&mut self, mem: &mut Memory) {
+        let offset = self.read_immediate(mem) as u16;
+        let addr = self.dp_base() | (offset + self.regs.y as u16) & 0xFF;
+        mem.write8(addr, self.regs.x);
+        self.cycles += 5;
+    }
+
+    /// MOV Y,dp+X — load Y from direct page address + X.
+    /// Sets N and Z. 4 cycles.
+    fn inst_mov_y_dp_x(&mut self, mem: &mut Memory) {
+        let offset = self.read_immediate(mem) as u16;
+        let addr = self.dp_base() | (offset + self.regs.x as u16) & 0xFF;
+        self.regs.y = mem.read8_mut(addr);
+        self.set_zn_flags(self.regs.y);
+        self.cycles += 4;
+    }
+
+    /// MOV dp+X,Y — store Y to direct page address + X.
+    /// No flags affected. 5 cycles.
+    fn inst_mov_dp_x_y(&mut self, mem: &mut Memory) {
+        let offset = self.read_immediate(mem) as u16;
+        let addr = self.dp_base() | (offset + self.regs.x as u16) & 0xFF;
+        mem.write8(addr, self.regs.y);
+        self.cycles += 5;
+    }
+
+    /// MOV dp,Y — store Y to direct page address.
+    /// No flags affected. 4 cycles.
+    fn inst_mov_dp_y(&mut self, mem: &mut Memory) {
+        let addr = self.dp_base() | self.read_immediate(mem) as u16;
+        mem.write8(addr, self.regs.y);
+        self.cycles += 4;
+    }
+
+    /// MOV dp,X — store X to direct page address.
+    /// No flags affected. 4 cycles.
+    fn inst_mov_dp_x(&mut self, mem: &mut Memory) {
+        let addr = self.dp_base() | self.read_immediate(mem) as u16;
+        mem.write8(addr, self.regs.x);
+        self.cycles += 4;
+    }
+
+    /// MOV dp,#imm — write immediate byte directly to direct page address.
+    /// No flags affected. 5 cycles.
+    fn inst_mov_dp_imm(&mut self, mem: &mut Memory) {
+        let imm = self.read_immediate(mem);
+        let addr = self.dp_base() | self.read_immediate(mem) as u16;
+        mem.write8(addr, imm);
+        self.cycles += 5;
+    }
+
+    /// MOV dp,dp — copy a byte from one direct page address to another.
+    /// Operand order: source offset first, destination offset second.
+    /// No flags affected. 5 cycles.
+    fn inst_mov_dp_dp(&mut self, mem: &mut Memory) {
+        let src_off = self.read_immediate(mem) as u16;
+        let dst_off = self.read_immediate(mem) as u16;
+        let base = self.dp_base();
+        let val = mem.read8_mut(base | src_off);
+        mem.write8(base | dst_off, val);
+        self.cycles += 5;
+    }
+
+    /// MOV X,SP — copy stack pointer into X.
+    /// Sets N and Z. 2 cycles.
+    fn inst_mov_x_sp(&mut self) {
+        self.regs.x = self.regs.sp;
+        self.set_zn_flags(self.regs.x);
+        self.cycles += 2;
+    }
+
+    /// MOV SP,X — copy X into stack pointer.
+    /// No flags affected. 2 cycles.
+    fn inst_mov_sp_x(&mut self) {
+        self.regs.sp = self.regs.x;
+        self.cycles += 2;
     }
 }
