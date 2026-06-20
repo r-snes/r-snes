@@ -457,22 +457,7 @@ impl Spc700 {
 
     pub fn inst_adc_imm(&mut self, mem: &mut Memory) {
         let value = self.read_immediate(mem);
-
-        let carry_in = if self.get_flag(FLAG_C) { 1 } else { 0 };
-        let result = self.regs.a as u16 + value as u16 + carry_in as u16;
-
-        // Update flags
-        self.set_flag(FLAG_C, result > 0xFF);
-        let result_u8 = result as u8;
-        self.set_zn_flags(result_u8);
-
-        // Overflow flag
-        self.set_flag(
-            FLAG_V,
-            (!(self.regs.a ^ value) & (self.regs.a ^ result_u8) & 0x80) != 0,
-        );
-
-        self.regs.a = result_u8;
+        self.regs.a = self.adc_flags(self.regs.a, value);
         self.cycles += 2;
     }
 
@@ -490,19 +475,7 @@ impl Spc700 {
 
     pub fn inst_sbc_imm(&mut self, mem: &mut Memory) {
         let value = self.read_immediate(mem);
-
-        let carry_in = if self.get_flag(FLAG_C) { 0 } else { 1 }; // SPC700 uses inverted carry
-        let result = self.regs.a as i16 - value as i16 - carry_in as i16;
-
-        self.set_flag(FLAG_C, result >= 0);
-        let result_u8 = result as u8;
-        self.set_zn_flags(result_u8);
-        self.set_flag(
-            FLAG_V,
-            ((self.regs.a ^ result_u8) & (self.regs.a ^ value) & 0x80) != 0,
-        );
-
-        self.regs.a = result_u8;
+        self.regs.a = self.sbc_flags(self.regs.a, value);
         self.cycles += 2;
     }
 
@@ -1999,9 +1972,8 @@ impl Spc700 {
         self.cycles += 4;
     }
 
-    /// Shared ADC computation — adds src + dst + carry-in, sets C, V, Z, N
-    /// (matches the existing ADC A,#imm behaviour — no H flag). Returns the
-    /// result byte for the caller to write back.
+    /// Shared ADC computation — adds src + dst + carry-in, sets C, V, H, Z, N.
+    /// Returns the result byte for the caller to write back.
     fn adc_flags(&mut self, dst: u8, src: u8) -> u8 {
         let carry_in = if self.get_flag(FLAG_C) { 1u16 } else { 0u16 };
         let result = dst as u16 + src as u16 + carry_in;
@@ -2010,6 +1982,8 @@ impl Spc700 {
         self.set_flag(FLAG_C, result > 0xFF);
         self.set_zn_flags(result_u8);
         self.set_flag(FLAG_V, (!(dst ^ src) & (dst ^ result_u8) & 0x80) != 0);
+        // Half-carry: carry out of bit 3 into bit 4, including carry-in.
+        self.set_flag(FLAG_H, ((dst & 0x0F) + (src & 0x0F) + carry_in as u8) > 0x0F);
 
         result_u8
     }
@@ -2101,5 +2075,22 @@ impl Spc700 {
         let result = self.adc_flags(dst, src);
         mem.write8(addr, result);
         self.cycles += 5;
+    }
+
+    /// Shared SBC computation — subtracts src + borrow-in from dst, sets
+    /// C, V, H, Z, N. Returns the result byte for the caller to write back.
+    fn sbc_flags(&mut self, dst: u8, src: u8) -> u8 {
+        // SPC700 inverts carry semantics for subtraction: C=1 means "no borrow".
+        let borrow_in = if self.get_flag(FLAG_C) { 0u8 } else { 1u8 };
+        let result = dst as i16 - src as i16 - borrow_in as i16;
+        let result_u8 = result as u8;
+
+        self.set_flag(FLAG_C, result >= 0);
+        self.set_zn_flags(result_u8);
+        self.set_flag(FLAG_V, ((dst ^ result_u8) & (dst ^ src) & 0x80) != 0);
+        // Half-borrow: H=1 means no half-borrow occurred (mirrors C's polarity).
+        self.set_flag(FLAG_H, (dst & 0x0F) >= (src & 0x0F) + borrow_in);
+
+        result_u8
     }
 }
