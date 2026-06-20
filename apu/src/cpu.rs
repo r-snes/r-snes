@@ -341,6 +341,16 @@ impl Spc700 {
             0x8A => self.inst_eor1_c_mb(mem),   // EOR1 C,m.b
             0xEA => self.inst_not1_mb(mem),     // NOT1 m.b
 
+            // Jumps and interrupts
+            0x5F => self.inst_jmp_abs(mem),        // JMP !a
+            0x1F => self.inst_jmp_abs_x_ind(mem),  // JMP [!a+X]
+            0x7F => self.inst_reti(mem),           // RETI
+            0x2E => self.inst_cbne_dp(mem),        // CBNE dp,rel
+            0xDE => self.inst_cbne_dp_x(mem),      // CBNE dp+X,rel
+            0x6E => self.inst_dbnz_dp(mem),        // DBNZ dp,rel
+            0xFE => self.inst_dbnz_y(mem),         // DBNZ Y,rel
+            0x0F => self.inst_brk(mem),            // BRK
+
             // Catch-all
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
         }
@@ -2383,5 +2393,98 @@ impl Spc700 {
         let value = mem.read8_mut(addr) ^ (1 << bit);
         mem.write8(addr, value);
         self.cycles += 5;
+    }
+
+    /// JMP !a — absolute jump. 3 cycles.
+    fn inst_jmp_abs(&mut self, mem: &mut Memory) {
+        self.regs.pc = self.read_immediate16(mem);
+        self.cycles += 3;
+    }
+
+    /// JMP [!a+X] — jump through a 16-bit pointer stored at !a+X. 6 cycles.
+    fn inst_jmp_abs_x_ind(&mut self, mem: &mut Memory) {
+        let base = self.read_immediate16(mem);
+        let ptr_addr = base.wrapping_add(self.regs.x as u16);
+        let lo = mem.read8_mut(ptr_addr) as u16;
+        let hi = mem.read8_mut(ptr_addr.wrapping_add(1)) as u16;
+        self.regs.pc = (hi << 8) | lo;
+        self.cycles += 6;
+    }
+
+    /// RETI — return from interrupt: pop PSW, then pop PC.
+    /// ASSUMES CALL pushes PCH then PCL (so this pops PCL then PCH) —
+    /// verify this matches the existing RET/CALL convention. 6 cycles.
+    fn inst_reti(&mut self, mem: &mut Memory) {
+        self.regs.psw = self.stack_pop(mem);
+        let lo = self.stack_pop(mem) as u16;
+        let hi = self.stack_pop(mem) as u16;
+        self.regs.pc = (hi << 8) | lo;
+        self.cycles += 6;
+    }
+
+    /// CBNE dp,rel — compare A with dp, branch if not equal. No flags
+    /// affected, no write-back. 5 cycles not taken, 7 taken.
+    fn inst_cbne_dp(&mut self, mem: &mut Memory) {
+        let addr = self.dp_base() | self.read_immediate(mem) as u16;
+        let value = mem.read8_mut(addr);
+        let offset = self.read_immediate(mem) as i8;
+        self.cycles += 5;
+        if self.regs.a != value {
+            self.regs.pc = self.regs.pc.wrapping_add(offset as i16 as u16);
+            self.cycles += 2;
+        }
+    }
+
+    /// CBNE dp+X,rel — compare A with dp+X, branch if not equal.
+    /// 6 cycles not taken, 8 taken.
+    fn inst_cbne_dp_x(&mut self, mem: &mut Memory) {
+        let offset_dp = self.read_immediate(mem) as u16;
+        let addr = self.dp_base() | (offset_dp + self.regs.x as u16) & 0xFF;
+        let value = mem.read8_mut(addr);
+        let offset = self.read_immediate(mem) as i8;
+        self.cycles += 6;
+        if self.regs.a != value {
+            self.regs.pc = self.regs.pc.wrapping_add(offset as i16 as u16);
+            self.cycles += 2;
+        }
+    }
+
+    /// DBNZ dp,rel — decrement dp byte, branch if result != 0.
+    /// No flags affected. 6 cycles not taken, 8 taken.
+    fn inst_dbnz_dp(&mut self, mem: &mut Memory) {
+        let addr = self.dp_base() | self.read_immediate(mem) as u16;
+        let value = mem.read8_mut(addr).wrapping_sub(1);
+        mem.write8(addr, value);
+        let offset = self.read_immediate(mem) as i8;
+        self.cycles += 6;
+        if value != 0 {
+            self.regs.pc = self.regs.pc.wrapping_add(offset as i16 as u16);
+            self.cycles += 2;
+        }
+    }
+
+    /// DBNZ Y,rel — decrement Y, branch if result != 0. No flags affected.
+    /// 4 cycles not taken, 6 taken.
+    fn inst_dbnz_y(&mut self, mem: &mut Memory) {
+        self.regs.y = self.regs.y.wrapping_sub(1);
+        let offset = self.read_immediate(mem) as i8;
+        self.cycles += 4;
+        if self.regs.y != 0 {
+            self.regs.pc = self.regs.pc.wrapping_add(offset as i16 as u16);
+            self.cycles += 2;
+        }
+    }
+
+    /// BRK — software break: push PC then PSW, set I and B, jump via the
+    /// vector at $FFDE (same vector slot as TCALL 0). 8 cycles.
+    fn inst_brk(&mut self, mem: &mut Memory) {
+        let pc = self.regs.pc;
+        self.stack_push(mem, (pc >> 8) as u8);
+        self.stack_push(mem, pc as u8);
+        self.stack_push(mem, self.regs.psw);
+        self.set_flag(FLAG_B, true);
+        self.set_flag(FLAG_I, true);
+        self.regs.pc = mem.read16(0xFFDE);
+        self.cycles += 8;
     }
 }
