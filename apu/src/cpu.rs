@@ -198,6 +198,15 @@ impl Spc700 {
             0x9D => self.inst_mov_x_sp(), // MOV X,SP
             0xBD => self.inst_mov_sp_x(), // MOV SP,X
 
+            // 16 bit moves
+            0xBA => self.inst_movw_ya_dp(mem), // MOVW YA,dp
+            0xDA => self.inst_movw_dp_ya(mem), // MOVW dp,YA
+            0x7A => self.inst_addw(mem),       // ADDW YA,dp
+            0x9A => self.inst_subw(mem),       // SUBW YA,dp
+            0x5A => self.inst_cmpw(mem),       // CMPW YA,dp
+            0x1A => self.inst_decw(mem),       // DECW dp
+            0x3A => self.inst_incw(mem),       // INCW dp
+
             // Catch-all
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
         }
@@ -1321,5 +1330,128 @@ impl Spc700 {
     fn inst_mov_sp_x(&mut self) {
         self.regs.sp = self.regs.x;
         self.cycles += 2;
+    }
+
+    /// MOVW YA,dp — load 16-bit word from direct page into YA.
+    /// Low byte → A, high byte → Y. Sets N from bit 15, Z if the full
+    /// 16-bit value is zero. 5 cycles.
+    fn inst_movw_ya_dp(&mut self, mem: &mut Memory) {
+        let addr = self.dp_base() | self.read_immediate(mem) as u16;
+        self.regs.a = mem.read8_mut(addr);
+        self.regs.y = mem.read8_mut(addr.wrapping_add(1));
+        let ya = ((self.regs.y as u16) << 8) | self.regs.a as u16;
+        self.set_flag(FLAG_Z, ya == 0);
+        self.set_flag(FLAG_N, (ya & 0x8000) != 0);
+        self.cycles += 5;
+    }
+
+    /// MOVW dp,YA — store YA as a 16-bit word to direct page.
+    /// A → low byte at dp, Y → high byte at dp+1. No flags affected. 5 cycles.
+    fn inst_movw_dp_ya(&mut self, mem: &mut Memory) {
+        let addr = self.dp_base() | self.read_immediate(mem) as u16;
+        mem.write8(addr, self.regs.a);
+        mem.write8(addr.wrapping_add(1), self.regs.y);
+        self.cycles += 5;
+    }
+
+    /// ADDW YA,dp — 16-bit add: YA + word(dp) → YA.
+    /// Sets C, V, H, N, Z from the 16-bit result. 5 cycles.
+    fn inst_addw(&mut self, mem: &mut Memory) {
+        let addr = self.dp_base() | self.read_immediate(mem) as u16;
+        let lo = mem.read8_mut(addr) as u16;
+        let hi = mem.read8_mut(addr.wrapping_add(1)) as u16;
+        let operand = (hi << 8) | lo;
+
+        let ya = ((self.regs.y as u16) << 8) | self.regs.a as u16;
+        let result = ya as u32 + operand as u32;
+
+        self.set_flag(FLAG_C, result > 0xFFFF);
+        self.set_flag(
+            FLAG_V,
+            (!(ya ^ operand) & (ya ^ result as u16) & 0x8000) != 0,
+        );
+        self.set_flag(FLAG_H, ((ya & 0x0FFF) + (operand & 0x0FFF)) > 0x0FFF);
+
+        let result_u16 = result as u16;
+        self.regs.a = result_u16 as u8;
+        self.regs.y = (result_u16 >> 8) as u8;
+        self.set_flag(FLAG_Z, result_u16 == 0);
+        self.set_flag(FLAG_N, (result_u16 & 0x8000) != 0);
+        self.cycles += 5;
+    }
+
+    /// SUBW YA,dp — 16-bit subtract: YA - word(dp) → YA.
+    /// Sets C, V, H, N, Z from the 16-bit result. 5 cycles.
+    fn inst_subw(&mut self, mem: &mut Memory) {
+        let addr = self.dp_base() | self.read_immediate(mem) as u16;
+        let lo = mem.read8_mut(addr) as u16;
+        let hi = mem.read8_mut(addr.wrapping_add(1)) as u16;
+        let operand = (hi << 8) | lo;
+
+        let ya = ((self.regs.y as u16) << 8) | self.regs.a as u16;
+        let result = ya as i32 - operand as i32;
+
+        self.set_flag(FLAG_C, result >= 0);
+        self.set_flag(
+            FLAG_V,
+            ((ya ^ operand) & (ya ^ result as u16) & 0x8000) != 0,
+        );
+        self.set_flag(FLAG_H, (ya & 0x0FFF) < (operand & 0x0FFF));
+
+        let result_u16 = result as u16;
+        self.regs.a = result_u16 as u8;
+        self.regs.y = (result_u16 >> 8) as u8;
+        self.set_flag(FLAG_Z, result_u16 == 0);
+        self.set_flag(FLAG_N, (result_u16 & 0x8000) != 0);
+        self.cycles += 5;
+    }
+
+    /// CMPW YA,dp — 16-bit compare: YA - word(dp), flags only (no write-back).
+    /// Sets C, N, Z from the 16-bit result. 4 cycles.
+    fn inst_cmpw(&mut self, mem: &mut Memory) {
+        let addr = self.dp_base() | self.read_immediate(mem) as u16;
+        let lo = mem.read8_mut(addr) as u16;
+        let hi = mem.read8_mut(addr.wrapping_add(1)) as u16;
+        let operand = (hi << 8) | lo;
+
+        let ya = ((self.regs.y as u16) << 8) | self.regs.a as u16;
+        let result = ya.wrapping_sub(operand);
+
+        self.set_flag(FLAG_C, ya >= operand);
+        self.set_flag(FLAG_Z, result == 0);
+        self.set_flag(FLAG_N, (result & 0x8000) != 0);
+        self.cycles += 4;
+    }
+
+    /// DECW dp — 16-bit decrement: word(dp) - 1 → word(dp).
+    /// Sets N and Z from the 16-bit result. 6 cycles.
+    fn inst_decw(&mut self, mem: &mut Memory) {
+        let addr = self.dp_base() | self.read_immediate(mem) as u16;
+        let lo = mem.read8_mut(addr) as u16;
+        let hi = mem.read8_mut(addr.wrapping_add(1)) as u16;
+        let value = ((hi << 8) | lo).wrapping_sub(1);
+
+        mem.write8(addr, value as u8);
+        mem.write8(addr.wrapping_add(1), (value >> 8) as u8);
+
+        self.set_flag(FLAG_Z, value == 0);
+        self.set_flag(FLAG_N, (value & 0x8000) != 0);
+        self.cycles += 6;
+    }
+
+    /// INCW dp — 16-bit increment: word(dp) + 1 → word(dp).
+    /// Sets N and Z from the 16-bit result. 6 cycles.
+    fn inst_incw(&mut self, mem: &mut Memory) {
+        let addr = self.dp_base() | self.read_immediate(mem) as u16;
+        let lo = mem.read8_mut(addr) as u16;
+        let hi = mem.read8_mut(addr.wrapping_add(1)) as u16;
+        let value = ((hi << 8) | lo).wrapping_add(1);
+
+        mem.write8(addr, value as u8);
+        mem.write8(addr.wrapping_add(1), (value >> 8) as u8);
+
+        self.set_flag(FLAG_Z, value == 0);
+        self.set_flag(FLAG_N, (value & 0x8000) != 0);
+        self.cycles += 6;
     }
 }
