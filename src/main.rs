@@ -255,6 +255,10 @@ fn gui_loop(
 #[derive(Default)]
 struct Cli {
     pub rom: Option<PathBuf>,
+
+    #[cfg(feature = "plugins")]
+    #[arg(long)]
+    pub load_plugin_noconfirm: Option<PathBuf>,
 }
 
 fn main() -> Result<(), String> {
@@ -279,7 +283,10 @@ fn main() -> Result<(), String> {
     };
 
     cfg_select! {
-        feature = "plugins" => gui_loop(emu, Some(Plugin::load_from_file(Path::new("plugin.lua")).unwrap())),
+        feature = "plugins" => gui_loop(
+            emu,
+            cli.load_plugin_noconfirm.map(|p| Plugin::load_from_file(&p).unwrap())
+        ),
         _ => gui_loop(emu)
     }
 }
