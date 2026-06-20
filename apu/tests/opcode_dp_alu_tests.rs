@@ -4,7 +4,8 @@
 /// added: OR, AND, EOR, CMP, ADC, SBC, each across all addressing modes.
 ///
 /// Currently covers:
-///   - OR  family ($04,$05,$06,$07,$09,$14,$15,$16,$17,$18,$19)
+/// - OR  family ($04,$05,$06,$07,$09,$14,$15,$16,$17,$18,$19)
+/// - AND family ($24,$25,$26,$27,$29,$34,$35,$36,$37,$38,$39)
 
 use apu::cpu::{Spc700, FLAG_C, FLAG_N, FLAG_P, FLAG_V, FLAG_Z};
 use apu::Memory;
@@ -417,6 +418,371 @@ fn test_or_ix_iy_does_not_modify_y_address() {
 fn test_or_ix_iy_costs_5_cycles() {
     let (mut cpu, mut mem) = make();
     mem.write8(0x0200, 0x19);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 5);
+}
+
+// ============================================================
+// AND A,dp ($24)
+// ============================================================
+
+#[test]
+fn test_and_a_dp_basic() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0xFF;
+    mem.write8(0x0020, 0x0F);
+    mem.write8(0x0200, 0x24);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x0F);
+}
+
+#[test]
+fn test_and_a_dp_sets_zero_flag() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0xF0;
+    mem.write8(0x0020, 0x0F);
+    mem.write8(0x0200, 0x24);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_Z));
+}
+
+#[test]
+fn test_and_a_dp_sets_negative_flag() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0xFF;
+    mem.write8(0x0020, 0x80);
+    mem.write8(0x0200, 0x24);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_N));
+}
+
+#[test]
+fn test_and_a_dp_uses_dp_base() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_P;
+    cpu.regs.a = 0xFF;
+    mem.write8(0x0120, 0x01);
+    mem.write8(0x0200, 0x24);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x01);
+}
+
+#[test]
+fn test_and_a_dp_costs_3_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x24);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 3);
+}
+
+// ============================================================
+// AND A,!abs ($25)
+// ============================================================
+
+#[test]
+fn test_and_a_abs_basic() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0xFF;
+    mem.write8(0x0500, 0x0F);
+    mem.write8(0x0200, 0x25);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x0F);
+}
+
+#[test]
+fn test_and_a_abs_costs_4_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x25);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 4);
+}
+
+// ============================================================
+// AND A,(X) ($26)
+// ============================================================
+
+#[test]
+fn test_and_a_ix_basic() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0xFF;
+    cpu.regs.x = 0x20;
+    mem.write8(0x0020, 0x0F);
+    mem.write8(0x0200, 0x26);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x0F);
+}
+
+#[test]
+fn test_and_a_ix_costs_3_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x26);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 3);
+}
+
+// ============================================================
+// AND A,[dp+X] ($27)
+// ============================================================
+
+#[test]
+fn test_and_a_dp_x_ind_basic() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0xFF;
+    cpu.regs.x = 0x02;
+    mem.write8(0x0022, 0x00);
+    mem.write8(0x0023, 0x05);
+    mem.write8(0x0500, 0x0F);
+    mem.write8(0x0200, 0x27);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x0F);
+}
+
+#[test]
+fn test_and_a_dp_x_ind_costs_6_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0020, 0x00);
+    mem.write8(0x0021, 0x05);
+    mem.write8(0x0200, 0x27);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 6);
+}
+
+// ============================================================
+// AND dd,ds ($29)
+// ============================================================
+
+#[test]
+fn test_and_dp_dp_basic() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0030, 0x0F);
+    mem.write8(0x0040, 0xFF);
+    mem.write8(0x0200, 0x29);
+    mem.write8(0x0201, 0x30);
+    mem.write8(0x0202, 0x40);
+    cpu.step(&mut mem);
+    assert_eq!(mem.read8(0x0040), 0x0F);
+}
+
+#[test]
+fn test_and_dp_dp_does_not_modify_source() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0030, 0x0F);
+    mem.write8(0x0040, 0xFF);
+    mem.write8(0x0200, 0x29);
+    mem.write8(0x0201, 0x30);
+    mem.write8(0x0202, 0x40);
+    cpu.step(&mut mem);
+    assert_eq!(mem.read8(0x0030), 0x0F);
+}
+
+#[test]
+fn test_and_dp_dp_costs_6_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0030, 0x00);
+    mem.write8(0x0040, 0x00);
+    mem.write8(0x0200, 0x29);
+    mem.write8(0x0201, 0x30);
+    mem.write8(0x0202, 0x40);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 6);
+}
+
+// ============================================================
+// AND A,dp+X ($34)
+// ============================================================
+
+#[test]
+fn test_and_a_dp_x_basic() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0xFF;
+    cpu.regs.x = 0x02;
+    mem.write8(0x0022, 0x0F);
+    mem.write8(0x0200, 0x34);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x0F);
+}
+
+#[test]
+fn test_and_a_dp_x_wraps_within_page() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0xFF;
+    cpu.regs.x = 0x02;
+    mem.write8(0x0001, 0x0F);
+    mem.write8(0x0200, 0x34);
+    mem.write8(0x0201, 0xFF);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x0F);
+}
+
+#[test]
+fn test_and_a_dp_x_costs_4_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x34);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 4);
+}
+
+// ============================================================
+// AND A,!abs+X ($35) / AND A,!abs+Y ($36)
+// ============================================================
+
+#[test]
+fn test_and_a_abs_x_basic() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0xFF;
+    cpu.regs.x = 0x02;
+    mem.write8(0x0502, 0x0F);
+    mem.write8(0x0200, 0x35);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x0F);
+}
+
+#[test]
+fn test_and_a_abs_x_costs_5_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x35);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 5);
+}
+
+#[test]
+fn test_and_a_abs_y_basic() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0xFF;
+    cpu.regs.y = 0x03;
+    mem.write8(0x0503, 0x0F);
+    mem.write8(0x0200, 0x36);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x0F);
+}
+
+#[test]
+fn test_and_a_abs_y_costs_5_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x36);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x05);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 5);
+}
+
+// ============================================================
+// AND A,[dp]+Y ($37)
+// ============================================================
+
+#[test]
+fn test_and_a_dp_ind_y_basic() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.a = 0xFF;
+    cpu.regs.y = 0x03;
+    mem.write8(0x0020, 0x00);
+    mem.write8(0x0021, 0x05);
+    mem.write8(0x0503, 0x0F);
+    mem.write8(0x0200, 0x37);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x0F);
+}
+
+#[test]
+fn test_and_a_dp_ind_y_costs_6_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0020, 0x00);
+    mem.write8(0x0021, 0x05);
+    mem.write8(0x0200, 0x37);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 6);
+}
+
+// ============================================================
+// AND dp,#imm ($38)
+// ============================================================
+
+#[test]
+fn test_and_dp_imm_basic() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0020, 0xFF);
+    mem.write8(0x0200, 0x38);
+    mem.write8(0x0201, 0x0F);
+    mem.write8(0x0202, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(mem.read8(0x0020), 0x0F);
+}
+
+#[test]
+fn test_and_dp_imm_sets_zero_flag() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0020, 0xF0);
+    mem.write8(0x0200, 0x38);
+    mem.write8(0x0201, 0x0F);
+    mem.write8(0x0202, 0x20);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_Z));
+}
+
+#[test]
+fn test_and_dp_imm_costs_5_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0020, 0x00);
+    mem.write8(0x0200, 0x38);
+    mem.write8(0x0201, 0x00);
+    mem.write8(0x0202, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 5);
+}
+
+// ============================================================
+// AND (X),(Y) ($39)
+// ============================================================
+
+#[test]
+fn test_and_ix_iy_basic() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.x = 0x20;
+    cpu.regs.y = 0x30;
+    mem.write8(0x0020, 0xFF);
+    mem.write8(0x0030, 0x0F);
+    mem.write8(0x0200, 0x39);
+    cpu.step(&mut mem);
+    assert_eq!(mem.read8(0x0020), 0x0F);
+}
+
+#[test]
+fn test_and_ix_iy_does_not_modify_y_address() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.x = 0x20;
+    cpu.regs.y = 0x30;
+    mem.write8(0x0020, 0xFF);
+    mem.write8(0x0030, 0x0F);
+    mem.write8(0x0200, 0x39);
+    cpu.step(&mut mem);
+    assert_eq!(mem.read8(0x0030), 0x0F);
+}
+
+#[test]
+fn test_and_ix_iy_costs_5_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x39);
     cpu.step(&mut mem);
     assert_eq!(cpu.cycles, 5);
 }

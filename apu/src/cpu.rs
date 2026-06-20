@@ -222,6 +222,19 @@ impl Spc700 {
             0x18 => self.inst_or_dp_imm(mem),
             0x19 => self.inst_or_ix_iy(mem),
 
+            // AND — all addressing modes
+            0x24 => self.inst_and_a_dp(mem),
+            0x25 => self.inst_and_a_abs(mem),
+            0x26 => self.inst_and_a_ix(mem),
+            0x27 => self.inst_and_a_dp_x_ind(mem),
+            0x29 => self.inst_and_dp_dp(mem),
+            0x34 => self.inst_and_a_dp_x(mem),
+            0x35 => self.inst_and_a_abs_x(mem),
+            0x36 => self.inst_and_a_abs_y(mem),
+            0x37 => self.inst_and_a_dp_ind_y(mem),
+            0x38 => self.inst_and_dp_imm(mem),
+            0x39 => self.inst_and_ix_iy(mem),
+
             // Catch-all
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
         }
@@ -1619,6 +1632,98 @@ impl Spc700 {
     fn inst_or_ix_iy(&mut self, mem: &mut Memory) {
         let (addr, dst, src) = self.read_ix_iy(mem);
         let result = dst | src;
+        mem.write8(addr, result);
+        self.set_zn_flags(result);
+        self.cycles += 5;
+    }
+
+    fn inst_and_a_dp(&mut self, mem: &mut Memory) {
+    let addr = self.dp_base() | self.read_immediate(mem) as u16;
+    self.regs.a &= mem.read8_mut(addr);
+    self.set_zn_flags(self.regs.a);
+    self.cycles += 3;
+    }
+
+    fn inst_and_a_abs(&mut self, mem: &mut Memory) {
+        let addr = self.read_immediate16(mem);
+        self.regs.a &= mem.read8_mut(addr);
+        self.set_zn_flags(self.regs.a);
+        self.cycles += 4;
+    }
+
+    fn inst_and_a_ix(&mut self, mem: &mut Memory) {
+        let addr = self.dp_base() | self.regs.x as u16;
+        self.regs.a &= mem.read8_mut(addr);
+        self.set_zn_flags(self.regs.a);
+        self.cycles += 3;
+    }
+
+    fn inst_and_a_dp_x_ind(&mut self, mem: &mut Memory) {
+        let offset = self.read_immediate(mem) as u16;
+        let ptr_addr = self.dp_base() | (offset + self.regs.x as u16) & 0xFF;
+        let lo = mem.read8_mut(ptr_addr) as u16;
+        let hi = mem.read8_mut(ptr_addr.wrapping_add(1)) as u16;
+        let addr = (hi << 8) | lo;
+        self.regs.a &= mem.read8_mut(addr);
+        self.set_zn_flags(self.regs.a);
+        self.cycles += 6;
+    }
+
+    fn inst_and_dp_dp(&mut self, mem: &mut Memory) {
+        let (addr, dst, src) = self.read_dp_dp(mem);
+        let result = dst & src;
+        mem.write8(addr, result);
+        self.set_zn_flags(result);
+        self.cycles += 6;
+    }
+
+    fn inst_and_a_dp_x(&mut self, mem: &mut Memory) {
+        let offset = self.read_immediate(mem) as u16;
+        let addr = self.dp_base() | (offset + self.regs.x as u16) & 0xFF;
+        self.regs.a &= mem.read8_mut(addr);
+        self.set_zn_flags(self.regs.a);
+        self.cycles += 4;
+    }
+
+    fn inst_and_a_abs_x(&mut self, mem: &mut Memory) {
+        let base = self.read_immediate16(mem);
+        let addr = base.wrapping_add(self.regs.x as u16);
+        self.regs.a &= mem.read8_mut(addr);
+        self.set_zn_flags(self.regs.a);
+        self.cycles += 5;
+    }
+
+    fn inst_and_a_abs_y(&mut self, mem: &mut Memory) {
+        let base = self.read_immediate16(mem);
+        let addr = base.wrapping_add(self.regs.y as u16);
+        self.regs.a &= mem.read8_mut(addr);
+        self.set_zn_flags(self.regs.a);
+        self.cycles += 5;
+    }
+
+    fn inst_and_a_dp_ind_y(&mut self, mem: &mut Memory) {
+        let offset = self.read_immediate(mem) as u16;
+        let ptr_addr = self.dp_base() | offset;
+        let lo = mem.read8_mut(ptr_addr) as u16;
+        let hi = mem.read8_mut(ptr_addr.wrapping_add(1)) as u16;
+        let base = (hi << 8) | lo;
+        let addr = base.wrapping_add(self.regs.y as u16);
+        self.regs.a &= mem.read8_mut(addr);
+        self.set_zn_flags(self.regs.a);
+        self.cycles += 6;
+    }
+
+    fn inst_and_dp_imm(&mut self, mem: &mut Memory) {
+        let (addr, dst, src) = self.read_dp_imm(mem);
+        let result = dst & src;
+        mem.write8(addr, result);
+        self.set_zn_flags(result);
+        self.cycles += 5;
+    }
+
+    fn inst_and_ix_iy(&mut self, mem: &mut Memory) {
+        let (addr, dst, src) = self.read_ix_iy(mem);
+        let result = dst & src;
         mem.write8(addr, result);
         self.set_zn_flags(result);
         self.cycles += 5;
