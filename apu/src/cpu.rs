@@ -311,6 +311,24 @@ impl Spc700 {
             0xE2 => self.inst_set1(mem, 7),
             0xF2 => self.inst_clr1(mem, 7),
 
+            // BBS/BBC — branch on bit set/clear, 8 positions each
+            0x03 => self.inst_bbs_bbc(mem, 0, true),  // BBS d.0
+            0x13 => self.inst_bbs_bbc(mem, 0, false), // BBC d.0
+            0x23 => self.inst_bbs_bbc(mem, 1, true),
+            0x33 => self.inst_bbs_bbc(mem, 1, false),
+            0x43 => self.inst_bbs_bbc(mem, 2, true),
+            0x53 => self.inst_bbs_bbc(mem, 2, false),
+            0x63 => self.inst_bbs_bbc(mem, 3, true),
+            0x73 => self.inst_bbs_bbc(mem, 3, false),
+            0x83 => self.inst_bbs_bbc(mem, 4, true),
+            0x93 => self.inst_bbs_bbc(mem, 4, false),
+            0xA3 => self.inst_bbs_bbc(mem, 5, true),
+            0xB3 => self.inst_bbs_bbc(mem, 5, false),
+            0xC3 => self.inst_bbs_bbc(mem, 6, true),
+            0xD3 => self.inst_bbs_bbc(mem, 6, false),
+            0xE3 => self.inst_bbs_bbc(mem, 7, true),
+            0xF3 => self.inst_bbs_bbc(mem, 7, false),
+
             // Catch-all
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
         }
@@ -2230,5 +2248,22 @@ impl Spc700 {
         let val = mem.read8_mut(addr) & !(1 << bit);
         mem.write8(addr, val);
         self.cycles += 4;
+    }
+
+    /// Shared BBS/BBC handler — reads the dp offset and signed branch
+    /// displacement, tests the given bit, and branches if the bit's
+    /// state matches `branch_if_set` (true for BBS, false for BBC).
+    /// 5 cycles if not taken, 7 if taken.
+    fn inst_bbs_bbc(&mut self, mem: &mut Memory, bit: u8, branch_if_set: bool) {
+        let addr = self.dp_base() | self.read_immediate(mem) as u16;
+        let value = mem.read8_mut(addr);
+        let offset = self.read_immediate(mem) as i8;
+        let bit_is_set = (value & (1 << bit)) != 0;
+
+        self.cycles += 5;
+        if bit_is_set == branch_if_set {
+            self.regs.pc = self.regs.pc.wrapping_add(offset as i16 as u16);
+            self.cycles += 2;
+        }
     }
 }
