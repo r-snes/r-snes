@@ -13,10 +13,90 @@ use ppu::constants::SCREEN_HEIGHT;
 #[cfg(feature = "plugins")]
 use std::{cell::RefCell, rc::Rc};
 use std::{
-    ops::DerefMut, path::{Path, PathBuf}, time::{Duration, Instant}
+    ops::DerefMut,
+    path::{Path, PathBuf},
+    time::{Duration, Instant},
 };
 
-fn gui_emu_loop(gui: &mut gui::Gui, emu: rsnes::RSnes) -> Option<RSnesEvent> {
+struct Emu {
+    #[cfg(not(feature = "plugins"))]
+    rsnes: RSnes,
+
+    #[cfg(feature = "plugins")]
+    rsnes: Rc<RefCell<RSnes>>,
+
+    #[cfg(feature = "plugins")]
+    plugin: Option<Plugin>,
+}
+
+impl Emu {
+    pub fn new(rsnes: RSnes) -> Self {
+        cfg_select! {
+            feature = "plugins" => Self {
+                rsnes: Rc::new(RefCell::new(rsnes)),
+                plugin: None,
+            },
+            _ => Self { rsnes },
+        }
+    }
+
+    #[cfg(feature = "plugins")]
+    pub fn new_with_plugin(
+        rsnes: RSnes,
+        mut plugin: Option<Plugin>,
+    ) -> Result<Self, piccolo::ExternError> {
+        let rc = Rc::new(RefCell::new(rsnes));
+
+        if let Some(plugin) = &mut plugin {
+            RSnes::inject_into_lua(&rc, plugin);
+            plugin.run_init()?;
+        }
+        Ok(Self { rsnes: rc, plugin })
+    }
+
+    pub fn rsnes_mut(&mut self) -> impl DerefMut<Target = RSnes> {
+        #[cfg(feature = "plugins")]
+        return self.rsnes.borrow_mut();
+
+        #[cfg(not(feature = "plugins"))]
+        return &mut self.rsnes;
+    }
+
+    #[cfg(feature = "plugins")]
+    pub fn plugin_mut(&mut self) -> Option<&mut Plugin> {
+        self.plugin.as_mut()
+    }
+
+    #[cfg(not(feature = "plugins"))]
+    pub fn update(&mut self) {
+        self.rsnes.update();
+    }
+
+    #[cfg(feature = "plugins")]
+    pub fn update(&mut self) -> Result<(), piccolo::ExternError> {
+        let mut rsnes_mut = self.rsnes.borrow_mut();
+
+        rsnes_mut.update();
+
+        if let Some(plugin) = self.plugin.as_mut() {
+            if let Some(opcode) = rsnes_mut.is_cpu_instr_start() {
+                let addr = *rsnes_mut.cpu.addr_bus();
+                drop(rsnes_mut);
+                return plugin.run_on_instr(opcode, addr);
+            }
+        }
+
+        Ok(())
+    }
+}
+
+fn gui_emu_loop(
+    gui: &mut gui::Gui,
+    rsnes: RSnes,
+
+    #[cfg(feature = "plugins")]
+    plugin: Option<Plugin>,
+) -> Option<RSnesEvent> {
     let mut frame_nb = 0_u64;
     let exec_start = Instant::now();
 
@@ -24,44 +104,12 @@ fn gui_emu_loop(gui: &mut gui::Gui, emu: rsnes::RSnes) -> Option<RSnesEvent> {
     let mut frame_accum: f64 = 0.0;
     let mut master_cycle_accum: f64 = 0.0;
 
-    #[cfg(feature = "plugins")]
-    let mut plugin = Plugin::load_from_file(Path::new("./plugin.lua")).unwrap();
-
-    #[cfg(feature = "plugins")]
-    let emu_rc = Rc::new(RefCell::new(emu));
-
-    #[cfg(feature = "plugins")]
-    {
-        RSnes::inject_into_lua(&emu_rc, &mut plugin);
-        plugin.run_init().unwrap();
-    }
-
-    struct Emu {
-        #[cfg(not(feature="plugins"))]
-        emu: RSnes,
-
-        #[cfg(feature="plugins")]
-        emu: Rc<RefCell<RSnes>>,
-    }
-
-    impl Emu {
-        fn get_mut(&mut self) -> impl DerefMut<Target = RSnes> {
-            #[cfg(feature= "plugins")]
-            return self.emu.borrow_mut();
-
-            #[cfg(not(feature= "plugins"))]
-            return &mut self.emu;
-        }
-    }
-
-    #[cfg(feature = "plugins")]
-    let mut emu = Emu { emu: emu_rc };
-    #[cfg(not(feature = "plugins"))]
-    let mut emu = Emu { emu };
+    let mut emu = cfg_select! {
+        feature = "plugins" => Emu::new_with_plugin(rsnes, plugin).unwrap(),
+        _ => Emu::new(rsnes),
+    };
 
     let closing_ev = 'emu_loop: loop {
-        let mut emu_mut = emu.get_mut();
-
         // Get new delta based on current Instant::now()
         let current_instant = Instant::now();
         let delta = current_instant.duration_since(last_instant).as_secs_f64();
@@ -80,18 +128,12 @@ fn gui_emu_loop(gui: &mut gui::Gui, emu: rsnes::RSnes) -> Option<RSnesEvent> {
             ));
         }
 
-        drop(emu_mut); // release to be able to run plugin `on_instr`
         while master_cycle_accum >= RSnes::MASTER_CYCLE_DURATION {
-            let mut emu_mut = emu.get_mut();
-
             master_cycle_accum -= RSnes::MASTER_CYCLE_DURATION;
-            emu_mut.update();
 
-            let cond = emu_mut.is_cpu_instr_start();
-            if let Some(opcode) = cond {
-                let addr = *emu_mut.cpu.addr_bus();
-                drop(emu_mut);
-                plugin.run_on_instr(opcode, addr).unwrap();
+            cfg_select! {
+                feature = "plugins" => emu.update().unwrap(),
+                _ => emu.update(),
             }
         }
 
@@ -101,11 +143,13 @@ fn gui_emu_loop(gui: &mut gui::Gui, emu: rsnes::RSnes) -> Option<RSnesEvent> {
         }
         frame_accum -= Gui::FRAME_DURATION;
 
-        let mut emu_mut = emu.get_mut();
+        let mut emu_mut = emu.rsnes_mut();
 
         // temporary: render full PPU frame for each GUI frame
         for y in 0..SCREEN_HEIGHT {
-            let RSnes { ppu, ppu_renderer, .. } = &mut *emu_mut;
+            let RSnes {
+                ppu, ppu_renderer, ..
+            } = &mut *emu_mut;
             ppu_renderer.render_scanline(ppu, y);
             emu_mut.ppu.step_scanline();
         }
@@ -123,19 +167,21 @@ fn gui_emu_loop(gui: &mut gui::Gui, emu: rsnes::RSnes) -> Option<RSnesEvent> {
                 RSnesEvent::Quit => break 'emu_loop Some(RSnesEvent::Quit),
                 RSnesEvent::Close => break 'emu_loop None,
                 RSnesEvent::ButtonDown => {
-                    let mut emu_mut = emu.get_mut();
+                    let mut emu_mut = emu.rsnes_mut();
                     emu_mut.bus.io.hvbjoy = 0;
                     emu_mut.bus.io.joy1 = !0;
                 }
                 RSnesEvent::ButtonUp => {
-                    let mut emu_mut = emu.get_mut();
+                    let mut emu_mut = emu.rsnes_mut();
                     emu_mut.bus.io.hvbjoy = 0;
                     emu_mut.bus.io.joy1 = 0;
                 }
 
                 #[cfg(feature = "plugins")]
                 RSnesEvent::RunPluginDefault => {
-                    plugin.run_default().unwrap();
+                    if let Some(ref mut p) = emu.plugin_mut() {
+                        p.run_default().unwrap();
+                    }
                 }
 
                 e => println!("ignored event: {e:?}"),
@@ -152,7 +198,12 @@ fn gui_emu_loop(gui: &mut gui::Gui, emu: rsnes::RSnes) -> Option<RSnesEvent> {
     closing_ev
 }
 
-fn gui_loop(mut emu: Option<RSnes>) -> Result<(), String> {
+fn gui_loop(
+    mut emu: Option<RSnes>,
+
+    #[cfg(feature = "plugins")]
+    mut plugin: Option<Plugin>,
+) -> Result<(), String> {
     let mut gui = gui::Gui::new()?;
     const DEFAULT_FRAMEBUFFER: &ppu::rendering::RawFramebuffer =
         include_bytes!("../logo_framebuffer.raw");
@@ -169,7 +220,10 @@ fn gui_loop(mut emu: Option<RSnes>) -> Result<(), String> {
             None => Some(gui.wait_for_event()),
 
             Some(emu) => {
-                let ret_ev = gui_emu_loop(&mut gui, emu);
+                let ret_ev = cfg_select! {
+                    feature = "plugins" => gui_emu_loop(&mut gui, emu, plugin.take()),
+                    _ => gui_emu_loop(&mut gui, emu),
+                };
 
                 if ret_ev != Some(RSnesEvent::Quit) {
                     // re-render default framebuffer after game has exited
@@ -224,5 +278,8 @@ fn main() -> Result<(), String> {
         Some(rom_path) => Some(RSnes::load_rom(&rom_path).map_err(|e| e.to_string())?),
     };
 
-    gui_loop(emu)
+    cfg_select! {
+        feature = "plugins" => gui_loop(emu, Some(Plugin::load_from_file(Path::new("plugin.lua")).unwrap())),
+        _ => gui_loop(emu)
+    }
 }
