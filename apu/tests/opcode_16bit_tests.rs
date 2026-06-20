@@ -637,3 +637,169 @@ fn test_incw_decw_round_trip() {
     assert_eq!(mem.read8(0x0020), 0x00);
     assert_eq!(mem.read8(0x0021), 0x01);
 }
+
+// ============================================================
+// INC dp+X ($BB) — increment direct page byte indexed by X
+// ============================================================
+
+#[test]
+fn test_inc_dp_x_increments_indexed() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.x = 0x02;
+    mem.write8(0x0022, 0x10);
+    mem.write8(0x0200, 0xBB);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(mem.read8(0x0022), 0x11);
+}
+
+#[test]
+fn test_inc_dp_x_wraps_within_page() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.x = 0x02;
+    mem.write8(0x0001, 0x10);
+    mem.write8(0x0200, 0xBB);
+    mem.write8(0x0201, 0xFF);
+    cpu.step(&mut mem);
+    assert_eq!(mem.read8(0x0001), 0x11);
+}
+
+#[test]
+fn test_inc_dp_x_wraps_from_ff_to_00() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.x = 0x01;
+    mem.write8(0x0021, 0xFF);
+    mem.write8(0x0200, 0xBB);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(mem.read8(0x0021), 0x00);
+    assert!(cpu.get_flag(FLAG_Z));
+}
+
+#[test]
+fn test_inc_dp_x_sets_negative_flag() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.x = 0x01;
+    mem.write8(0x0021, 0x7F);
+    mem.write8(0x0200, 0xBB);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(mem.read8(0x0021), 0x80);
+    assert!(cpu.get_flag(FLAG_N));
+}
+
+#[test]
+fn test_inc_dp_x_uses_dp_base() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_P;
+    cpu.regs.x = 0x02;
+    mem.write8(0x0122, 0x05);
+    mem.write8(0x0200, 0xBB);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(mem.read8(0x0122), 0x06);
+}
+
+#[test]
+fn test_inc_dp_x_does_not_affect_carry() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = apu::cpu::FLAG_C;
+    cpu.regs.x = 0x01;
+    mem.write8(0x0021, 0xFF);
+    mem.write8(0x0200, 0xBB);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(apu::cpu::FLAG_C));
+}
+
+#[test]
+fn test_inc_dp_x_costs_5_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0xBB);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 5);
+}
+
+// ============================================================
+// DEC dp+X ($9B) — decrement direct page byte indexed by X
+// ============================================================
+
+#[test]
+fn test_dec_dp_x_decrements_indexed() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.x = 0x02;
+    mem.write8(0x0022, 0x10);
+    mem.write8(0x0200, 0x9B);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(mem.read8(0x0022), 0x0F);
+}
+
+#[test]
+fn test_dec_dp_x_wraps_within_page() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.x = 0x02;
+    mem.write8(0x0001, 0x10);
+    mem.write8(0x0200, 0x9B);
+    mem.write8(0x0201, 0xFF);
+    cpu.step(&mut mem);
+    assert_eq!(mem.read8(0x0001), 0x0F);
+}
+
+#[test]
+fn test_dec_dp_x_wraps_from_00_to_ff() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.x = 0x01;
+    mem.write8(0x0021, 0x00);
+    mem.write8(0x0200, 0x9B);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(mem.read8(0x0021), 0xFF);
+    assert!(cpu.get_flag(FLAG_N));
+}
+
+#[test]
+fn test_dec_dp_x_sets_zero_flag() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.x = 0x01;
+    mem.write8(0x0021, 0x01);
+    mem.write8(0x0200, 0x9B);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(mem.read8(0x0021), 0x00);
+    assert!(cpu.get_flag(FLAG_Z));
+}
+
+#[test]
+fn test_dec_dp_x_uses_dp_base() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_P;
+    cpu.regs.x = 0x02;
+    mem.write8(0x0122, 0x05);
+    mem.write8(0x0200, 0x9B);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(mem.read8(0x0122), 0x04);
+}
+
+#[test]
+fn test_dec_dp_x_does_not_affect_carry() {
+    let (mut cpu, mut mem) = make();
+    cpu.regs.psw = apu::cpu::FLAG_C;
+    cpu.regs.x = 0x01;
+    mem.write8(0x0021, 0x00);
+    mem.write8(0x0200, 0x9B);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(apu::cpu::FLAG_C));
+}
+
+#[test]
+fn test_dec_dp_x_costs_5_cycles() {
+    let (mut cpu, mut mem) = make();
+    mem.write8(0x0200, 0x9B);
+    mem.write8(0x0201, 0x20);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.cycles, 5);
+}
