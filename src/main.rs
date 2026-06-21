@@ -14,7 +14,7 @@ use ppu::constants::SCREEN_HEIGHT;
 use std::{cell::RefCell, rc::Rc};
 use std::{
     ops::DerefMut,
-    path::{Path, PathBuf},
+    path::PathBuf,
     time::{Duration, Instant},
 };
 
@@ -254,28 +254,26 @@ fn gui_loop(
 #[cfg_attr(feature = "cli", command(about, long_about = None))]
 #[derive(Default)]
 struct Cli {
+    /// A SNES ROM to load at startup
     pub rom: Option<PathBuf>,
 
+    /// A plugin to load at startup, **without any confirmation
+    /// for requested permissions**
     #[cfg(feature = "plugins")]
-    #[arg(long)]
+    #[arg(long, value_name = "PLUGIN.lua")]
     pub load_plugin_noconfirm: Option<PathBuf>,
 }
 
 fn main() -> Result<(), String> {
-    let cli;
-    #[cfg(feature = "cli")]
-    {
-        cli = Cli::parse();
-    }
-
-    #[cfg(not(feature = "cli"))]
-    {
-        cli = Cli::default();
-
-        if std::env::args().len() != 0 {
-            eprintln!("CLI feature disabled at compile time, CLI arguments are ignored");
-        }
-    }
+    let cli = cfg_select! {
+        feature = "cli" => Cli::parse(),
+        _ => {{
+            if std::env::args().len() != 0 {
+                eprintln!("CLI feature disabled at compile time, CLI arguments are ignored");
+            }
+            Cli::default()
+        }}
+    };
 
     let emu = match cli.rom {
         None => None,
