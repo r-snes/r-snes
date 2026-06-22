@@ -41,6 +41,10 @@ pub struct PluginTable {
     /// The lua function that will be run when the plugin is successfully
     /// loaded, right after the user accepted the permission request
     pub init: Option<picc::StashedClosure>,
+
+    /// The lua function that will be run when the plugin is
+    /// unloaded from the emulator
+    pub exit: Option<picc::StashedClosure>,
 }
 
 /// The plugin "actions" (lua functions) which can be manually
@@ -86,6 +90,14 @@ impl<'gc> picc::FromValue<'gc> for PluginTable {
                     Value::Function(Function::Closure(c)) => Some(ctx.stash(c)),
                     v => return Err(picc::TypeError {
                         expected: "init function or nil",
+                        found: v.type_name(),
+                    }),
+                },
+                b"exit" => ret.exit = match value {
+                    Value::Nil => None,
+                    Value::Function(Function::Closure(c)) => Some(ctx.stash(c)),
+                    v => return Err(picc::TypeError {
+                        expected: "exit function or nil",
                         found: v.type_name(),
                     }),
                 },
@@ -220,6 +232,11 @@ impl Plugin {
             plugin: self,
             allow_all: false,
         }
+    }
+
+    /// Run the exit action registered in the plugin table
+    pub fn run_exit(&mut self) -> Result<(), picc::ExternError> {
+        Self::run_option_lua(&mut self.lua, &self.table.exit)
     }
 
     /// Run the init action registered in the plugin table

@@ -179,7 +179,7 @@ fn gui_emu_loop(
 
                 #[cfg(feature = "plugins")]
                 RSnesEvent::RunPluginDefault => {
-                    if let Some(ref mut p) = emu.plugin_mut() {
+                    if let Some(p) = emu.plugin_mut() {
                         p.run_default().unwrap();
                     }
                 }
@@ -189,6 +189,11 @@ fn gui_emu_loop(
         }
         frame_nb += 1;
     };
+
+    #[cfg(feature = "plugins")]
+    if let Some(p) = emu.plugin_mut() {
+        p.run_exit().unwrap();
+    }
 
     let time = Instant::now();
     let program_duration = time.duration_since(exec_start).as_secs_f64();
