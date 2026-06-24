@@ -23,23 +23,15 @@ function print_results()
             ko = ko + 1
         end
     end
-    print(ok .. " successes; " .. ko .. " failures")
+
+    local total = ok + ko
+    print(ok .. "/" .. total .. " passed (" .. (ok*100)/total .. "%), " .. ko .. " failures")
 end
 
 return {
     permissions = { internal = { "cpu", "input" } },
 
     init = function()
-        print("loaded rsnes? type: " .. type(rsnes))
-        print("loaded regs? type: " .. type(rsnes.cpu))
-        print("loaded regs? type: " .. type(rsnes.input))
-        print("loaded require? type: " .. type(require))
-
-        print("plugin: addrbus is currently " .. rsnes.cpu.bus_bank .. ":" .. rsnes.cpu.bus_addr)
-        print("plugin: PB:PC is currently " .. rsnes.cpu.pb .. ":" .. rsnes.cpu.pc)
-        rsnes.cpu.pb = 0xaa
-        print("plugin: PB:PC is currently " .. rsnes.cpu.pb .. ":" .. rsnes.cpu.pc)
-
         test_results = {}
         test_idx = 0
     end,
@@ -49,6 +41,8 @@ return {
     actions = {
         default = function()
             print("Current PB:PC: " .. rsnes.cpu.pb .. ":" .. rsnes.cpu.pc .. "; test_idx: " .. test_idx)
+
+            print_results()
         end,
     },
 
