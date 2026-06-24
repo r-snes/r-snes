@@ -1,3 +1,5 @@
+pub mod helpers;
+
 /// Trait representing any kind of permission, with varying degrees
 ///
 /// [`Permission`] requires the implementor to define two levels of granted permissions:
