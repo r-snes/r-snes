@@ -72,16 +72,12 @@ impl ToTokens for StrictPartialOrd {
         let (impl_generics, ty_generics, where_clause) = self.item.generics.split_for_impl();
 
         let acc_varname = format_ident!("{}", "acc");
-        let members_match_blocks = members.map(|member| {
+        let member_wise_comparisons = members.map(|member| {
             quote! {
-                let member_ord = self.#member.partial_cmp(&other.#member)?;
-                match (#acc_varname, member_ord) {
-                    (std::cmp::Ordering::Equal, x) => #acc_varname = x,
-                    (_, std::cmp::Ordering::Equal) => (),
-                    (std::cmp::Ordering::Less, std::cmp::Ordering::Less) => (),
-                    (std::cmp::Ordering::Greater, std::cmp::Ordering::Greater) => (),
-                    _ => return None,
-                };
+                #acc_varname = ::product_order::combine_ordering(
+                    #acc_varname,
+                    self.#member.partial_cmp(&other.#member)?
+                )?;
             }
         });
 
@@ -90,7 +86,7 @@ impl ToTokens for StrictPartialOrd {
                 fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
                     let mut #acc_varname = std::cmp::Ordering::Equal;
 
-                    #(#members_match_blocks)*
+                    #(#member_wise_comparisons)*
 
                     Some(#acc_varname)
                 }
