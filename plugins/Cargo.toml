@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-strict_partial_ord_derive = { path = "strict_partial_ord_derive" }
+product_order = { version = "0.1.0", path = "../product_order" }
 permission_derive_macro = { path = "permission_derive_macro" }
 perm_tree_node_derive = { path = "perm_tree_node_derive" }
 common.workspace = true

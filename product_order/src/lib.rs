@@ -1,3 +1,6 @@
+#[doc(inline)]
+pub use product_order_derive::PartialOrd;
+
 use std::cmp::Ordering;
 
 /// Combine two [`std::cmp::Ordering`]s as per product order

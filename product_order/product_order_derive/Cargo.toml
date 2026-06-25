@@ -2,7 +2,7 @@
 proc-macro = true
 
 [package]
-name = "strict_partial_ord_derive"
+name = "product_order_derive"
 version = "0.1.0"
 edition = "2024"
 
