@@ -13,3 +13,4 @@ proc-macro2 = "1.0"
 
 [dev-dependencies]
 runtime-macros = "^1.1.1"
+product_order = { path = "../" }
