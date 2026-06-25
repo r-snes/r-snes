@@ -47,13 +47,13 @@ impl ToTokens for PermDerive {
             let ident = &f.ident;
             let typ = &f.ty;
 
-            quote! { #ident: #typ::all() }
+            quote! { #ident: <#typ as Permission>::all() }
         });
         let members_none_call = self.item.fields.iter().map(|f| {
             let ident = &f.ident;
             let typ = &f.ty;
 
-            quote! { #ident: #typ::none() }
+            quote! { #ident: <#typ as Permission>::none() }
         });
 
         tokens.extend(quote!(
