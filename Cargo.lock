@@ -2709,6 +2709,7 @@ dependencies = [
  "perm_tree_node_derive",
  "permission_derive_macro",
  "piccolo",
+ "product_order",
  "strict_partial_ord_derive",
 ]
 
@@ -2830,6 +2831,24 @@ dependencies = [
  "quote",
  "syn",
  "version_check",
+]
+
+[[package]]
+name = "product_order"
+version = "0.1.0"
+dependencies = [
+ "duplicate",
+ "product_order_derive",
+]
+
+[[package]]
+name = "product_order_derive"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "runtime-macros",
+ "syn",
 ]
 
 [[package]]
