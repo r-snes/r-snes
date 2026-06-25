@@ -46,3 +46,8 @@ fn not_comparable() {
     p3_pcmp_test((-1., 0., 1.), (0., 0., 0.), None);
     p3_pcmp_test((0., 0., 0.), (0., NAN, 0.), None);
 }
+
+#[test]
+fn less_eq_less() {
+    p3_pcmp_test((0., 0., 0.), (1., 0., 1.), Some(Less));
+}
