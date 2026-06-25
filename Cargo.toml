@@ -12,10 +12,10 @@ members = [
     "cpu/instr_metalang_procmacro",
     "plugins",
     "plugins/permission_derive_macro",
-    "plugins/strict_partial_ord_derive",
     "plugins/perm_tree_node_derive",
     "ppu",
     "product_order",
+    "product_order/product_order_derive",
 ]
 
 # common dependencies used across the workspace
