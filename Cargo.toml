@@ -15,6 +15,7 @@ members = [
     "plugins/strict_partial_ord_derive",
     "plugins/perm_tree_node_derive",
     "ppu",
+    "product_order",
 ]
 
 # common dependencies used across the workspace
@@ -22,6 +23,7 @@ members = [
 piccolo = { git = "https://github.com/kyren/piccolo" }
 piccolo-util = { git = "https://github.com/kyren/piccolo" }
 common = { version = "0.1.0", path = "./common"}
+duplicate = "2.0.1"
 
 [dependencies]
 common.workspace = true
