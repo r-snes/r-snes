@@ -79,6 +79,7 @@ impl ToTokens for StrictPartialOrd {
                 let member_ord = self.#member.partial_cmp(&other.#member)?;
                 match (#acc_varname, member_ord) {
                     (std::cmp::Ordering::Equal, x) => #acc_varname = x,
+                    (_, std::cmp::Ordering::Equal) => (),
                     (std::cmp::Ordering::Less, std::cmp::Ordering::Less) => (),
                     (std::cmp::Ordering::Greater, std::cmp::Ordering::Greater) => (),
                     _ => return None,
