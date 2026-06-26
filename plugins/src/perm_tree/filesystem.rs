@@ -259,6 +259,10 @@ mod test {
             .expect("valid construction")
     }
 
+    fn build_file_write_opts(lua: &str) -> FileWriteOptions {
+        build_from_lua(lua, FileWriteOptions::from_lua).expect("valid construction")
+    }
+
     #[test]
     fn create_with_no_files() {
         let from_none = build_file_write_perms("\"none\"");
@@ -293,6 +297,125 @@ mod test {
         let all = build_file_write_perms("\"all\"");
         for t in [abc, ab, ca] {
             assert!(all > t);
+        }
+    }
+
+    #[test]
+    fn create_max_write_opts() {
+        let opts = build_file_write_opts("\"all\"");
+
+        assert!(opts.can_create_new());
+        assert!(opts.can_overwrite_existing());
+        assert!(opts.can_seek());
+
+        assert_eq!(
+            opts,
+            FileWriteOptions::CanOverwrite {
+                create: true,
+                mode: OverwriteMode::Truncate
+            }
+        );
+    }
+
+    #[test]
+    fn write_opts_comparisons() {
+        use FileWriteOptions::*;
+        use OverwriteMode::*;
+
+        let new_only = NewOnly;
+        let append_only = CanOverwrite {
+            create: false,
+            mode: AppendOnly,
+        };
+        let append_only_create = CanOverwrite {
+            create: true,
+            mode: AppendOnly,
+        };
+        let append = CanOverwrite {
+            create: false,
+            mode: Append,
+        };
+        let append_create = CanOverwrite {
+            create: true,
+            mode: Append,
+        };
+        let trunc = CanOverwrite {
+            create: false,
+            mode: Append,
+        };
+        let trunc_create = CanOverwrite {
+            create: true,
+            mode: Append,
+        };
+        let start = CanOverwrite {
+            create: false,
+            mode: Append,
+        };
+        let start_create = CanOverwrite {
+            create: true,
+            mode: Append,
+        };
+
+        assert_eq!(append, trunc);
+        assert_eq!(append, start);
+        assert_eq!(trunc, start);
+
+        assert_eq!(append_create, trunc_create);
+        assert_eq!(append_create, start_create);
+        assert_eq!(trunc_create, start_create);
+
+        // the three "max" values should be greater than all others
+        for max in [start_create, trunc_create, append_create] {
+            for non_max in [
+                new_only,
+                append_only,
+                append_only_create,
+                append,
+                trunc,
+                start,
+            ] {
+                assert!(max > non_max);
+            }
+        }
+
+        for noncomparable in [
+            (append_only, new_only),
+            (new_only, append),
+            (new_only, trunc),
+            (new_only, start),
+            (append_only_create, append),
+            (append_only_create, trunc),
+            (append_only_create, start),
+        ] {
+            assert_eq!(
+                noncomparable.0.partial_cmp(&noncomparable.1),
+                None,
+                "{:?} shouldn't compare with {:?}",
+                noncomparable.0,
+                noncomparable.1
+            );
+            assert_eq!(noncomparable.1.partial_cmp(&noncomparable.0), None);
+        }
+
+        for greater in [
+            append_only_create,
+            trunc,
+            trunc_create,
+            append,
+            append_create,
+            start,
+            start_create,
+        ] {
+            assert!(append_only < greater);
+        }
+
+        for greater in [
+            append_only_create,
+            trunc_create,
+            append_create,
+            start_create,
+        ] {
+            assert!(new_only < greater);
         }
     }
 }
