@@ -418,4 +418,67 @@ mod test {
             assert!(new_only < greater);
         }
     }
+
+    #[test]
+    fn full_construction() {
+        let test = build_file_write_perms(
+            r#"{
+                "somefile.txt",
+                other_file = "all",
+                ["new_file.txt"] = "create_only",
+
+                append_only = {
+                    mode = "append_only",
+                    -- create = false, -- defaults to false
+                },
+
+                truncate_or_create = {
+                    mode = "truncate",
+                    create = true,
+                },
+
+                -- this starts by appending but can seek anywhere to edit the whole file
+                append = {
+                    mode = "append"
+                },
+            }"#,
+        );
+
+        let expected = FileWritePermissions {
+            files: HashMap::from([
+                ("somefile.txt".into(), FileWriteOptions::default()),
+                (
+                    "other_file".into(),
+                    FileWriteOptions::CanOverwrite {
+                        create: true,
+                        mode: OverwriteMode::Truncate,
+                    },
+                ),
+                ("new_file.txt".into(), FileWriteOptions::NewOnly),
+                (
+                    "append_only".into(),
+                    FileWriteOptions::CanOverwrite {
+                        create: false,
+                        mode: OverwriteMode::AppendOnly,
+                    },
+                ),
+                (
+                    "truncate_or_create".into(),
+                    FileWriteOptions::CanOverwrite {
+                        create: true,
+                        mode: OverwriteMode::Truncate,
+                    },
+                ),
+                (
+                    "append".into(),
+                    FileWriteOptions::CanOverwrite {
+                        create: false,
+                        mode: OverwriteMode::Append,
+                    },
+                ),
+            ]),
+        };
+
+        assert_eq!(test, AllOr::Inner(expected));
+    }
 }
