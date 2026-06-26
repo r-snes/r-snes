@@ -105,3 +105,56 @@ fn picc_string_to_path<'gc>(string: piccolo::String<'gc>) -> Result<PathBuf, Fro
         _ => String::from_utf8(byte_vec).map(PathBuf::from),
     }
 }
+
+#[cfg(test)]
+mod test {
+    use std::collections::HashMap;
+
+    use super::*;
+    use crate::{
+        perm_tree::{FileWritePermissions, test::build_from_lua},
+        permission::helpers::AllOr,
+    };
+
+    fn build_file_write_perms(lua: &str) -> AllOr<FileWritePermissions> {
+        build_from_lua(lua, <AllOr<FileWritePermissions> as PermTreeNode>::from_lua)
+            .expect("valid construction")
+    }
+
+    #[test]
+    fn create_with_no_files() {
+        let from_none = build_file_write_perms("\"none\"");
+        let from_empty = build_file_write_perms("{}");
+
+        for t in [from_none, from_empty] {
+            let AllOr::Inner(t) = t else {
+                panic!("expecting AllOr::Inner");
+            };
+
+            assert!(t.files.is_empty());
+            assert_eq!(
+                t,
+                FileWritePermissions {
+                    files: HashMap::new()
+                },
+            );
+        }
+    }
+
+    #[test]
+    fn create_with_files() {
+        let abc = build_file_write_perms(r#"{ "a", "b", "c" }"#);
+        let ab = build_file_write_perms(r#"{ "a", "b" }"#);
+        let ca = build_file_write_perms(r#"{ "c", "a" }"#);
+
+        assert!(abc > ab); // abc contains more files than ab
+        assert!(abc > ca); // abc contains more files than ca
+
+        assert!(!(ab >= ca) && !(ab <= ca)); // ab and ca aren't comparable
+
+        let all = build_file_write_perms("\"all\"");
+        for t in [abc, ab, ca] {
+            assert!(all > t);
+        }
+    }
+}
