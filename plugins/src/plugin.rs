@@ -86,7 +86,6 @@ impl<'gc> picc::FromValue<'gc> for PluginTable {
 
             match key.as_bytes() {
                 b"init" => ret.init = match value {
-                    Value::Nil => None,
                     Value::Function(Function::Closure(c)) => Some(ctx.stash(c)),
                     v => return Err(picc::TypeError {
                         expected: "init function or nil",
@@ -94,7 +93,6 @@ impl<'gc> picc::FromValue<'gc> for PluginTable {
                     }),
                 },
                 b"exit" => ret.exit = match value {
-                    Value::Nil => None,
                     Value::Function(Function::Closure(c)) => Some(ctx.stash(c)),
                     v => return Err(picc::TypeError {
                         expected: "exit function or nil",
@@ -139,7 +137,6 @@ impl<'gc> picc::FromValue<'gc> for PluginActions {
 
             match key.as_bytes() {
                 b"default" => ret.default = match value {
-                    Value::Nil => None,
                     Value::Function(Function::Closure(c)) => Some(ctx.stash(c)),
                     v => return Err(picc::TypeError {
                         expected: "default function or nil",
@@ -175,7 +172,6 @@ impl<'gc> picc::FromValue<'gc> for PluginAutoActions {
 
             match key.as_bytes() {
                 b"on_instr" => ret.on_instr = match value {
-                    Value::Nil => None,
                     Value::Function(Function::Closure(c)) => Some(ctx.stash(c)),
                     v => return Err(picc::TypeError {
                         expected: "on_instr function or nil",
