@@ -27,7 +27,7 @@ use piccolo::{Context, Value};
 
 /// Permission tree nodes can be constructed from lua values
 /// read from plugin files.
-pub trait PermTreeNode : Sized {
+pub trait PermTreeNode: Sized {
     fn from_lua<'gc>(ctx: Context<'gc>, value: Value<'gc>) -> Option<Self>;
 }
 
@@ -39,7 +39,7 @@ pub trait PermTreeNode : Sized {
 /// By default, lua values other than these two strings will fail to
 /// build the permission node, additional cases can be added by overriding
 /// the default implementation of [`from_lua_leaf`].
-trait PermTreeLeafNode : Permission {
+trait PermTreeLeafNode: Permission {
     /// Fallback method for when the leaf node is constructed with something
     /// other than `"all"` and `"none"`.
     fn from_lua_leaf<'gc>(_: Context<'gc>, _: Value<'gc>) -> Option<Self> {
@@ -111,23 +111,28 @@ pub struct FileSystemPermissions {
 #[cfg(test)]
 mod test {
     use super::*;
-    use piccolo::{Lua, Closure, Executor, Value};
+    use piccolo::{Closure, Executor, Lua, Value};
 
     fn build_from_lua<T, F>(lua_str: &str, f: F) -> T
-    where F: for<'gc> FnOnce(Context<'gc>, Value<'gc>) -> T {
+    where
+        F: for<'gc> FnOnce(Context<'gc>, Value<'gc>) -> T,
+    {
         let mut lua = Lua::empty();
 
-        let ex = lua.try_enter(|ctx| {
-            let closure = Closure::load(ctx, None, format!("return {}", lua_str).as_bytes())?;
-            let ex = Executor::start(ctx, closure.into(), ());
+        let ex = lua
+            .try_enter(|ctx| {
+                let closure = Closure::load(ctx, None, format!("return {}", lua_str).as_bytes())?;
+                let ex = Executor::start(ctx, closure.into(), ());
 
-            Ok(ctx.stash(ex))
-        }).expect("a valid executor");
+                Ok(ctx.stash(ex))
+            })
+            .expect("a valid executor");
 
         lua.finish(&ex).expect("successful execution");
         lua.enter(|ctx| {
             let ex = ctx.fetch(&ex);
-            let val: Value = ex.take_result(ctx)
+            let val: Value = ex
+                .take_result(ctx)
                 .expect("correct executor mode")
                 .expect("no lua error");
 
@@ -148,19 +153,21 @@ mod test {
 
     #[test]
     fn detailed_tree_construction() {
-        let tree = build_perm_tree(r#"{
-            internal = {
-                control = "all",
-                bus = { "read" },
-                "cpu",
-            },
-            external = {
-                filesystem = {
-                    read = "all",
-                    write = "none",
+        let tree = build_perm_tree(
+            r#"{
+                internal = {
+                    control = "all",
+                    bus = { "read" },
+                    "cpu",
                 },
-            },
-        }"#);
+                external = {
+                    filesystem = {
+                        read = "all",
+                        write = "none",
+                    },
+                },
+            }"#,
+        );
 
         let expected_tree = RSnesPermissions {
             internal: InternalPermissions {
