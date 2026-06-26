@@ -353,6 +353,8 @@ impl<'a> PluginPermRequest<'a> {
 
 #[cfg(test)]
 mod tests {
+    use common::snes_addr;
+
     use crate::permission::Permission;
 
     use super::*;
@@ -403,9 +405,16 @@ mod tests {
             br#"
             return {
                 permissions = "all",
+
                 init = function()
                     i = 10
+                   done = false
                 end,
+
+                exit = function()
+                    done = true
+                end,
+
                 actions = {
                     default = function()
                         i = i + 1
@@ -421,8 +430,58 @@ mod tests {
         plugin.run_default().unwrap();
         plugin.run_default().unwrap();
 
+        // running on_instr should be a no-op
+        plugin.run_on_instr(0, snes_addr!(0:0)).unwrap();
+
         plugin.lua.enter(|ctx| {
             assert!(matches!(ctx.get_global_value("i"), Value::Integer(13)));
+            assert!(matches!(ctx.get_global_value("done"), Value::Boolean(false)));
         });
+
+        // after running exit we should see `done` set to true
+        plugin.run_exit().unwrap();
+        plugin.lua.enter(|ctx| {
+            assert!(matches!(ctx.get_global_value("done"), Value::Boolean(true)));
+        });
+    }
+
+    #[test]
+    fn basic_autoactions() {
+        use piccolo::Value;
+
+        let mut plugin = Plugin::load_from_raw(
+            br#"
+            return {
+                permissions = "all",
+
+                init = function()
+                   xce_counter = 0
+                end,
+
+                autoactions = {
+                    on_instr = function(opcode, pb, pc)
+                        if opcode == 0xFB then
+                            xce_counter = xce_counter + 1
+                        end
+                    end,
+                },
+            }"#,
+            None,
+        ).unwrap();
+
+        plugin.run_init().unwrap();
+
+        plugin.run_on_instr(0xfb, snes_addr!(0:0)).unwrap();
+        plugin.run_on_instr(0x00, snes_addr!(0:0)).unwrap();
+        plugin.run_on_instr(0x30, snes_addr!(0:0)).unwrap();
+        plugin.run_on_instr(0xfb, snes_addr!(0:0)).unwrap();
+        plugin.run_on_instr(0xff, snes_addr!(0:0)).unwrap();
+
+        plugin.lua.enter(|ctx| {
+            assert!(matches!(ctx.get_global_value("xce_counter"), Value::Integer(2)));
+        });
+
+        // run exit should be a no-op as there's none
+        plugin.run_exit().unwrap();
     }
 }
