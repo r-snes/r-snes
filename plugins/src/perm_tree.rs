@@ -1,4 +1,8 @@
-use crate::permission::Permission;
+pub mod filesystem;
+
+use std::{collections::HashMap, path::PathBuf};
+
+use crate::permission::{Permission, helpers::AllOr};
 use derive_aliases::derive;
 
 use piccolo::{Context, Value};
@@ -59,6 +63,25 @@ impl<T: PermTreeLeafNode> PermTreeNode for T {
 
 impl PermTreeLeafNode for bool {}
 
+/// Helper trait to implement [`PermTreeNode`] for types wrapped
+/// in a [`AllOr`], respecting the "all" and "none" special values,
+/// and wrapping other values in [`AllOr::Inner`] properly
+trait PermTreeFromAllOr: Sized + Eq + PartialEq + PartialOrd + Default {
+    fn from_lua_inner<'gc>(_: Context<'gc>, _: Value<'gc>) -> Option<Self> {
+        None
+    }
+}
+
+impl<T: PermTreeFromAllOr> PermTreeNode for AllOr<T> {
+    fn from_lua<'gc>(ctx: Context<'gc>, value: Value<'gc>) -> Option<Self> {
+        match value {
+            Value::String(s) if s.as_bytes() == b"all" => Some(Permission::all()),
+            Value::String(s) if s.as_bytes() == b"none" => Some(Permission::none()),
+            _ => <T as PermTreeFromAllOr>::from_lua_inner(ctx, value).map(AllOr::Inner),
+        }
+    }
+}
+
 #[derive(..PermTree)]
 pub struct RSnesPermissions {
     pub internal: InternalPermissions,
@@ -105,7 +128,12 @@ pub struct ExternalPermissions {
 #[derive(..PermTree)]
 pub struct FileSystemPermissions {
     pub read: bool,
-    pub write: bool,
+    pub write: AllOr<FileWritePermissions>,
+}
+
+#[derive(Default, PartialEq, Eq, Debug)]
+pub struct FileWritePermissions {
+    pub files: HashMap<PathBuf, self::filesystem::FileWriteOptions>,
 }
 
 #[cfg(test)]
@@ -182,7 +210,7 @@ mod test {
             external: ExternalPermissions {
                 filesystem: FileSystemPermissions {
                     read: true,
-                    write: false,
+                    write: Permission::none(),
                 },
                 ..Permission::none()
             },
