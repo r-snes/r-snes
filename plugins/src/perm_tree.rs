@@ -141,7 +141,7 @@ mod test {
     use super::*;
     use piccolo::{Closure, Executor, Lua, Value};
 
-    fn build_from_lua<T, F>(lua_str: &str, f: F) -> T
+    pub(super) fn build_from_lua<T, F>(lua_str: &str, f: F) -> T
     where
         F: for<'gc> FnOnce(Context<'gc>, Value<'gc>) -> T,
     {
