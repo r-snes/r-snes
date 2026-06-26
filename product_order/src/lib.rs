@@ -41,6 +41,25 @@ where
     Some(acc)
 }
 
+/// Reduce an iterator of `Option<std::cmp::Ordering>` into a single
+/// `Option<Ordering>`, as per the product order rules described
+/// for [`combine_ordering`].
+/// Any None returned by the iterator will make the function return None
+///
+/// The order of elements in the iterator don't impact the return
+/// value of this function
+pub fn combine_option_orderings<I>(iter: I) -> Option<Ordering>
+where
+    I: IntoIterator<Item = Option<Ordering>>,
+{
+    let mut acc = Ordering::Equal;
+
+    for i in iter {
+        acc = combine_ordering(acc, i?)?;
+    }
+    Some(acc)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

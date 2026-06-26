@@ -5,8 +5,109 @@ use product_order::combine_ordering;
 
 use super::{FileWritePermissions, PermTreeFromAllOr, PermTreeNode};
 
-#[derive(Default, PartialEq, Eq, PartialOrd, Debug)]
-pub struct FileWriteOptions {}
+#[derive(Copy, Clone, Eq, Debug)]
+pub enum FileWriteOptions {
+    /// Only create a new file, don't overwrite
+    /// (or even append) an existing file
+    NewOnly,
+
+    /// May overwrite (at least append) an existing file
+    CanOverwrite { create: bool, mode: OverwriteMode },
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum OverwriteMode {
+    /// Open in append mode but don't allow seeking at all,
+    /// to prevent modification of existing data in the file
+    AppendOnly,
+
+    /// Open in append mode, allow seeking
+    Append,
+
+    /// Open in truncate mode (will completely overwrite the file)
+    /// Seeking is then allowed because all data is erased anyways
+    Truncate,
+
+    /// Open the file from that start, then any write will
+    /// overwrite data from the start.
+    /// Seeking is allowed since we're already overwriting data.
+    Start,
+}
+
+impl FileWriteOptions {
+    /// Whether these file write options will allow
+    /// seeking the opened file
+    pub fn can_seek(self) -> bool {
+        match self {
+            Self::CanOverwrite {
+                mode: OverwriteMode::AppendOnly,
+                ..
+            } => false,
+            _ => true,
+        }
+    }
+
+    /// Whether these file write options may create
+    /// new files on the user's machine
+    pub fn can_create_new(self) -> bool {
+        match self {
+            Self::NewOnly => true,
+            Self::CanOverwrite { create, .. } => create,
+        }
+    }
+
+    /// Whether these file write options may touch
+    /// existing files at all
+    pub fn can_touch_existing(self) -> bool {
+        !matches!(self, Self::NewOnly)
+    }
+
+    /// Whether these file write options may overwrite
+    /// existing data in files (just appending counts as false)
+    pub fn can_overwrite_existing(self) -> bool {
+        use OverwriteMode::*;
+
+        match self {
+            Self::NewOnly => false,
+            Self::CanOverwrite {
+                mode: AppendOnly, ..
+            } => false,
+            _ => true,
+        }
+    }
+}
+
+impl Default for FileWriteOptions {
+    /// Default options to apply when constructed from
+    /// just the file name, or with `"file" = "all"`
+    fn default() -> Self {
+        Self::CanOverwrite {
+            create: true,
+            mode: OverwriteMode::Truncate,
+        }
+    }
+}
+
+impl PartialEq for FileWriteOptions {
+    fn eq(&self, other: &Self) -> bool {
+        self.can_create_new() == other.can_create_new()
+            && self.can_touch_existing() == other.can_touch_existing()
+            && self.can_overwrite_existing() == other.can_overwrite_existing()
+    }
+}
+
+impl PartialOrd for FileWriteOptions {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        product_order::combine_option_orderings(
+            [
+                Self::can_create_new,
+                Self::can_touch_existing,
+                Self::can_overwrite_existing,
+            ]
+            .map(|cmp| cmp(*self).partial_cmp(&cmp(*other))),
+        )
+    }
+}
 
 impl PartialOrd for FileWritePermissions {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
@@ -81,9 +182,46 @@ impl PermTreeFromAllOr for FileWritePermissions {
 }
 
 impl PermTreeNode for FileWriteOptions {
-    fn from_lua<'gc>(_: Context<'gc>, _: Value<'gc>) -> Option<Self> {
-        // since it's a unit struct for now there's nothing to do
-        Some(Self {})
+    fn from_lua<'gc>(ctx: Context<'gc>, value: Value<'gc>) -> Option<Self> {
+        use OverwriteMode::*;
+
+        match value {
+            Value::String(s) if s.as_bytes() == b"all" => Some(Default::default()),
+            Value::String(s) if s.as_bytes() == b"create_only" => Some(Self::NewOnly),
+            Value::Table(tab) => {
+                let create = match tab.get_value(ctx, "create") {
+                    Value::Boolean(b) => b,
+                    Value::Nil => false,
+                    _ => {
+                        eprintln!(
+                            "invalid value for 'create' in overwrite options, assuming false"
+                        );
+                        false
+                    }
+                };
+
+                let mode = match tab.get_value(ctx, "mode") {
+                    Value::String(s) if s.as_bytes() == b"append_only" => AppendOnly,
+                    Value::String(s) if s.as_bytes() == b"append" => Append,
+                    Value::String(s) if s.as_bytes() == b"truncate" => Truncate,
+                    Value::String(s) if s.as_bytes() == b"start" => Start,
+                    Value::Nil => {
+                        eprintln!("missing value for 'mode' in overwrite options");
+                        return None;
+                    }
+                    _ => {
+                        eprintln!("invalid value for 'mode' in overwrite options");
+                        return None;
+                    }
+                };
+
+                Some(Self::CanOverwrite { create, mode })
+            }
+            _ => {
+                eprintln!("invalid value to construct file write opts");
+                None
+            }
+        }
     }
 }
 
