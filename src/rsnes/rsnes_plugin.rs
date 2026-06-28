@@ -5,8 +5,17 @@ use piccolo::Callback;
 use piccolo::Context;
 use piccolo::Table;
 use piccolo::Value;
+use plugins::perm_tree::FileSystemPermissions;
+use plugins::perm_tree::FileWritePermissions;
+use plugins::perm_tree::filesystem::FileWriteOptions;
+use plugins::perm_tree::filesystem::OverwriteMode;
+use plugins::permission::Permission;
+use plugins::permission::helpers::AllOr;
 use plugins::plugin::Plugin;
 use std::cell::RefCell;
+use std::fs::OpenOptions;
+use std::io::Write;
+use std::path::PathBuf;
 use std::rc::Rc;
 
 impl RSnes {
@@ -24,6 +33,13 @@ impl RSnes {
             }
             if plugin.table.perms.internal.input {
                 rsnes.set_field(ctx, "input", Self::create_input_table(ctx, emu));
+            }
+            if !plugin.table.perms.external.filesystem.is_none() {
+                rsnes.set_field(
+                    ctx,
+                    "fs",
+                    Self::create_fs_table(ctx, &plugin.table.perms.external.filesystem),
+                );
             }
         });
     }
@@ -114,5 +130,99 @@ impl RSnes {
         );
 
         ret
+    }
+
+    fn create_fs_table<'gc>(ctx: Context<'gc>, perms: &FileSystemPermissions) -> Table<'gc> {
+        let ret = Table::new(ctx.mutation());
+
+        if !perms.write.is_none() {
+            Self::add_write_perms(ctx, ret, &perms.write);
+        }
+        if !perms.read.is_none() {
+            Self::add_read_perms(ctx, ret, &perms.read);
+        }
+
+        ret
+    }
+
+    fn add_write_perms<'gc>(
+        ctx: Context<'gc>,
+        tab: Table<'gc>,
+        perms: &AllOr<FileWritePermissions>,
+    ) {
+        match perms {
+            AllOr::All => todo!("handle 'all' write perms"),
+            AllOr::Inner(FileWritePermissions { files }) => {
+                let files_tab = Table::new(ctx.mutation());
+                tab.set_field(ctx, "files", files_tab);
+
+                for (filepath, options) in files {
+                    files_tab
+                        .set(
+                            ctx,
+                            piccolo::String::from_slice(
+                                ctx.mutation(),
+                                filepath.as_os_str().as_encoded_bytes(),
+                            ), // TODO: windows
+                            Self::create_file_write_table(ctx, filepath, *options),
+                        )
+                        .expect("inserting with a string key cannot fail");
+                }
+            }
+        }
+    }
+
+    fn create_file_write_table<'gc>(
+        ctx: Context<'gc>,
+        filepath: &PathBuf,
+        options: FileWriteOptions,
+    ) -> Table<'gc> {
+        let ret = Table::new(ctx.mutation());
+
+        match OpenOptions::from(options).open(filepath) {
+            Ok(file) => {
+                let file = Rc::new(RefCell::new(file));
+
+                let write_clone = file.clone();
+                ret.set_field(
+                    ctx,
+                    "write",
+                    Callback::from_fn(ctx.mutation(), move |_ctx, _, mut stack| {
+                        let mut file_mut = write_clone.borrow_mut();
+
+                        stack[..].reverse();
+                        while let Some(value) = stack.pop_back() {
+                            match value {
+                                Value::String(s) => file_mut.write_all(s.as_bytes()).unwrap(),
+                                Value::Integer(i) => {
+                                    file_mut.write_all(i.to_string().as_bytes()).unwrap()
+                                }
+                                Value::Number(f) => {
+                                    file_mut.write_all(f.to_string().as_bytes()).unwrap()
+                                }
+                                _ => {}
+                            }
+                        }
+                        Ok(piccolo::CallbackReturn::Return)
+                    }),
+                );
+            }
+            Err(err) => {
+                ret.set_field(
+                    ctx,
+                    "error",
+                    Value::String(piccolo::String::from_buffer(
+                        ctx.mutation(),
+                        err.kind().to_string().into_boxed_str().into_boxed_bytes(),
+                    )),
+                );
+            }
+        }
+
+        ret
+    }
+
+    fn add_read_perms<'gc>(_: Context<'gc>, _: Table<'gc>, _: &bool) {
+        eprintln!("todo: handle read permissions")
     }
 }
