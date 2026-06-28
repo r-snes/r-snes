@@ -244,6 +244,41 @@ fn picc_string_to_path<'gc>(string: piccolo::String<'gc>) -> Result<PathBuf, Fro
     }
 }
 
+impl From<FileWriteOptions> for std::fs::OpenOptions {
+    fn from(options: FileWriteOptions) -> Self {
+        let mut ret = Self::new();
+
+        ret.read(false);
+        ret.write(true);
+        ret.create(options.can_create_new());
+        match options {
+            FileWriteOptions::NewOnly => {
+                ret.create_new(true);
+            }
+            FileWriteOptions::CanOverwrite { mode, .. } => {
+                ret.create_new(false);
+
+                match mode {
+                    OverwriteMode::AppendOnly | OverwriteMode::Append => {
+                        ret.truncate(false);
+                        ret.append(true);
+                    }
+                    OverwriteMode::Truncate => {
+                        ret.truncate(true);
+                        ret.append(false);
+                    }
+                    OverwriteMode::Start => {
+                        ret.truncate(false);
+                        ret.append(false);
+                    }
+                }
+            }
+        };
+
+        ret
+    }
+}
+
 #[cfg(test)]
 mod test {
     use std::collections::HashMap;

@@ -16,7 +16,6 @@ function print_results()
 
     for i=0,(test_idx-1) do
         local res = test_results[i]
-        -- print(i, res)
         if res then
             ok = ok + 1
         else
@@ -26,14 +25,65 @@ function print_results()
 
     local total = ok + ko
     print(ok .. "/" .. total .. " passed (" .. (ok*100)/total .. "%), " .. ko .. " failures")
+
+    save_results_to_file(ok, ko)
+end
+
+function save_results_to_file(ok, ko)
+    local filename = nil
+    if test_idx == 0x453 then
+        filename = "cputest-basic-report.txt"
+    else
+        filename = "cputest-full-report.txt"
+    end
+
+    save_results_to(filename, ok, ko)
+    print("Saved results to " .. filename)
+end
+
+-- with minimal perms
+function save_results_to(filename, ok, ko)
+    local total = ok + ko
+    local file = rsnes.fs.files[filename]
+
+    file.write(ok, "/", total, " passed (", (ok*100)/total, "%), ", ko, " failures\n")
+    if ko == 0 then
+        return
+    end
+
+    file.write("All failures listed below 1 per line:\n")
+    for i = 0,(test_idx-1) do
+        if not test_results[i] then
+            file.write(i, "\n")
+        end
+    end
 end
 
 return {
-    permissions = { internal = { "cpu", "input" } },
+    permissions = {
+        internal = { "cpu", "input" },
+        external = {
+            filesystem = {
+                write = {
+                    "cputest-basic-report.txt",
+                    "cputest-full-report.txt",
+                }
+            }
+        }
+    },
 
     init = function()
         test_results = {}
         test_idx = 0
+
+        print("loaded fs?", rsnes.fs)
+        print("loaded files?", rsnes.fs.files)
+        for file,val in pairs(rsnes.fs.files) do
+            print("opened file:", file)
+        end
+        print(rsnes.fs.files["cputest-basic-report.txt"])
+        print(rsnes.fs.files["cputest-basic-report.txt"].write)
+        print(rsnes.fs.files["cputest-basic-report.txt"].error)
     end,
 
     exit = print_results,
