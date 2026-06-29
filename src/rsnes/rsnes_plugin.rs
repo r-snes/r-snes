@@ -2,9 +2,13 @@ use super::RSnes;
 
 use cpu::cpu::CPU;
 use piccolo::Callback;
+use piccolo::CallbackReturn;
 use piccolo::Context;
+use piccolo::IntoMultiValue;
+use piccolo::IntoValue;
 use piccolo::Table;
 use piccolo::Value;
+use piccolo::error::LuaError;
 use plugins::perm_tree::FileSystemPermissions;
 use plugins::perm_tree::FileWritePermissions;
 use plugins::perm_tree::filesystem::FileWriteOptions;
@@ -13,7 +17,10 @@ use plugins::permission::Permission;
 use plugins::permission::helpers::AllOr;
 use plugins::plugin::Plugin;
 use std::cell::RefCell;
+use std::fs::File;
 use std::fs::OpenOptions;
+use std::io::Seek;
+use std::io::SeekFrom;
 use std::io::Write;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -203,23 +210,93 @@ impl RSnes {
                                 _ => {}
                             }
                         }
-                        Ok(piccolo::CallbackReturn::Return)
+                        Ok(CallbackReturn::Return)
                     }),
                 );
+
+                if options.can_seek() {
+                    Self::add_write_seek_perms(ctx, ret, &file);
+                }
             }
             Err(err) => {
-                ret.set_field(
-                    ctx,
-                    "error",
-                    Value::String(piccolo::String::from_buffer(
-                        ctx.mutation(),
-                        err.kind().to_string().into_boxed_str().into_boxed_bytes(),
-                    )),
-                );
+                ret.set_field(ctx, "error", err.kind().to_string().into_value(ctx));
             }
         }
 
         ret
+    }
+
+    fn add_write_seek_perms<'gc>(
+        ctx: Context<'gc>,
+        file_tab: Table<'gc>,
+        file: &Rc<RefCell<File>>,
+    ) {
+        let truncate_clone = file.clone();
+        file_tab.set_field(
+            ctx,
+            "truncate",
+            Callback::from_fn(ctx.mutation(), move |ctx, _, mut stack| {
+                let Some(Value::Integer(i @ 0..)) = stack.pop_front() else {
+                    return Err(piccolo::Error::Lua(LuaError(
+                        "invalid parameter to truncate".into_value(ctx),
+                    )));
+                };
+                if let Err(e) = truncate_clone.borrow_mut().set_len(i as u64) {
+                    stack.replace(ctx, e.to_string().into_value(ctx));
+                }
+
+                Ok(CallbackReturn::Return)
+            }),
+        );
+
+        let clear_clone = file.clone();
+        file_tab.set_field(
+            ctx,
+            "clear",
+            Callback::from_fn(ctx.mutation(), move |ctx, _, mut stack| {
+                let mut file = clear_clone.borrow_mut();
+
+                let res = file.set_len(0).and_then(|()| file.seek(SeekFrom::Start(0)));
+                if let Err(e) = res {
+                    stack.replace(ctx, e.to_string().into_value(ctx));
+                }
+
+                Ok(CallbackReturn::Return)
+            }),
+        );
+
+        let seek_clone = file.clone();
+        file_tab.set_field(
+            ctx,
+            "seek",
+            Callback::from_fn(ctx.mutation(), move |ctx, _, mut stack| {
+                let seek_mode = match stack.pop_front() {
+                    None | Some(Value::Nil) => SeekFrom::Current,
+                    Some(Value::String(s)) if s.as_bytes() == b"cur" => SeekFrom::Current,
+                    Some(Value::String(s)) if s.as_bytes() == b"set" => |i| SeekFrom::Start(i as u64),
+                    Some(Value::String(s)) if s.as_bytes() == b"end" => SeekFrom::End,
+                    _ => {
+                        return Err(piccolo::Error::Lua(LuaError(
+                            "invalid seek mode passed to seek".into_value(ctx),
+                        )));
+                    }
+                };
+                let offs = match stack.pop_front() {
+                    Some(Value::Integer(i)) => i,
+                    None | Some(Value::Nil) => 0,
+                    _ => {
+                        return Err(piccolo::Error::Lua(LuaError(
+                            "invalid offset passed to seek".into_value(ctx),
+                        )));
+                    }
+                };
+                match seek_clone.borrow_mut().seek(seek_mode(offs)) {
+                    Ok(new_offs) => stack.replace(ctx, (new_offs as i64).into_value(ctx)),
+                    Err(e) => stack.replace(ctx, (Value::Nil, e.to_string().into_value(ctx))),
+                }
+                Ok(CallbackReturn::Return)
+            }),
+        );
     }
 
     fn add_read_perms<'gc>(_: Context<'gc>, _: Table<'gc>, _: &bool) {

@@ -32,9 +32,9 @@ end
 function save_results_to_file(ok, ko)
     local filename = nil
     if test_idx == 0x453 then
-        filename = "cputest-basic-report.txt"
+        filename = files.basic
     else
-        filename = "cputest-full-report.txt"
+        filename = files.full
     end
 
     save_results_to(filename, ok, ko)
@@ -46,6 +46,7 @@ function save_results_to(filename, ok, ko)
     local total = ok + ko
     local file = rsnes.fs.files[filename]
 
+    file.clear()
     file.write(ok, "/", total, " passed (", (ok*100)/total, "%), ", ko, " failures\n")
     if ko == 0 then
         return
@@ -59,14 +60,30 @@ function save_results_to(filename, ok, ko)
     end
 end
 
+-- we want to open files in "start" mode by default
+-- because we're only going to write one file per
+-- plugin run, so "truncate" would clear both files
+-- and only write to one, erasing the contents of the other.
+-- so instead we manually call file.clear() to clear
+-- the file we are going to write to
+write_opts = {
+    mode = "start",
+    create = true,
+}
+
+files = {
+    basic = "cpu/cputest-basic-report.txt",
+    full = "cpu/cputest-full-report.txt",
+}
+
 return {
     permissions = {
         internal = { "cpu", "input" },
         external = {
             filesystem = {
                 write = {
-                    "cputest-basic-report.txt",
-                    "cputest-full-report.txt",
+                    [files.basic] = write_opts,
+                    [files.full] = write_opts,
                 }
             }
         }
@@ -76,14 +93,9 @@ return {
         test_results = {}
         test_idx = 0
 
-        print("loaded fs?", rsnes.fs)
-        print("loaded files?", rsnes.fs.files)
         for file,val in pairs(rsnes.fs.files) do
             print("opened file:", file)
         end
-        print(rsnes.fs.files["cputest-basic-report.txt"])
-        print(rsnes.fs.files["cputest-basic-report.txt"].write)
-        print(rsnes.fs.files["cputest-basic-report.txt"].error)
     end,
 
     exit = print_results,
