@@ -686,15 +686,23 @@ impl MetaInstruction {
                     cpu.addr_bus = snes_addr!(0:cpu.registers.S.wrapping_add(cpu.data_bus as u16));
                 };
                 pstate.addrmode = AddrBusPosition::Unaligned;
+                pstate.wrapping_mode = AddrWrappingMode::BankWrap;
             }
             Self::SetAddrModeStackRelativeIndirectY => {
                 ret += Self::SetAddrModeStackRelative.expand(pstate);
+                assert_eq!(
+                    pstate.wrapping_mode,
+                    AddrWrappingMode::BankWrap,
+                    "stack relative should leave wrap mode as bank wrap"
+                );
                 ret += Self::Fetch16Into(quote!(cpu.internal_data_bus)).expand(pstate);
                 ret += Self::EndCycle(quote!(Internal)).expand(pstate);
                 ret += quote! {
                     cpu.addr_bus.bank = cpu.registers.DB;
-                    cpu.addr_bus.addr = cpu.internal_data_bus.wrapping_add(cpu.registers.Y);
-                }
+                    cpu.addr_bus.addr = cpu.internal_data_bus;
+                };
+                pstate.wrapping_mode = AddrWrappingMode::BankCross;
+                ret += pstate.wrapping_mode.increment_addrbus(quote!(cpu.registers.Y));
             }
 
             Self::Fetch8Into(dest) => {
