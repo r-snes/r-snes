@@ -1,3 +1,4 @@
+use std::num::Wrapping;
 use std::ops::{
     Add,
     AddAssign,
@@ -39,6 +40,7 @@ pub(crate) trait Reg : Copy
     + SubAssign
     + Not<Output = Self>
     + Eq
+    + AddBcd
 {
     const ZERO: Self;
     const ONE: Self;
@@ -67,6 +69,10 @@ pub(crate) trait Reg : Copy
     }
 }
 
+pub(crate) trait AddBcd: Sized {
+    fn add_bcd(self, other: Self, carry_in: bool) -> (Self, bool, bool);
+}
+
 duplicate! {
     [
         DUP_type;
@@ -93,5 +99,74 @@ duplicate! {
         fn overflowing_sub(self, other: Self) -> (Self, bool) {
             self.overflowing_sub(other)
         }
+    }
+}
+
+impl AddBcd for u8 {
+    fn add_bcd(self, other: Self, carry_in: bool) -> (Self, bool, bool) {
+        use std::num::Wrapping as W;
+        let op = W(other);
+        let a = W(self);
+
+        let mut ret: Wrapping<Self>;
+        let mut c: bool = carry_in;
+
+        ret = (a & W(0x0f)) + (op & W(0x0f)) + (W(c as u8) << 0);
+        c = ret >= W(10); // new base 10 carry
+        if c {
+            // adjust the hex representation so that the hex digits
+            // match the decimal representation of the value
+            ret += 0x06;
+        }
+        ret = (a & W(0xf0)) + (op & W(0xf0)) + (W(c as u8) << 4) + (ret & W(0x0f));
+        c = ret >= W(100);
+
+        let v = ((a ^ ret) & (op ^ ret)).0.is_neg();
+        if c {
+            ret += 0x60;
+        }
+
+        (ret.0, c, v)
+    }
+}
+
+impl AddBcd for u16 {
+    fn add_bcd(self, other: Self, carry_in: bool) -> (Self, bool, bool) {
+        use std::num::Wrapping as W;
+        let op = W(other);
+        let a = W(self);
+
+        let mut ret: Wrapping<Self>;
+        let mut c: bool = carry_in;
+
+        ret = (a & W(0x000f)) + (op & W(0x000f)) + (W(c as u16) << 0);
+        c = ret >= W(10); // new base 10 carry
+        if c {
+            // adjust the hex representation so that the hex digits
+            // match the decimal representation of the value
+            ret += 0x0006;
+        }
+
+        ret = (a & W(0x00f0)) + (op & W(0x00f0)) + (W(c as u16) << 4) + (ret & W(0x000f));
+        c = ret >= W(100);
+        if c {
+            ret += 0x0060;
+        }
+
+        ret = (a & W(0x0f00)) + (op & W(0x0f00)) + (W(c as u16) << 8) + (ret & W(0x00ff));
+        c = ret >= W(1000);
+        if c {
+            ret += 0x0600;
+        }
+
+        ret = (a & W(0xf000)) + (op & W(0xf000)) + (W(c as u16) << 12) + (ret & W(0x0fff));
+        c = ret >= W(10000);
+
+        let v = ((a ^ ret) & (op ^ ret)).0.is_neg();
+        if c {
+            ret += 0x6000;
+        }
+
+        (ret.0, c, v)
     }
 }
