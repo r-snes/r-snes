@@ -610,63 +610,66 @@ impl MetaInstruction {
             Self::SetAddrModeDirectXIndirect => {
                 ret += Self::SetAddrModeDirect.expand(pstate);
                 ret += Self::EndCycle(quote!(Internal)).expand(pstate);
-                ret += quote! {
-                    cpu.addr_bus.addr = cpu.addr_bus.addr.wrapping_add(cpu.registers.X);
-                };
-                ret += Self::Fetch16Into(quote!(cpu.internal_data_bus)).expand(pstate);
+                ret += InstrBody::inc_addrbus_direct(quote!(cpu.registers.X));
+                ret += Self::Fetch8Into(quote! { *cpu.internal_data_bus.lo_mut() }).expand(pstate);
+                ret += InstrBody::inc_addrbus_direct(quote!(1));
+                ret += Self::Fetch8Into(quote! { *cpu.internal_data_bus.hi_mut() }).expand(pstate);
                 ret += quote! {
                     cpu.addr_bus.bank = cpu.registers.DB;
                     cpu.addr_bus.addr = cpu.internal_data_bus;
                 };
+                pstate.wrapping_mode = AddrWrappingMode::BankCross;
             }
             Self::SetAddrModeDirectIndirect => {
                 ret += Self::SetAddrModeDirect.expand(pstate);
-                ret += Self::Fetch16Into(quote!(cpu.internal_data_bus)).expand(pstate);
+                ret += Self::Fetch8Into(quote! { *cpu.internal_data_bus.lo_mut() }).expand(pstate);
+                ret += InstrBody::inc_addrbus_direct(quote!(1));
+                ret += Self::Fetch8Into(quote! { *cpu.internal_data_bus.hi_mut() }).expand(pstate);
                 ret += quote! {
                     cpu.addr_bus.bank = cpu.registers.DB;
                     cpu.addr_bus.addr = cpu.internal_data_bus;
                 };
+                pstate.wrapping_mode = AddrWrappingMode::BankCross;
             }
             Self::SetAddrModeDirectIndirectY => {
                 ret += Self::SetAddrModeDirectIndirect.expand(pstate);
 
-                let new_addr = quote!(cpu.addr_bus.addr.wrapping_add(cpu.registers.Y));
-                ret += InstrBody::note4(new_addr.clone());
+                assert_eq!(
+                    pstate.wrapping_mode,
+                    AddrWrappingMode::BankCross,
+                    "direct indirect should leave wrap mode as bank cross"
+                );
+                let new_addr = pstate.wrapping_mode.incremented_addrbus(quote!(cpu.registers.Y));
+                ret += InstrBody::note4(quote!(#new_addr.addr));
                 ret += quote! {
-                    cpu.addr_bus.addr = #new_addr;
-                }
+                    cpu.addr_bus = #new_addr;
+                };
             }
             Self::SetAddrModeDirectIndirectLongY => {
                 ret += Self::SetAddrModeDirectIndirectLong.expand(pstate);
-                ret += quote! {
-                    cpu.addr_bus.addr = cpu.addr_bus.addr.wrapping_add(cpu.registers.Y);
-                }
+                ret += pstate.wrapping_mode.increment_addrbus(quote!(cpu.registers.Y));
             }
             Self::SetAddrModeDirectIndirectLong => {
                 ret += Self::SetAddrModeDirect.expand(pstate);
+                pstate.wrapping_mode = AddrWrappingMode::BankWrap;
                 ret += Self::Fetch16Into(quote!(cpu.internal_data_bus)).expand(pstate);
-                ret += quote! {
-                    cpu.addr_bus.addr = cpu.addr_bus.addr.wrapping_add(1);
-                };
+                ret += pstate.wrapping_mode.increment_addrbus(quote!(1));
                 ret += Self::EndCycle(quote!(Read)).expand(pstate);
                 ret += quote! {
                     cpu.addr_bus.bank = cpu.data_bus;
                     cpu.addr_bus.addr = cpu.internal_data_bus;
-                }
+                };
+                pstate.wrapping_mode = AddrWrappingMode::BankCross;
             }
             Self::SetAddrModeDirectX => {
                 ret += Self::SetAddrModeDirect.expand(pstate);
                 ret += Self::EndCycle(quote!(Internal)).expand(pstate);
-                ret += quote! {
-                    cpu.addr_bus.addr = cpu.addr_bus.addr.wrapping_add(cpu.registers.X);
-                }
+                ret += InstrBody::inc_addrbus_direct(quote!(cpu.registers.X));
             }
             Self::SetAddrModeDirectY => {
                 ret += Self::SetAddrModeDirect.expand(pstate);
                 ret += Self::EndCycle(quote!(Internal)).expand(pstate);
-                ret += quote! {
-                    cpu.addr_bus.addr = cpu.addr_bus.addr.wrapping_add(cpu.registers.Y);
-                }
+                ret += InstrBody::inc_addrbus_direct(quote!(cpu.registers.Y));
             }
             Self::SetAddrModeStack => {
                 ret += InstrBody::post(quote! {
@@ -1213,6 +1216,19 @@ impl InstrBody {
         Self::cycles(vec![Cycle::conditional(
             quote!(!cpu.registers.P.X || *cpu.addr_bus.addr.hi() != *#new_address.hi())
         )])
+    }
+
+    pub fn inc_addrbus_direct(inc_by: TokenStream) -> TokenStream {
+        let pagewrap_inc = AddrWrappingMode::PageWrap.increment_addrbus(inc_by.clone());
+        let bankwrap_inc = AddrWrappingMode::BankWrap.increment_addrbus(inc_by.clone());
+
+        quote! {
+            if !(cpu.registers.E && *cpu.registers.D.lo() == 0) {
+                #bankwrap_inc
+            } else {
+                #pagewrap_inc
+            }
+        }
     }
 }
 
