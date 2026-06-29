@@ -112,14 +112,14 @@ impl AddBcd for u8 {
         let mut c: bool = carry_in;
 
         ret = (a & W(0x0f)) + (op & W(0x0f)) + (W(c as u8) << 0);
-        c = ret >= W(10); // new base 10 carry
+        c = ret >= W(0xA); // new base 10 carry
         if c {
             // adjust the hex representation so that the hex digits
             // match the decimal representation of the value
             ret += 0x06;
         }
         ret = (a & W(0xf0)) + (op & W(0xf0)) + (W(c as u8) << 4) + (ret & W(0x0f));
-        c = ret >= W(100);
+        c = ret >= W(0xA0);
 
         let v = ((a ^ ret) & (op ^ ret)).0.is_neg();
         if c {
