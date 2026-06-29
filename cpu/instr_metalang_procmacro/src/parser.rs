@@ -817,9 +817,7 @@ impl MetaInstruction {
             }
             Self::Write16(data) => {
                 ret += Self::Write8(quote! { *#data.lo() }).expand(pstate);
-                ret += InstrBody::post(quote! {
-                    cpu.addr_bus.addr = cpu.addr_bus.addr.wrapping_add(1);
-                });
+                ret += pstate.wrapping_mode.increment_addrbus(quote!(1));
                 ret += Self::Write8(quote! { *#data.hi() }).expand(pstate);
             }
 
