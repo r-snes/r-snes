@@ -39,6 +39,8 @@ pub(crate) struct ParserState {
 
     /// Size of read/written operands of the instruction
     pub operand_size: OpSize,
+
+    wrapping_mode: AddrWrappingMode,
 }
 
 #[derive(PartialEq, Eq)]
@@ -51,6 +53,60 @@ pub(crate) enum AddrBusPosition {
 
     /// The addr bus points at the next immediate operand
     Immediate,
+
+    /// Pointing at an absolute operand
+    Absolute,
+}
+
+/// Describes the wrapping mode of the addr bus at a given point
+/// during instr parsing
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+enum AddrWrappingMode {
+    /// Wrap at page boundaries (i.e. $FF:FFFF + $1 = $FF:FF00)
+    PageWrap,
+
+    /// Wrap at bank boundaries (i.e. $FF:FFFF + $1 = $FF:0000)
+    BankWrap,
+
+    /// Cross bank boundaries (i.e. $FF:FFFF + $1 = $00:0000)
+    BankCross,
+}
+
+impl AddrWrappingMode {
+    fn increment_addr(self, snes_addr: TokenStream, inc_by: TokenStream) -> TokenStream {
+        match self {
+            Self::PageWrap => quote! {
+                *#snes_addr.addr.lo_mut() = #snes_addr.addr.lo().wrapping_add(#inc_by as u8);
+            },
+            Self::BankWrap => quote! {
+                #snes_addr.addr = #snes_addr.addr.wrapping_add(#inc_by);
+            },
+            Self::BankCross => quote! {
+                #snes_addr = usize::from(#snes_addr).wrapping_add((#inc_by) as usize).into();
+            },
+        }
+    }
+
+    fn incremented_addr(self, snes_addr: TokenStream, inc_by: TokenStream) -> TokenStream {
+        let inc_assignment = Self::increment_addr(self, quote!(addr_to_inc), inc_by);
+
+        quote! {
+            {
+                let mut addr_to_inc = #snes_addr;
+                #inc_assignment;
+
+                addr_to_inc
+            }
+        }
+    }
+
+    fn increment_addrbus(self, inc_by: TokenStream) -> TokenStream {
+        Self::increment_addr(self, quote!(cpu.addr_bus), inc_by)
+    }
+
+    fn incremented_addrbus(self, inc_by: TokenStream) -> TokenStream {
+        Self::incremented_addr(self, quote!(cpu.addr_bus), inc_by)
+    }
 }
 
 impl Default for ParserState {
@@ -60,6 +116,7 @@ impl Default for ParserState {
             addrmode: AddrBusPosition::Opcode, // at instr start, addrbus is on PC
             imm_offset: VarWidth::constw(1), // at instr start, the first imm value is 1 after PC
             operand_size: OpSize::Constant,
+            wrapping_mode: AddrWrappingMode::BankWrap,
         }
     }
 }
@@ -460,6 +517,7 @@ impl MetaInstruction {
             }
 
             Self::SetAddrModeImmediate => {
+                pstate.wrapping_mode = AddrWrappingMode::BankWrap;
                 match pstate.addrmode {
                     AddrBusPosition::Immediate => {} // already imm, nothing to do
                     AddrBusPosition::Opcode => { // addrbus is already at PB:PC
@@ -485,7 +543,9 @@ impl MetaInstruction {
                     cpu.addr_bus.addr = cpu.internal_data_bus;
                     cpu.addr_bus.bank = cpu.registers.DB;
                 });
-                pstate.addrmode = AddrBusPosition::Unaligned;
+                pstate.addrmode = AddrBusPosition::Absolute;
+                // absolute reads in DB but can cross boundaries
+                pstate.wrapping_mode = AddrWrappingMode::BankCross;
             }
             Self::SetAddrModeAbsoluteLong => {
                 ret += Self::Fetch16ImmInto(quote!(cpu.internal_data_bus)).expand(pstate);
@@ -496,39 +556,56 @@ impl MetaInstruction {
                     cpu.addr_bus.bank = cpu.data_bus;
                 };
                 pstate.addrmode = AddrBusPosition::Unaligned;
+                // absolute long reads in the bank operand but can cross boundaries
+                pstate.wrapping_mode = AddrWrappingMode::BankCross;
             }
             Self::SetAddrModeAbsLongX => {
                 ret += Self::SetAddrModeAbsoluteLong.expand(pstate);
-                ret += quote! {
-                    cpu.addr_bus.addr = cpu.addr_bus.addr.wrapping_add(cpu.registers.X);
-                }
+                assert_eq!(
+                    pstate.wrapping_mode,
+                    AddrWrappingMode::BankCross,
+                    "absl should leave wrap mode as bank cross"
+                );
+                ret += pstate.wrapping_mode.increment_addrbus(quote!(cpu.registers.X));
             }
             Self::SetAddrModeAbsoluteX => {
                 ret += Self::SetAddrModeAbsolute.expand(pstate);
+                assert_eq!(
+                    pstate.wrapping_mode,
+                    AddrWrappingMode::BankCross,
+                    "abs should leave wrap mode as bank cross"
+                );
 
-                let new_addr = quote!(cpu.addr_bus.addr.wrapping_add(cpu.registers.X));
-                ret += InstrBody::note4(new_addr.clone());
+                let new_addr = pstate.wrapping_mode.incremented_addrbus(quote!(cpu.registers.X));
+                ret += InstrBody::note4(quote!(#new_addr.addr));
                 ret += quote! {
-                    cpu.addr_bus.addr = #new_addr;
+                    cpu.addr_bus = #new_addr;
                 }
             }
             Self::SetAddrModeAbsoluteY => {
                 ret += Self::SetAddrModeAbsolute.expand(pstate);
+                assert_eq!(
+                    pstate.wrapping_mode,
+                    AddrWrappingMode::BankCross,
+                    "abs should leave wrap mode as bank cross"
+                );
 
-                let new_addr = quote!(cpu.addr_bus.addr.wrapping_add(cpu.registers.Y));
-                ret += InstrBody::note4(new_addr.clone());
+                let new_addr = pstate.wrapping_mode.incremented_addrbus(quote!(cpu.registers.Y));
+                ret += InstrBody::note4(quote!(#new_addr.addr));
                 ret += quote! {
-                    cpu.addr_bus.addr = #new_addr;
+                    cpu.addr_bus = #new_addr;
                 }
             }
             Self::SetAddrModeDirect => {
                 ret += Self::Fetch8Imm.expand(pstate);
                 // direct indexing stalls one cycle when DL != 0 (cpu doc note 2)
                 ret += Self::IdleIf(quote!(*cpu.registers.D.lo() != 0)).expand(pstate);
+
                 ret += quote! {
                     cpu.addr_bus = snes_addr!(0:cpu.registers.D.wrapping_add(cpu.data_bus as u16));
                 };
                 pstate.addrmode = AddrBusPosition::Unaligned;
+                pstate.wrapping_mode = AddrWrappingMode::BankWrap;
             }
             Self::SetAddrModeDirectXIndirect => {
                 ret += Self::SetAddrModeDirect.expand(pstate);
@@ -629,9 +706,7 @@ impl MetaInstruction {
                 let is_imm = pstate.addrmode == AddrBusPosition::Immediate;
 
                 ret += Self::Fetch8Into(quote! { *#into.lo_mut() }).expand(pstate);
-                ret += InstrBody::post(quote! {
-                    cpu.addr_bus.addr = cpu.addr_bus.addr.wrapping_add(1);
-                });
+                ret += pstate.wrapping_mode.increment_addrbus(quote!(1));
                 if is_imm { // if we started as imm, now we are imm again
                     pstate.addrmode = AddrBusPosition::Immediate;
                 }
