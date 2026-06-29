@@ -140,7 +140,7 @@ impl AddBcd for u16 {
         let mut c: bool = carry_in;
 
         ret = (a & W(0x000f)) + (op & W(0x000f)) + (W(c as u16) << 0);
-        c = ret >= W(10); // new base 10 carry
+        c = ret >= W(0xA); // new base 10 carry
         if c {
             // adjust the hex representation so that the hex digits
             // match the decimal representation of the value
@@ -148,19 +148,19 @@ impl AddBcd for u16 {
         }
 
         ret = (a & W(0x00f0)) + (op & W(0x00f0)) + (W(c as u16) << 4) + (ret & W(0x000f));
-        c = ret >= W(100);
+        c = ret >= W(0xA0);
         if c {
             ret += 0x0060;
         }
 
         ret = (a & W(0x0f00)) + (op & W(0x0f00)) + (W(c as u16) << 8) + (ret & W(0x00ff));
-        c = ret >= W(1000);
+        c = ret >= W(0xA00);
         if c {
             ret += 0x0600;
         }
 
         ret = (a & W(0xf000)) + (op & W(0xf000)) + (W(c as u16) << 12) + (ret & W(0x0fff));
-        c = ret >= W(10000);
+        c = ret >= W(0xA000);
 
         let v = ((a ^ ret) & (op ^ ret)).0.is_neg();
         if c {
@@ -168,5 +168,18 @@ impl AddBcd for u16 {
         }
 
         (ret.0, c, v)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    #[test]
+    fn simple_bcd16() {
+        let (res, c_out, overflow) = 0x3550_u16.add_bcd(0x4470, false);
+
+        assert_eq!(res, 0x8020, "res was {res:#.4X} instead 0x8020");
+        assert!(!c_out);
+        assert!(overflow);
     }
 }
