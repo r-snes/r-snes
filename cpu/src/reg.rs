@@ -111,14 +111,15 @@ impl AddBcd for u8 {
         let mut ret: Wrapping<Self>;
         let mut c: bool = carry_in;
 
-        ret = (a & W(0x0f)) + (op & W(0x0f)) + (W(c as u8) << 0);
+        ret = (a & W(0x0f)) + (op & W(0x0f)) + W(c as u8);
         c = ret >= W(0xA); // new base 10 carry
         if c {
             // adjust the hex representation so that the hex digits
             // match the decimal representation of the value
             ret += 0x06;
         }
-        ret = (a & W(0xf0)) + (op & W(0xf0)) + (W(c as u8) << 4) + (ret & W(0x0f));
+
+        ret += (a & W(0xf0)) + (op & W(0xf0));
         c = ret >= W(0xA0);
 
         let v = ((a ^ ret) & (op ^ ret)).0.is_neg();
@@ -139,7 +140,7 @@ impl AddBcd for u16 {
         let mut ret: Wrapping<Self>;
         let mut c: bool = carry_in;
 
-        ret = (a & W(0x000f)) + (op & W(0x000f)) + (W(c as u16) << 0);
+        ret = (a & W(0x000f)) + (op & W(0x000f)) + W(c as u16);
         c = ret >= W(0xA); // new base 10 carry
         if c {
             // adjust the hex representation so that the hex digits
@@ -147,19 +148,19 @@ impl AddBcd for u16 {
             ret += 0x0006;
         }
 
-        ret = (a & W(0x00f0)) + (op & W(0x00f0)) + (W(c as u16) << 4) + (ret & W(0x000f));
+        ret += (a & W(0x00f0)) + (op & W(0x00f0));
         c = ret >= W(0xA0);
         if c {
             ret += 0x0060;
         }
 
-        ret = (a & W(0x0f00)) + (op & W(0x0f00)) + (W(c as u16) << 8) + (ret & W(0x00ff));
+        ret += (a & W(0x0f00)) + (op & W(0x0f00));
         c = ret >= W(0xA00);
         if c {
             ret += 0x0600;
         }
 
-        ret = (a & W(0xf000)) + (op & W(0xf000)) + (W(c as u16) << 12) + (ret & W(0x0fff));
+        ret += (a & W(0xf000)) + (op & W(0xf000));
         c = ret >= W(0xA000);
 
         let v = ((a ^ ret) & (op ^ ret)).0.is_neg();
