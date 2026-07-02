@@ -383,6 +383,14 @@ impl Spc700 {
         }
     }
 
+    /// Add `delta` to a direct-page address, wrapping within the current
+    /// page instead of across it. 
+    fn dp_wrapping_add(&self, addr: u16, delta: u8) -> u16 {
+        let page = addr & 0xFF00;
+        let offset = (addr as u8).wrapping_add(delta);
+        page | offset as u16
+    }
+
     /// Read the next byte from memory at PC and advance PC by 1.
     ///
     /// Uses `read8_mut` so that reads of `$FD–$FF` (timer counters)
@@ -1284,7 +1292,7 @@ impl Spc700 {
         let offset = self.read_immediate(mem) as u16;
         let ptr_addr = self.dp_base() | (offset + self.regs.x as u16) & 0xFF;
         let lo = mem.read8_mut(ptr_addr) as u16;
-        let hi = mem.read8_mut(ptr_addr.wrapping_add(1)) as u16;
+        let hi = mem.read8_mut(self.dp_wrapping_add(ptr_addr, 1)) as u16;
         let addr = (hi << 8) | lo;
         self.regs.a = mem.read8_mut(addr);
         self.set_zn_flags(self.regs.a);
@@ -1298,7 +1306,7 @@ impl Spc700 {
         let offset = self.read_immediate(mem) as u16;
         let ptr_addr = self.dp_base() | offset;
         let lo = mem.read8_mut(ptr_addr) as u16;
-        let hi = mem.read8_mut(ptr_addr.wrapping_add(1)) as u16;
+        let hi = mem.read8_mut(self.dp_wrapping_add(ptr_addr, 1)) as u16;
         let base = (hi << 8) | lo;
         let addr = base.wrapping_add(self.regs.y as u16);
         self.regs.a = mem.read8_mut(addr);
@@ -1340,7 +1348,7 @@ impl Spc700 {
         let offset = self.read_immediate(mem) as u16;
         let ptr_addr = self.dp_base() | (offset + self.regs.x as u16) & 0xFF;
         let lo = mem.read8_mut(ptr_addr) as u16;
-        let hi = mem.read8_mut(ptr_addr.wrapping_add(1)) as u16;
+        let hi = mem.read8_mut(self.dp_wrapping_add(ptr_addr, 1)) as u16;
         let addr = (hi << 8) | lo;
         mem.write8(addr, self.regs.a);
         self.cycles += 7;
@@ -1353,7 +1361,7 @@ impl Spc700 {
         let offset = self.read_immediate(mem) as u16;
         let ptr_addr = self.dp_base() | offset;
         let lo = mem.read8_mut(ptr_addr) as u16;
-        let hi = mem.read8_mut(ptr_addr.wrapping_add(1)) as u16;
+        let hi = mem.read8_mut(self.dp_wrapping_add(ptr_addr, 1)) as u16;
         let base = (hi << 8) | lo;
         let addr = base.wrapping_add(self.regs.y as u16);
         mem.write8(addr, self.regs.a);
@@ -1456,7 +1464,7 @@ impl Spc700 {
     fn inst_movw_ya_dp(&mut self, mem: &mut Memory) {
         let addr = self.dp_base() | self.read_immediate(mem) as u16;
         self.regs.a = mem.read8_mut(addr);
-        self.regs.y = mem.read8_mut(addr.wrapping_add(1));
+        self.regs.y = mem.read8_mut(self.dp_wrapping_add(addr, 1));
         let ya = ((self.regs.y as u16) << 8) | self.regs.a as u16;
         self.set_flag(FLAG_Z, ya == 0);
         self.set_flag(FLAG_N, (ya & 0x8000) != 0);
@@ -1468,7 +1476,7 @@ impl Spc700 {
     fn inst_movw_dp_ya(&mut self, mem: &mut Memory) {
         let addr = self.dp_base() | self.read_immediate(mem) as u16;
         mem.write8(addr, self.regs.a);
-        mem.write8(addr.wrapping_add(1), self.regs.y);
+        mem.write8(self.dp_wrapping_add(addr, 1), self.regs.y);
         self.cycles += 5;
     }
 
@@ -1477,7 +1485,7 @@ impl Spc700 {
     fn inst_addw(&mut self, mem: &mut Memory) {
         let addr = self.dp_base() | self.read_immediate(mem) as u16;
         let lo = mem.read8_mut(addr) as u16;
-        let hi = mem.read8_mut(addr.wrapping_add(1)) as u16;
+        let hi = mem.read8_mut(self.dp_wrapping_add(addr, 1)) as u16;
         let operand = (hi << 8) | lo;
 
         let ya = ((self.regs.y as u16) << 8) | self.regs.a as u16;
@@ -1503,7 +1511,7 @@ impl Spc700 {
     fn inst_subw(&mut self, mem: &mut Memory) {
         let addr = self.dp_base() | self.read_immediate(mem) as u16;
         let lo = mem.read8_mut(addr) as u16;
-        let hi = mem.read8_mut(addr.wrapping_add(1)) as u16;
+        let hi = mem.read8_mut(self.dp_wrapping_add(addr, 1)) as u16;
         let operand = (hi << 8) | lo;
 
         let ya = ((self.regs.y as u16) << 8) | self.regs.a as u16;
@@ -1529,7 +1537,7 @@ impl Spc700 {
     fn inst_cmpw(&mut self, mem: &mut Memory) {
         let addr = self.dp_base() | self.read_immediate(mem) as u16;
         let lo = mem.read8_mut(addr) as u16;
-        let hi = mem.read8_mut(addr.wrapping_add(1)) as u16;
+        let hi = mem.read8_mut(self.dp_wrapping_add(addr, 1)) as u16;
         let operand = (hi << 8) | lo;
 
         let ya = ((self.regs.y as u16) << 8) | self.regs.a as u16;
@@ -1546,11 +1554,11 @@ impl Spc700 {
     fn inst_decw(&mut self, mem: &mut Memory) {
         let addr = self.dp_base() | self.read_immediate(mem) as u16;
         let lo = mem.read8_mut(addr) as u16;
-        let hi = mem.read8_mut(addr.wrapping_add(1)) as u16;
+        let hi = mem.read8_mut(self.dp_wrapping_add(addr, 1)) as u16;
         let value = ((hi << 8) | lo).wrapping_sub(1);
 
         mem.write8(addr, value as u8);
-        mem.write8(addr.wrapping_add(1), (value >> 8) as u8);
+        mem.write8(self.dp_wrapping_add(addr, 1), (value >> 8) as u8);
 
         self.set_flag(FLAG_Z, value == 0);
         self.set_flag(FLAG_N, (value & 0x8000) != 0);
@@ -1562,11 +1570,11 @@ impl Spc700 {
     fn inst_incw(&mut self, mem: &mut Memory) {
         let addr = self.dp_base() | self.read_immediate(mem) as u16;
         let lo = mem.read8_mut(addr) as u16;
-        let hi = mem.read8_mut(addr.wrapping_add(1)) as u16;
+        let hi = mem.read8_mut(self.dp_wrapping_add(addr, 1)) as u16;
         let value = ((hi << 8) | lo).wrapping_add(1);
 
         mem.write8(addr, value as u8);
-        mem.write8(addr.wrapping_add(1), (value >> 8) as u8);
+        mem.write8(self.dp_wrapping_add(addr, 1), (value >> 8) as u8);
 
         self.set_flag(FLAG_Z, value == 0);
         self.set_flag(FLAG_N, (value & 0x8000) != 0);
@@ -1660,7 +1668,7 @@ impl Spc700 {
         let offset = self.read_immediate(mem) as u16;
         let ptr_addr = self.dp_base() | (offset + self.regs.x as u16) & 0xFF;
         let lo = mem.read8_mut(ptr_addr) as u16;
-        let hi = mem.read8_mut(ptr_addr.wrapping_add(1)) as u16;
+        let hi = mem.read8_mut(self.dp_wrapping_add(ptr_addr, 1)) as u16;
         let addr = (hi << 8) | lo;
         self.regs.a |= mem.read8_mut(addr);
         self.set_zn_flags(self.regs.a);
@@ -1703,7 +1711,7 @@ impl Spc700 {
         let offset = self.read_immediate(mem) as u16;
         let ptr_addr = self.dp_base() | offset;
         let lo = mem.read8_mut(ptr_addr) as u16;
-        let hi = mem.read8_mut(ptr_addr.wrapping_add(1)) as u16;
+        let hi = mem.read8_mut(self.dp_wrapping_add(ptr_addr, 1)) as u16;
         let base = (hi << 8) | lo;
         let addr = base.wrapping_add(self.regs.y as u16);
         self.regs.a |= mem.read8_mut(addr);
@@ -1752,7 +1760,7 @@ impl Spc700 {
         let offset = self.read_immediate(mem) as u16;
         let ptr_addr = self.dp_base() | (offset + self.regs.x as u16) & 0xFF;
         let lo = mem.read8_mut(ptr_addr) as u16;
-        let hi = mem.read8_mut(ptr_addr.wrapping_add(1)) as u16;
+        let hi = mem.read8_mut(self.dp_wrapping_add(ptr_addr, 1)) as u16;
         let addr = (hi << 8) | lo;
         self.regs.a &= mem.read8_mut(addr);
         self.set_zn_flags(self.regs.a);
@@ -1795,7 +1803,7 @@ impl Spc700 {
         let offset = self.read_immediate(mem) as u16;
         let ptr_addr = self.dp_base() | offset;
         let lo = mem.read8_mut(ptr_addr) as u16;
-        let hi = mem.read8_mut(ptr_addr.wrapping_add(1)) as u16;
+        let hi = mem.read8_mut(self.dp_wrapping_add(ptr_addr, 1)) as u16;
         let base = (hi << 8) | lo;
         let addr = base.wrapping_add(self.regs.y as u16);
         self.regs.a &= mem.read8_mut(addr);
@@ -1844,7 +1852,7 @@ impl Spc700 {
         let offset = self.read_immediate(mem) as u16;
         let ptr_addr = self.dp_base() | (offset + self.regs.x as u16) & 0xFF;
         let lo = mem.read8_mut(ptr_addr) as u16;
-        let hi = mem.read8_mut(ptr_addr.wrapping_add(1)) as u16;
+        let hi = mem.read8_mut(self.dp_wrapping_add(ptr_addr, 1)) as u16;
         let addr = (hi << 8) | lo;
         self.regs.a ^= mem.read8_mut(addr);
         self.set_zn_flags(self.regs.a);
@@ -1887,7 +1895,7 @@ impl Spc700 {
         let offset = self.read_immediate(mem) as u16;
         let ptr_addr = self.dp_base() | offset;
         let lo = mem.read8_mut(ptr_addr) as u16;
-        let hi = mem.read8_mut(ptr_addr.wrapping_add(1)) as u16;
+        let hi = mem.read8_mut(self.dp_wrapping_add(ptr_addr, 1)) as u16;
         let base = (hi << 8) | lo;
         let addr = base.wrapping_add(self.regs.y as u16);
         self.regs.a ^= mem.read8_mut(addr);
@@ -1943,7 +1951,7 @@ impl Spc700 {
         let offset = self.read_immediate(mem) as u16;
         let ptr_addr = self.dp_base() | (offset + self.regs.x as u16) & 0xFF;
         let lo = mem.read8_mut(ptr_addr) as u16;
-        let hi = mem.read8_mut(ptr_addr.wrapping_add(1)) as u16;
+        let hi = mem.read8_mut(self.dp_wrapping_add(ptr_addr, 1)) as u16;
         let addr = (hi << 8) | lo;
         let val = mem.read8_mut(addr);
         self.cmp_flags(self.regs.a, val);
@@ -1984,7 +1992,7 @@ impl Spc700 {
         let offset = self.read_immediate(mem) as u16;
         let ptr_addr = self.dp_base() | offset;
         let lo = mem.read8_mut(ptr_addr) as u16;
-        let hi = mem.read8_mut(ptr_addr.wrapping_add(1)) as u16;
+        let hi = mem.read8_mut(self.dp_wrapping_add(ptr_addr, 1)) as u16;
         let base = (hi << 8) | lo;
         let addr = base.wrapping_add(self.regs.y as u16);
         let val = mem.read8_mut(addr);
@@ -2085,7 +2093,7 @@ impl Spc700 {
         let offset = self.read_immediate(mem) as u16;
         let ptr_addr = self.dp_base() | (offset + self.regs.x as u16) & 0xFF;
         let lo = mem.read8_mut(ptr_addr) as u16;
-        let hi = mem.read8_mut(ptr_addr.wrapping_add(1)) as u16;
+        let hi = mem.read8_mut(self.dp_wrapping_add(ptr_addr, 1)) as u16;
         let addr = (hi << 8) | lo;
         let val = mem.read8_mut(addr);
         self.regs.a = self.adc_flags(self.regs.a, val);
@@ -2127,7 +2135,7 @@ impl Spc700 {
         let offset = self.read_immediate(mem) as u16;
         let ptr_addr = self.dp_base() | offset;
         let lo = mem.read8_mut(ptr_addr) as u16;
-        let hi = mem.read8_mut(ptr_addr.wrapping_add(1)) as u16;
+        let hi = mem.read8_mut(self.dp_wrapping_add(ptr_addr, 1)) as u16;
         let base = (hi << 8) | lo;
         let addr = base.wrapping_add(self.regs.y as u16);
         let val = mem.read8_mut(addr);
@@ -2191,7 +2199,7 @@ impl Spc700 {
         let offset = self.read_immediate(mem) as u16;
         let ptr_addr = self.dp_base() | (offset + self.regs.x as u16) & 0xFF;
         let lo = mem.read8_mut(ptr_addr) as u16;
-        let hi = mem.read8_mut(ptr_addr.wrapping_add(1)) as u16;
+        let hi = mem.read8_mut(self.dp_wrapping_add(ptr_addr, 1)) as u16;
         let addr = (hi << 8) | lo;
         let val = mem.read8_mut(addr);
         self.regs.a = self.sbc_flags(self.regs.a, val);
@@ -2233,7 +2241,7 @@ impl Spc700 {
         let offset = self.read_immediate(mem) as u16;
         let ptr_addr = self.dp_base() | offset;
         let lo = mem.read8_mut(ptr_addr) as u16;
-        let hi = mem.read8_mut(ptr_addr.wrapping_add(1)) as u16;
+        let hi = mem.read8_mut(self.dp_wrapping_add(ptr_addr, 1)) as u16;
         let base = (hi << 8) | lo;
         let addr = base.wrapping_add(self.regs.y as u16);
         let val = mem.read8_mut(addr);
