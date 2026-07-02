@@ -384,7 +384,7 @@ impl Spc700 {
     }
 
     /// Add `delta` to a direct-page address, wrapping within the current
-    /// page instead of across it. 
+    /// page instead of across it.
     fn dp_wrapping_add(&self, addr: u16, delta: u8) -> u16 {
         let page = addr & 0xFF00;
         let offset = (addr as u8).wrapping_add(delta);
@@ -2492,7 +2492,6 @@ impl Spc700 {
         self.stack_push(mem, pc as u8);
         self.stack_push(mem, self.regs.psw);
         self.set_flag(FLAG_B, true);
-        self.set_flag(FLAG_I, true);
         self.regs.pc = mem.read16(0xFFDE);
         self.cycles += 8;
     }
