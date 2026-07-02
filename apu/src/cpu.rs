@@ -1526,7 +1526,7 @@ impl Spc700 {
             FLAG_V,
             ((ya ^ operand) & (ya ^ result as u16) & 0x8000) != 0,
         );
-        self.set_flag(FLAG_H, (ya & 0x0FFF) < (operand & 0x0FFF));
+        self.set_flag(FLAG_H, (ya & 0x0FFF) >= (operand & 0x0FFF));
 
         let result_u16 = result as u16;
         self.regs.a = result_u16 as u8;
