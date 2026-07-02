@@ -19,6 +19,9 @@ pub struct Apu {
 }
 
 impl Apu {
+    /// The SPC700 runs at a fixed 1.024 MHz
+    pub const CLOCK_HZ: u64 = 1_024_000;
+
     pub fn new() -> Self {
         let mut apu = Self {
             cpu:        Spc700::new(),
