@@ -411,18 +411,22 @@ impl Spc700 {
     // Implemented instructions
     fn inst_mov_a_x(&mut self) {
         self.regs.a = self.regs.x;
+        self.set_zn_flags(self.regs.a);
         self.cycles += 2;
     }
     fn inst_mov_a_y(&mut self) {
         self.regs.a = self.regs.y;
+        self.set_zn_flags(self.regs.a);
         self.cycles += 2;
     }
     fn inst_mov_x_a(&mut self) {
         self.regs.x = self.regs.a;
+        self.set_zn_flags(self.regs.x);
         self.cycles += 2;
     }
     fn inst_mov_y_a(&mut self) {
         self.regs.y = self.regs.a;
+        self.set_zn_flags(self.regs.y);
         self.cycles += 2;
     }
     fn inst_nop(&mut self) {
