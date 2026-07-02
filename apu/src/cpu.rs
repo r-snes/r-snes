@@ -2492,6 +2492,7 @@ impl Spc700 {
         self.stack_push(mem, pc as u8);
         self.stack_push(mem, self.regs.psw);
         self.set_flag(FLAG_B, true);
+        self.set_flag(FLAG_I, false);
         self.regs.pc = mem.read16(0xFFDE);
         self.cycles += 8;
     }
