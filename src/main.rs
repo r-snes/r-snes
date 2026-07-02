@@ -9,7 +9,20 @@ use std::time::Instant;
 
 fn main() -> Result<(), String> {
     let mut gui = gui::Gui::new()?;
-    let mut rsnes_app: Option<rsnes::RSnes> = None;
+
+    // TEMP DEBUG — WSL/SDL2 isn't delivering the 'L' keydown event, so the
+    // normal file-dialog load path in gui.rs never fires. Hardcoding the
+    // ROM path here to confirm APU stepping while that's sorted out.
+    // Remove once keyboard input works again, or once the ROM-loading UI
+    // has a non-keyboard fallback (e.g. CLI arg, drag-and-drop).
+    let mut rsnes_app: Option<rsnes::RSnes> =
+        match rsnes::RSnes::load_rom(&"/home/tibaud/EIP/r-snes/cputest-basic.sfc") {
+            Ok(emu) => Some(emu),
+            Err(err) => {
+                println!("Error loading hardcoded test ROM: {}", err);
+                None
+            }
+        };
 
     // Reference variables
     let mut frame_nb = 0;

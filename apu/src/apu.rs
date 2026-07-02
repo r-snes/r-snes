@@ -19,7 +19,11 @@ pub struct Apu {
 }
 
 impl Apu {
-    /// The SPC700 runs at a fixed 1.024 MHz
+    /// The SPC700 runs at a fixed 1.024 MHz, derived from its own
+    /// independent 24.576 MHz crystal -- it is NOT phase-locked to the
+    /// SNES master clock. Real hardware has two unsynchronized oscillators;
+    /// RSnes approximates the average ratio with an integer cycle-debt
+    /// accumulator (see RSnes::update_apu_cycles).
     pub const CLOCK_HZ: u64 = 1_024_000;
 
     pub fn new() -> Self {
@@ -48,6 +52,20 @@ impl Apu {
     /// separate Dsp field on Apu.
     pub fn step(&mut self, cycles: u32) {
         for _ in 0..cycles {
+            // TEMP DEBUG — confirms the APU is actually being stepped and
+            // executing something (currently NOP forever at PC 0, since
+            // there's no IPL boot ROM yet to give it real code to run).
+            // Throttled to the first few cycles + then every ~1M cycles so
+            // it doesn't flood stdout. Remove once IPL boot is wired up.
+            if self.cycles < 5 || self.cycles % 1_000_000 == 0 {
+                eprintln!(
+                    "[apu debug] cycle={} pc={:#06x} opcode={:#04x}",
+                    self.cycles,
+                    self.cpu.regs.pc,
+                    self.memory.read8(self.cpu.regs.pc),
+                );
+            }
+
             self.cpu.step(&mut self.memory);
             self.timers.step(&mut self.memory);
 
