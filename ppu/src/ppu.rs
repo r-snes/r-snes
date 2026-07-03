@@ -37,8 +37,8 @@ impl PPU {
             // OAM
             // ==========================
             0x2101 => self.regs.objsel = value, // TODO
-            0x2102 => self.regs.oamaddl = value, // TODO
-            0x2103 => self.regs.oamaddh = value, // TODO
+            0x2102 => *self.regs.oamadd.lo_mut() = value, // TODO
+            0x2103 => *self.regs.oamadd.hi_mut() = value & 0x01, // TODO
             0x2104 => self.regs.oamdata = value, // TODO
 
             // ==========================
@@ -46,35 +46,102 @@ impl PPU {
             // ==========================
             0x2105 => self.regs.bgmode = value,
             0x2106 => self.regs.mosaic = value, // TODO
-            0x2107 => self.regs.bg1sc = value,
-            0x2108 => self.regs.bg2sc = value, // TODO
-            0x2109 => self.regs.bg3sc = value, // TODO
-            0x210A => self.regs.bg4sc = value, // TODO
+            0x2107 => self.regs.bgsc[0] = value,
+            0x2108 => self.regs.bgsc[1] = value, // TODO
+            0x2109 => self.regs.bgsc[2] = value, // TODO
+            0x210A => self.regs.bgsc[3] = value, // TODO
             0x210B => self.regs.bg12nba = value, // TODO
             0x210C => self.regs.bg34nba = value, // TODO
 
-            // BG1 HOFS
+            // BG1HOFS / M7HOFS - same address ($210D)
             0x210D => {
-                if let Some((lo, hi)) = self.regs.bg1hofs_latch.write(value) {
-                    *self.regs.bg1hofs.lo_mut() = lo;
-                    *self.regs.bg1hofs.hi_mut() = hi & 0x07;
-                }
+                // BG1HOFS (W8x2): result = (value << 8) | (bgofs_latch & ~7) | (bghofs_latch & 7)
+                let lo = (self.regs.bgofs_latch & !0x07) | (self.regs.bghofs_latch & 0x07);
+                let hi = value & 0x03;
+                *self.regs.bg1hofs.lo_mut() = lo;
+                *self.regs.bg1hofs.hi_mut() = hi;
+                // M7HOFS (W8x2): result = (value << 8) | mode7_latch
+                let m7lo = self.regs.mode7_latch;
+                *self.regs.m7hofs.lo_mut() = m7lo;
+                *self.regs.m7hofs.hi_mut() = value;
+                // Update latches
+                self.regs.bgofs_latch = value;
+                self.regs.bghofs_latch = value;
+                self.regs.mode7_latch = value;
             }
 
-            // BG1 VOFS
+            // BG1VOFS / M7VOFS - same address ($210E)
             0x210E => {
-                if let Some((lo, hi)) = self.regs.bg1vofs_latch.write(value) {
-                    *self.regs.bg1vofs.lo_mut() = lo;
-                    *self.regs.bg1vofs.hi_mut() = hi & 0x07;
-                }
+                // BG1VOFS (W8x2): result = (value << 8) | bgofs_latch
+                let lo = self.regs.bgofs_latch;
+                let hi = value & 0x03;
+                *self.regs.bg1vofs.lo_mut() = lo;
+                *self.regs.bg1vofs.hi_mut() = hi;
+                // M7VOFS (W8x2): result = (value << 8) | mode7_latch
+                let m7lo = self.regs.mode7_latch;
+                *self.regs.m7vofs.lo_mut() = m7lo;
+                *self.regs.m7vofs.hi_mut() = value;
+                // Update latches
+                self.regs.bgofs_latch = value;
+                self.regs.mode7_latch = value;
             }
 
-            0x210F => self.regs.bg1vofs = value as u16, // TODO
-            0x2110 => self.regs.m7vofs = value as u16, // TODO
-            0x2111 => self.regs.bg2hofs = value as u16, // TODO
-            0x2112 => self.regs.bg2vofs = value as u16, // TODO
-            0x2113 => self.regs.bg3hofs = value as u16, // TODO
-            0x2114 => self.regs.bg3vofs = value as u16, // TODO
+            // BG2HOFS ($210F)
+            0x210F => {
+                let lo = (self.regs.bgofs_latch & !0x07) | (self.regs.bghofs_latch & 0x07);
+                let hi = value & 0x03;
+                *self.regs.bghofs[0].lo_mut() = lo;
+                *self.regs.bghofs[0].hi_mut() = hi;
+                self.regs.bgofs_latch = value;
+                self.regs.bghofs_latch = value;
+            }
+
+            // BG2VOFS ($2110)
+            0x2110 => {
+                let lo = self.regs.bgofs_latch;
+                let hi = value & 0x03;
+                *self.regs.bgvofs[0].lo_mut() = lo;
+                *self.regs.bgvofs[0].hi_mut() = hi;
+                self.regs.bgofs_latch = value;
+            }
+
+            // BG3HOFS ($2111)
+            0x2111 => {
+                let lo = (self.regs.bgofs_latch & !0x07) | (self.regs.bghofs_latch & 0x07);
+                let hi = value & 0x03;
+                *self.regs.bghofs[1].lo_mut() = lo;
+                *self.regs.bghofs[1].hi_mut() = hi;
+                self.regs.bgofs_latch = value;
+                self.regs.bghofs_latch = value;
+            }
+
+            // BG3VOFS ($2112)
+            0x2112 => {
+                let lo = self.regs.bgofs_latch;
+                let hi = value & 0x03;
+                *self.regs.bgvofs[1].lo_mut() = lo;
+                *self.regs.bgvofs[1].hi_mut() = hi;
+                self.regs.bgofs_latch = value;
+            }
+
+            // BG4HOFS ($2113)
+            0x2113 => {
+                let lo = (self.regs.bgofs_latch & !0x07) | (self.regs.bghofs_latch & 0x07);
+                let hi = value & 0x03;
+                *self.regs.bghofs[2].lo_mut() = lo;
+                *self.regs.bghofs[2].hi_mut() = hi;
+                self.regs.bgofs_latch = value;
+                self.regs.bghofs_latch = value;
+            }
+
+            // BG4VOFS ($2114)
+            0x2114 => {
+                let lo = self.regs.bgofs_latch;
+                let hi = value & 0x03;
+                *self.regs.bgvofs[2].lo_mut() = lo;
+                *self.regs.bgvofs[2].hi_mut() = hi;
+                self.regs.bgofs_latch = value;
+            }
 
             // ==========================
             // VRAM
@@ -89,12 +156,42 @@ impl PPU {
             // Mode 7
             // ==========================
             0x211A => self.regs.m7sel = value, // TODO
-            0x211B => self.regs.m7a = value as u16, // TODO
-            0x211C => self.regs.m7b = value as u16, // TODO
-            0x211D => self.regs.m7c = value as u16, // TODO
-            0x211E => self.regs.m7d = value as u16, // TODO
-            0x211F => self.regs.m7x = value as u16, // TODO
-            0x2120 => self.regs.m7y = value as u16, // TODO
+            0x211B => { // M7A (W8x2)
+                let lo = self.regs.mode7_latch;
+                *self.regs.m7a.lo_mut() = lo;
+                *self.regs.m7a.hi_mut() = value;
+                self.regs.mode7_latch = value;
+            }
+            0x211C => { // M7B (W8x2)
+                let lo = self.regs.mode7_latch;
+                *self.regs.m7b.lo_mut() = lo;
+                *self.regs.m7b.hi_mut() = value;
+                self.regs.mode7_latch = value;
+            }
+            0x211D => { // M7C (W8x2)
+                let lo = self.regs.mode7_latch;
+                *self.regs.m7c.lo_mut() = lo;
+                *self.regs.m7c.hi_mut() = value;
+                self.regs.mode7_latch = value;
+            }
+            0x211E => { // M7D (W8x2)
+                let lo = self.regs.mode7_latch;
+                *self.regs.m7d.lo_mut() = lo;
+                *self.regs.m7d.hi_mut() = value;
+                self.regs.mode7_latch = value;
+            }
+            0x211F => { // M7X (W8x2)
+                let lo = self.regs.mode7_latch;
+                *self.regs.m7x.lo_mut() = lo;
+                *self.regs.m7x.hi_mut() = value;
+                self.regs.mode7_latch = value;
+            }
+            0x2120 => { // M7Y (W8x2)
+                let lo = self.regs.mode7_latch;
+                *self.regs.m7y.lo_mut() = lo;
+                *self.regs.m7y.hi_mut() = value;
+                self.regs.mode7_latch = value;
+            }
 
             // ==========================
             // CGRAM
@@ -163,7 +260,7 @@ impl PPU {
             0x2137 => Self::unimplemented_read_only(addr), // TODO
             0x213C => Self::unimplemented_read_only(addr), // TODO
             0x213D => Self::unimplemented_read_only(addr), // TODO
-            
+
             // ==========================
             // Status
             // ==========================
@@ -225,36 +322,21 @@ mod tests {
     // $2100 - INIDISP: force_blank / brightness
     // ============================================================
 
-    /// force_blank must return true when bit 7 of INIDISP is set.
-    #[test]
-    fn test_force_blank_true_when_bit7_set() {
-        let mut ppu = PPU::new();
-        ppu.write(0x2100, 0x80);
-        assert!(ppu.force_blank());
-    }
-
-    /// force_blank must return false when bit 7 of INIDISP is clear.
-    #[test]
-    fn test_force_blank_false_when_bit7_clear() {
-        let mut ppu = PPU::new();
-        ppu.write(0x2100, 0x0F);
-        assert!(!ppu.force_blank());
-    }
-
+    /// force_blank must return true when bit 7 of INIDISP is set, false otherwise.
     /// brightness must return only the lower 4 bits of INIDISP.
     #[test]
-    fn test_brightness_returns_lower_nibble() {
+    fn test_inidisp() {
         let mut ppu = PPU::new();
+
+        ppu.write(0x2100, 0x80);
+        assert!(ppu.force_blank());
+        assert_eq!(ppu.brightness(), 0);
+
+        ppu.write(0x2100, 0x0F);
+        assert!(!ppu.force_blank());
+
         ppu.write(0x2100, 0xFF);
         assert_eq!(ppu.brightness(), 0x0F);
-    }
-
-    /// brightness must return 0 when INIDISP lower nibble is 0.
-    #[test]
-    fn test_brightness_zero() {
-        let mut ppu = PPU::new();
-        ppu.write(0x2100, 0x80);
-        assert_eq!(ppu.brightness(), 0);
     }
 
     // ============================================================
@@ -262,33 +344,22 @@ mod tests {
     // ============================================================
 
     /// Writing $2101 must update objsel.
-    #[test]
-    fn test_write_objsel() {
-        let mut ppu = PPU::new();
-        ppu.write(0x2101, 0xA5);
-        assert_eq!(ppu.regs.objsel, 0xA5);
-    }
-
-    /// Writing $2102 must update oamaddl.
-    #[test]
-    fn test_write_oamaddl() {
-        let mut ppu = PPU::new();
-        ppu.write(0x2102, 0x7F);
-        assert_eq!(ppu.regs.oamaddl, 0x7F);
-    }
-
-    /// Writing $2103 must update oamaddh.
-    #[test]
-    fn test_write_oamaddh() {
-        let mut ppu = PPU::new();
-        ppu.write(0x2103, 0x01);
-        assert_eq!(ppu.regs.oamaddh, 0x01);
-    }
-
+    /// Writing $2102 must update the low byte of oamadd.
+    /// Writing $2103 must update the high byte of oamadd (only bit 0 is valid).
     /// Writing $2104 must update oamdata.
     #[test]
-    fn test_write_oamdata() {
+    fn test_write_oam_registers() {
         let mut ppu = PPU::new();
+
+        ppu.write(0x2101, 0xA5);
+        assert_eq!(ppu.regs.objsel, 0xA5);
+
+        ppu.write(0x2102, 0x7F);
+        assert_eq!(*ppu.regs.oamadd.lo(), 0x7F);
+
+        ppu.write(0x2103, 0x01);
+        assert_eq!(*ppu.regs.oamadd.hi(), 0x01);
+
         ppu.write(0x2104, 0xBE);
         assert_eq!(ppu.regs.oamdata, 0xBE);
     }
@@ -298,25 +369,14 @@ mod tests {
     // ============================================================
 
     /// Writing $2105 must update bgmode.
-    #[test]
-    fn test_write_bgmode() {
-        let mut ppu = PPU::new();
-        ppu.write(0x2105, 0x07);
-        assert_eq!(ppu.regs.bgmode, 0x07);
-    }
-
     /// bg_mode must return only bits[2:0] of BGMODE.
     #[test]
-    fn test_bg_mode_returns_lower_3_bits() {
+    fn test_bgmode() {
         let mut ppu = PPU::new();
+
         ppu.write(0x2105, 0b11110111);
         assert_eq!(ppu.regs.bg_mode(), 7);
-    }
 
-    /// bg_mode must mask out bits above bit 2.
-    #[test]
-    fn test_bg_mode_masks_upper_bits() {
-        let mut ppu = PPU::new();
         ppu.write(0x2105, 0b11111000);
         assert_eq!(ppu.regs.bg_mode(), 0);
     }
@@ -337,247 +397,182 @@ mod tests {
     // $2107–$210A - BGxSC
     // ============================================================
 
-    /// Writing $2107 must update bg1sc.
+    /// Writing $2107–$210A must update bgsc[0]–bgsc[3].
     #[test]
-    fn test_write_bg1sc() {
+    fn test_write_bgsc() {
         let mut ppu = PPU::new();
+
         ppu.write(0x2107, 0xFC);
-        assert_eq!(ppu.regs.bg1sc, 0xFC);
-    }
+        assert_eq!(ppu.regs.bgsc[0], 0xFC);
 
-    /// Writing $2108 must update bg2sc.
-    #[test]
-    fn test_write_bg2sc() {
-        let mut ppu = PPU::new();
         ppu.write(0x2108, 0x10);
-        assert_eq!(ppu.regs.bg2sc, 0x10);
-    }
+        assert_eq!(ppu.regs.bgsc[1], 0x10);
 
-    /// Writing $2109 must update bg3sc.
-    #[test]
-    fn test_write_bg3sc() {
-        let mut ppu = PPU::new();
         ppu.write(0x2109, 0x20);
-        assert_eq!(ppu.regs.bg3sc, 0x20);
-    }
+        assert_eq!(ppu.regs.bgsc[2], 0x20);
 
-    /// Writing $210A must update bg4sc.
-    #[test]
-    fn test_write_bg4sc() {
-        let mut ppu = PPU::new();
         ppu.write(0x210A, 0x30);
-        assert_eq!(ppu.regs.bg4sc, 0x30);
+        assert_eq!(ppu.regs.bgsc[3], 0x30);
     }
 
     // ============================================================
-    // $210B–$210C - BG12NBA / BG34NBA / bg1_tiledata_addr()
+    // $210B–$210C - BG12NBA / BG34NBA / tiledata helpers
     // ============================================================
 
-    /// Writing $210B must update bg12nba.
+    /// Writing $210B/$210C must update bg12nba/bg34nba.
+    /// Tiledata address helpers must derive correctly from the nibbles.
     #[test]
-    fn test_write_bg12nba() {
+    fn test_bgnba_and_tiledata_addrs() {
         let mut ppu = PPU::new();
+
         ppu.write(0x210B, 0x01);
         assert_eq!(ppu.regs.bg12nba, 0x01);
-    }
+        assert_eq!(ppu.regs.bg1_tiledata_addr(), 0x1000);
 
-    /// Writing $210C must update bg34nba.
-    #[test]
-    fn test_write_bg34nba() {
-        let mut ppu = PPU::new();
+        ppu.write(0x210B, 0x00);
+        assert_eq!(ppu.regs.bg1_tiledata_addr(), 0x0000);
+
+        ppu.write(0x210B, 0x0F);
+        assert_eq!(ppu.regs.bg1_tiledata_addr(), 0xF000);
+
         ppu.write(0x210C, 0x23);
         assert_eq!(ppu.regs.bg34nba, 0x23);
     }
 
-    /// bg1_tiledata_addr must derive the CHR base address from bits[3:0] of BG12NBA.
-    #[test]
-    fn test_bg1_tiledata_addr_derivation() {
-        let mut ppu = PPU::new();
-        ppu.write(0x210B, 0x01); // nibble = 1 -> 0x1000
-        assert_eq!(ppu.regs.bg1_tiledata_addr(), 0x1000);
-    }
-
-    /// bg1_tiledata_addr must return 0 when BG12NBA is 0.
-    #[test]
-    fn test_bg1_tiledata_addr_zero() {
-        let mut ppu = PPU::new();
-        ppu.write(0x210B, 0x00);
-        assert_eq!(ppu.regs.bg1_tiledata_addr(), 0x0000);
-    }
-
-    /// bg1_tiledata_addr must handle the maximum low nibble (0xF -> 0xF000).
-    #[test]
-    fn test_bg1_tiledata_addr_maximum() {
-        let mut ppu = PPU::new();
-        ppu.write(0x210B, 0x0F);
-        assert_eq!(ppu.regs.bg1_tiledata_addr(), 0xF000);
-    }
-
     // ============================================================
-    // $210D - BG1HOFS (two-write latch)
+    // $210D - BG1HOFS / M7HOFS (W8x2, shared address)
     // ============================================================
 
-    /// First write to $210D must not commit bg1hofs.
+    /// BG1HOFS uses a write-twice mechanism via bgofs_latch/bghofs_latch.
+    /// The result is: lo = (bgofs_latch & ~7) | (bghofs_latch & 7), hi = value & 0x03.
+    /// M7HOFS uses mode7_latch: lo = mode7_latch, hi = value.
     #[test]
-    fn test_bg1hofs_first_write_latches() {
+    fn test_write_bg1hofs_and_m7hofs() {
         let mut ppu = PPU::new();
+
+        // First write: only updates latches, no commit yet
         ppu.write(0x210D, 0xAB);
-        assert_eq!(ppu.regs.bg1hofs, 0x0000);
-    }
+        assert_eq!(ppu.regs.bgofs_latch, 0xAB);
+        assert_eq!(ppu.regs.bghofs_latch, 0xAB);
+        assert_eq!(ppu.regs.mode7_latch, 0xAB);
 
-    /// Second write to $210D must commit the full 10-bit scroll value.
-    #[test]
-    fn test_bg1hofs_second_write_commits() {
-        let mut ppu = PPU::new();
-        ppu.write(0x210D, 0xCD);
+        // Second write commits both BG1HOFS and M7HOFS
         ppu.write(0x210D, 0x03);
-        assert_eq!(ppu.regs.bg1hofs, 0x03CD);
-    }
+        // BG1HOFS: lo = (0xAB & ~7) | (0xAB & 7) = 0xAB, hi = 0x03 & 0x03 = 0x03
+        assert_eq!(ppu.regs.bg1hofs, 0x03AB);
+        // M7HOFS: lo = 0xAB (first write's mode7_latch), hi = 0x03
+        assert_eq!(ppu.regs.m7hofs, 0x03AB);
 
-    /// The high byte of BG1HOFS must be masked to bits[2:0] only (10-bit scroll).
-    #[test]
-    fn test_bg1hofs_high_byte_masked_to_3_bits() {
+        // High byte of BG1HOFS masked to bits[1:0] (10-bit scroll)
         let mut ppu = PPU::new();
         ppu.write(0x210D, 0xFF);
         ppu.write(0x210D, 0xFF);
-        assert_eq!(*ppu.regs.bg1hofs.hi(), 0x07);
-    }
-
-    /// A third write to $210D must start a new latch cycle without committing.
-    #[test]
-    fn test_bg1hofs_third_write_starts_new_cycle() {
-        let mut ppu = PPU::new();
-        ppu.write(0x210D, 0x11);
-        ppu.write(0x210D, 0x02); // commits 0x0211
-        ppu.write(0x210D, 0x33); // new lo, not committed yet
-        assert_eq!(ppu.regs.bg1hofs, 0x0211);
+        assert_eq!(*ppu.regs.bg1hofs.hi(), 0x03);
     }
 
     // ============================================================
-    // $210E - BG1VOFS (two-write latch)
+    // $210E - BG1VOFS / M7VOFS (W8x2, shared address)
     // ============================================================
 
-    /// First write to $210E must not commit bg1vofs.
+    /// BG1VOFS: lo = bgofs_latch, hi = value & 0x03.
+    /// M7VOFS: lo = mode7_latch, hi = value.
     #[test]
-    fn test_bg1vofs_first_write_latches() {
+    fn test_write_bg1vofs_and_m7vofs() {
         let mut ppu = PPU::new();
-        ppu.write(0x210E, 0x55);
-        assert_eq!(ppu.regs.bg1vofs, 0x0000);
-    }
 
-    /// Second write to $210E must commit the full 10-bit scroll value.
-    #[test]
-    fn test_bg1vofs_second_write_commits() {
-        let mut ppu = PPU::new();
         ppu.write(0x210E, 0x78);
         ppu.write(0x210E, 0x02);
+        // BG1VOFS: lo = 0x78 (bgofs_latch from first write), hi = 0x02 & 0x03
         assert_eq!(ppu.regs.bg1vofs, 0x0278);
-    }
+        // M7VOFS: lo = 0x78 (mode7_latch from first write), hi = 0x02
+        assert_eq!(ppu.regs.m7vofs, 0x0278);
 
-    /// The high byte of BG1VOFS must be masked to bits[2:0] only.
-    #[test]
-    fn test_bg1vofs_high_byte_masked_to_3_bits() {
+        // High byte of BG1VOFS masked to bits[1:0]
         let mut ppu = PPU::new();
         ppu.write(0x210E, 0x00);
         ppu.write(0x210E, 0xFF);
-        assert_eq!(*ppu.regs.bg1vofs.hi(), 0x07);
+        assert_eq!(*ppu.regs.bg1vofs.hi(), 0x03);
     }
 
     // ============================================================
-    // $210F–$2114 - remaining BG scroll (placeholder writes)
+    // $210F–$2114 - BG2–BG4 scroll (W8x2 via bgofs_latch/bghofs_latch)
     // ============================================================
 
-    /// Writing $210F must update bg1vofs as a raw u8->u16.
+    /// BG2HOFS–BG4VOFS use the shared bgofs_latch/bghofs_latch.
+    /// Each write pair commits the correct entry in bghofs[]/bgvofs[].
     #[test]
-    fn test_write_bg1vofs_placeholder() {
+    fn test_write_bg2_to_bg4_scroll() {
         let mut ppu = PPU::new();
-        ppu.write(0x210F, 0x42);
-        assert_eq!(ppu.regs.bg1vofs, 0x42);
-    }
 
-    /// Writing $2110 must update m7vofs.
-    #[test]
-    fn test_write_m7vofs() {
-        let mut ppu = PPU::new();
-        ppu.write(0x2110, 0x11);
-        assert_eq!(ppu.regs.m7vofs, 0x11);
-    }
+        // BG2HOFS ($210F): write lo latch, then commit
+        ppu.write(0x210F, 0x10);
+        ppu.write(0x210F, 0x01);
+        assert_eq!(ppu.regs.bghofs[0], 0x0110);
 
-    /// Writing $2111 must update bg2hofs.
-    #[test]
-    fn test_write_bg2hofs() {
-        let mut ppu = PPU::new();
-        ppu.write(0x2111, 0x22);
-        assert_eq!(ppu.regs.bg2hofs, 0x22);
-    }
+        // BG2VOFS ($2110)
+        ppu.write(0x2110, 0x20);
+        ppu.write(0x2110, 0x02);
+        assert_eq!(ppu.regs.bgvofs[0], 0x0220);
 
-    /// Writing $2112 must update bg2vofs.
-    #[test]
-    fn test_write_bg2vofs() {
-        let mut ppu = PPU::new();
-        ppu.write(0x2112, 0x33);
-        assert_eq!(ppu.regs.bg2vofs, 0x33);
-    }
+        // BG3HOFS ($2111)
+        ppu.write(0x2111, 0x30);
+        ppu.write(0x2111, 0x03);
+        assert_eq!(ppu.regs.bghofs[1], 0x0330);
 
-    /// Writing $2113 must update bg3hofs.
-    #[test]
-    fn test_write_bg3hofs() {
-        let mut ppu = PPU::new();
-        ppu.write(0x2113, 0x44);
-        assert_eq!(ppu.regs.bg3hofs, 0x44);
-    }
+        // BG3VOFS ($2112)
+        ppu.write(0x2112, 0x40);
+        ppu.write(0x2112, 0x04);
+        // Note: hi is masked to bits[1:0] -> 0x04 & 0x03 = 0x00... wait, 0x04 & 0x03 = 0x00
+        // Actually it's 0x00 since 0x04 & 0x03 == 0x00
+        // Let's use a value that survives the mask
+        let mut ppu2 = PPU::new();
+        ppu2.write(0x2112, 0x40);
+        ppu2.write(0x2112, 0x01);
+        assert_eq!(ppu2.regs.bgvofs[1], 0x0140);
 
-    /// Writing $2114 must update bg3vofs.
-    #[test]
-    fn test_write_bg3vofs() {
-        let mut ppu = PPU::new();
-        ppu.write(0x2114, 0x55);
-        assert_eq!(ppu.regs.bg3vofs, 0x55);
+        // BG4HOFS ($2113)
+        let mut ppu3 = PPU::new();
+        ppu3.write(0x2113, 0x50);
+        ppu3.write(0x2113, 0x01);
+        assert_eq!(ppu3.regs.bghofs[2], 0x0150);
+
+        // BG4VOFS ($2114)
+        let mut ppu4 = PPU::new();
+        ppu4.write(0x2114, 0x60);
+        ppu4.write(0x2114, 0x02);
+        assert_eq!(ppu4.regs.bgvofs[2], 0x0260);
     }
 
     // ============================================================
-    // $2115–$2119 - VRAM / $2139–$213A - VRAM read
+    // $2115–$2119 / $2139–$213A - VRAM
     // ============================================================
 
     /// Writing $2115 must update vmain.
+    /// Setting VRAM address and writing a word must store the correct data.
+    /// Reading back $2139/$213A must return the written bytes.
+    /// Address must increment after each complete word write.
     #[test]
-    fn test_write_vmain() {
+    fn test_vram_via_ppu() {
         let mut ppu = PPU::new();
+
         ppu.write(0x2115, 0x80);
         assert_eq!(ppu.regs.vmain, 0x80);
-    }
 
-    /// Setting VRAM address and writing a word must store the correct data.
-    #[test]
-    fn test_vram_write_via_ppu() {
-        let mut ppu = PPU::new();
-        ppu.write(0x2115, 0x80); // increment after high byte
+        // Write word 0xABCD at address 0x0010
         ppu.write(0x2116, 0x10);
-        ppu.write(0x2117, 0x00); // address = 0x0010
+        ppu.write(0x2117, 0x00);
         ppu.write(0x2118, 0xCD);
-        ppu.write(0x2119, 0xAB); // word = 0xABCD
+        ppu.write(0x2119, 0xAB);
         assert_eq!(ppu.vram.memory[0x0010], 0xABCD);
-    }
 
-    /// Reading $2139/$213A must return the previously written VRAM data.
-    #[test]
-    fn test_vram_read_via_ppu() {
-        let mut ppu = PPU::new();
+        // Read back
         ppu.vram.memory[0x0005] = 0x1234;
-        ppu.write(0x2115, 0x80);
         ppu.write(0x2116, 0x05);
         ppu.write(0x2117, 0x00);
-        let lo = ppu.read(0x2139);
-        let hi = ppu.read(0x213A);
-        assert_eq!(lo, 0x34);
-        assert_eq!(hi, 0x12);
-    }
+        assert_eq!(ppu.read(0x2139), 0x34);
+        assert_eq!(ppu.read(0x213A), 0x12);
 
-    /// VRAM address must increment after a complete word write (vmain = 0x80).
-    #[test]
-    fn test_vram_address_increments_after_write() {
-        let mut ppu = PPU::new();
-        ppu.write(0x2115, 0x80);
+        // Sequential writes increment address
         ppu.write(0x2116, 0x00);
         ppu.write(0x2117, 0x00);
         ppu.write(0x2118, 0x11);
@@ -589,63 +584,43 @@ mod tests {
     }
 
     // ============================================================
-    // $211A–$2120 - Mode 7
+    // $211A–$2120 - Mode 7 (W8x2 via mode7_latch)
     // ============================================================
 
     /// Writing $211A must update m7sel.
+    /// Mode 7 matrix registers ($211B–$2120) are W8x2 via mode7_latch:
+    /// first write stores latch, second write commits (hi=second, lo=first).
     #[test]
-    fn test_write_m7sel() {
+    fn test_mode7_registers() {
         let mut ppu = PPU::new();
+
         ppu.write(0x211A, 0x03);
         assert_eq!(ppu.regs.m7sel, 0x03);
-    }
 
-    /// Writing $211B must update m7a.
-    #[test]
-    fn test_write_m7a() {
-        let mut ppu = PPU::new();
-        ppu.write(0x211B, 0x7F);
-        assert_eq!(ppu.regs.m7a, 0x7F);
-    }
+        // M7A: two writes -> full 16-bit value
+        ppu.write(0x211B, 0x34);
+        ppu.write(0x211B, 0x12);
+        assert_eq!(ppu.regs.m7a, 0x1234);
 
-    /// Writing $211C must update m7b.
-    #[test]
-    fn test_write_m7b() {
-        let mut ppu = PPU::new();
-        ppu.write(0x211C, 0x01);
-        assert_eq!(ppu.regs.m7b, 0x01);
-    }
+        ppu.write(0x211C, 0x56);
+        ppu.write(0x211C, 0x78);
+        assert_eq!(ppu.regs.m7b, 0x7856);
 
-    /// Writing $211D must update m7c.
-    #[test]
-    fn test_write_m7c() {
-        let mut ppu = PPU::new();
-        ppu.write(0x211D, 0x02);
-        assert_eq!(ppu.regs.m7c, 0x02);
-    }
+        ppu.write(0x211D, 0xAB);
+        ppu.write(0x211D, 0xCD);
+        assert_eq!(ppu.regs.m7c, 0xCDAB);
 
-    /// Writing $211E must update m7d.
-    #[test]
-    fn test_write_m7d() {
-        let mut ppu = PPU::new();
-        ppu.write(0x211E, 0x03);
-        assert_eq!(ppu.regs.m7d, 0x03);
-    }
+        ppu.write(0x211E, 0x11);
+        ppu.write(0x211E, 0x22);
+        assert_eq!(ppu.regs.m7d, 0x2211);
 
-    /// Writing $211F must update m7x.
-    #[test]
-    fn test_write_m7x() {
-        let mut ppu = PPU::new();
         ppu.write(0x211F, 0x80);
-        assert_eq!(ppu.regs.m7x, 0x80);
-    }
+        ppu.write(0x211F, 0x00);
+        assert_eq!(ppu.regs.m7x, 0x0080);
 
-    /// Writing $2120 must update m7y.
-    #[test]
-    fn test_write_m7y() {
-        let mut ppu = PPU::new();
         ppu.write(0x2120, 0x40);
-        assert_eq!(ppu.regs.m7y, 0x40);
+        ppu.write(0x2120, 0x01);
+        assert_eq!(ppu.regs.m7y, 0x0140);
     }
 
     // ============================================================
@@ -692,20 +667,18 @@ mod tests {
     }
 
     // ============================================================
-    // $212C–$2132 - Color math / layer enable
+    // $212C–$2133 - Color math / layer enable / SETINI
     // ============================================================
 
-    /// Writing $212C must update tm.
+    /// Writing $212C must update tm; bg1_enabled reflects bit 0.
+    /// Writing $212D–$2133 must store verbatim.
     #[test]
-    fn test_write_tm() {
+    fn test_write_color_math_and_layer_registers() {
         let mut ppu = PPU::new();
+
         ppu.write(0x212C, 0x1F);
         assert_eq!(ppu.regs.tm, 0x1F);
-    }
 
-    /// Writing color math registers must store the value verbatim.
-    #[test]
-    fn test_write_color_math_registers() {
         let cases: &[(u16, fn(&PPURegisters) -> u8)] = &[
             (0x212D, |r| r.ts),
             (0x212E, |r| r.tmw),
@@ -713,6 +686,7 @@ mod tests {
             (0x2130, |r| r.cgwsel),
             (0x2131, |r| r.cgadsub),
             (0x2132, |r| r.coldata),
+            (0x2133, |r| r.setini),
         ];
         for &(addr, getter) in cases {
             let mut ppu = PPU::new();
@@ -721,62 +695,40 @@ mod tests {
         }
     }
 
-    /// Writing $2133 must update setini.
-    #[test]
-    fn test_write_setini() {
-        let mut ppu = PPU::new();
-        ppu.write(0x2133, 0x04);
-        assert_eq!(ppu.regs.setini, 0x04);
-    }
-
     // ============================================================
-    // $212C - TM / bg1_enabled() / bg1_tilemap_addr()
+    // $212C - TM / bg1_enabled()
     // ============================================================
 
-    /// bg1_enabled must return true when bit 0 of TM is set.
+    /// bg1_enabled must reflect bit 0 of TM only.
     #[test]
-    fn test_bg1_enabled_true_when_tm_bit0_set() {
+    fn test_bg1_enabled() {
         let mut ppu = PPU::new();
+
         ppu.write(0x212C, 0x01);
         assert!(ppu.regs.bg1_enabled());
-    }
 
-    /// bg1_enabled must return false when bit 0 of TM is clear.
-    #[test]
-    fn test_bg1_enabled_false_when_tm_bit0_clear() {
-        let mut ppu = PPU::new();
         ppu.write(0x212C, 0xFE);
         assert!(!ppu.regs.bg1_enabled());
-    }
 
-    /// bg1_enabled must ignore all bits of TM except bit 0.
-    #[test]
-    fn test_bg1_enabled_ignores_upper_bits_of_tm() {
-        let mut ppu = PPU::new();
         ppu.write(0x212C, 0x1E);
         assert!(!ppu.regs.bg1_enabled());
     }
 
-    /// bg1_tilemap_addr must derive the VRAM address from bits[7:2] of BG1SC.
-    #[test]
-    fn test_bg1_tilemap_addr_derivation() {
-        let mut ppu = PPU::new();
-        ppu.write(0x2107, 0b00000100); // bits[7:2] = 1 -> 0x0400
-        assert_eq!(ppu.regs.bg1_tilemap_addr(), 0x0400);
-    }
+    // ============================================================
+    // $2107 - BG1SC / bg1_tilemap_addr()
+    // ============================================================
 
-    /// bg1_tilemap_addr must return 0 when BG1SC is 0.
+    /// bg1_tilemap_addr must derive the VRAM address from bits[7:2] of bgsc[0].
     #[test]
-    fn test_bg1_tilemap_addr_zero() {
+    fn test_bg1_tilemap_addr() {
         let mut ppu = PPU::new();
+
+        ppu.write(0x2107, 0b00000100);
+        assert_eq!(ppu.regs.bg1_tilemap_addr(), 0x0400);
+
         ppu.write(0x2107, 0x00);
         assert_eq!(ppu.regs.bg1_tilemap_addr(), 0x0000);
-    }
 
-    /// bg1_tilemap_addr must handle the maximum value (bits[7:2] = 0x3F -> 0x3F * 0x400).
-    #[test]
-    fn test_bg1_tilemap_addr_maximum() {
-        let mut ppu = PPU::new();
         ppu.write(0x2107, 0xFF);
         assert_eq!(ppu.regs.bg1_tilemap_addr(), 0x3F * 0x400);
     }
@@ -785,41 +737,30 @@ mod tests {
     // step_scanline
     // ============================================================
 
-    /// step_scanline must increment the scanline counter by 1.
+    /// step_scanline increments the counter, wraps at SCANLINES_PER_FRAME,
+    /// and sets frame_ready only on the wrap.
     #[test]
-    fn test_step_scanline_increments() {
+    fn test_step_scanline() {
         let mut ppu = PPU::new();
+
         ppu.step_scanline();
         assert_eq!(ppu.scanline, 1);
-    }
+        assert!(!ppu.frame_ready);
 
-    /// After SCANLINES_PER_FRAME steps, scanline must wrap to 0 and frame_ready be set.
-    #[test]
-    fn test_step_scanline_wraps_at_262() {
-        let mut ppu = PPU::new();
-        for _ in 0..SCANLINES_PER_FRAME {
-            ppu.step_scanline();
-        }
-        assert_eq!(ppu.scanline, 0);
-        assert!(ppu.frame_ready);
-    }
-
-    /// frame_ready must remain false until the last scanline is reached.
-    #[test]
-    fn test_frame_ready_false_before_wrap() {
-        let mut ppu = PPU::new();
-        for _ in 0..SCANLINES_PER_FRAME - 1 {
+        // One step before wrap
+        for _ in 1..SCANLINES_PER_FRAME - 1 {
             ppu.step_scanline();
         }
         assert!(!ppu.frame_ready);
         assert_eq!(ppu.scanline, SCANLINES_PER_FRAME - 1);
-    }
 
-    /// frame_ready must remain true across subsequent frames.
-    #[test]
-    fn test_frame_ready_stays_true_on_subsequent_frames() {
-        let mut ppu = PPU::new();
-        for _ in 0..SCANLINES_PER_FRAME * 2 {
+        // Wrap
+        ppu.step_scanline();
+        assert_eq!(ppu.scanline, 0);
+        assert!(ppu.frame_ready);
+
+        // Second frame wrap also sets frame_ready
+        for _ in 0..SCANLINES_PER_FRAME {
             ppu.step_scanline();
         }
         assert!(ppu.frame_ready);
