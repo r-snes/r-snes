@@ -931,21 +931,32 @@ impl Spc700 {
     /// H is set if (Y & $0F) >= (X & $0F).
     /// N and Z are set from the quotient (A). 12 cycles.
     fn inst_div(&mut self, _mem: &mut Memory) {
-        let ya = ((self.regs.y as u16) << 8) | self.regs.a as u16;
+        let y = self.regs.y as u32;
+        let x = self.regs.x as u32;
+        let a = self.regs.a as u32;
+        let ya = (y << 8) | a;
+
+        // H uses the PRE-division low nibbles of Y and X
         self.set_flag(FLAG_H, (self.regs.y & 0x0F) >= (self.regs.x & 0x0F));
-        if self.regs.x == 0 {
-            // Division by zero — quotient and remainder both $FF
-            self.regs.a = 0xFF;
-            self.regs.y = 0xFF;
-            self.set_flag(FLAG_V, true);
+
+        let (new_a, new_y, overflow) = if x != 0 && y < x * 2 {
+            let quotient = ya / x; // true, unclamped quotient
+            let remainder = ya - quotient * x;
+            (quotient, remainder, quotient > 0xFF)
         } else {
-            let q = ya / self.regs.x as u16;
-            let r = ya % self.regs.x as u16;
-            self.set_flag(FLAG_V, q > 0xFF);
-            self.regs.a = q as u8;
-            self.regs.y = r as u8;
-        }
+            let denom = 256 - x; // x=0 => denom=256, matches hardware's wrap
+            let base = ya.wrapping_sub(x * 0x200);
+            let new_a = 255u32.wrapping_sub(base / denom);
+            let new_y = x + base % denom;
+            // Y >= X*2 (or X=0) always exceeds the 8-bit quotient range.
+            (new_a, new_y, true)
+        };
+
+        self.regs.a = new_a as u8;
+        self.regs.y = new_y as u8;
+        self.set_flag(FLAG_V, overflow);
         self.set_zn_flags(self.regs.a);
+        // C is never touched by DIV.
         self.cycles += 12;
     }
 
