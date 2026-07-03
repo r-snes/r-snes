@@ -15,6 +15,7 @@ pub enum RSnesEvent {
     Quit,
 }
 
+#[cfg(not(tarpaulin_include))]
 impl Gui {
     pub const SNES_WIDTH: usize = 256; // TODO : Remove when GUI linked with PPU
     pub const SNES_HEIGHT: usize = 224; // TODO : Remove when GUI linked with PPU

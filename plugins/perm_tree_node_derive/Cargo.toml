@@ -1,0 +1,19 @@
+[lib]
+proc-macro = true
+
+[package]
+name = "perm_tree_node_derive"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+syn = { version = "2.0", features = ["full"] }
+quote = "1.0"
+proc-macro2 = "1.0"
+
+[dev-dependencies]
+# dev-depend on the parent crate for our tests
+plugins = { path = "../" }
+permission_derive_macro = { path = "../permission_derive_macro" }
+piccolo = { workspace = true }
+runtime-macros = "1.1.1"
