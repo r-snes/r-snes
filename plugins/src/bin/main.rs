@@ -30,7 +30,7 @@ impl eframe::App for PermRequestApp<'_, '_> {
 fn main() -> eframe::Result {
     // Load the Lua file
     let filename = "./plugin.lua";
-    let plugin = Plugin::load(std::path::Path::new(filename));
+    let plugin = Plugin::load_from_file(std::path::Path::new(filename));
 
     let plugin = match plugin {
         Err(e) => {
@@ -47,7 +47,7 @@ fn main() -> eframe::Result {
         ..Default::default()
     };
 
-    let title = format!("Loading plugin {}", plugin.path.display());
+    let title = format!("Loading plugin {}", plugin.path.as_ref().unwrap().display());
     let mut perm_request = plugin.perm_request();
 
     eframe::run_native(
