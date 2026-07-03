@@ -47,7 +47,16 @@ pub fn adc<T: Reg>(a: &mut T, idb: T, p: &mut RegisterP) {
 }
 
 pub fn sbc<T: Reg>(a: &mut T, idb: T, p: &mut RegisterP) {
-    adc(a, !idb, p)
+    if !p.D {
+        adc(a, !idb, p)
+    } else {
+        let (res, carry_out, overflow) = a.sub_bcd(idb, p.C);
+
+        p.C = carry_out;
+        p.V = overflow;
+        *a = res;
+        set_nz(*a, p);
+    }
 }
 
 pub fn bit<T: Reg>(a: &mut T, idb: T, p: &mut RegisterP) {

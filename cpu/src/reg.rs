@@ -41,6 +41,7 @@ pub(crate) trait Reg : Copy
     + Not<Output = Self>
     + Eq
     + AddBcd
+    + SubBcd
 {
     const ZERO: Self;
     const ONE: Self;
@@ -71,6 +72,10 @@ pub(crate) trait Reg : Copy
 
 pub(crate) trait AddBcd: Sized {
     fn add_bcd(self, other: Self, carry_in: bool) -> (Self, bool, bool);
+}
+
+pub(crate) trait SubBcd: Sized {
+    fn sub_bcd(self, other: Self, carry_in: bool) -> (Self, bool, bool);
 }
 
 duplicate! {
@@ -172,14 +177,111 @@ impl AddBcd for u16 {
     }
 }
 
+impl SubBcd for u8 {
+    fn sub_bcd(self, other: Self, carry_in: bool) -> (Self, bool, bool) {
+        use std::num::Wrapping as W;
+        let op = W(other) + W(1);
+        let a = W(self) + W(carry_in as u8);
+
+        let mut ret = a;
+
+        if ret & W(0xF) < op & W(0xF) {
+            ret -= 0x6;
+        }
+        ret -= op & W(0xF);
+
+        let c = !(ret & W(0xF0) < op & W(0xF0));
+        let v = (!(self ^ !other) & (self ^ ret.0)).is_neg();
+        if !c {
+            ret -= 0x60;
+        }
+        ret -= op & W(0xF0);
+
+        (ret.0, c, v)
+    }
+}
+
+impl SubBcd for u16 {
+    fn sub_bcd(self, other: Self, carry_in: bool) -> (Self, bool, bool) {
+        use std::num::Wrapping as W;
+        let op = W(other) + W(1);
+        let a = W(self) + W(carry_in as u16);
+
+        let mut ret = a;
+
+        if ret & W(0xF) < op & W(0xF) {
+            ret -= 0x6;
+        }
+        ret -= op & W(0xF);
+
+        if ret & W(0xF0) < op & W(0xF0) {
+            ret -= 0x60;
+        }
+        ret -= op & W(0xF0);
+
+        if ret & W(0xF00) < op & W(0xF00) {
+            ret -= 0x600;
+        }
+        ret -= op & W(0xF00);
+
+        let c = !(ret & W(0xF000) < op & W(0xF000));
+        let v = ((self ^ ret.0) & (!other ^ ret.0)).is_neg();
+        if !c {
+            ret -= 0x6000;
+        }
+        ret -= op & W(0xF000);
+
+        (ret.0, c, v)
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
     #[test]
-    fn simple_bcd16() {
+    fn simple_add_bcd16() {
         let (res, c_out, overflow) = 0x3550_u16.add_bcd(0x4470, false);
 
         assert_eq!(res, 0x8020, "res was {res:#.4X} instead 0x8020");
+        assert!(!c_out);
+        assert!(overflow);
+    }
+
+    #[test]
+    fn simple_add_bcd8() {
+        let (res, c_out, overflow) = 0x9_u8.add_bcd(0x9, false);
+
+        assert_eq!(res, 0x18, "res was {res:#.2X} instead 0x18");
+        assert!(!c_out);
+        assert!(!overflow);
+    }
+
+    #[test]
+    fn simple_sub_bcd16() {
+        let (res, c_out, overflow) = 0x2345_u16.sub_bcd(0x1111, true);
+
+        assert_eq!(res, 0x1234, "res was {res:#.4X} instead of 0x1234");
+    }
+
+    #[test]
+    fn borrowing_sub_bcd16() {
+        let (res, c_out, overflow) = 0x2345_u16.sub_bcd(0x1346, true);
+
+        assert_eq!(res, 0x0999, "res was {res:#.4X} instead of 0x0999");
+    }
+
+    #[test]
+    fn result_zero_sub_bcd16() {
+        let (res, c_out, overflow) = 0x9090_u16.sub_bcd(0x9089, false);
+
+        assert_eq!(res, 0);
+    }
+
+    #[test]
+    fn sub_bcd_zero_minus_one() {
+        let (res, c_out, overflow) = 0_u16.sub_bcd(1, true);
+
+        assert_eq!(res, 0x9999);
         assert!(!c_out);
         assert!(overflow);
     }
