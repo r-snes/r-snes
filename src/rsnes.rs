@@ -13,9 +13,10 @@ pub struct RSnes {
     pub bus: Bus,
     pub cpu: CPU,
     pub ppu: PPU,
+    pub ppu_renderer: ppu::Renderer,
     pub apu: Apu,
     pub master_cycles: u64,
-    pub cpu_master_cycles_to_wait: u16,
+    pub cpu_master_cycles_to_wait: u32,
 }
 
 impl RSnes {
@@ -26,6 +27,7 @@ impl RSnes {
         let bus = Bus::new(rom_path)?;
         let cpu = CPU::poweron();
         let ppu = PPU::new();
+        let ppu_renderer = ppu::Renderer::new();
         let apu = Apu::new();
 
         Ok(Self {
@@ -33,6 +35,7 @@ impl RSnes {
             bus,
             cpu,
             ppu,
+            ppu_renderer,
             apu,
             master_cycles: 0,
             cpu_master_cycles_to_wait: 0,
@@ -65,7 +68,7 @@ impl RSnes {
         let mut a_addr = ch.a1t;
 
         // 0x0000 means 65536 bytes, u32 needed to not overflow
-        let mut remaining: u32 = {
+        let remaining: u32 = {
             let raw = ch.das;
             if raw == 0 { 0x10000 } else { raw as u32 }
         };
