@@ -1,6 +1,12 @@
-pub mod utils;
-pub mod tile;
+pub mod constants;
+pub mod vram;
+pub mod cgram;
 pub mod ppu;
+pub mod registers;
+pub mod write_twice;
 
-#[cfg(test)]
-mod tests;
+pub mod rendering;
+
+// re-export the most important types for easy access
+pub use ppu::PPU;
+pub use rendering::Renderer;
