@@ -1,4 +1,4 @@
-use super::RSnes;
+use super::RSnesCore;
 
 use cpu::cpu::CPU;
 use piccolo::Callback;
@@ -9,7 +9,7 @@ use plugins::plugin::Plugin;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-impl RSnes {
+impl RSnesCore {
     /// Injects emulator callbacks in the lua VM contained
     /// in the Plugin parameter, taking into account the
     /// permission table of the plugin

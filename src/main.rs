@@ -3,96 +3,21 @@ mod rsnes;
 
 use crate::{
     gui::{Gui, RSnesEvent},
-    rsnes::RSnes,
+    rsnes::{RSnesCore, RSnesEmu},
 };
 #[cfg(feature = "cli")]
 use clap::Parser;
 #[cfg(feature = "plugins")]
 use plugins::plugin::Plugin;
 use ppu::constants::SCREEN_HEIGHT;
-#[cfg(feature = "plugins")]
-use std::{cell::RefCell, rc::Rc};
 use std::{
-    ops::DerefMut,
     path::PathBuf,
     time::{Duration, Instant},
 };
 
-struct Emu {
-    #[cfg(not(feature = "plugins"))]
-    rsnes: RSnes,
-
-    #[cfg(feature = "plugins")]
-    rsnes: Rc<RefCell<RSnes>>,
-
-    #[cfg(feature = "plugins")]
-    plugin: Option<Plugin>,
-}
-
-impl Emu {
-    pub fn new(rsnes: RSnes) -> Self {
-        cfg_select! {
-            feature = "plugins" => Self {
-                rsnes: Rc::new(RefCell::new(rsnes)),
-                plugin: None,
-            },
-            _ => Self { rsnes },
-        }
-    }
-
-    #[cfg(feature = "plugins")]
-    pub fn new_with_plugin(
-        rsnes: RSnes,
-        mut plugin: Option<Plugin>,
-    ) -> Result<Self, piccolo::ExternError> {
-        let rc = Rc::new(RefCell::new(rsnes));
-
-        if let Some(plugin) = &mut plugin {
-            RSnes::inject_into_lua(&rc, plugin);
-            plugin.run_init()?;
-        }
-        Ok(Self { rsnes: rc, plugin })
-    }
-
-    pub fn rsnes_mut(&mut self) -> impl DerefMut<Target = RSnes> {
-        #[cfg(feature = "plugins")]
-        return self.rsnes.borrow_mut();
-
-        #[cfg(not(feature = "plugins"))]
-        return &mut self.rsnes;
-    }
-
-    #[cfg(feature = "plugins")]
-    pub fn plugin_mut(&mut self) -> Option<&mut Plugin> {
-        self.plugin.as_mut()
-    }
-
-    #[cfg(not(feature = "plugins"))]
-    pub fn update(&mut self) {
-        self.rsnes.update();
-    }
-
-    #[cfg(feature = "plugins")]
-    pub fn update(&mut self) -> Result<(), piccolo::ExternError> {
-        let mut rsnes_mut = self.rsnes.borrow_mut();
-
-        rsnes_mut.update();
-
-        if let Some(plugin) = self.plugin.as_mut() {
-            if let Some(opcode) = rsnes_mut.is_cpu_instr_start() {
-                let addr = *rsnes_mut.cpu.addr_bus();
-                drop(rsnes_mut);
-                return plugin.run_on_instr(opcode, addr);
-            }
-        }
-
-        Ok(())
-    }
-}
-
 fn gui_emu_loop(
     gui: &mut gui::Gui,
-    rsnes: RSnes,
+    rsnes: RSnesCore,
 
     #[cfg(feature = "plugins")]
     plugin: Option<Plugin>,
@@ -105,8 +30,8 @@ fn gui_emu_loop(
     let mut master_cycle_accum: f64 = 0.0;
 
     let mut emu = cfg_select! {
-        feature = "plugins" => Emu::new_with_plugin(rsnes, plugin).unwrap(),
-        _ => Emu::new(rsnes),
+        feature = "plugins" => RSnesEmu::new_with_plugin(rsnes, plugin).unwrap(),
+        _ => RSnesEmu::new(rsnes),
     };
 
     let closing_ev = 'emu_loop: loop {
@@ -119,17 +44,17 @@ fn gui_emu_loop(
         master_cycle_accum += delta;
 
         // sleep until we are due a cycle instead of busy-waiting
-        if master_cycle_accum < RSnes::MASTER_CYCLE_DURATION {
+        if master_cycle_accum < RSnesCore::MASTER_CYCLE_DURATION {
             // since the frequency of master cycles is orders
             // of magnitude greater than the framerate, we need
             // to sleep for master cycles, not for frames
             std::thread::sleep(Duration::from_secs_f64(
-                RSnes::MASTER_CYCLE_DURATION - master_cycle_accum,
+                RSnesCore::MASTER_CYCLE_DURATION - master_cycle_accum,
             ));
         }
 
-        while master_cycle_accum >= RSnes::MASTER_CYCLE_DURATION {
-            master_cycle_accum -= RSnes::MASTER_CYCLE_DURATION;
+        while master_cycle_accum >= RSnesCore::MASTER_CYCLE_DURATION {
+            master_cycle_accum -= RSnesCore::MASTER_CYCLE_DURATION;
 
             cfg_select! {
                 feature = "plugins" => emu.update().unwrap(),
@@ -143,11 +68,11 @@ fn gui_emu_loop(
         }
         frame_accum -= Gui::FRAME_DURATION;
 
-        let mut emu_mut = emu.rsnes_mut();
+        let mut emu_mut = emu.core_mut();
 
         // temporary: render full PPU frame for each GUI frame
         for y in 0..SCREEN_HEIGHT {
-            let RSnes {
+            let RSnesCore {
                 ppu, ppu_renderer, ..
             } = &mut *emu_mut;
             ppu_renderer.render_scanline(ppu, y);
@@ -167,12 +92,12 @@ fn gui_emu_loop(
                 RSnesEvent::Quit => break 'emu_loop Some(RSnesEvent::Quit),
                 RSnesEvent::Close => break 'emu_loop None,
                 RSnesEvent::ButtonDown => {
-                    let mut emu_mut = emu.rsnes_mut();
+                    let mut emu_mut = emu.core_mut();
                     emu_mut.bus.io.hvbjoy = 0;
                     emu_mut.bus.io.joy1 = !0;
                 }
                 RSnesEvent::ButtonUp => {
-                    let mut emu_mut = emu.rsnes_mut();
+                    let mut emu_mut = emu.core_mut();
                     emu_mut.bus.io.hvbjoy = 0;
                     emu_mut.bus.io.joy1 = 0;
                 }
@@ -204,7 +129,7 @@ fn gui_emu_loop(
 }
 
 fn gui_loop(
-    mut emu: Option<RSnes>,
+    mut rsnes_core: Option<RSnesCore>,
 
     #[cfg(feature = "plugins")]
     mut plugin: Option<Plugin>,
@@ -221,7 +146,7 @@ fn gui_loop(
         // so that we can pass by value in the emu loop,
         // guaranteeing that the `RSnes` is destructed when
         // we leave the loop
-        let ev = match emu.take() {
+        let ev = match rsnes_core.take() {
             None => Some(gui.wait_for_event()),
 
             Some(emu) => {
@@ -243,8 +168,8 @@ fn gui_loop(
             continue;
         };
         match ev {
-            RSnesEvent::LoadRom { path } => match rsnes::RSnes::load_rom(&path) {
-                Ok(some_emu) => emu = Some(some_emu),
+            RSnesEvent::LoadRom { path } => match rsnes::RSnesCore::load_rom(&path) {
+                Ok(some_emu) => rsnes_core = Some(some_emu),
                 Err(err) => println!("Error loading ROM: {}", err),
             },
             RSnesEvent::Quit | RSnesEvent::Close => break,
@@ -282,7 +207,7 @@ fn main() -> Result<(), String> {
 
     let emu = match cli.rom {
         None => None,
-        Some(rom_path) => Some(RSnes::load_rom(&rom_path).map_err(|e| e.to_string())?),
+        Some(rom_path) => Some(RSnesCore::load_rom(&rom_path).map_err(|e| e.to_string())?),
     };
 
     cfg_select! {
