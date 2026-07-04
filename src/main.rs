@@ -7,6 +7,7 @@ use crate::{
 };
 #[cfg(feature = "cli")]
 use clap::Parser;
+use egui_sdl2::egui;
 #[cfg(feature = "plugins")]
 use plugins::plugin::Plugin;
 use ppu::constants::SCREEN_HEIGHT;
@@ -19,8 +20,7 @@ fn gui_emu_loop(
     gui: &mut gui::Gui,
     rsnes: RSnesCore,
 
-    #[cfg(feature = "plugins")]
-    plugin: Option<Plugin>,
+    #[cfg(feature = "plugins")] plugin: Option<Plugin>,
 ) -> Option<RSnesEvent> {
     let mut frame_nb = 0_u64;
     let exec_start = Instant::now();
@@ -81,14 +81,46 @@ fn gui_emu_loop(
         // temporary: toggle VBLANK each rendered frame
         emu_mut.bus.io.rdnmi = !emu_mut.bus.io.rdnmi;
 
-        let events = gui.update(&emu_mut.ppu_renderer.framebuffer);
-        drop(emu_mut); // release the RefCell so that we're able to call plugins
+        let mut close_clicked = false;
+        #[cfg(feature = "plugins")]
+        let mut run_plugin_clicked = false;
+
+        let events = gui.update(&emu_mut.ppu_renderer.framebuffer, |ctx| {
+            // `EguiCanvas::run` only provides `&Context`, so there does not seems to be no non-deprecated
+            // way to show a top-level panel here yet.
+            #[allow(deprecated)]
+            egui::Panel::top("game_menu_bar").show(ctx, |ui| {
+                egui::MenuBar::new().ui(ui, |ui| {
+                    ui.menu_button("Game", |ui| {
+                        if ui.button("Close ROM").clicked() {
+                            close_clicked = true;
+                            ui.close();
+                        }
+
+                        #[cfg(feature = "plugins")]
+                        if ui.button("Run plugin default").clicked() {
+                            run_plugin_clicked = true;
+                            ui.close();
+                        }
+                    });
+                });
+            });
+        });
+        drop(emu_mut);
+
+        if close_clicked {
+            break 'emu_loop None;
+        }
+
+        #[cfg(feature = "plugins")]
+        if run_plugin_clicked {
+            if let Some(p) = emu.plugin_mut() {
+                p.run_default().unwrap();
+            }
+        }
+
         for state_event in events {
             match state_event {
-                // RSnesEvent::LoadRom { path } => match rsnes::RSnes::load_rom(&path) {
-                //     Ok(emu_) => emu = emu_,
-                //     Err(err) => eprintln!("Error loading ROM: {}", err),
-                // },
                 RSnesEvent::Quit => break 'emu_loop Some(RSnesEvent::Quit),
                 RSnesEvent::Close => break 'emu_loop None,
                 RSnesEvent::ButtonDown => {
@@ -128,26 +160,72 @@ fn gui_emu_loop(
     closing_ev
 }
 
+fn gui_idle_loop(
+    gui: &mut gui::Gui,
+    default_framebuffer: &ppu::rendering::RawFramebuffer,
+) -> RSnesEvent {
+    loop {
+        let frame_start = Instant::now();
+
+        let mut load_rom_request: Option<PathBuf> = None;
+        let mut quit_clicked = false;
+
+        let events = gui.update(default_framebuffer, |ctx| {
+            #[allow(deprecated)]
+            egui::Panel::top("menu_bar").show(ctx, |ui| {
+                egui::MenuBar::new().ui(ui, |ui| {
+                    ui.menu_button("File", |ui| {
+                        if ui.button("Load ROM...").clicked() {
+                            load_rom_request = rfd::FileDialog::new().pick_file();
+                            ui.close();
+                        }
+                        if ui.button("Quit").clicked() {
+                            quit_clicked = true;
+                            ui.close();
+                        }
+                    });
+                });
+            });
+        });
+
+        if let Some(path) = load_rom_request {
+            return RSnesEvent::LoadRom { path };
+        }
+        if quit_clicked {
+            return RSnesEvent::Quit;
+        }
+
+        for event in events {
+            match event {
+                RSnesEvent::Quit => return RSnesEvent::Quit,
+                RSnesEvent::LoadRom { path } => return RSnesEvent::LoadRom { path },
+                _ => {}
+            }
+        }
+
+        let elapsed = frame_start.elapsed().as_secs_f64();
+        if elapsed < Gui::FRAME_DURATION {
+            std::thread::sleep(Duration::from_secs_f64(Gui::FRAME_DURATION - elapsed));
+        }
+    }
+}
+
 fn gui_loop(
     mut rsnes_core: Option<RSnesCore>,
 
-    #[cfg(feature = "plugins")]
-    mut plugin: Option<Plugin>,
+    #[cfg(feature = "plugins")] mut plugin: Option<Plugin>,
 ) -> Result<(), String> {
     let mut gui = gui::Gui::new()?;
     const DEFAULT_FRAMEBUFFER: &ppu::rendering::RawFramebuffer =
         include_bytes!("../logo_framebuffer.raw");
-
-    gui.draw_framebuffer(DEFAULT_FRAMEBUFFER)?;
-    gui.present();
 
     loop {
         // move out of the `Option` in case it's `Some`
         // so that we can pass by value in the emu loop,
         // guaranteeing that the `RSnes` is destructed when
         // we leave the loop
-        let ev = match rsnes_core.take() {
-            None => Some(gui.wait_for_event()),
+        let ev = match emu.take() {
+            None => gui_idle_loop(&mut gui, DEFAULT_FRAMEBUFFER),
 
             Some(emu) => {
                 let ret_ev = cfg_select! {
@@ -155,18 +233,13 @@ fn gui_loop(
                     _ => gui_emu_loop(&mut gui, emu),
                 };
 
-                if ret_ev != Some(RSnesEvent::Quit) {
-                    // re-render default framebuffer after game has exited
-                    gui.draw_framebuffer(DEFAULT_FRAMEBUFFER)?;
-                    gui.present();
+                match ret_ev {
+                    Some(ev) => ev,
+                    None => continue,
                 }
-
-                ret_ev
             }
         };
-        let Some(ev) = ev else {
-            continue;
-        };
+
         match ev {
             RSnesEvent::LoadRom { path } => match rsnes::RSnesCore::load_rom(&path) {
                 Ok(some_emu) => rsnes_core = Some(some_emu),
@@ -184,11 +257,8 @@ fn gui_loop(
 #[cfg_attr(feature = "cli", command(about, long_about = None))]
 #[derive(Default)]
 struct Cli {
-    /// A SNES ROM to load at startup
     pub rom: Option<PathBuf>,
 
-    /// A plugin to load at startup, **without any confirmation
-    /// for requested permissions**
     #[cfg(feature = "plugins")]
     #[arg(long, value_name = "PLUGIN.lua")]
     pub load_plugin_noconfirm: Option<PathBuf>,

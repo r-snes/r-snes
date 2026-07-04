@@ -36,6 +36,13 @@ plugins = { version = "0.1.0", path = "./plugins", optional = true }
 piccolo = { workspace = true, optional = true }
 piccolo-util = { workspace = true, optional = true }
 
+egui-sdl2 = { version = "0.4.0", features = ["canvas-backend"] }
+# egui-sdl2 = { version = "0.4.0", features = ["canvas-backend"] }
+# sdl2 and egui are used via the re-exports below, not as direct deps,
+# to guarantee they're the exact same crate instance egui-sdl2 uses:
+#   egui_sdl2::sdl2::*
+#   egui_sdl2::egui::*
+
 rfd = "0.17.2"
 clap = { version = "^4.6.0", features = ["derive"], optional = true }
 
