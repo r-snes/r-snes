@@ -160,6 +160,18 @@ impl Spc700 {
             0x7B => self.inst_ror_dp_x(mem), // ROR dp X
             0x6C => self.inst_ror_abs(mem), // ROR !abs
 
+            // Flag operations
+            0x60 => self.inst_clrc(), // CLRC
+            0x80 => self.inst_setc(), // SETC
+            0xED => self.inst_notc(), // NOTC
+            0x20 => self.inst_clrp(), // CLRP
+            0x40 => self.inst_setp(), // SETP
+            0xE0 => self.inst_clrv(), // CLRV
+            0xA0 => self.inst_ei(), // EI
+            0xC0 => self.inst_di(), // DI
+            0xDF => self.inst_daa(), // DAA
+            0xBE => self.inst_das(), // DAS
+ 
             // Catch-all
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
         }
@@ -962,5 +974,87 @@ impl Spc700 {
         mem.write8(addr, result);
         self.set_zn_flags(result);
         self.cycles += 5;
+    }
+
+    /// CLRC — clear carry flag. 2 cycles.
+    fn inst_clrc(&mut self) {
+        self.set_flag(FLAG_C, false);
+        self.cycles += 2;
+    }
+
+    /// SETC — set carry flag. 2 cycles.
+    fn inst_setc(&mut self) {
+        self.set_flag(FLAG_C, true);
+        self.cycles += 2;
+    }
+
+    /// NOTC — complement carry flag (toggle C). 3 cycles.
+    fn inst_notc(&mut self) {
+        let c = !self.get_flag(FLAG_C);
+        self.set_flag(FLAG_C, c);
+        self.cycles += 3;
+    }
+
+    /// CLRP — clear direct page flag. Direct page base → $0000. 2 cycles.
+    fn inst_clrp(&mut self) {
+        self.set_flag(FLAG_P, false);
+        self.cycles += 2;
+    }
+
+    /// SETP — set direct page flag. Direct page base → $0100. 2 cycles.
+    fn inst_setp(&mut self) {
+        self.set_flag(FLAG_P, true);
+        self.cycles += 2;
+    }
+
+    /// CLRV — clear overflow (V) and half-carry (H) flags. 2 cycles.
+    fn inst_clrv(&mut self) {
+        self.set_flag(FLAG_V, false);
+        self.set_flag(FLAG_H, false);
+        self.cycles += 2;
+    }
+
+    /// EI — enable interrupts (set FLAG_I). 3 cycles.
+    fn inst_ei(&mut self) {
+        self.set_flag(FLAG_I, true);
+        self.cycles += 3;
+    }
+
+    /// DI — disable interrupts (clear FLAG_I). 3 cycles.
+    fn inst_di(&mut self) {
+        self.set_flag(FLAG_I, false);
+        self.cycles += 3;
+    }
+
+    /// DAA — decimal adjust A after BCD addition.
+    /// Adjusts A to a valid BCD value after ADC. Sets N, Z, and C. 3 cycles.
+    fn inst_daa(&mut self) {
+        let mut a = self.regs.a;
+        if self.get_flag(FLAG_C) || a > 0x99 {
+            a = a.wrapping_add(0x60);
+            self.set_flag(FLAG_C, true);
+        }
+        if self.get_flag(FLAG_H) || (a & 0x0F) > 0x09 {
+            a = a.wrapping_add(0x06);
+        }
+        self.regs.a = a;
+        self.set_zn_flags(self.regs.a);
+        self.cycles += 3;
+    }
+
+    /// DAS — decimal adjust A after BCD subtraction.
+    /// Adjusts A to a valid BCD value after SBC. Sets N, Z, and C. 3 cycles.
+    fn inst_das(&mut self) {
+        let mut a = self.regs.a;
+        if !self.get_flag(FLAG_C) || a > 0x99 {
+            a = a.wrapping_sub(0x60);
+            self.set_flag(FLAG_C, false);
+        }
+        if !self.get_flag(FLAG_H) || (a & 0x0F) > 0x09 {
+            a = a.wrapping_sub(0x06);
+        }
+        self.regs.a = a;
+        self.set_zn_flags(self.regs.a);
+        self.cycles += 3;
     }
 }
