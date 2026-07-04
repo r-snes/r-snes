@@ -215,7 +215,7 @@ mod tests {
         regs.PB = 0x12;
         regs.PC = 0x3456;
         regs.A = 0x44;
-        regs.P.E = true;
+        regs.E = true;
         regs.P.Z = true;
         regs.P.N = false;
         regs.P.V = false;
@@ -243,7 +243,7 @@ mod tests {
         regs.PB = 0x12;
         regs.PC = 0x3456;
         regs.A = 0x5588;
-        regs.P.E = false;
+        regs.E = false;
         regs.P.M = false;
         regs.P.Z = true;
         regs.P.N = true;
@@ -271,7 +271,7 @@ mod tests {
         regs.PB = 0x12;
         regs.PC = 0x3456;
         regs.A = 0x00ff;
-        regs.P.E = false;
+        regs.E = false;
         regs.P.M = false;
         regs.P.Z = false;
         regs.P.N = false;
@@ -296,7 +296,7 @@ mod tests {
         regs.PB = 0x12;
         regs.PC = 0x3456;
         regs.A = 0x00ff;
-        regs.P.E = false;
+        regs.E = false;
         regs.P.M = false;
         regs.P.Z = false;
         regs.P.N = false;
@@ -324,12 +324,12 @@ mod tests {
         let mut regs = Registers::default();
         regs.PB = 0x12;
         regs.PC = 0x3456;
-        regs.P.E = false;
+        regs.E = false;
         regs.P.M = false;
 
         regs.P.Z = true;
         regs.P.N = true;
-        regs.P.V = true;
+        regs.P.C = true;
 
         let mut expected_regs = regs.clone();
         let mut cpu = CPU::new(regs);
@@ -347,7 +347,8 @@ mod tests {
         expected_regs.PC = 0x3459;
         expected_regs.P.Z = false;
         expected_regs.P.N = false;
-        expected_regs.P.V = false;
+        expected_regs.P.C = false;
+        assert_eq!(*cpu.regs(), expected_regs);
     }
 
     #[test]
@@ -355,11 +356,11 @@ mod tests {
         let mut regs = Registers::default();
         regs.PB = 0x12;
         regs.PC = 0x3456;
-        regs.P.E = true;
+        regs.E = true;
 
         regs.P.Z = true;
         regs.P.N = true;
-        regs.P.V = true;
+        regs.P.C = true;
 
         let mut expected_regs = regs.clone();
         let mut cpu = CPU::new(regs);
@@ -375,7 +376,8 @@ mod tests {
         expected_regs.PC = 0x3459;
         expected_regs.P.Z = false;
         expected_regs.P.N = false;
-        expected_regs.P.V = false;
+        expected_regs.P.C = false;
+        assert_eq!(*cpu.regs(), expected_regs);
     }
 
     #[test]
@@ -383,13 +385,13 @@ mod tests {
         let mut regs = Registers::default();
         regs.PB = 0x12;
         regs.PC = 0x3456;
-        regs.P.E = true;
+        regs.E = true;
 
         regs.A = 0x0f;
 
         regs.P.Z = true;
         regs.P.N = true;
-        regs.P.V = true;
+        regs.P.C = true;
 
         let mut expected_regs = regs.clone();
         let mut cpu = CPU::new(regs);
@@ -402,6 +404,7 @@ mod tests {
         expected_regs.PC = 0x3457;
         expected_regs.P.Z = false;
         expected_regs.P.N = false;
-        expected_regs.P.V = false;
+        expected_regs.P.C = false;
+        assert_eq!(*cpu.regs(), expected_regs);
     }
 }

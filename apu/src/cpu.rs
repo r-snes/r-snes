@@ -819,7 +819,7 @@ impl Spc700 {
     }
 
     /// ASL !abs — arithmetic shift left on absolute address byte.
-    /// Bit 7 → C, 0 → bit 0. Sets N and Z from result. 6 cycles.
+    /// Bit 7 → C, 0 → bit 0. Sets N and Z from result. 5 cycles.
     fn inst_asl_abs(&mut self, mem: &mut Memory) {
         let addr = self.read_immediate16(mem);
         let val = mem.read8_mut(addr);
@@ -865,7 +865,7 @@ impl Spc700 {
     }
 
     /// LSR !abs — logical shift right on absolute address byte.
-    /// Bit 0 → C, 0 → bit 7. Sets N and Z from result. 6 cycles.
+    /// Bit 0 → C, 0 → bit 7. Sets N and Z from result. 5 cycles.
     fn inst_lsr_abs(&mut self, mem: &mut Memory) {
         let addr = self.read_immediate16(mem);
         let val = mem.read8_mut(addr);
@@ -914,7 +914,7 @@ impl Spc700 {
     }
 
     /// ROL !abs — rotate left through carry on absolute address byte.
-    /// Old C → bit 0, bit 7 → new C. Sets N and Z from result. 6 cycles.
+    /// Old C → bit 0, bit 7 → new C. Sets N and Z from result. 5 cycles.
     fn inst_rol_abs(&mut self, mem: &mut Memory) {
         let addr = self.read_immediate16(mem);
         let val = mem.read8_mut(addr);
@@ -964,7 +964,7 @@ impl Spc700 {
     }
 
     /// ROR !abs — rotate right through carry on absolute address byte.
-    /// Old C → bit 7, bit 0 → new C. Sets N and Z from result. 6 cycles.
+    /// Old C → bit 7, bit 0 → new C. Sets N and Z from result. 5 cycles.
     fn inst_ror_abs(&mut self, mem: &mut Memory) {
         let addr = self.read_immediate16(mem);
         let val = mem.read8_mut(addr);
