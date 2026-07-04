@@ -187,6 +187,8 @@ impl RSnesCore {
         self.master_cycles += 1;
     }
 
+    /// Checks if the CPU is about to execute the first cycle of an instruction,
+    /// and if so, also return the opcode that is about to be read by the CPU
     pub fn is_cpu_instr_start(&mut self) -> Option<u8> {
         if self.cpu_master_cycles_to_wait != 0 || !self.cpu.is_instr_start() {
             None

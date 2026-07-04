@@ -82,6 +82,8 @@ impl CPU {
         &self.addr_bus
     }
 
+    /// Checks if the next cycle that will be executed is the
+    /// first cycle of an instruction
     pub fn is_instr_start(&self) -> bool {
         std::ptr::fn_addr_eq(
             self.next_cycle.0,
