@@ -3,8 +3,8 @@ pub use product_order_derive::PartialOrd;
 
 use std::cmp::Ordering;
 
-/// Combine two [`std::cmp::Ordering`]s as per product order
-/// logic:
+/// Combine two [`std::cmp::Ordering`]s as per
+/// [product order](https://en.wikipedia.org/wiki/Product_order) logic:
 /// - only return Equal when both elements are Equal
 /// - return Less when we have only Less or Less and Equal
 /// - same as above Greater
