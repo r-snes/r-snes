@@ -1,3 +1,5 @@
+use crate::memory::RawARAM;
+
 use super::adsr::{Adsr, EnvelopePhase};
 use super::brr::{Brr, decode_brr_block, ram_read8};
 
@@ -41,7 +43,7 @@ impl Voice {
     /// offsets and the ENDX bitmask.
     /// `registers` is the DSP register file; ENVX, OUTX, and ENDX are
     /// written here so the CPU can read them back via `$F3`.
-    pub fn step(&mut self, i: usize, ram: &[u8], registers: &mut [u8; 128]) {
+    pub fn step(&mut self, i: usize, ram: &RawARAM, registers: &mut [u8; 128]) {
         // 1. Envelope update
         if self.adsr.envelope_phase != EnvelopePhase::Off {
             self.adsr.update_envelope();
@@ -110,7 +112,7 @@ impl Voice {
     /// - end=false             → advance address by 9 bytes
     ///
     /// Sets bit `i` of `registers[0x7C]` (ENDX) when an end block is reached.
-    fn decode_next_block(&mut self, i: usize, ram: &[u8], registers: &mut [u8; 128]) {
+    fn decode_next_block(&mut self, i: usize, ram: &RawARAM, registers: &mut [u8; 128]) {
         let (samples, end, do_loop) = decode_brr_block(
             ram,
             self.brr.addr,

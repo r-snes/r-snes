@@ -28,7 +28,7 @@ jobs:
         uses: actions/checkout@v5.0.0
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@1.91.0
+        uses: dtolnay/rust-toolchain@1.92.0
 
       - name: Install SDL2
         uses: libsdl-org/setup-sdl@main
@@ -57,7 +57,7 @@ jobs:
           key: ${{ runner.os }}-cargo-tarpaulin
 
       - name: Install rust
-        uses: dtolnay/rust-toolchain@1.91.0
+        uses: dtolnay/rust-toolchain@1.92.0
 
       - name: Install cargo-tarpaulin if not cached
         run: |

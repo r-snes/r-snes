@@ -89,9 +89,10 @@ fn test_f0_write_is_ignored() {
 }
 
 #[test]
-fn test_f0_read_returns_zero() {
+fn test_f0_read_returns_ff() {
+    // $F0 TEST is write-only on real hardware — reads return $FF
     let mem = Memory::new();
-    assert_eq!(mem.read8(0x00F0), 0);
+    assert_eq!(mem.read8(0x00F0), 0xFF);
 }
 
 // ============================================================
