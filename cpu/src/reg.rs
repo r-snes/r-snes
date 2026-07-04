@@ -176,22 +176,29 @@ impl AddBcd for u16 {
 impl SubBcd for u8 {
     fn sub_bcd(self, other: Self, carry_in: bool) -> (Self, bool, bool) {
         use std::num::Wrapping as W;
-        let op = W(other) + W(1);
-        let a = W(self) + W(carry_in as u8);
+        let op = !other;
+        let a = self;
 
-        let mut ret = a;
+        let mut ret: W<Self> = W(0);
 
-        if ret & W(0xF) < op & W(0xF) {
+        ret += W(a & 0xF) + W(op & 0xF) + W(carry_in as Self);
+        if ret.0 <= 0xF {
             ret -= 0x6;
+        } else {
         }
-        ret -= op & W(0xF);
 
-        let c = !(ret & W(0xF0) < op & W(0xF0));
-        let v = (!(self ^ !other) & (self ^ ret.0)).is_neg();
+        let ret = ret.0;
+        let (ret, c1) = ret.overflowing_add(a & 0xF0);
+        let (ret, c2) = ret.overflowing_add(op & 0xF0);
+        let c = c1 || c2;
+        let v = ((a ^ ret) & (op ^ ret)).is_neg();
+
+        let mut ret = W(ret);
+
         if !c {
             ret -= 0x60;
+        } else {
         }
-        ret -= op & W(0xF0);
 
         (ret.0, c, v)
     }
@@ -200,32 +207,37 @@ impl SubBcd for u8 {
 impl SubBcd for u16 {
     fn sub_bcd(self, other: Self, carry_in: bool) -> (Self, bool, bool) {
         use std::num::Wrapping as W;
-        let op = W(other) + W(1);
-        let a = W(self) + W(carry_in as u16);
+        let op = !other;
+        let a = self;
 
-        let mut ret = a;
+        let mut ret: W<Self> = W(0);
 
-        if ret & W(0xF) < op & W(0xF) {
+        ret += W(a & 0x000F) + W(op & 0x000F) + W(carry_in as Self);
+        if ret.0 <= 0x000F {
             ret -= 0x6;
         }
-        ret -= op & W(0xF);
 
-        if ret & W(0xF0) < op & W(0xF0) {
+        ret += W(a & 0x00F0) + W(op & 0x00F0);
+        if ret.0 <= 0x00FF {
             ret -= 0x60;
         }
-        ret -= op & W(0xF0);
 
-        if ret & W(0xF00) < op & W(0xF00) {
+        ret += W(a & 0x0F00) + W(op & 0x0F00);
+        if ret.0 <= 0x0FFF {
             ret -= 0x600;
         }
-        ret -= op & W(0xF00);
 
-        let c = !(ret & W(0xF000) < op & W(0xF000));
-        let v = ((self ^ ret.0) & (!other ^ ret.0)).is_neg();
+        let ret = ret.0;
+        let (ret, c1) = ret.overflowing_add(a & 0xF000);
+        let (ret, c2) = ret.overflowing_add(op & 0xF000);
+
+        let c = c1 || c2;
+        let v = ((a ^ ret) & (op ^ ret)).is_neg();
+
+        let mut ret = W(ret);
         if !c {
             ret -= 0x6000;
         }
-        ret -= op & W(0xF000);
 
         (ret.0, c, v)
     }
