@@ -293,6 +293,65 @@ impl Spc700 {
             0xB8 => self.inst_sbc_dp_imm(mem),
             0xB9 => self.inst_sbc_ix_iy(mem),
 
+            // SET1/CLR1 — bit set/clear, direct page, 8 positions each
+            0x02 => self.inst_set1(mem, 0),
+            0x12 => self.inst_clr1(mem, 0),
+            0x22 => self.inst_set1(mem, 1),
+            0x32 => self.inst_clr1(mem, 1),
+            0x42 => self.inst_set1(mem, 2),
+            0x52 => self.inst_clr1(mem, 2),
+            0x62 => self.inst_set1(mem, 3),
+            0x72 => self.inst_clr1(mem, 3),
+            0x82 => self.inst_set1(mem, 4),
+            0x92 => self.inst_clr1(mem, 4),
+            0xA2 => self.inst_set1(mem, 5),
+            0xB2 => self.inst_clr1(mem, 5),
+            0xC2 => self.inst_set1(mem, 6),
+            0xD2 => self.inst_clr1(mem, 6),
+            0xE2 => self.inst_set1(mem, 7),
+            0xF2 => self.inst_clr1(mem, 7),
+
+            // BBS/BBC — branch on bit set/clear, 8 positions each
+            0x03 => self.inst_bbs_bbc(mem, 0, true),  // BBS d.0
+            0x13 => self.inst_bbs_bbc(mem, 0, false), // BBC d.0
+            0x23 => self.inst_bbs_bbc(mem, 1, true),
+            0x33 => self.inst_bbs_bbc(mem, 1, false),
+            0x43 => self.inst_bbs_bbc(mem, 2, true),
+            0x53 => self.inst_bbs_bbc(mem, 2, false),
+            0x63 => self.inst_bbs_bbc(mem, 3, true),
+            0x73 => self.inst_bbs_bbc(mem, 3, false),
+            0x83 => self.inst_bbs_bbc(mem, 4, true),
+            0x93 => self.inst_bbs_bbc(mem, 4, false),
+            0xA3 => self.inst_bbs_bbc(mem, 5, true),
+            0xB3 => self.inst_bbs_bbc(mem, 5, false),
+            0xC3 => self.inst_bbs_bbc(mem, 6, true),
+            0xD3 => self.inst_bbs_bbc(mem, 6, false),
+            0xE3 => self.inst_bbs_bbc(mem, 7, true),
+            0xF3 => self.inst_bbs_bbc(mem, 7, false),
+
+            // Bit manipulation opcodes
+            0x0E => self.inst_tset1(mem),       // TSET1 !a
+            0x4E => self.inst_tclr1(mem),       // TCLR1 !a
+            0xAA => self.inst_mov1_c_mb(mem),   // MOV1 C,m.b
+            0xCA => self.inst_mov1_mb_c(mem),   // MOV1 m.b,C
+            0x0A => self.inst_or1_c_mb(mem),    // OR1 C,m.b
+            0x2A => self.inst_or1_c_not_mb(mem),// OR1 C,/m.b
+            0x4A => self.inst_and1_c_mb(mem),   // AND1 C,m.b
+            0x6A => self.inst_and1_c_not_mb(mem), // AND1 C,/m.b
+            0x8A => self.inst_eor1_c_mb(mem),   // EOR1 C,m.b
+            0xEA => self.inst_not1_mb(mem),     // NOT1 m.b
+
+            // Jumps and interrupts
+            0x5F => self.inst_jmp_abs(mem),        // JMP !a
+            0x1F => self.inst_jmp_abs_x_ind(mem),  // JMP [!a+X]
+            0x7F => self.inst_reti(mem),           // RETI
+            0x2E => self.inst_cbne_dp(mem),        // CBNE dp,rel
+            0xDE => self.inst_cbne_dp_x(mem),      // CBNE dp+X,rel
+            0x6E => self.inst_dbnz_dp(mem),        // DBNZ dp,rel
+            0xFE => self.inst_dbnz_y(mem),         // DBNZ Y,rel
+            0x0F => self.inst_brk(mem),            // BRK
+
+            0x9F => self.inst_xcn_a(), // XCN A
             // Catch-all
             _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
         }
@@ -2193,6 +2252,248 @@ impl Spc700 {
         let (addr, dst, src) = self.read_ix_iy(mem);
         let result = self.sbc_flags(dst, src);
         mem.write8(addr, result);
+        self.cycles += 5;
+    }
+
+    /// SET1 d.bit — set the given bit (0-7) at a direct page address.
+    /// No flags affected. 4 cycles.
+    fn inst_set1(&mut self, mem: &mut Memory, bit: u8) {
+        let addr = self.dp_base() | self.read_immediate(mem) as u16;
+        let val = mem.read8_mut(addr) | (1 << bit);
+        mem.write8(addr, val);
+        self.cycles += 4;
+    }
+
+    /// CLR1 d.bit — clear the given bit (0-7) at a direct page address.
+    /// No flags affected. 4 cycles.
+    fn inst_clr1(&mut self, mem: &mut Memory, bit: u8) {
+        let addr = self.dp_base() | self.read_immediate(mem) as u16;
+        let val = mem.read8_mut(addr) & !(1 << bit);
+        mem.write8(addr, val);
+        self.cycles += 4;
+    }
+
+    /// Shared BBS/BBC handler — reads the dp offset and signed branch
+    /// displacement, tests the given bit, and branches if the bit's
+    /// state matches `branch_if_set` (true for BBS, false for BBC).
+    /// 5 cycles if not taken, 7 if taken.
+    fn inst_bbs_bbc(&mut self, mem: &mut Memory, bit: u8, branch_if_set: bool) {
+        let addr = self.dp_base() | self.read_immediate(mem) as u16;
+        let value = mem.read8_mut(addr);
+        let offset = self.read_immediate(mem) as i8;
+        let bit_is_set = (value & (1 << bit)) != 0;
+
+        self.cycles += 5;
+        if bit_is_set == branch_if_set {
+            self.regs.pc = self.regs.pc.wrapping_add(offset as i16 as u16);
+            self.cycles += 2;
+        }
+    }
+
+    /// Decode the `m.bit` operand used by MOV1/AND1/OR1/EOR1/NOT1: a 16-bit
+    /// immediate packs a 13-bit absolute address (low bits) and a 3-bit bit
+    /// position (high bits).
+    fn read_mem_bit(&mut self, mem: &mut Memory) -> (u16, u8) {
+        let packed = self.read_immediate16(mem);
+        let addr = packed & 0x1FFF;
+        let bit = ((packed >> 13) & 0x07) as u8;
+        (addr, bit)
+    }
+
+    /// TSET1 !a — test (A - mem) for N/Z (like a CMP), then OR A's bits
+    /// into mem. 6 cycles.
+    fn inst_tset1(&mut self, mem: &mut Memory) {
+        let addr = self.read_immediate16(mem);
+        let data = mem.read8_mut(addr);
+        let diff = self.regs.a.wrapping_sub(data);
+        self.set_flag(FLAG_N, (diff & 0x80) != 0);
+        self.set_flag(FLAG_Z, diff == 0);
+        mem.write8(addr, data | self.regs.a);
+        self.cycles += 6;
+    }
+
+    /// TCLR1 !a — test (A - mem) for N/Z, then clear A's bits in mem.
+    /// 6 cycles.
+    fn inst_tclr1(&mut self, mem: &mut Memory) {
+        let addr = self.read_immediate16(mem);
+        let data = mem.read8_mut(addr);
+        let diff = self.regs.a.wrapping_sub(data);
+        self.set_flag(FLAG_N, (diff & 0x80) != 0);
+        self.set_flag(FLAG_Z, diff == 0);
+        mem.write8(addr, data & !self.regs.a);
+        self.cycles += 6;
+    }
+
+    /// MOV1 C,m.b — copy a memory bit into carry. No other flags affected.
+    /// 4 cycles.
+    fn inst_mov1_c_mb(&mut self, mem: &mut Memory) {
+        let (addr, bit) = self.read_mem_bit(mem);
+        let value = mem.read8_mut(addr);
+        self.set_flag(FLAG_C, (value & (1 << bit)) != 0);
+        self.cycles += 4;
+    }
+
+    /// MOV1 m.b,C — copy carry into a memory bit. No flags affected.
+    /// 6 cycles.
+    fn inst_mov1_mb_c(&mut self, mem: &mut Memory) {
+        let (addr, bit) = self.read_mem_bit(mem);
+        let mut value = mem.read8_mut(addr);
+        if self.get_flag(FLAG_C) {
+            value |= 1 << bit;
+        } else {
+            value &= !(1 << bit);
+        }
+        mem.write8(addr, value);
+        self.cycles += 6;
+    }
+
+    /// OR1 C,m.b — C = C OR bit(m.b). 5 cycles.
+    fn inst_or1_c_mb(&mut self, mem: &mut Memory) {
+        let (addr, bit) = self.read_mem_bit(mem);
+        let bit_set = (mem.read8_mut(addr) & (1 << bit)) != 0;
+        self.set_flag(FLAG_C, self.get_flag(FLAG_C) || bit_set);
+        self.cycles += 5;
+    }
+
+    /// OR1 C,/m.b — C = C OR NOT bit(m.b). 5 cycles.
+    fn inst_or1_c_not_mb(&mut self, mem: &mut Memory) {
+        let (addr, bit) = self.read_mem_bit(mem);
+        let bit_set = (mem.read8_mut(addr) & (1 << bit)) != 0;
+        self.set_flag(FLAG_C, self.get_flag(FLAG_C) || !bit_set);
+        self.cycles += 5;
+    }
+
+    /// AND1 C,m.b — C = C AND bit(m.b). 4 cycles.
+    fn inst_and1_c_mb(&mut self, mem: &mut Memory) {
+        let (addr, bit) = self.read_mem_bit(mem);
+        let bit_set = (mem.read8_mut(addr) & (1 << bit)) != 0;
+        self.set_flag(FLAG_C, self.get_flag(FLAG_C) && bit_set);
+        self.cycles += 4;
+    }
+
+    /// AND1 C,/m.b — C = C AND NOT bit(m.b). 4 cycles.
+    fn inst_and1_c_not_mb(&mut self, mem: &mut Memory) {
+        let (addr, bit) = self.read_mem_bit(mem);
+        let bit_set = (mem.read8_mut(addr) & (1 << bit)) != 0;
+        self.set_flag(FLAG_C, self.get_flag(FLAG_C) && !bit_set);
+        self.cycles += 4;
+    }
+
+    /// EOR1 C,m.b — C = C XOR bit(m.b). 5 cycles.
+    fn inst_eor1_c_mb(&mut self, mem: &mut Memory) {
+        let (addr, bit) = self.read_mem_bit(mem);
+        let bit_set = (mem.read8_mut(addr) & (1 << bit)) != 0;
+        self.set_flag(FLAG_C, self.get_flag(FLAG_C) ^ bit_set);
+        self.cycles += 5;
+    }
+
+    /// NOT1 m.b — invert the given bit directly in memory. No flags affected.
+    /// 5 cycles.
+    fn inst_not1_mb(&mut self, mem: &mut Memory) {
+        let (addr, bit) = self.read_mem_bit(mem);
+        let value = mem.read8_mut(addr) ^ (1 << bit);
+        mem.write8(addr, value);
+        self.cycles += 5;
+    }
+
+    /// JMP !a — absolute jump. 3 cycles.
+    fn inst_jmp_abs(&mut self, mem: &mut Memory) {
+        self.regs.pc = self.read_immediate16(mem);
+        self.cycles += 3;
+    }
+
+    /// JMP [!a+X] — jump through a 16-bit pointer stored at !a+X. 6 cycles.
+    fn inst_jmp_abs_x_ind(&mut self, mem: &mut Memory) {
+        let base = self.read_immediate16(mem);
+        let ptr_addr = base.wrapping_add(self.regs.x as u16);
+        let lo = mem.read8_mut(ptr_addr) as u16;
+        let hi = mem.read8_mut(ptr_addr.wrapping_add(1)) as u16;
+        self.regs.pc = (hi << 8) | lo;
+        self.cycles += 6;
+    }
+
+    /// RETI — return from interrupt: pop PSW, then pop PC.
+    /// ASSUMES CALL pushes PCH then PCL (so this pops PCL then PCH) —
+    /// verify this matches the existing RET/CALL convention. 6 cycles.
+    fn inst_reti(&mut self, mem: &mut Memory) {
+        self.regs.psw = self.stack_pop(mem);
+        let lo = self.stack_pop(mem) as u16;
+        let hi = self.stack_pop(mem) as u16;
+        self.regs.pc = (hi << 8) | lo;
+        self.cycles += 6;
+    }
+
+    /// CBNE dp,rel — compare A with dp, branch if not equal. No flags
+    /// affected, no write-back. 5 cycles not taken, 7 taken.
+    fn inst_cbne_dp(&mut self, mem: &mut Memory) {
+        let addr = self.dp_base() | self.read_immediate(mem) as u16;
+        let value = mem.read8_mut(addr);
+        let offset = self.read_immediate(mem) as i8;
+        self.cycles += 5;
+        if self.regs.a != value {
+            self.regs.pc = self.regs.pc.wrapping_add(offset as i16 as u16);
+            self.cycles += 2;
+        }
+    }
+
+    /// CBNE dp+X,rel — compare A with dp+X, branch if not equal.
+    /// 6 cycles not taken, 8 taken.
+    fn inst_cbne_dp_x(&mut self, mem: &mut Memory) {
+        let offset_dp = self.read_immediate(mem) as u16;
+        let addr = self.dp_base() | (offset_dp + self.regs.x as u16) & 0xFF;
+        let value = mem.read8_mut(addr);
+        let offset = self.read_immediate(mem) as i8;
+        self.cycles += 6;
+        if self.regs.a != value {
+            self.regs.pc = self.regs.pc.wrapping_add(offset as i16 as u16);
+            self.cycles += 2;
+        }
+    }
+
+    /// DBNZ dp,rel — decrement dp byte, branch if result != 0.
+    /// No flags affected. 6 cycles not taken, 8 taken.
+    fn inst_dbnz_dp(&mut self, mem: &mut Memory) {
+        let addr = self.dp_base() | self.read_immediate(mem) as u16;
+        let value = mem.read8_mut(addr).wrapping_sub(1);
+        mem.write8(addr, value);
+        let offset = self.read_immediate(mem) as i8;
+        self.cycles += 6;
+        if value != 0 {
+            self.regs.pc = self.regs.pc.wrapping_add(offset as i16 as u16);
+            self.cycles += 2;
+        }
+    }
+
+    /// DBNZ Y,rel — decrement Y, branch if result != 0. No flags affected.
+    /// 4 cycles not taken, 6 taken.
+    fn inst_dbnz_y(&mut self, mem: &mut Memory) {
+        self.regs.y = self.regs.y.wrapping_sub(1);
+        let offset = self.read_immediate(mem) as i8;
+        self.cycles += 4;
+        if self.regs.y != 0 {
+            self.regs.pc = self.regs.pc.wrapping_add(offset as i16 as u16);
+            self.cycles += 2;
+        }
+    }
+
+    /// BRK — software break: push PC then PSW, set I and B, jump via the
+    /// vector at $FFDE (same vector slot as TCALL 0). 8 cycles.
+    fn inst_brk(&mut self, mem: &mut Memory) {
+        let pc = self.regs.pc;
+        self.stack_push(mem, (pc >> 8) as u8);
+        self.stack_push(mem, pc as u8);
+        self.stack_push(mem, self.regs.psw);
+        self.set_flag(FLAG_B, true);
+        self.set_flag(FLAG_I, true);
+        self.regs.pc = mem.read16(0xFFDE);
+        self.cycles += 8;
+    }
+
+    /// XCN A — exchange the high and low nibbles of A.
+    /// Sets N and Z from the result. 5 cycles.
+    fn inst_xcn_a(&mut self) {
+        self.regs.a = (self.regs.a >> 4) | (self.regs.a << 4);
+        self.set_zn_flags(self.regs.a);
         self.cycles += 5;
     }
 }
