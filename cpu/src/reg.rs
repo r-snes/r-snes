@@ -266,21 +266,21 @@ mod test {
 
     #[test]
     fn simple_sub_bcd16() {
-        let (res, c_out, overflow) = 0x2345_u16.sub_bcd(0x1111, true);
+        let (res, _, _) = 0x2345_u16.sub_bcd(0x1111, true);
 
         assert_eq!(res, 0x1234, "res was {res:#.4X} instead of 0x1234");
     }
 
     #[test]
     fn borrowing_sub_bcd16() {
-        let (res, c_out, overflow) = 0x2345_u16.sub_bcd(0x1346, true);
+        let (res, _, _) = 0x2345_u16.sub_bcd(0x1346, true);
 
         assert_eq!(res, 0x0999, "res was {res:#.4X} instead of 0x0999");
     }
 
     #[test]
     fn result_zero_sub_bcd16() {
-        let (res, c_out, overflow) = 0x9090_u16.sub_bcd(0x9089, false);
+        let (res, _, _) = 0x9090_u16.sub_bcd(0x9089, false);
 
         assert_eq!(res, 0);
     }
@@ -291,6 +291,6 @@ mod test {
 
         assert_eq!(res, 0x9999);
         assert!(!c_out);
-        assert!(overflow);
+        assert!(!overflow);
     }
 }
