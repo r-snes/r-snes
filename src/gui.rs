@@ -6,11 +6,13 @@ use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 
 use ppu::constants::{SCREEN_HEIGHT, SCREEN_WIDTH};
+use sdl2::render::Texture;
 
 pub struct Gui {
     _sdl_ctx: sdl2::Sdl,
     egui_canvas: EguiCanvas,
     event_pump: sdl2::EventPump,
+    framebuffer_texture: Option<Texture>,
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -56,6 +58,7 @@ impl Gui {
             _sdl_ctx: sdl_ctx,
             egui_canvas,
             event_pump,
+            framebuffer_texture: None,
         })
     }
 
@@ -147,22 +150,24 @@ impl Gui {
     ) -> Result<(), String> {
         use sdl2::pixels::PixelFormatEnum;
 
-        let canvas = &mut self.egui_canvas.painter.canvas;
-        let texture_creator = canvas.texture_creator();
+        if self.framebuffer_texture.is_none() {
+            let texture_creator = self.egui_canvas.painter.canvas.texture_creator();
+            let texture = texture_creator
+                .create_texture_streaming(
+                    PixelFormatEnum::RGB24,
+                    SCREEN_WIDTH as u32,
+                    SCREEN_HEIGHT as u32,
+                )
+                .map_err(|e| e.to_string())?;
+            self.framebuffer_texture = Some(texture);
+        }
 
-        let mut texture = texture_creator
-            .create_texture_streaming(
-                PixelFormatEnum::RGB24,
-                SCREEN_WIDTH as u32,
-                SCREEN_HEIGHT as u32,
-            )
-            .map_err(|e| e.to_string())?;
-
+        let texture = self.framebuffer_texture.as_mut().unwrap();
         texture
             .update(None, framebuffer, SCREEN_WIDTH * 3)
             .map_err(|e| e.to_string())?;
 
-        canvas.copy(&texture, None, None)?;
+        self.egui_canvas.painter.canvas.copy(texture, None, None)?;
 
         Ok(())
     }
