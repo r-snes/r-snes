@@ -257,8 +257,11 @@ fn gui_loop(
 #[cfg_attr(feature = "cli", command(about, long_about = None))]
 #[derive(Default)]
 struct Cli {
+    /// A SNES ROM to load at startup
     pub rom: Option<PathBuf>,
 
+    /// A plugin to load at startup, **without any confirmation
+    /// for requested permissions**
     #[cfg(feature = "plugins")]
     #[arg(long, value_name = "PLUGIN.lua")]
     pub load_plugin_noconfirm: Option<PathBuf>,
