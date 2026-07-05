@@ -228,6 +228,8 @@ fn test1_sine() {
 
     // DIR register
     dsp_global_write(&mut mem, 0x5D, dir_page);
+    dsp_global_write(&mut mem, 0x0C, 127); // MVOLL — master left  volume
+    dsp_global_write(&mut mem, 0x1C, 127); // MVOLR — master right volume
 
     // Voice 0: SRCN=0, pitch=0x1000 (native rate), full volume both channels
     dsp_voice_write(&mut mem, 0, 0x4, 0);           // SRCN
@@ -279,6 +281,8 @@ fn test2_8voices() {
 
     let dir_page: u8 = 0x01;
     dsp_global_write(&mut mem, 0x5D, dir_page);
+    dsp_global_write(&mut mem, 0x0C, 127); // MVOLL — master left  volume
+    dsp_global_write(&mut mem, 0x1C, 127); // MVOLR — master right volume
 
     // One looping square wave sample shared by all voices (SRCN 0).
     let brr_start: u16 = 0x0200;
@@ -343,6 +347,8 @@ fn test3_adsr() {
 
     let dir_page: u8 = 0x01;
     dsp_global_write(&mut mem, 0x5D, dir_page);
+    dsp_global_write(&mut mem, 0x0C, 127); // MVOLL — master left  volume
+    dsp_global_write(&mut mem, 0x1C, 127); // MVOLR — master right volume
 
     // One long looping sine wave sample
     let brr_start: u16 = 0x0200;
@@ -411,36 +417,54 @@ fn test4_loop() {
 
     let dir_page: u8 = 0x01;
     dsp_global_write(&mut mem, 0x5D, dir_page);
+    dsp_global_write(&mut mem, 0x0C, 127); // MVOLL — master left  volume
+    dsp_global_write(&mut mem, 0x1C, 127); // MVOLR — master right volume
 
-    // Sample: 3 blocks.
-    //   Block 0: silence (will pass through once)
-    //   Block 1: tone    (will pass through once)
-    //   Block 2: tone with end+loop → loops back to block 1
-    let brr_start: u16 = 0x0200;
-    let loop_point: u16 = brr_start + 9; // block 1
+    // Sample layout:
+    //   Blocks 0–999  : 1000 blocks of silence ≈ 0.5s — plays once at start
+    //   Blocks 1000–1999: 1000 blocks of tone   ≈ 0.5s — loops forever
+    //
+    // At 32kHz, 16 samples/block → 1000 blocks = 16000 samples = 0.5s
+    // You should hear: silence → beep → silence → beep → silence → beep
 
-    let silence = encode_brr_block(&[0i16; 16], false, false);
-    write_brr_block(&mut mem, brr_start, &silence);
+    let brr_start:     u16 = 0x0200;
+    let silence_count: u16 = 1000;
+    let tone_count:    u16 = 1000;
 
+    // Write silence blocks (intro, played only once)
+    for i in 0..silence_count {
+        let block = encode_brr_block(&[0i16; 16], false, false);
+        write_brr_block(&mut mem, brr_start + i * 9, &block);
+    }
+
+    // Loop point: first tone block
+    let loop_point = brr_start + silence_count * 9;
+
+    // 440 Hz sine wave
     let tone: [i16; 16] = std::array::from_fn(|i| {
-        ((i as f32 / 16.0 * std::f32::consts::TAU).sin() * 12000.0) as i16
+        ((i as f32 / 16.0 * std::f32::consts::TAU).sin() * 14000.0) as i16
     });
-    let block1 = encode_brr_block(&tone, false, false);
-    write_brr_block(&mut mem, brr_start + 9, &block1);
 
-    let block2 = encode_brr_block(&tone, true, true); // end + loop
-    write_brr_block(&mut mem, brr_start + 18, &block2);
+    // Write tone blocks — last one has end+loop back to first tone block
+    for i in 0..tone_count {
+        let is_last = i == tone_count - 1;
+        let block = encode_brr_block(&tone, is_last, is_last);
+        write_brr_block(&mut mem, loop_point + i * 9, &block);
+    }
 
+    // Directory: start = brr_start (silence intro), loop = loop_point (tone start)
     write_dir_entry(&mut mem, dir_page, 0, brr_start, loop_point);
 
     dsp_voice_write(&mut mem, 0, 0x4, 0);
     set_pitch(&mut mem, 0, 0x1000);
     dsp_voice_write(&mut mem, 0, 0x0, 100i8 as u8);
     dsp_voice_write(&mut mem, 0, 0x1, 100i8 as u8);
+    // Fast attack, hold sustain — so envelope stays up while looping
     set_adsr(&mut mem, 0, 0x8F, 0xE0);
     key_on(&mut mem, 0x01);
 
-    let num_samples = SAMPLE_RATE * 3;
+    // Run for 6 seconds — should hear: silence(0.5s) → beep(0.5s) → beep(0.5s) × 10
+    let num_samples = SAMPLE_RATE * 6;
     let mut out = Vec::with_capacity(num_samples as usize);
 
     for i in 0..num_samples {
@@ -448,7 +472,6 @@ fn test4_loop() {
         let (l, _r) = mem.dsp.render_audio_single();
         out.push(l);
 
-        // Voice should never go Off if looping works correctly
         if mem.dsp.voices[0].adsr.envelope_phase == EnvelopePhase::Off {
             println!("  ✗ Voice unexpectedly went silent at sample {i}");
             break;
@@ -459,6 +482,9 @@ fn test4_loop() {
     if !went_silent {
         println!("  ✓ Voice still active after {} samples — loop is working", num_samples);
     }
+
+    let non_zero = out.iter().filter(|&&s| s != 0).count();
+    println!("  Non-zero samples: {non_zero}/{}", out.len());
 
     save_mono("test4_loop.raw", &out);
     println!("  Written test4_loop.raw");
@@ -475,6 +501,8 @@ fn test5_stereo() {
 
     let dir_page: u8 = 0x01;
     dsp_global_write(&mut mem, 0x5D, dir_page);
+    dsp_global_write(&mut mem, 0x0C, 127); // MVOLL — master left  volume
+    dsp_global_write(&mut mem, 0x1C, 127); // MVOLR — master right volume
 
     // Two different tones so you can tell them apart
     let brr_lo: u16 = 0x0200; // 220 Hz (A3) — left channel
