@@ -29,20 +29,34 @@ pub fn cmp<T: Reg>(a: &mut T, idb: T, p: &mut RegisterP) {
 }
 
 pub fn adc<T: Reg>(a: &mut T, idb: T, p: &mut RegisterP) {
-    if p.D {
-        eprintln!("decimal mode is not supported yet");
-    } else {
+    if !p.D {
         let (res, carry_out) = a.carrying_add(idb, p.C);
 
         p.C = carry_out;
         p.V = ((*a ^ res) & (idb ^ res)).is_neg();
         *a = res;
         set_nz(*a, p);
+    } else {
+        let (res, carry_out, overflow) = a.add_bcd(idb, p.C);
+
+        p.C = carry_out;
+        p.V = overflow;
+        *a = res;
+        set_nz(*a, p);
     }
 }
 
 pub fn sbc<T: Reg>(a: &mut T, idb: T, p: &mut RegisterP) {
-    adc(a, !idb, p)
+    if !p.D {
+        adc(a, !idb, p)
+    } else {
+        let (res, carry_out, overflow) = a.sub_bcd(idb, p.C);
+
+        p.C = carry_out;
+        p.V = overflow;
+        *a = res;
+        set_nz(*a, p);
+    }
 }
 
 pub fn bit<T: Reg>(a: &mut T, idb: T, p: &mut RegisterP) {
