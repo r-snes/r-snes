@@ -30,7 +30,7 @@ duplicate! {
 
         // idle if the branch is taken across a page boundary (cpu doc note 6)
         meta IDLE_IF DUP_flag
-            && cpu.registers.P.E
+            && cpu.registers.E
             && *cpu.internal_data_bus.hi() != *cpu.registers.PC.hi();
     });
 }
@@ -125,7 +125,7 @@ mod test {
             regs.PC = 0x3456;
 
             DUP1_flag = DUP1_set; // case where we do jump
-            regs.P.E = DUP2_emu;
+            regs.E = DUP2_emu;
 
             let mut expected_regs = regs.clone();
             let mut cpu = CPU::new(regs);
