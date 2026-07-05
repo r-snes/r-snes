@@ -2002,10 +2002,10 @@ impl Spc700 {
     }
 
     fn inst_adc_a_dp(&mut self, mem: &mut Memory) {
-    let addr = self.dp_base() | self.read_immediate(mem) as u16;
-    let val = mem.read8_mut(addr);
-    self.regs.a = self.adc_flags(self.regs.a, val);
-    self.cycles += 3;
+        let addr = self.dp_base() | self.read_immediate(mem) as u16;
+        let val = mem.read8_mut(addr);
+        self.regs.a = self.adc_flags(self.regs.a, val);
+        self.cycles += 3;
     }
 
     fn inst_adc_a_abs(&mut self, mem: &mut Memory) {
