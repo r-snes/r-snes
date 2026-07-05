@@ -1,14 +1,27 @@
+#[cfg(feature = "plugins")]
+mod rsnes_plugin;
+
+#[cfg(feature = "plugins")]
+use plugins::plugin::Plugin;
+use std::ops::DerefMut;
+#[cfg(feature = "plugins")]
+use std::{cell::RefCell, rc::Rc};
+
 use apu::Apu;
 use bus::Bus;
 use common::snes_address::SnesAddress;
 use cpu::cpu::CPU;
 use cpu::cpu::CycleResult;
+
 use ppu::ppu::PPU;
 use std::error::Error;
 use std::path::Path;
 use std::path::PathBuf;
 
-pub struct RSnes {
+/// R-SNES core: struct containing all the emulated hardware components,
+/// without anything else: no GUI handles, no additional resources for
+/// plugin execution; just the hardware components.
+pub struct RSnesCore {
     pub _rom_path: PathBuf,
     pub bus: Bus,
     pub cpu: CPU,
@@ -19,7 +32,20 @@ pub struct RSnes {
     pub cpu_master_cycles_to_wait: u32,
 }
 
-impl RSnes {
+/// R-SNES core + optionally lua runtime for plugin execution (in
+/// case the feature is enabled)
+pub struct RSnesEmu {
+    #[cfg(not(feature = "plugins"))]
+    core: RSnesCore,
+
+    #[cfg(feature = "plugins")]
+    core: Rc<RefCell<RSnesCore>>,
+
+    #[cfg(feature = "plugins")]
+    plugin: Option<Plugin>,
+}
+
+impl RSnesCore {
     pub const MASTER_CLOCK_HZ: u64 = 21_477_300;
     pub const MASTER_CYCLE_DURATION: f64 = 1.0 / Self::MASTER_CLOCK_HZ as f64;
 
@@ -160,6 +186,80 @@ impl RSnes {
 
         self.master_cycles += 1;
     }
+
+    /// Checks if the CPU is about to execute the first cycle of an instruction,
+    /// and if so, also return the opcode that is about to be read by the CPU
+    pub fn is_cpu_instr_start(&mut self) -> Option<u8> {
+        if self.cpu_master_cycles_to_wait != 0 || !self.cpu.is_instr_start() {
+            None
+        } else {
+            let opcode = self
+                .bus
+                .read(*self.cpu.addr_bus(), &mut self.ppu, &mut self.apu);
+            Some(opcode)
+        }
+    }
+}
+
+impl RSnesEmu {
+    pub fn new(core: RSnesCore) -> Self {
+        cfg_select! {
+            feature = "plugins" => Self {
+                core: Rc::new(RefCell::new(core)),
+                plugin: None,
+            },
+            _ => Self { core },
+        }
+    }
+
+    #[cfg(feature = "plugins")]
+    pub fn new_with_plugin(
+        core: RSnesCore,
+        mut plugin: Option<Plugin>,
+    ) -> Result<Self, piccolo::ExternError> {
+        let rc = Rc::new(RefCell::new(core));
+
+        if let Some(plugin) = &mut plugin {
+            RSnesCore::inject_into_lua(&rc, plugin);
+            plugin.run_init()?;
+        }
+        Ok(Self { core: rc, plugin })
+    }
+
+    pub fn core_mut(&mut self) -> impl DerefMut<Target = RSnesCore> {
+        #[cfg(feature = "plugins")]
+        return self.core.borrow_mut();
+
+        #[cfg(not(feature = "plugins"))]
+        return &mut self.core;
+    }
+
+    #[cfg(feature = "plugins")]
+    pub fn plugin_mut(&mut self) -> Option<&mut Plugin> {
+        self.plugin.as_mut()
+    }
+
+    #[cfg(not(feature = "plugins"))]
+    pub fn update(&mut self) {
+        self.core.update();
+    }
+
+    #[cfg(feature = "plugins")]
+    pub fn update(&mut self) -> Result<(), piccolo::ExternError> {
+        let mut rsnes_mut = self.core.borrow_mut();
+
+        rsnes_mut.update();
+
+        if let Some(plugin) = self.plugin.as_mut() {
+            if let Some(opcode) = rsnes_mut.is_cpu_instr_start() {
+                let addr = *rsnes_mut.cpu.addr_bus();
+                drop(rsnes_mut);
+                return plugin.run_on_instr(opcode, addr);
+            }
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -168,14 +268,14 @@ mod tests {
     use bus::rom::test_rom::*;
     use common::snes_addr;
 
-    fn make_rsnes() -> RSnes {
+    fn make_rsnes() -> RSnesCore {
         let rom_data = create_valid_lorom(0x20000);
         let (rom_path, _dir) = create_temp_rom(&rom_data);
-        RSnes::load_rom(&rom_path).unwrap()
+        RSnesCore::load_rom(&rom_path).unwrap()
     }
 
     fn set_dma_channel(
-        rsnes: &mut RSnes,
+        rsnes: &mut RSnesCore,
         channel: usize,
         dmap: u8,
         src_bank: u8,

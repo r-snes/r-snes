@@ -54,13 +54,13 @@ impl ToTokens for PermTreeNodeDerive {
                 // `<root> = { internal = { ... }, external = { ... } }
                 (piccolo::Value::String(s), _) if s.as_bytes() == #bytestring => {
                     // recurse in the named field's `from_lua` implementation
-                    ret.#ident = <#typ>::from_lua(ctx, val)?;
+                    ret.#ident = <#typ as PermTreeNode>::from_lua(ctx, val)?;
                 }
 
                 // match arms for indexed fields (implicit = "all"):
                 // `<root> = { "internal", "external" }
                 (_, piccolo::Value::String(s)) if s.as_bytes() == #bytestring => {
-                    ret.#ident = <#typ>::all();
+                    ret.#ident = <#typ as Permission>::all();
                 }
             }
         });

@@ -3,9 +3,7 @@ use std::cmp::Ordering;
 use std::cmp::Ordering::*;
 use std::f32::NAN;
 
-use strict_partial_ord_derive as strict;
-
-#[derive(Debug, PartialEq, strict::PartialOrd)]
+#[derive(Debug, PartialEq, product_order_derive::PartialOrd)]
 struct Point3 {
     x: f32,
     y: f32,
@@ -45,4 +43,9 @@ fn not_comparable() {
     p3_pcmp_test((0., 0., 0.), (-1., 0., 1.), None);
     p3_pcmp_test((-1., 0., 1.), (0., 0., 0.), None);
     p3_pcmp_test((0., 0., 0.), (0., NAN, 0.), None);
+}
+
+#[test]
+fn less_eq_less() {
+    p3_pcmp_test((0., 0., 0.), (1., 0., 1.), Some(Less));
 }

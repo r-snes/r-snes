@@ -1,14 +1,10 @@
 use {
     proc_macro::TokenStream,
-    quote::{
-        ToTokens,
-        format_ident,
-        quote,
-    },
+    quote::{ToTokens, format_ident, quote},
     syn::{
         ItemStruct,
         parse::{self, Parse, ParseStream},
-    }
+    },
 };
 
 /// Custom derive macro which implements [`std::cmp::PartialOrd`]
@@ -48,7 +44,7 @@ fn derive_partial_ord(input: proc_macro2::TokenStream) -> proc_macro2::TokenStre
     // Parse the annotated item.
     let ast: StrictPartialOrd = match syn::parse2(input) {
         Ok(parsed) => parsed,
-        Err(e) => return e.into_compile_error()
+        Err(e) => return e.into_compile_error(),
     };
 
     // Return the macro's expanded form (the main logic is in `Pod::to_tokens`).
@@ -63,7 +59,9 @@ struct StrictPartialOrd {
 
 impl Parse for StrictPartialOrd {
     fn parse(input: ParseStream) -> parse::Result<Self> {
-        Ok(Self { item: input.call(ItemStruct::parse)? })
+        Ok(Self {
+            item: input.call(ItemStruct::parse)?,
+        })
     }
 }
 
@@ -74,15 +72,12 @@ impl ToTokens for StrictPartialOrd {
         let (impl_generics, ty_generics, where_clause) = self.item.generics.split_for_impl();
 
         let acc_varname = format_ident!("{}", "acc");
-        let members_match_blocks = members.map(|member| {
+        let member_wise_comparisons = members.map(|member| {
             quote! {
-                let member_ord = self.#member.partial_cmp(&other.#member)?;
-                match (#acc_varname, member_ord) {
-                    (std::cmp::Ordering::Equal, x) => #acc_varname = x,
-                    (std::cmp::Ordering::Less, std::cmp::Ordering::Less) => (),
-                    (std::cmp::Ordering::Greater, std::cmp::Ordering::Greater) => (),
-                    _ => return None,
-                };
+                #acc_varname = ::product_order::combine_ordering(
+                    #acc_varname,
+                    self.#member.partial_cmp(&other.#member)?
+                )?;
             }
         });
 
@@ -91,7 +86,7 @@ impl ToTokens for StrictPartialOrd {
                 fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
                     let mut #acc_varname = std::cmp::Ordering::Equal;
 
-                    #(#members_match_blocks)*
+                    #(#member_wise_comparisons)*
 
                     Some(#acc_varname)
                 }
@@ -102,8 +97,8 @@ impl ToTokens for StrictPartialOrd {
 
 #[cfg(test)]
 mod tests {
-    use runtime_macros::emulate_derive_macro_expansion;
     use super::derive_partial_ord;
+    use runtime_macros::emulate_derive_macro_expansion;
     use std::{env, fs};
 
     #[test]
@@ -114,6 +109,10 @@ mod tests {
         path.push("tests");
         path.push("lib.rs");
         let file = fs::File::open(path).unwrap();
-        emulate_derive_macro_expansion(file, &[("strict::PartialOrd", derive_partial_ord)]).unwrap();
+        emulate_derive_macro_expansion(
+            file,
+            &[("product_order_derive::PartialOrd", derive_partial_ord)],
+        )
+        .unwrap();
     }
 }

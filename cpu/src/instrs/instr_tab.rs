@@ -30,8 +30,12 @@ pub(crate) fn opcode_fetch(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
 
     (
         CycleResult::Read,
-        InstrCycle(|next_cyc_cpu| (INSTR_CYC1[next_cyc_cpu.data_bus as usize].0)(next_cyc_cpu)),
+        InstrCycle(opcode_dispatch),
     )
+}
+
+pub(crate) fn opcode_dispatch(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
+    (INSTR_CYC1[cpu.data_bus as usize].0)(cpu)
 }
 
 macro_rules! todo_opcode {
@@ -121,7 +125,7 @@ const INSTR_CYC1: [InstrCycle; 256] = [
     /* 4b */ InstrCycle(phk_cyc1),
     /* 4c */ InstrCycle(jmp_abs_cyc1),
     /* 4d */ InstrCycle(eor::abs_cyc1),
-    /* 4e */ InstrCycle(lsr_d_cyc1),
+    /* 4e */ InstrCycle(lsr_abs_cyc1),
     /* 4f */ InstrCycle(eor::absl_cyc1),
     /* 50 */ InstrCycle(bvc_cyc1),
     /* 51 */ InstrCycle(eor::dindy_cyc1),

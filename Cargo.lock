@@ -2638,6 +2638,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "piccolo-util"
+version = "0.3.3"
+source = "git+https://github.com/kyren/piccolo#ce709eb1dae5c543cbc78e7e12bb80249d88c55f"
+dependencies = [
+ "gc-arena",
+ "piccolo",
+ "serde",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "pin-project"
 version = "1.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2690,6 +2701,7 @@ checksum = "b4596b6d070b27117e987119b4dac604f3c58cfb0b191112e24771b2faeac1a6"
 name = "plugins"
 version = "0.1.0"
 dependencies = [
+ "common",
  "derive_aliases",
  "eframe",
  "egui",
@@ -2697,7 +2709,7 @@ dependencies = [
  "perm_tree_node_derive",
  "permission_derive_macro",
  "piccolo",
- "strict_partial_ord_derive",
+ "product_order",
 ]
 
 [[package]]
@@ -2821,6 +2833,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "product_order"
+version = "0.1.0"
+dependencies = [
+ "duplicate",
+ "product_order_derive",
+]
+
+[[package]]
+name = "product_order_derive"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "product_order",
+ "quote",
+ "runtime-macros",
+ "syn",
+]
+
+[[package]]
 name = "profiling"
 version = "1.0.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2887,6 +2918,9 @@ dependencies = [
  "clap",
  "common",
  "cpu",
+ "piccolo",
+ "piccolo-util",
+ "plugins",
  "ppu",
  "rfd",
  "sdl2",
@@ -3412,16 +3446,6 @@ name = "strict-num"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6637bab7722d379c8b41ba849228d680cc12d0a45ba1fa2b48f2a30577a06731"
-
-[[package]]
-name = "strict_partial_ord_derive"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "runtime-macros",
- "syn",
-]
 
 [[package]]
 name = "strsim"
