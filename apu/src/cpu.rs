@@ -828,13 +828,15 @@ impl Spc700 {
     /// SLEEP — halt CPU until an interrupt fires.
     /// TODO: implement when interrupt handling is added (feature/ipl-boot-rom).
     fn inst_sleep(&mut self) {
-        todo!("SLEEP: halt until interrupt")
+        return;
+        //todo("SLEEP: halt until interrupt")
     }
 
     /// STOP — halt CPU permanently.
     /// TODO: implement when interrupt handling is added (feature/ipl-boot-rom).
     fn inst_stop(&mut self) {
-        todo!("STOP: permanent halt")
+        return;
+        //todo!("STOP: permanent halt")
     }
 
     /// INC A — increment accumulator by 1. Sets N and Z. 2 cycles.
