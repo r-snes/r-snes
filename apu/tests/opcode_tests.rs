@@ -601,6 +601,38 @@ fn test_adc_imm_adds_2_cycles() {
     assert_eq!(cpu.cycles, 2);
 }
 
+#[test]
+fn test_adc_imm_sets_half_carry_on_nibble_overflow() {
+    // $0F + $01 = $10 — carry out of bit 3
+    let (mut cpu, mut mem) = make_cpu_mem();
+    cpu.regs.a = 0x0F;
+    emit_seq(&mut mem, cpu.regs.pc, &[0x88, 0x01]);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_H));
+}
+
+#[test]
+fn test_adc_imm_clears_half_carry_without_nibble_overflow() {
+    // $01 + $01 = $02 — no carry out of bit 3
+    let (mut cpu, mut mem) = make_cpu_mem();
+    cpu.regs.a = 0x01;
+    emit_seq(&mut mem, cpu.regs.pc, &[0x88, 0x01]);
+    cpu.step(&mut mem);
+    assert!(!cpu.get_flag(FLAG_H));
+}
+
+#[test]
+fn test_adc_imm_half_carry_includes_carry_in() {
+    // $0E + $00 + carry-in(1) = $0F+1 = $10 — carry out of bit 3 only
+    // because of the incoming carry
+    let (mut cpu, mut mem) = make_cpu_mem();
+    cpu.regs.psw = FLAG_C;
+    cpu.regs.a = 0x0E;
+    emit_seq(&mut mem, cpu.regs.pc, &[0x88, 0x01]);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_H));
+}
+
 // ============================================================
 // SBC #imm
 // ============================================================
@@ -687,6 +719,40 @@ fn test_sbc_imm_adds_2_cycles() {
     emit_seq(&mut mem, cpu.regs.pc, &[0xA8, 0x00]);
     cpu.step(&mut mem);
     assert_eq!(cpu.cycles, 2);
+}
+
+#[test]
+fn test_sbc_imm_clears_half_borrow_on_nibble_underflow() {
+    // $10 - $01: low nibble $0 - $1 underflows -> half-borrow occurred -> H clear
+    let (mut cpu, mut mem) = make_cpu_mem();
+    cpu.regs.psw = FLAG_C;
+    cpu.regs.a   = 0x10;
+    emit_seq(&mut mem, cpu.regs.pc, &[0xA8, 0x01]);
+    cpu.step(&mut mem);
+    assert!(!cpu.get_flag(FLAG_H));
+}
+
+#[test]
+fn test_sbc_imm_sets_half_borrow_without_nibble_underflow() {
+    // $15 - $05: low nibble $5 - $5 = 0, no underflow -> H set
+    let (mut cpu, mut mem) = make_cpu_mem();
+    cpu.regs.psw = FLAG_C;
+    cpu.regs.a   = 0x15;
+    emit_seq(&mut mem, cpu.regs.pc, &[0xA8, 0x05]);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_H));
+}
+
+#[test]
+fn test_sbc_imm_half_borrow_accounts_for_borrow_in() {
+    // carry clear (borrow-in present): $10 - $00 - 1 = $0F
+    // low nibble: $0 - $0 - 1 underflows -> H clear
+    let (mut cpu, mut mem) = make_cpu_mem();
+    cpu.regs.psw = 0; // carry clear = borrow-in present
+    cpu.regs.a   = 0x10;
+    emit_seq(&mut mem, cpu.regs.pc, &[0xA8, 0x00]);
+    cpu.step(&mut mem);
+    assert!(!cpu.get_flag(FLAG_H));
 }
 
 // ============================================================
