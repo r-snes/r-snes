@@ -5,6 +5,28 @@ use product_order::combine_ordering;
 
 use super::{FileWritePermissions, PermTreeFromAllOr, PermTreeNode};
 
+/// All different options to open 1 file for writing.
+///
+/// # Comparisons/Equalities
+/// `PartialOrd` and `PartialEq` impls don't necessarily reflect
+/// exactly the write mode that was requested, but only "how much"
+/// the requested permissions allow to do.
+///
+/// As such, we end with five equivalence classes:
+/// - NewOnly (can only create new files, can't touch existing files)
+/// - AppendOnly + !create (can't create files, can only append to existing)
+/// - Write + !create (can't create, but can fully overwrite existing files)
+/// - AppendOnly + create (may create new files but can only append in
+///   existing files, not overwrite them fully)
+/// - Write + create (can do anything: create new files, and fully
+///   overwrite existing)
+///
+/// In this list, "Write" corresponds to either [`Append`](OverwriteMode::Append),
+/// [`Truncate`](OverwriteMode::Truncate) or [`Start`](OverwriteMode::Start),
+/// since they all allow overwriting existing data in opened files
+///
+/// The ordering of these equivalence classes is described in [the
+/// doc of the `PartialOrd impl`](Self#impl-PartialOrd-for-FileWriteOptions)
 #[derive(Copy, Clone, Eq, Debug)]
 pub enum FileWriteOptions {
     /// Only create a new file, don't overwrite
@@ -96,6 +118,25 @@ impl PartialEq for FileWriteOptions {
     }
 }
 
+/// Cases should be ordered as per this
+/// [Hasse diagram](https://en.wikipedia.org/wiki/Hasse_diagram)
+/// ```txt
+///       WC
+///      / \
+///     W  AOC
+///     |  /|
+///     | / |
+///     |/  |
+///    AO   NO
+/// ```
+/// (elements which aren't linked "don't compare": neither is greater than
+/// the other, but they aren't equal either; for elements which are linked:
+/// the one higher than the other is "greater" than the other)
+///
+/// In this diagram, the five elements are the equivalence classes
+/// described in the [top-level doc for the type](Self#comparisonsequalities):
+/// `AO` is append-only, `NO` is new-only, `W` is "write", `AOC` is
+/// append-only + create, `WC` is write + create.
 impl PartialOrd for FileWriteOptions {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         product_order::combine_option_orderings(
@@ -391,6 +432,7 @@ mod test {
             mode: Append,
         };
 
+        // test equivalence classes
         assert_eq!(append, trunc);
         assert_eq!(append, start);
         assert_eq!(trunc, start);
@@ -413,6 +455,8 @@ mod test {
             }
         }
 
+        // we have three "pairs" of equivalence classes which don't
+        // compare: (AO, NO), (NO, W), and (AOC, W)
         for noncomparable in [
             (append_only, new_only),
             (new_only, append),
@@ -432,6 +476,7 @@ mod test {
             assert_eq!(noncomparable.1.partial_cmp(&noncomparable.0), None);
         }
 
+        // AOC, W and WC should be greater than AO
         for greater in [
             append_only_create,
             trunc,
@@ -444,6 +489,7 @@ mod test {
             assert!(append_only < greater);
         }
 
+        // only AOC and WC are greater than NO
         for greater in [
             append_only_create,
             trunc_create,
