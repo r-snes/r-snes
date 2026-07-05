@@ -1758,9 +1758,9 @@ impl Spc700 {
         mem.write8(addr, result);
         self.set_zn_flags(result);
         self.cycles += 5;
-        }
+    }
 
-        fn inst_eor_a_dp(&mut self, mem: &mut Memory) {
+    fn inst_eor_a_dp(&mut self, mem: &mut Memory) {
         let addr = self.dp_base() | self.read_immediate(mem) as u16;
         self.regs.a ^= mem.read8_mut(addr);
         self.set_zn_flags(self.regs.a);
