@@ -224,7 +224,7 @@ fn gui_loop(
         // so that we can pass by value in the emu loop,
         // guaranteeing that the `RSnes` is destructed when
         // we leave the loop
-        let ev = match emu.take() {
+        let ev = match rsnes_core.take() {
             None => gui_idle_loop(&mut gui, DEFAULT_FRAMEBUFFER),
 
             Some(emu) => {
