@@ -1,8 +1,8 @@
 {
   inputs = {
     flake-utils.url = "github:numtide/flake-utils";
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-25.11";
-    rust-nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-26.05";
+    rust-nixpkgs.url = "github:nixos/nixpkgs/nixos-26.05";
   };
 
   outputs =
@@ -21,11 +21,15 @@
         rust-pkgs = import rust-nixpkgs { inherit system; };
         libs = with pkgs; [
           wayland
+          libxkbcommon
+          libGL
+          SDL2
 
-          xorg.libXcursor
-          xorg.libXrandr
-          xorg.libXi
-          xorg.libX11
+          libXcursor
+          libXrandr
+          libXi
+          libX11
+          SDL2
         ];
       in
       {

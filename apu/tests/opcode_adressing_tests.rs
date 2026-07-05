@@ -1422,9 +1422,12 @@ fn test_mov_sp_x_costs_2_cycles() {
 fn test_mov_x_sp_and_mov_sp_x_round_trip() {
     let (mut cpu, mut mem) = make();
     cpu.regs.sp = 0x77;
-    mem.write8(0x0200, 0x9D); // MOV X,SP
-    mem.write8(0x0201, 0xBD); // MOV SP,X
-    cpu.regs.sp = 0x00; // clobber after copy out, before copy back
-    cpu.step(&mut mem); // X = $77 (from original SP before clobber? need fix)
-    // Note: SP was clobbered before MOV X,SP executed; reorder test below instead.
+    mem.write8(0x0200, 0x9D); // MOV X,SP — X becomes $77
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.x, 0x77);
+
+    cpu.regs.sp = 0x00; // clobber SP
+    mem.write8(0x0201, 0xBD); // MOV SP,X — SP restored from X
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.sp, 0x77);
 }

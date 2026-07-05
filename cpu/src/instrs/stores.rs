@@ -68,7 +68,7 @@ mod tests {
         regs.PB = 0x12;
         regs.PC = 0x3456;
         regs.DUP_reg = 0x5544;
-        regs.P.E = true; // 8-bit mode
+        regs.E = true; // 8-bit mode
         regs.DB = 0xdb;
 
         let mut expected_regs = regs.clone();
@@ -89,7 +89,7 @@ mod tests {
         let mut regs = Registers::default();
         regs.PB = 0x12;
         regs.PC = 0x3456;
-        regs.P.E = true; // 8-bit mode
+        regs.E = true; // 8-bit mode
         regs.DB = 0xdb;
 
         // set all other registers which can be written, to check stz
@@ -118,7 +118,7 @@ mod tests {
         regs.PB = 0x12;
         regs.PC = 0x3456;
         regs.A = 0x5544;
-        regs.P.E = false;
+        regs.E = false;
         regs.P.M = false;
         regs.DB = 0xdb;
 

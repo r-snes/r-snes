@@ -972,7 +972,7 @@ impl Spc700 {
     }
 
     /// ASL !abs — arithmetic shift left on absolute address byte.
-    /// Bit 7 → C, 0 → bit 0. Sets N and Z from result. 6 cycles.
+    /// Bit 7 → C, 0 → bit 0. Sets N and Z from result. 5 cycles.
     fn inst_asl_abs(&mut self, mem: &mut Memory) {
         let addr = self.read_immediate16(mem);
         let val = mem.read8_mut(addr);
@@ -1018,7 +1018,7 @@ impl Spc700 {
     }
 
     /// LSR !abs — logical shift right on absolute address byte.
-    /// Bit 0 → C, 0 → bit 7. Sets N and Z from result. 6 cycles.
+    /// Bit 0 → C, 0 → bit 7. Sets N and Z from result. 5 cycles.
     fn inst_lsr_abs(&mut self, mem: &mut Memory) {
         let addr = self.read_immediate16(mem);
         let val = mem.read8_mut(addr);
@@ -1067,7 +1067,7 @@ impl Spc700 {
     }
 
     /// ROL !abs — rotate left through carry on absolute address byte.
-    /// Old C → bit 0, bit 7 → new C. Sets N and Z from result. 6 cycles.
+    /// Old C → bit 0, bit 7 → new C. Sets N and Z from result. 5 cycles.
     fn inst_rol_abs(&mut self, mem: &mut Memory) {
         let addr = self.read_immediate16(mem);
         let val = mem.read8_mut(addr);
@@ -1117,7 +1117,7 @@ impl Spc700 {
     }
 
     /// ROR !abs — rotate right through carry on absolute address byte.
-    /// Old C → bit 7, bit 0 → new C. Sets N and Z from result. 6 cycles.
+    /// Old C → bit 7, bit 0 → new C. Sets N and Z from result. 5 cycles.
     fn inst_ror_abs(&mut self, mem: &mut Memory) {
         let addr = self.read_immediate16(mem);
         let val = mem.read8_mut(addr);
@@ -1817,9 +1817,9 @@ impl Spc700 {
         mem.write8(addr, result);
         self.set_zn_flags(result);
         self.cycles += 5;
-        }
+    }
 
-        fn inst_eor_a_dp(&mut self, mem: &mut Memory) {
+    fn inst_eor_a_dp(&mut self, mem: &mut Memory) {
         let addr = self.dp_base() | self.read_immediate(mem) as u16;
         self.regs.a ^= mem.read8_mut(addr);
         self.set_zn_flags(self.regs.a);
@@ -2061,10 +2061,10 @@ impl Spc700 {
     }
 
     fn inst_adc_a_dp(&mut self, mem: &mut Memory) {
-    let addr = self.dp_base() | self.read_immediate(mem) as u16;
-    let val = mem.read8_mut(addr);
-    self.regs.a = self.adc_flags(self.regs.a, val);
-    self.cycles += 3;
+        let addr = self.dp_base() | self.read_immediate(mem) as u16;
+        let val = mem.read8_mut(addr);
+        self.regs.a = self.adc_flags(self.regs.a, val);
+        self.cycles += 3;
     }
 
     fn inst_adc_a_abs(&mut self, mem: &mut Memory) {
