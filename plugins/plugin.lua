@@ -16,7 +16,6 @@ function print_results()
 
     for i=0,(test_idx-1) do
         local res = test_results[i]
-        -- print(i, res)
         if res then
             ok = ok + 1
         else
@@ -26,14 +25,77 @@ function print_results()
 
     local total = ok + ko
     print(ok .. "/" .. total .. " passed (" .. (ok*100)/total .. "%), " .. ko .. " failures")
+
+    save_results_to_file(ok, ko)
 end
 
+function save_results_to_file(ok, ko)
+    local filename = nil
+    if test_idx == 0x453 then
+        filename = files.basic
+    else
+        filename = files.full
+    end
+
+    save_results_to(filename, ok, ko)
+    print("Saved results to " .. filename)
+end
+
+-- with minimal perms
+function save_results_to(filename, ok, ko)
+    local total = ok + ko
+    local file = rsnes.fs.files[filename]
+
+    file.clear()
+    file.write(ok, "/", total, " passed (", (ok*100)/total, "%), ", ko, " failures\n")
+    if ko == 0 then
+        return
+    end
+
+    file.write("All failures listed below 1 per line:\n")
+    for i = 0,(test_idx-1) do
+        if not test_results[i] then
+            file.write(i, "\n")
+        end
+    end
+end
+
+-- we want to open files in "start" mode by default
+-- because we're only going to write one file per
+-- plugin run, so "truncate" would clear both files
+-- and only write to one, erasing the contents of the other.
+-- so instead we manually call file.clear() to clear
+-- the file we are going to write to
+write_opts = {
+    mode = "start",
+    create = true,
+}
+
+files = {
+    basic = "cpu/cputest-basic-report.txt",
+    full = "cpu/cputest-full-report.txt",
+}
+
 return {
-    permissions = { internal = { "cpu", "input" } },
+    permissions = {
+        internal = { "cpu", "input" },
+        external = {
+            filesystem = {
+                write = {
+                    [files.basic] = write_opts,
+                    [files.full] = write_opts,
+                }
+            }
+        }
+    },
 
     init = function()
         test_results = {}
         test_idx = 0
+
+        for file,val in pairs(rsnes.fs.files) do
+            print("opened file:", file)
+        end
     end,
 
     exit = print_results,

@@ -2,11 +2,27 @@ use super::RSnesCore;
 
 use cpu::cpu::CPU;
 use piccolo::Callback;
+use piccolo::CallbackReturn;
 use piccolo::Context;
+use piccolo::IntoMultiValue;
+use piccolo::IntoValue;
 use piccolo::Table;
 use piccolo::Value;
+use piccolo::error::LuaError;
+use plugins::perm_tree::FileSystemPermissions;
+use plugins::perm_tree::FileWritePermissions;
+use plugins::perm_tree::filesystem::FileWriteOptions;
+use plugins::perm_tree::filesystem::OverwriteMode;
+use plugins::permission::Permission;
+use plugins::permission::helpers::AllOr;
 use plugins::plugin::Plugin;
 use std::cell::RefCell;
+use std::fs::File;
+use std::fs::OpenOptions;
+use std::io::Seek;
+use std::io::SeekFrom;
+use std::io::Write;
+use std::path::PathBuf;
 use std::rc::Rc;
 
 impl RSnesCore {
@@ -24,6 +40,13 @@ impl RSnesCore {
             }
             if plugin.table.perms.internal.input {
                 rsnes.set_field(ctx, "input", Self::create_input_table(ctx, emu));
+            }
+            if !plugin.table.perms.external.filesystem.is_none() {
+                rsnes.set_field(
+                    ctx,
+                    "fs",
+                    Self::create_fs_table(ctx, &plugin.table.perms.external.filesystem),
+                );
             }
         });
     }
@@ -114,5 +137,169 @@ impl RSnesCore {
         );
 
         ret
+    }
+
+    fn create_fs_table<'gc>(ctx: Context<'gc>, perms: &FileSystemPermissions) -> Table<'gc> {
+        let ret = Table::new(ctx.mutation());
+
+        if !perms.write.is_none() {
+            Self::add_write_perms(ctx, ret, &perms.write);
+        }
+        if !perms.read.is_none() {
+            Self::add_read_perms(ctx, ret, &perms.read);
+        }
+
+        ret
+    }
+
+    fn add_write_perms<'gc>(
+        ctx: Context<'gc>,
+        tab: Table<'gc>,
+        perms: &AllOr<FileWritePermissions>,
+    ) {
+        match perms {
+            AllOr::All => todo!("handle 'all' write perms"),
+            AllOr::Inner(FileWritePermissions { files }) => {
+                let files_tab = Table::new(ctx.mutation());
+                tab.set_field(ctx, "files", files_tab);
+
+                for (filepath, options) in files {
+                    files_tab
+                        .set(
+                            ctx,
+                            piccolo::String::from_slice(
+                                ctx.mutation(),
+                                filepath.as_os_str().as_encoded_bytes(),
+                            ), // TODO: windows
+                            Self::create_file_write_table(ctx, filepath, *options),
+                        )
+                        .expect("inserting with a string key cannot fail");
+                }
+            }
+        }
+    }
+
+    fn create_file_write_table<'gc>(
+        ctx: Context<'gc>,
+        filepath: &PathBuf,
+        options: FileWriteOptions,
+    ) -> Table<'gc> {
+        let ret = Table::new(ctx.mutation());
+
+        match OpenOptions::from(options).open(filepath) {
+            Ok(file) => {
+                let file = Rc::new(RefCell::new(file));
+
+                let write_clone = file.clone();
+                ret.set_field(
+                    ctx,
+                    "write",
+                    Callback::from_fn(ctx.mutation(), move |_ctx, _, mut stack| {
+                        let mut file_mut = write_clone.borrow_mut();
+
+                        stack[..].reverse();
+                        while let Some(value) = stack.pop_back() {
+                            match value {
+                                Value::String(s) => file_mut.write_all(s.as_bytes()).unwrap(),
+                                Value::Integer(i) => {
+                                    file_mut.write_all(i.to_string().as_bytes()).unwrap()
+                                }
+                                Value::Number(f) => {
+                                    file_mut.write_all(f.to_string().as_bytes()).unwrap()
+                                }
+                                _ => {}
+                            }
+                        }
+                        Ok(CallbackReturn::Return)
+                    }),
+                );
+
+                if options.can_seek() {
+                    Self::add_write_seek_perms(ctx, ret, &file);
+                }
+            }
+            Err(err) => {
+                ret.set_field(ctx, "error", err.kind().to_string().into_value(ctx));
+            }
+        }
+
+        ret
+    }
+
+    fn add_write_seek_perms<'gc>(
+        ctx: Context<'gc>,
+        file_tab: Table<'gc>,
+        file: &Rc<RefCell<File>>,
+    ) {
+        let truncate_clone = file.clone();
+        file_tab.set_field(
+            ctx,
+            "truncate",
+            Callback::from_fn(ctx.mutation(), move |ctx, _, mut stack| {
+                let Some(Value::Integer(i @ 0..)) = stack.pop_front() else {
+                    return Err(piccolo::Error::Lua(LuaError(
+                        "invalid parameter to truncate".into_value(ctx),
+                    )));
+                };
+                if let Err(e) = truncate_clone.borrow_mut().set_len(i as u64) {
+                    stack.replace(ctx, e.to_string().into_value(ctx));
+                }
+
+                Ok(CallbackReturn::Return)
+            }),
+        );
+
+        let clear_clone = file.clone();
+        file_tab.set_field(
+            ctx,
+            "clear",
+            Callback::from_fn(ctx.mutation(), move |ctx, _, mut stack| {
+                let mut file = clear_clone.borrow_mut();
+
+                let res = file.set_len(0).and_then(|()| file.seek(SeekFrom::Start(0)));
+                if let Err(e) = res {
+                    stack.replace(ctx, e.to_string().into_value(ctx));
+                }
+
+                Ok(CallbackReturn::Return)
+            }),
+        );
+
+        let seek_clone = file.clone();
+        file_tab.set_field(
+            ctx,
+            "seek",
+            Callback::from_fn(ctx.mutation(), move |ctx, _, mut stack| {
+                let seek_mode = match stack.pop_front() {
+                    None | Some(Value::Nil) => SeekFrom::Current,
+                    Some(Value::String(s)) if s.as_bytes() == b"cur" => SeekFrom::Current,
+                    Some(Value::String(s)) if s.as_bytes() == b"set" => |i| SeekFrom::Start(i as u64),
+                    Some(Value::String(s)) if s.as_bytes() == b"end" => SeekFrom::End,
+                    _ => {
+                        return Err(piccolo::Error::Lua(LuaError(
+                            "invalid seek mode passed to seek".into_value(ctx),
+                        )));
+                    }
+                };
+                let offs = match stack.pop_front() {
+                    Some(Value::Integer(i)) => i,
+                    None | Some(Value::Nil) => 0,
+                    _ => {
+                        return Err(piccolo::Error::Lua(LuaError(
+                            "invalid offset passed to seek".into_value(ctx),
+                        )));
+                    }
+                };
+                match seek_clone.borrow_mut().seek(seek_mode(offs)) {
+                    Ok(new_offs) => stack.replace(ctx, (new_offs as i64).into_value(ctx)),
+                    Err(e) => stack.replace(ctx, (Value::Nil, e.to_string().into_value(ctx))),
+                }
+                Ok(CallbackReturn::Return)
+            }),
+        );
+    }
+
+    fn add_read_perms<'gc>(_: Context<'gc>, _: Table<'gc>, _: &bool) {
+        eprintln!("todo: handle read permissions")
     }
 }

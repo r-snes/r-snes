@@ -86,7 +86,6 @@ impl<'gc> picc::FromValue<'gc> for PluginTable {
 
             match key.as_bytes() {
                 b"init" => ret.init = match value {
-                    Value::Nil => None,
                     Value::Function(Function::Closure(c)) => Some(ctx.stash(c)),
                     v => return Err(picc::TypeError {
                         expected: "init function or nil",
@@ -94,7 +93,6 @@ impl<'gc> picc::FromValue<'gc> for PluginTable {
                     }),
                 },
                 b"exit" => ret.exit = match value {
-                    Value::Nil => None,
                     Value::Function(Function::Closure(c)) => Some(ctx.stash(c)),
                     v => return Err(picc::TypeError {
                         expected: "exit function or nil",
@@ -139,7 +137,6 @@ impl<'gc> picc::FromValue<'gc> for PluginActions {
 
             match key.as_bytes() {
                 b"default" => ret.default = match value {
-                    Value::Nil => None,
                     Value::Function(Function::Closure(c)) => Some(ctx.stash(c)),
                     v => return Err(picc::TypeError {
                         expected: "default function or nil",
@@ -175,7 +172,6 @@ impl<'gc> picc::FromValue<'gc> for PluginAutoActions {
 
             match key.as_bytes() {
                 b"on_instr" => ret.on_instr = match value {
-                    Value::Nil => None,
                     Value::Function(Function::Closure(c)) => Some(ctx.stash(c)),
                     v => return Err(picc::TypeError {
                         expected: "on_instr function or nil",
@@ -357,6 +353,8 @@ impl<'a> PluginPermRequest<'a> {
 
 #[cfg(test)]
 mod tests {
+    use common::snes_addr;
+
     use crate::permission::Permission;
 
     use super::*;
@@ -407,9 +405,16 @@ mod tests {
             br#"
             return {
                 permissions = "all",
+
                 init = function()
                     i = 10
+                   done = false
                 end,
+
+                exit = function()
+                    done = true
+                end,
+
                 actions = {
                     default = function()
                         i = i + 1
@@ -425,8 +430,58 @@ mod tests {
         plugin.run_default().unwrap();
         plugin.run_default().unwrap();
 
+        // running on_instr should be a no-op
+        plugin.run_on_instr(0, snes_addr!(0:0)).unwrap();
+
         plugin.lua.enter(|ctx| {
             assert!(matches!(ctx.get_global_value("i"), Value::Integer(13)));
+            assert!(matches!(ctx.get_global_value("done"), Value::Boolean(false)));
         });
+
+        // after running exit we should see `done` set to true
+        plugin.run_exit().unwrap();
+        plugin.lua.enter(|ctx| {
+            assert!(matches!(ctx.get_global_value("done"), Value::Boolean(true)));
+        });
+    }
+
+    #[test]
+    fn basic_autoactions() {
+        use piccolo::Value;
+
+        let mut plugin = Plugin::load_from_raw(
+            br#"
+            return {
+                permissions = "all",
+
+                init = function()
+                   xce_counter = 0
+                end,
+
+                autoactions = {
+                    on_instr = function(opcode, pb, pc)
+                        if opcode == 0xFB then
+                            xce_counter = xce_counter + 1
+                        end
+                    end,
+                },
+            }"#,
+            None,
+        ).unwrap();
+
+        plugin.run_init().unwrap();
+
+        plugin.run_on_instr(0xfb, snes_addr!(0:0)).unwrap();
+        plugin.run_on_instr(0x00, snes_addr!(0:0)).unwrap();
+        plugin.run_on_instr(0x30, snes_addr!(0:0)).unwrap();
+        plugin.run_on_instr(0xfb, snes_addr!(0:0)).unwrap();
+        plugin.run_on_instr(0xff, snes_addr!(0:0)).unwrap();
+
+        plugin.lua.enter(|ctx| {
+            assert!(matches!(ctx.get_global_value("xce_counter"), Value::Integer(2)));
+        });
+
+        // run exit should be a no-op as there's none
+        plugin.run_exit().unwrap();
     }
 }
