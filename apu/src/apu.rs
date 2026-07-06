@@ -26,7 +26,9 @@ const DSP_CYCLES_PER_SAMPLE: u32 = 32;
 ///
 /// While the IPL is active, `Apu::step` runs this state machine instead
 /// of `Spc700::step` — just like the real chip, which is busy executing
-/// IPL code during this phase.
+/// IPL code during this phase. Uploaded code can jump back to $FFC0 to
+/// re-run the boot ROM for another upload; `Apu::step` detects this and
+/// re-arms the state machine (see `reenter_ipl`).
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum IplHle {
     /// Announcing $AA/$BB, waiting for the $CC start command.
@@ -74,27 +76,58 @@ impl Apu {
         // Load the reset vector and initialise SP so the CPU starts correctly.
         apu.cpu.reset(&mut apu.memory);
 
-        // The real IPL's first act after reset is `mov x,#$EF / mov sp,x`,
-        // leaving SP at $EF — not the raw post-reset $FF. Uploaded code
-        // (and the spc test suite) assumes this post-boot state: test
-        // #0081 places its ADDW operand at $01FF, relying on the stack
-        // starting at $01EF and growing downward, never reaching $01FF.
-        // (The IPL also clears zero page $00-$EF, which our zeroed ARAM
-        // already satisfies at boot.)
-        apu.cpu.regs.sp = 0xEF;
-
-        // IPL boot announce: the boot ROM's first externally visible act
-        // is writing $AA/$BB to ports 0/1. The main CPU spins on $2140
-        // until it sees $AA — this is the handshake every game starts with.
-        apu.memory.port_out[0] = 0xAA;
-        apu.memory.port_out[1] = 0xBB;
+        // Run the (HLE) IPL boot sequence: post-boot register state and
+        // the $AA/$BB announce on the ports.
+        apu.ipl_boot();
 
         apu
+    }
+
+    /// Reproduce the externally visible side effects of the IPL boot ROM
+    /// starting to run, and arm the HLE state machine. Called at power-on
+    /// and again whenever uploaded code jumps back to $FFC0 to request
+    /// another upload (how multi-chunk transfers chain on real hardware).
+    fn ipl_boot(&mut self) {
+        // The real IPL's first acts are `mov x,#$EF / mov sp,x` and a loop
+        // clearing zero page $00-$EF. Uploaded code (and the spc test
+        // suite) assumes this post-boot state: test #0081 places its ADDW
+        // operand at $01FF, relying on the stack starting at $01EF and
+        // growing downward, never reaching $01FF.
+        self.cpu.regs.sp = 0xEF;
+        self.memory.ram[0x00..=0xEF].fill(0);
+
+        // Announce: the main CPU spins on $2140/$2141 until it sees
+        // $AA/$BB — this is the handshake every upload starts with.
+        self.memory.port_out[0] = 0xAA;
+        self.memory.port_out[1] = 0xBB;
+
+        self.ipl = IplHle::AwaitStart;
     }
 
     /// True while the HLE IPL owns the SPC700 (before the execute command).
     pub fn ipl_active(&self) -> bool {
         self.ipl != IplHle::Done
+    }
+
+    /// Re-arm the HLE IPL after uploaded code jumps back into the boot
+    /// ROM region. Replicates the real IPL's startup side effects, which
+    /// run unconditionally from the top on every entry:
+    ///   - SP reset to $EF
+    ///   - zero page $01-$EF cleared (the real clear loop stops before
+    ///     $00; note it targets page 1 instead if the P flag is set — a
+    ///     hardware quirk we deliberately don't model, since well-behaved
+    ///     drivers clear P before jumping to $FFC0)
+    ///   - $AA/$BB announced on ports 0/1
+    fn reenter_ipl(&mut self) {
+        eprintln!(
+            "[apu ipl] re-entered at pc={:#06x} — announcing, awaiting next upload",
+            self.cpu.regs.pc
+        );
+        self.cpu.regs.sp = 0xEF;
+        self.memory.ram[0x01..=0xEF].fill(0);
+        self.memory.port_out[0] = 0xAA;
+        self.memory.port_out[1] = 0xBB;
+        self.ipl = IplHle::AwaitStart;
     }
 
     /// One tick of the HLE IPL state machine. Called from `step` in place
@@ -178,6 +211,11 @@ impl Apu {
                 // The real chip spends this time executing IPL code from
                 // the boot ROM; we run the HLE state machine instead.
                 self.ipl_step();
+            } else if self.cpu.regs.pc >= 0xFFC0 {
+                // Jumping into $FFC0-$FFFF re-runs the boot ROM: drivers
+                // do this to request another upload (the spc test suite
+                // does it between chunks; games do it between tracks).
+                self.reenter_ipl();
             } else {
                 self.cpu.step(&mut self.memory);
             }

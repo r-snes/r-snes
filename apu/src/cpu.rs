@@ -352,8 +352,6 @@ impl Spc700 {
             0x0F => self.inst_brk(mem),            // BRK
 
             0x9F => self.inst_xcn_a(), // XCN A
-            // Catch-all
-            _ => unimplemented!("Opcode {:02X} not yet implemented", opcode),
         }
     }        
 
