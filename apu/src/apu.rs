@@ -89,10 +89,7 @@ impl Apu {
     /// another upload (how multi-chunk transfers chain on real hardware).
     fn ipl_boot(&mut self) {
         // The real IPL's first acts are `mov x,#$EF / mov sp,x` and a loop
-        // clearing zero page $00-$EF. Uploaded code (and the spc test
-        // suite) assumes this post-boot state: test #0081 places its ADDW
-        // operand at $01FF, relying on the stack starting at $01EF and
-        // growing downward, never reaching $01FF.
+        // clearing zero page $00-$EF.
         self.cpu.regs.sp = 0xEF;
         self.memory.ram[0x00..=0xEF].fill(0);
 
@@ -110,13 +107,9 @@ impl Apu {
     }
 
     /// Re-arm the HLE IPL after uploaded code jumps back into the boot
-    /// ROM region. Replicates the real IPL's startup side effects, which
-    /// run unconditionally from the top on every entry:
+    /// ROM region.
     ///   - SP reset to $EF
-    ///   - zero page $01-$EF cleared (the real clear loop stops before
-    ///     $00; note it targets page 1 instead if the P flag is set — a
-    ///     hardware quirk we deliberately don't model, since well-behaved
-    ///     drivers clear P before jumping to $FFC0)
+    ///   - zero page $01-$EF cleared
     ///   - $AA/$BB announced on ports 0/1
     fn reenter_ipl(&mut self) {
         eprintln!(
@@ -211,10 +204,13 @@ impl Apu {
                 // The real chip spends this time executing IPL code from
                 // the boot ROM; we run the HLE state machine instead.
                 self.ipl_step();
-            } else if self.cpu.regs.pc >= 0xFFC0 {
-                // Jumping into $FFC0-$FFFF re-runs the boot ROM: drivers
-                // do this to request another upload (the spc test suite
-                // does it between chunks; games do it between tracks).
+            } else if self.cpu.regs.pc >= 0xFFC0 && self.memory.control & 0x80 != 0 {
+                // Jumping into $FFC0-$FFFF *while CONTROL bit 7 (IPL ROM
+                // enable) is set* re-runs the boot ROM: drivers do this to
+                // request another upload (the spc test suite does it
+                // between chunks; games do it between tracks). With bit 7
+                // clear, $FFC0-$FFFF is ordinary RAM and executes normally
+                // — e.g. `pcall $FF` targets $FFFF (spc test #01B2).
                 self.reenter_ipl();
             } else {
                 self.cpu.step(&mut self.memory);
