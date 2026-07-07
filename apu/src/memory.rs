@@ -8,7 +8,7 @@ pub type RawARAM = [u8; 64 * 1024];
 ///
 /// ```text
 /// $F0        TEST      — hardware test register (write-only, boot only)
-/// $F1        CONTROL   — timer enable, ROM/RAM switch, port clear
+/// $F1        CONTROL   — timer enable, IPL ROM switch, port clear
 /// $F2        DSPADDR   — DSP register address latch
 /// $F3        DSPDATA   — DSP register data (read/write via $F2 latch)
 /// $F4–$F7    CPUIO0–3  — bidirectional communication ports (CPU ↔ APU)
@@ -34,12 +34,14 @@ pub struct Memory {
     dsp_addr: u8,
 
     /// $F1 — CONTROL register.
-    ///   bit 7: clear port 3 input latch ($F7)
-    ///   bit 6: clear port 2 input latch ($F6)
-    ///   bit 4: enable timer 2 (64 kHz)
+    ///   bit 7: IPL ROM mapping enable (read by Apu::step for boot re-entry)
+    ///   bit 5: clear ports 2-3 input latches ($F6/$F7)
+    ///   bit 4: clear ports 0-1 input latches ($F4/$F5)
+    ///   bit 2: enable timer 2 (64 kHz)
     ///   bit 1: enable timer 1 (8 kHz)
     ///   bit 0: enable timer 0 (8 kHz)
-    /// Publicly readable so Timers::step() can inspect the enable bits.
+    /// Publicly readable so Timers::step() can inspect the enable bits
+    /// and Apu::step() can inspect the ROM-enable bit.
     pub control: u8,
 
     /// $F4–$F7 — CPU↔APU communication ports.
@@ -70,7 +72,11 @@ impl Memory {
             ram:       Box::new([0; _]),
             dsp:       Dsp::new(),
             dsp_addr:  0,
-            control:   0,
+            // Hardware reset state: IPL ROM mapped (bit 7 set), timers
+            // off, no port clears pending. The ROM-enable bit matters:
+            // Apu::step gates IPL re-entry on it, and code that never
+            // touches $F1 must still be able to re-enter the boot ROM.
+            control:   0x80,
             port_in:   [0u8; 4],
             port_out:  [0u8; 4],
             timer_div: [0u8; 3],
@@ -149,15 +155,25 @@ impl Memory {
             // $F0 TEST — only relevant during hardware boot; ignore safely.
             0x00F0 => {}
 
-            // $F1 CONTROL
-            // bit 7: clear port 3 ($F7) input latch
-            // bit 6: clear port 2 ($F6) input latch
-            // bits 4/1/0: timer enables (forwarded to Timers via the register)
+            // $F1 CONTROL — hardware bit layout:
+            //   bit 7: IPL ROM mapping enable (stored; read by Apu::step)
+            //   bit 5: clear ports 2-3 input latches
+            //   bit 4: clear ports 0-1 input latches
+            //   bits 0-2: timer 0/1/2 enables (read by Timers::step via
+            //             memory.control)
+            // The port clears are protocol-critical: drivers write $F1
+            // with bit 4 set before jumping to $FFC0 so no stale $CC in
+            // port_in[0] can misfire the IPL's start-command wait.
             0x00F1 => {
                 self.control = val;
-                if val & 0x80 != 0 { self.port_in[3] = 0; }
-                if val & 0x40 != 0 { self.port_in[2] = 0; }
-                // Timer enable bits are read by Timers::step() via memory.control.
+                if val & 0x10 != 0 {
+                    self.port_in[0] = 0;
+                    self.port_in[1] = 0;
+                }
+                if val & 0x20 != 0 {
+                    self.port_in[2] = 0;
+                    self.port_in[3] = 0;
+                }
             }
 
             // $F2 DSPADDR — latch the register index for the next $F3 access.
@@ -168,10 +184,13 @@ impl Memory {
             0x00F3 => self.dsp.write_reg(self.dsp_addr, val),
 
             // $F4–$F7 CPUIO — SPC700 writes; SNES CPU reads these.
-            0x00F4 => self.port_out[0] = val,
-            0x00F5 => self.port_out[1] = val,
-            0x00F6 => self.port_out[2] = val,
-            0x00F7 => self.port_out[3] = val,
+            0x00F4..=0x00F7 => {
+                let port = (addr - 0x00F4) as usize;
+                // TEMP DEBUG — SPC-side half of the port traffic trace;
+                // remove together with the one in cpu_port_write.
+                eprintln!("[port] SPC700    -> port{port} = {val:#04x}");
+                self.port_out[port] = val;
+            }
 
             // $F8–$F9 — auxiliary RAM.
             0x00F8 | 0x00F9 => self.ram[addr as usize] = val,
@@ -202,6 +221,11 @@ impl Memory {
     /// The SPC700 will read this via $F4+n.
     pub fn cpu_port_write(&mut self, port: usize, val: u8) {
         if port < 4 {
+            // TEMP DEBUG — port traffic trace for hunting the chunk-boundary
+            // handshake freeze. Run with `2> trace.log` and inspect the last
+            // lines before a hang alongside the [apu ipl] lines. Remove once
+            // the freeze is resolved.
+            eprintln!("[port] main CPU -> port{port} = {val:#04x}");
             self.port_in[port] = val;
         }
     }
