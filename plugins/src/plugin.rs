@@ -1,13 +1,17 @@
+use crate::perm_tree::filesystem::FileWriteOptions;
 use crate::perm_tree::{
     RSnesPermissions,
     PermTreeNode,
 };
+use crate::permission::Permission;
+use crate::permission::helpers::AllOr;
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use std::fs as fs;
 use common::snes_address::SnesAddress;
+use egui::{CollapsingHeader, RichText, WidgetText};
 use piccolo as picc;
 use piccolo::io as p_io;
 
@@ -329,10 +333,84 @@ impl<'a> PluginPermRequest<'a> {
         let close = |ui: &mut egui::Ui| {
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
         };
+        let none = RichText::new("none").italics();
 
-        ui.label("This is still very much a work in progress");
 
         ui.separator();
+
+        ui.label(RichText::new("Requested permissions:").heading());
+        if self.plugin.table.perms.is_none() {
+            ui.indent((), |ui| ui.label(none));
+        } else {
+            ui.label("Internal:");
+            if self.plugin.table.perms.internal.is_none() {
+                ui.label(none.clone());
+            } else {
+                ui.indent((), |ui| {
+                    if !self.plugin.table.perms.internal.bus.is_none() {
+                        ui.label("Bus");
+                    }
+                    if !self.plugin.table.perms.internal.cpu.is_none() {
+                        ui.label("CPU");
+                    }
+                    if !self.plugin.table.perms.internal.ppu.is_none() {
+                        ui.label("PPU");
+                    }
+                    if !self.plugin.table.perms.internal.input.is_none() {
+                        ui.label("Input");
+                    }
+                    if !self.plugin.table.perms.internal.control.is_none() {
+                        ui.label("Input");
+                    }
+                });
+            }
+
+            ui.label("External:");
+            if self.plugin.table.perms.external.is_none() {
+                ui.label(none.clone());
+            } else {
+                ui.indent((), |ui| {
+                    if !self.plugin.table.perms.external.http.is_none() {
+                        ui.label("HTTP");
+                    }
+                    if !self.plugin.table.perms.external.filesystem.is_none() {
+                        ui.label("Filesystem:");
+                        ui.indent((), |ui| {
+                            if self.plugin.table.perms.external.filesystem.read {
+                                ui.label("Read:");
+                            }
+                            if !self.plugin.table.perms.external.filesystem.write.is_none() {
+                                ui.label("Write:");
+                                ui.indent((), |ui| {
+                                    match &self.plugin.table.perms.external.filesystem.write {
+                                        AllOr::All => {
+                                            ui.label(RichText::new("all").italics());
+                                        }
+                                        AllOr::Inner(files) => {
+                                            for (file, options) in files.files.iter() {
+                                                ui.horizontal(|ui| {
+                                                    ui.spacing_mut().item_spacing.x = 0.;
+                                                    ui.label(RichText::new(format!("{file:?}")).monospace());
+                                                    let label = match options {
+                                                        FileWriteOptions::NewOnly => "NewOnly",
+                                                        FileWriteOptions::CanOverwrite { create, mode } => {
+                                                            &format!(": {}{mode:?}", if *create {"Create + "} else {""})
+                                                        },
+                                                    };
+                                                    ui.label(label);
+                                                });
+                                            }
+                                        }
+                                    }
+                                });
+                            }
+                        });
+                    }
+                });
+            }
+        }
+
+        ui.add_space(16.0);
 
         ui.horizontal(|ui| {
             if ui.button("Grant requested permissions").clicked() {
@@ -343,10 +421,6 @@ impl<'a> PluginPermRequest<'a> {
                 self.allow_all = false;
                 close(ui);
             }
-        });
-
-        ui.collapsing("we can even have collapsing content", |ui| {
-            ui.label("peekaboo!");
         });
     }
 }
