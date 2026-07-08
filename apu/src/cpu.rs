@@ -44,316 +44,265 @@ impl Spc700 {
         self.regs.pc = self.regs.pc.wrapping_add(1);
 
         match opcode {
-            0x00 => self.inst_nop(), // NOP
-        
-            // Register moves
-            0x7D => self.inst_mov_a_x(), // MOV A, X
-            0xDD => self.inst_mov_a_y(), // MOV A, Y
-            0x5D => self.inst_mov_x_a(), // MOV X, A
-            0xFD => self.inst_mov_y_a(), // MOV Y, A
-        
-            // Immediate loads
-            0xE8 => self.inst_lda_imm(mem), // LDA #imm
-            0xCD => self.inst_ldx_imm(mem), // LDX #imm
-            0x8D => self.inst_ldy_imm(mem), // LDY #imm
-        
-            // Absolute loads
-            0xE5 => self.inst_lda_abs(mem), // MOV A, !a
-            0xE9 => self.inst_ldx_abs(mem), // MOV X, !a
-            0xEC => self.inst_ldy_abs(mem), // MOV Y, !a
-        
-            // Direct Page loads
-            0xE4 => self.inst_lda_dp(mem), // MOV A, d
-            0xF8 => self.inst_ldx_dp(mem), // MOV X, d
-            0xEB => self.inst_ldy_dp(mem), // MOV Y, d
-        
-            // Stores
-            0xC4 => self.inst_sta_dp(mem),  // MOV d, A
-            0xC5 => self.inst_sta_abs(mem), // MOV !a, A
-            0xC9 => self.inst_stx_abs(mem), // MOV !a, X
-            0xCC => self.inst_sty_abs(mem), // MOV !a, Y
-        
-            // Arithmetic & logic
-            0x88 => self.inst_adc_imm(mem), // ADC #imm
-            0xA8 => self.inst_sbc_imm(mem), // SBC #imm
-            0x68 => self.inst_cmp_imm(mem), // CMP #imm
-            0x28 => self.inst_and_imm(mem), // AND #imm
-            0x08 => self.inst_ora_imm(mem), // ORA #imm
-            0x48 => self.inst_eor_imm(mem), // EOR #imm
-        
-            // Branches
-            0x2F => self.inst_bra(mem), // BRA rel
-            0xF0 => self.inst_beq(mem), // BEQ rel
-            0xD0 => self.inst_bne(mem), // BNE rel
-            0x10 => self.inst_bpl(mem), // BPL rel
-            0x30 => self.inst_bmi(mem), // BMI rel
-            0x50 => self.inst_bvc(mem), // BVC rel
-            0x70 => self.inst_bvs(mem), // BVS rel
-            0x90 => self.inst_bcc(mem), // BCC rel
-            0xB0 => self.inst_bcs(mem), // BCS rel
-
-            // Subroutine calls and returns
-            0x3F => self.inst_call(mem), // CALL !abs
-            0x6F => self.inst_ret(mem),  // RET
-            0x4F => self.inst_pcall(mem), // PCALL !abs
+            // All 256 opcodes in ascending order
+            0x00 => self.inst_nop(),                  // NOP
             0x01 => self.inst_tcall(mem, 0),
-            0x11 => self.inst_tcall(mem, 1),
-            0x21 => self.inst_tcall(mem, 2),
-            0x31 => self.inst_tcall(mem, 3),
-            0x41 => self.inst_tcall(mem, 4),
-            0x51 => self.inst_tcall(mem, 5),
-            0x61 => self.inst_tcall(mem, 6),
-            0x71 => self.inst_tcall(mem, 7),
-            0x81 => self.inst_tcall(mem, 8),
-            0x91 => self.inst_tcall(mem, 9),
-            0xA1 => self.inst_tcall(mem, 10),
-            0xB1 => self.inst_tcall(mem, 11),
-            0xC1 => self.inst_tcall(mem, 12),
-            0xD1 => self.inst_tcall(mem, 13),
-            0xE1 => self.inst_tcall(mem, 14),
-            0xF1 => self.inst_tcall(mem, 15),
-
-            // Stack operations
-            0x2D => self.inst_push_a(mem), // PUSH A
-            0xAE => self.inst_pop_a(mem),  // POP A
-            0x4D => self.inst_push_x(mem), // PUSH X
-            0xCE => self.inst_pop_x(mem),  // POP X
-            0x6D => self.inst_push_y(mem), // PUSH Y
-            0xEE => self.inst_pop_y(mem),  // POP Y
-            0x0D => self.inst_push_psw(mem), // PUSH PSW
-            0x8E => self.inst_pop_psw(mem),  // POP PSW
-            0xEF => self.inst_sleep(), // SLEEP
-            0xFF => self.inst_stop(),  // STOP
-
-            // increment/decrement
-            0xBC => self.inst_inc_a(), // INC A
-            0x9C => self.inst_dec_a(), // DEC A
-            0x3D => self.inst_inc_x(), // INC X
-            0x1D => self.inst_dec_x(), // DEC X
-            0xFC => self.inst_inc_y(), // INC Y
-            0xDC => self.inst_dec_y(), // DEC Y
-            0xAB => self.inst_inc_dp(mem), // INC dp
-            0x8B => self.inst_dec_dp(mem), // DEC dp
-            0xAC => self.inst_inc_abs(mem),
-            0x8C => self.inst_dec_abs(mem),
-
-            0xCF => self.inst_mul(mem), // MUL YA
-            0x9E => self.inst_div(mem), // DIV
-
-            // Shift operations
-            0x1C => self.inst_asl_a(), // ASL A,
-            0x0B => self.inst_asl_dp(mem), // ASL dp
-            0x1B => self.inst_asl_dp_x(mem), // ASL dp X
-            0x0C => self.inst_asl_abs(mem), // ASL !abs
-            0x5C => self.inst_lsr_a(), // LSR A
-            0x4B => self.inst_lsr_dp(mem), // LSR dp
-            0x5B => self.inst_lsr_dp_x(mem), // LSR dp X
-            0x4C => self.inst_lsr_abs(mem), // LSR !abs
-
-            // Rotate operations
-            0x3C => self.inst_rol_a(), // ROL A
-            0x2B => self.inst_rol_dp(mem), // ROL dp
-            0x3B => self.inst_rol_dp_x(mem), // ROL dp X
-            0x2C => self.inst_rol_abs(mem), // ROL !abs
-            0x7C => self.inst_ror_a(), // ROR A
-            0x6B => self.inst_ror_dp(mem), // ROR dp
-            0x7B => self.inst_ror_dp_x(mem), // ROR dp X
-            0x6C => self.inst_ror_abs(mem), // ROR !abs
-
-            // Flag operations
-            0x60 => self.inst_clrc(), // CLRC
-            0x80 => self.inst_setc(), // SETC
-            0xED => self.inst_notc(), // NOTC
-            0x20 => self.inst_clrp(), // CLRP
-            0x40 => self.inst_setp(), // SETP
-            0xE0 => self.inst_clrv(), // CLRV
-            0xA0 => self.inst_ei(), // EI
-            0xC0 => self.inst_di(), // DI
-            0xDF => self.inst_daa(), // DAA
-            0xBE => self.inst_das(), // DAS
- 
-            // MOV — register indirect
-            0xE6 => self.inst_mov_a_ix(mem),   // MOV A,(X)
-            0xC6 => self.inst_mov_ix_a(mem),   // MOV (X),A
-            0xBF => self.inst_mov_a_ixp(mem),  // MOV A,(X)+
-            0xAF => self.inst_mov_ixp_a(mem),  // MOV (X)+,A
-            0xF4 => self.inst_mov_a_dp_x(mem), // MOV A,dp+X
-            0xF5 => self.inst_mov_a_abs_x(mem), // MOV A,!abs+X
-            0xF6 => self.inst_mov_a_abs_y(mem), // MOV A,!abs+Y
-            0xE7 => self.inst_mov_a_dp_x_ind(mem), // MOV A,[dp+X]
-            0xF7 => self.inst_mov_a_dp_ind_y(mem), // MOV A,[dp]+Y
-            0xD4 => self.inst_mov_dp_x_a(mem), // MOV dp+X,A
-            0xD5 => self.inst_mov_abs_x_a(mem), // MOV !abs+X,A
-            0xD6 => self.inst_mov_abs_y_a(mem), // MOV !abs+Y,A
-            0xC7 => self.inst_mov_dp_x_ind_a(mem), // MOV [dp+X],A
-            0xD7 => self.inst_mov_dp_ind_y_a(mem), // MOV [dp]+Y,A
-            0xF9 => self.inst_mov_x_dp_y(mem), // MOV X,dp+Y
-            0xD9 => self.inst_mov_dp_y_x(mem), // MOV dp+Y,X
-            0xFB => self.inst_mov_y_dp_x(mem), // MOV Y,dp+X
-            0xDB => self.inst_mov_dp_x_y(mem), // MOV dp+X,Y
-            0xCB => self.inst_mov_dp_y(mem), // MOV dp,Y
-            0xD8 => self.inst_mov_dp_x(mem), // MOV dp,X
-            0x8F => self.inst_mov_dp_imm(mem), // MOV dp,#imm
-            0xFA => self.inst_mov_dp_dp(mem),  // MOV dp,dp
-            0x9D => self.inst_mov_x_sp(), // MOV X,SP
-            0xBD => self.inst_mov_sp_x(), // MOV SP,X
-
-            // 16 bit moves
-            0xBA => self.inst_movw_ya_dp(mem), // MOVW YA,dp
-            0xDA => self.inst_movw_dp_ya(mem), // MOVW dp,YA
-            0x7A => self.inst_addw(mem),       // ADDW YA,dp
-            0x9A => self.inst_subw(mem),       // SUBW YA,dp
-            0x5A => self.inst_cmpw(mem),       // CMPW YA,dp
-            0x1A => self.inst_decw(mem),       // DECW dp
-            0x3A => self.inst_incw(mem),       // INCW dp
-            0xBB => self.inst_inc_dp_x(mem), // INC dp+X
-            0x9B => self.inst_dec_dp_x(mem), // DEC dp+X
-
-            // OR — all addressing modes
+            0x02 => self.inst_set1(mem, 0),
+            0x03 => self.inst_bbs_bbc(mem, 0, true),  // BBS d.0
             0x04 => self.inst_or_a_dp(mem),
             0x05 => self.inst_or_a_abs(mem),
             0x06 => self.inst_or_a_ix(mem),
             0x07 => self.inst_or_a_dp_x_ind(mem),
+            0x08 => self.inst_ora_imm(mem),           // ORA #imm
             0x09 => self.inst_or_dp_dp(mem),
+            0x0A => self.inst_or1_c_mb(mem),          // OR1 C,m.b
+            0x0B => self.inst_asl_dp(mem),            // ASL dp
+            0x0C => self.inst_asl_abs(mem),           // ASL !abs
+            0x0D => self.inst_push_psw(mem),          // PUSH PSW
+            0x0E => self.inst_tset1(mem),             // TSET1 !a
+            0x0F => self.inst_brk(mem),               // BRK
+            0x10 => self.inst_bpl(mem),               // BPL rel
+            0x11 => self.inst_tcall(mem, 1),
+            0x12 => self.inst_clr1(mem, 0),
+            0x13 => self.inst_bbs_bbc(mem, 0, false), // BBC d.0
             0x14 => self.inst_or_a_dp_x(mem),
             0x15 => self.inst_or_a_abs_x(mem),
             0x16 => self.inst_or_a_abs_y(mem),
             0x17 => self.inst_or_a_dp_ind_y(mem),
             0x18 => self.inst_or_dp_imm(mem),
             0x19 => self.inst_or_ix_iy(mem),
-
-            // AND — all addressing modes
+            0x1A => self.inst_decw(mem),              // DECW dp
+            0x1B => self.inst_asl_dp_x(mem),          // ASL dp X
+            0x1C => self.inst_asl_a(),                // ASL A,
+            0x1D => self.inst_dec_x(),                // DEC X
+            0x1E => self.inst_cmp_x_abs(mem),
+            0x1F => self.inst_jmp_abs_x_ind(mem),     // JMP [!a+X]
+            0x20 => self.inst_clrp(),                 // CLRP
+            0x21 => self.inst_tcall(mem, 2),
+            0x22 => self.inst_set1(mem, 1),
+            0x23 => self.inst_bbs_bbc(mem, 1, true),
             0x24 => self.inst_and_a_dp(mem),
             0x25 => self.inst_and_a_abs(mem),
             0x26 => self.inst_and_a_ix(mem),
             0x27 => self.inst_and_a_dp_x_ind(mem),
+            0x28 => self.inst_and_imm(mem),           // AND #imm
             0x29 => self.inst_and_dp_dp(mem),
+            0x2A => self.inst_or1_c_not_mb(mem),      // OR1 C,/m.b
+            0x2B => self.inst_rol_dp(mem),            // ROL dp
+            0x2C => self.inst_rol_abs(mem),           // ROL !abs
+            0x2D => self.inst_push_a(mem),            // PUSH A
+            0x2E => self.inst_cbne_dp(mem),           // CBNE dp,rel
+            0x2F => self.inst_bra(mem),               // BRA rel
+            0x30 => self.inst_bmi(mem),               // BMI rel
+            0x31 => self.inst_tcall(mem, 3),
+            0x32 => self.inst_clr1(mem, 1),
+            0x33 => self.inst_bbs_bbc(mem, 1, false),
             0x34 => self.inst_and_a_dp_x(mem),
             0x35 => self.inst_and_a_abs_x(mem),
             0x36 => self.inst_and_a_abs_y(mem),
             0x37 => self.inst_and_a_dp_ind_y(mem),
             0x38 => self.inst_and_dp_imm(mem),
             0x39 => self.inst_and_ix_iy(mem),
-
-            // EOR — all addressing modes
+            0x3A => self.inst_incw(mem),              // INCW dp
+            0x3B => self.inst_rol_dp_x(mem),          // ROL dp X
+            0x3C => self.inst_rol_a(),                // ROL A
+            0x3D => self.inst_inc_x(),                // INC X
+            0x3E => self.inst_cmp_x_dp(mem),
+            0x3F => self.inst_call(mem),              // CALL !abs
+            0x40 => self.inst_setp(),                 // SETP
+            0x41 => self.inst_tcall(mem, 4),
+            0x42 => self.inst_set1(mem, 2),
+            0x43 => self.inst_bbs_bbc(mem, 2, true),
             0x44 => self.inst_eor_a_dp(mem),
             0x45 => self.inst_eor_a_abs(mem),
             0x46 => self.inst_eor_a_ix(mem),
             0x47 => self.inst_eor_a_dp_x_ind(mem),
+            0x48 => self.inst_eor_imm(mem),           // EOR #imm
             0x49 => self.inst_eor_dp_dp(mem),
+            0x4A => self.inst_and1_c_mb(mem),         // AND1 C,m.b
+            0x4B => self.inst_lsr_dp(mem),            // LSR dp
+            0x4C => self.inst_lsr_abs(mem),           // LSR !abs
+            0x4D => self.inst_push_x(mem),            // PUSH X
+            0x4E => self.inst_tclr1(mem),             // TCLR1 !a
+            0x4F => self.inst_pcall(mem),             // PCALL !abs
+            0x50 => self.inst_bvc(mem),               // BVC rel
+            0x51 => self.inst_tcall(mem, 5),
+            0x52 => self.inst_clr1(mem, 2),
+            0x53 => self.inst_bbs_bbc(mem, 2, false),
             0x54 => self.inst_eor_a_dp_x(mem),
             0x55 => self.inst_eor_a_abs_x(mem),
             0x56 => self.inst_eor_a_abs_y(mem),
             0x57 => self.inst_eor_a_dp_ind_y(mem),
             0x58 => self.inst_eor_dp_imm(mem),
             0x59 => self.inst_eor_ix_iy(mem),
-
-            // CMP — all addressing modes
+            0x5A => self.inst_cmpw(mem),              // CMPW YA,dp
+            0x5B => self.inst_lsr_dp_x(mem),          // LSR dp X
+            0x5C => self.inst_lsr_a(),                // LSR A
+            0x5D => self.inst_mov_x_a(),              // MOV X, A
+            0x5E => self.inst_cmp_y_abs(mem),
+            0x5F => self.inst_jmp_abs(mem),           // JMP !a
+            0x60 => self.inst_clrc(),                 // CLRC
+            0x61 => self.inst_tcall(mem, 6),
+            0x62 => self.inst_set1(mem, 3),
+            0x63 => self.inst_bbs_bbc(mem, 3, true),
             0x64 => self.inst_cmp_a_dp(mem),
             0x65 => self.inst_cmp_a_abs(mem),
             0x66 => self.inst_cmp_a_ix(mem),
             0x67 => self.inst_cmp_a_dp_x_ind(mem),
+            0x68 => self.inst_cmp_imm(mem),           // CMP #imm
             0x69 => self.inst_cmp_dp_dp(mem),
+            0x6A => self.inst_and1_c_not_mb(mem),     // AND1 C,/m.b
+            0x6B => self.inst_ror_dp(mem),            // ROR dp
+            0x6C => self.inst_ror_abs(mem),           // ROR !abs
+            0x6D => self.inst_push_y(mem),            // PUSH Y
+            0x6E => self.inst_dbnz_dp(mem),           // DBNZ dp,rel
+            0x6F => self.inst_ret(mem),               // RET
+            0x70 => self.inst_bvs(mem),               // BVS rel
+            0x71 => self.inst_tcall(mem, 7),
+            0x72 => self.inst_clr1(mem, 3),
+            0x73 => self.inst_bbs_bbc(mem, 3, false),
             0x74 => self.inst_cmp_a_dp_x(mem),
             0x75 => self.inst_cmp_a_abs_x(mem),
             0x76 => self.inst_cmp_a_abs_y(mem),
             0x77 => self.inst_cmp_a_dp_ind_y(mem),
             0x78 => self.inst_cmp_dp_imm(mem),
             0x79 => self.inst_cmp_ix_iy(mem),
-            0xC8 => self.inst_cmp_x_imm(mem),
-            0xAD => self.inst_cmp_y_imm(mem),
-            0x3E => self.inst_cmp_x_dp(mem),
-            0x1E => self.inst_cmp_x_abs(mem),
+            0x7A => self.inst_addw(mem),              // ADDW YA,dp
+            0x7B => self.inst_ror_dp_x(mem),          // ROR dp X
+            0x7C => self.inst_ror_a(),                // ROR A
+            0x7D => self.inst_mov_a_x(),              // MOV A, X
             0x7E => self.inst_cmp_y_dp(mem),
-            0x5E => self.inst_cmp_y_abs(mem),
-
-            // ADC — all addressing modes
+            0x7F => self.inst_reti(mem),              // RETI
+            0x80 => self.inst_setc(),                 // SETC
+            0x81 => self.inst_tcall(mem, 8),
+            0x82 => self.inst_set1(mem, 4),
+            0x83 => self.inst_bbs_bbc(mem, 4, true),
             0x84 => self.inst_adc_a_dp(mem),
             0x85 => self.inst_adc_a_abs(mem),
             0x86 => self.inst_adc_a_ix(mem),
             0x87 => self.inst_adc_a_dp_x_ind(mem),
+            0x88 => self.inst_adc_imm(mem),           // ADC #imm
             0x89 => self.inst_adc_dp_dp(mem),
+            0x8A => self.inst_eor1_c_mb(mem),         // EOR1 C,m.b
+            0x8B => self.inst_dec_dp(mem),            // DEC dp
+            0x8C => self.inst_dec_abs(mem),
+            0x8D => self.inst_ldy_imm(mem),           // LDY #imm
+            0x8E => self.inst_pop_psw(mem),           // POP PSW
+            0x8F => self.inst_mov_dp_imm(mem),        // MOV dp,#imm
+            0x90 => self.inst_bcc(mem),               // BCC rel
+            0x91 => self.inst_tcall(mem, 9),
+            0x92 => self.inst_clr1(mem, 4),
+            0x93 => self.inst_bbs_bbc(mem, 4, false),
             0x94 => self.inst_adc_a_dp_x(mem),
             0x95 => self.inst_adc_a_abs_x(mem),
             0x96 => self.inst_adc_a_abs_y(mem),
             0x97 => self.inst_adc_a_dp_ind_y(mem),
             0x98 => self.inst_adc_dp_imm(mem),
             0x99 => self.inst_adc_ix_iy(mem),
-
-            // SBC — all addressing modes
+            0x9A => self.inst_subw(mem),              // SUBW YA,dp
+            0x9B => self.inst_dec_dp_x(mem),          // DEC dp+X
+            0x9C => self.inst_dec_a(),                // DEC A
+            0x9D => self.inst_mov_x_sp(),             // MOV X,SP
+            0x9E => self.inst_div(mem),               // DIV
+            0x9F => self.inst_xcn_a(),                // XCN A
+            0xA0 => self.inst_ei(),                   // EI
+            0xA1 => self.inst_tcall(mem, 10),
+            0xA2 => self.inst_set1(mem, 5),
+            0xA3 => self.inst_bbs_bbc(mem, 5, true),
             0xA4 => self.inst_sbc_a_dp(mem),
             0xA5 => self.inst_sbc_a_abs(mem),
             0xA6 => self.inst_sbc_a_ix(mem),
             0xA7 => self.inst_sbc_a_dp_x_ind(mem),
+            0xA8 => self.inst_sbc_imm(mem),           // SBC #imm
             0xA9 => self.inst_sbc_dp_dp(mem),
+            0xAA => self.inst_mov1_c_mb(mem),         // MOV1 C,m.b
+            0xAB => self.inst_inc_dp(mem),            // INC dp
+            0xAC => self.inst_inc_abs(mem),
+            0xAD => self.inst_cmp_y_imm(mem),
+            0xAE => self.inst_pop_a(mem),             // POP A
+            0xAF => self.inst_mov_ixp_a(mem),         // MOV (X)+,A
+            0xB0 => self.inst_bcs(mem),               // BCS rel
+            0xB1 => self.inst_tcall(mem, 11),
+            0xB2 => self.inst_clr1(mem, 5),
+            0xB3 => self.inst_bbs_bbc(mem, 5, false),
             0xB4 => self.inst_sbc_a_dp_x(mem),
             0xB5 => self.inst_sbc_a_abs_x(mem),
             0xB6 => self.inst_sbc_a_abs_y(mem),
             0xB7 => self.inst_sbc_a_dp_ind_y(mem),
             0xB8 => self.inst_sbc_dp_imm(mem),
             0xB9 => self.inst_sbc_ix_iy(mem),
-
-            // SET1/CLR1 — bit set/clear, direct page, 8 positions each
-            0x02 => self.inst_set1(mem, 0),
-            0x12 => self.inst_clr1(mem, 0),
-            0x22 => self.inst_set1(mem, 1),
-            0x32 => self.inst_clr1(mem, 1),
-            0x42 => self.inst_set1(mem, 2),
-            0x52 => self.inst_clr1(mem, 2),
-            0x62 => self.inst_set1(mem, 3),
-            0x72 => self.inst_clr1(mem, 3),
-            0x82 => self.inst_set1(mem, 4),
-            0x92 => self.inst_clr1(mem, 4),
-            0xA2 => self.inst_set1(mem, 5),
-            0xB2 => self.inst_clr1(mem, 5),
+            0xBA => self.inst_movw_ya_dp(mem),        // MOVW YA,dp
+            0xBB => self.inst_inc_dp_x(mem),          // INC dp+X
+            0xBC => self.inst_inc_a(),                // INC A
+            0xBD => self.inst_mov_sp_x(),             // MOV SP,X
+            0xBE => self.inst_das(),                  // DAS
+            0xBF => self.inst_mov_a_ixp(mem),         // MOV A,(X)+
+            0xC0 => self.inst_di(),                   // DI
+            0xC1 => self.inst_tcall(mem, 12),
             0xC2 => self.inst_set1(mem, 6),
-            0xD2 => self.inst_clr1(mem, 6),
-            0xE2 => self.inst_set1(mem, 7),
-            0xF2 => self.inst_clr1(mem, 7),
-
-            // BBS/BBC — branch on bit set/clear, 8 positions each
-            0x03 => self.inst_bbs_bbc(mem, 0, true),  // BBS d.0
-            0x13 => self.inst_bbs_bbc(mem, 0, false), // BBC d.0
-            0x23 => self.inst_bbs_bbc(mem, 1, true),
-            0x33 => self.inst_bbs_bbc(mem, 1, false),
-            0x43 => self.inst_bbs_bbc(mem, 2, true),
-            0x53 => self.inst_bbs_bbc(mem, 2, false),
-            0x63 => self.inst_bbs_bbc(mem, 3, true),
-            0x73 => self.inst_bbs_bbc(mem, 3, false),
-            0x83 => self.inst_bbs_bbc(mem, 4, true),
-            0x93 => self.inst_bbs_bbc(mem, 4, false),
-            0xA3 => self.inst_bbs_bbc(mem, 5, true),
-            0xB3 => self.inst_bbs_bbc(mem, 5, false),
             0xC3 => self.inst_bbs_bbc(mem, 6, true),
+            0xC4 => self.inst_sta_dp(mem),            // MOV d, A
+            0xC5 => self.inst_sta_abs(mem),           // MOV !a, A
+            0xC6 => self.inst_mov_ix_a(mem),          // MOV (X),A
+            0xC7 => self.inst_mov_dp_x_ind_a(mem),    // MOV [dp+X],A
+            0xC8 => self.inst_cmp_x_imm(mem),
+            0xC9 => self.inst_stx_abs(mem),           // MOV !a, X
+            0xCA => self.inst_mov1_mb_c(mem),         // MOV1 m.b,C
+            0xCB => self.inst_mov_dp_y(mem),          // MOV dp,Y
+            0xCC => self.inst_sty_abs(mem),           // MOV !a, Y
+            0xCD => self.inst_ldx_imm(mem),           // LDX #imm
+            0xCE => self.inst_pop_x(mem),             // POP X
+            0xCF => self.inst_mul(mem),               // MUL YA
+            0xD0 => self.inst_bne(mem),               // BNE rel
+            0xD1 => self.inst_tcall(mem, 13),
+            0xD2 => self.inst_clr1(mem, 6),
             0xD3 => self.inst_bbs_bbc(mem, 6, false),
+            0xD4 => self.inst_mov_dp_x_a(mem),        // MOV dp+X,A
+            0xD5 => self.inst_mov_abs_x_a(mem),       // MOV !abs+X,A
+            0xD6 => self.inst_mov_abs_y_a(mem),       // MOV !abs+Y,A
+            0xD7 => self.inst_mov_dp_ind_y_a(mem),    // MOV [dp]+Y,A
+            0xD8 => self.inst_mov_dp_x(mem),          // MOV dp,X
+            0xD9 => self.inst_mov_dp_y_x(mem),        // MOV dp+Y,X
+            0xDA => self.inst_movw_dp_ya(mem),        // MOVW dp,YA
+            0xDB => self.inst_mov_dp_x_y(mem),        // MOV dp+X,Y
+            0xDC => self.inst_dec_y(),                // DEC Y
+            0xDD => self.inst_mov_a_y(),              // MOV A, Y
+            0xDE => self.inst_cbne_dp_x(mem),         // CBNE dp+X,rel
+            0xDF => self.inst_daa(),                  // DAA
+            0xE0 => self.inst_clrv(),                 // CLRV
+            0xE1 => self.inst_tcall(mem, 14),
+            0xE2 => self.inst_set1(mem, 7),
             0xE3 => self.inst_bbs_bbc(mem, 7, true),
+            0xE4 => self.inst_lda_dp(mem),            // MOV A, d
+            0xE5 => self.inst_lda_abs(mem),           // MOV A, !a
+            0xE6 => self.inst_mov_a_ix(mem),          // MOV A,(X)
+            0xE7 => self.inst_mov_a_dp_x_ind(mem),    // MOV A,[dp+X]
+            0xE8 => self.inst_lda_imm(mem),           // LDA #imm
+            0xE9 => self.inst_ldx_abs(mem),           // MOV X, !a
+            0xEA => self.inst_not1_mb(mem),           // NOT1 m.b
+            0xEB => self.inst_ldy_dp(mem),            // MOV Y, d
+            0xEC => self.inst_ldy_abs(mem),           // MOV Y, !a
+            0xED => self.inst_notc(),                 // NOTC
+            0xEE => self.inst_pop_y(mem),             // POP Y
+            0xEF => self.inst_sleep(),                // SLEEP
+            0xF0 => self.inst_beq(mem),               // BEQ rel
+            0xF1 => self.inst_tcall(mem, 15),
+            0xF2 => self.inst_clr1(mem, 7),
             0xF3 => self.inst_bbs_bbc(mem, 7, false),
-
-            // Bit manipulation opcodes
-            0x0E => self.inst_tset1(mem),       // TSET1 !a
-            0x4E => self.inst_tclr1(mem),       // TCLR1 !a
-            0xAA => self.inst_mov1_c_mb(mem),   // MOV1 C,m.b
-            0xCA => self.inst_mov1_mb_c(mem),   // MOV1 m.b,C
-            0x0A => self.inst_or1_c_mb(mem),    // OR1 C,m.b
-            0x2A => self.inst_or1_c_not_mb(mem),// OR1 C,/m.b
-            0x4A => self.inst_and1_c_mb(mem),   // AND1 C,m.b
-            0x6A => self.inst_and1_c_not_mb(mem), // AND1 C,/m.b
-            0x8A => self.inst_eor1_c_mb(mem),   // EOR1 C,m.b
-            0xEA => self.inst_not1_mb(mem),     // NOT1 m.b
-
-            // Jumps and interrupts
-            0x5F => self.inst_jmp_abs(mem),        // JMP !a
-            0x1F => self.inst_jmp_abs_x_ind(mem),  // JMP [!a+X]
-            0x7F => self.inst_reti(mem),           // RETI
-            0x2E => self.inst_cbne_dp(mem),        // CBNE dp,rel
-            0xDE => self.inst_cbne_dp_x(mem),      // CBNE dp+X,rel
-            0x6E => self.inst_dbnz_dp(mem),        // DBNZ dp,rel
-            0xFE => self.inst_dbnz_y(mem),         // DBNZ Y,rel
-            0x0F => self.inst_brk(mem),            // BRK
-
-            0x9F => self.inst_xcn_a(), // XCN A
+            0xF4 => self.inst_mov_a_dp_x(mem),        // MOV A,dp+X
+            0xF5 => self.inst_mov_a_abs_x(mem),       // MOV A,!abs+X
+            0xF6 => self.inst_mov_a_abs_y(mem),       // MOV A,!abs+Y
+            0xF7 => self.inst_mov_a_dp_ind_y(mem),    // MOV A,[dp]+Y
+            0xF8 => self.inst_ldx_dp(mem),            // MOV X, d
+            0xF9 => self.inst_mov_x_dp_y(mem),        // MOV X,dp+Y
+            0xFA => self.inst_mov_dp_dp(mem),         // MOV dp,dp
+            0xFB => self.inst_mov_y_dp_x(mem),        // MOV Y,dp+X
+            0xFC => self.inst_inc_y(),                // INC Y
+            0xFD => self.inst_mov_y_a(),              // MOV Y, A
+            0xFE => self.inst_dbnz_y(mem),            // DBNZ Y,rel
+            0xFF => self.inst_stop(),                 // STOP
         }
-    }        
+    }
 
     // Flag helpers
     pub fn set_flag(&mut self, mask: u8, value: bool) {
@@ -366,7 +315,7 @@ impl Spc700 {
 
     pub fn get_flag(&self, mask: u8) -> bool {
         (self.regs.psw & mask) != 0
-    }      
+    }
 
     fn set_zn_flags(&mut self, value: u8) {
         self.set_flag(FLAG_Z, value == 0);
@@ -486,7 +435,7 @@ impl Spc700 {
         self.regs.y = mem.read8_mut(addr);
         self.set_zn_flags(self.regs.y);
         self.cycles += 4;
-    }    
+    }
 
     // Load from direct page
     pub fn inst_lda_dp(&mut self, mem: &mut Memory) {
@@ -512,30 +461,27 @@ impl Spc700 {
         self.set_zn_flags(self.regs.y);
         self.cycles += 3;
     }
-    
+
     pub fn inst_sta_dp(&mut self, mem: &mut Memory) {
         let offset = self.read_immediate(mem) as u16;
         let addr = self.dp_base() | offset;
         mem.write8(addr, self.regs.a);
-    
         self.cycles += 3;
     }
-    
+
     pub fn inst_stx_dp(&mut self, mem: &mut Memory) {
         let offset = self.read_immediate(mem) as u16;
         let addr = self.dp_base() | offset;
         mem.write8(addr, self.regs.x);
-    
         self.cycles += 3;
     }
-    
+
     pub fn inst_sty_dp(&mut self, mem: &mut Memory) {
         let offset = self.read_immediate(mem) as u16;
         let addr = self.dp_base() | offset;
         mem.write8(addr, self.regs.y);
-    
         self.cycles += 3;
-    }    
+    }
 
     pub fn inst_adc_imm(&mut self, mem: &mut Memory) {
         let value = self.read_immediate(mem);
@@ -546,7 +492,6 @@ impl Spc700 {
     /// Compare memory with accumulator (sets flags only)
     pub fn inst_cmp_imm(&mut self, mem: &mut Memory) {
         let value = self.read_immediate(mem);
-
         let result = self.regs.a.wrapping_sub(value);
 
         self.set_flag(FLAG_C, self.regs.a >= value);
@@ -695,21 +640,21 @@ impl Spc700 {
     // PUSH: write to $0100|SP, then decrement SP.
     // POP:  increment SP, then read from $0100|SP.
     // =========================================================
- 
+
     fn stack_push(&mut self, mem: &mut Memory, value: u8) {
         mem.write8(0x0100 | self.regs.sp as u16, value);
         self.regs.sp = self.regs.sp.wrapping_sub(1);
     }
- 
+
     fn stack_pop(&mut self, mem: &mut Memory) -> u8 {
         self.regs.sp = self.regs.sp.wrapping_add(1);
         mem.read8_mut(0x0100 | self.regs.sp as u16)
     }
- 
+
     // =========================================================
     // SUBROUTINE CALLS AND RETURNS
     // =========================================================
- 
+
     /// CALL !abs — push PC (high then low), jump to 16-bit target.
     /// 3 bytes: opcode + 16-bit target address. 8 cycles.
     fn inst_call(&mut self, mem: &mut Memory) {
@@ -734,7 +679,7 @@ impl Spc700 {
         self.cycles += 5;
     }
 
-     /// PCALL u — push return address, jump to $FF00 + u.
+    /// PCALL u — push return address, jump to $FF00 + u.
     /// Used to call routines in the SPC700 high page without a full
     /// 16-bit address. 2 bytes: opcode + u. 6 cycles.
     fn inst_pcall(&mut self, mem: &mut Memory) {
@@ -773,7 +718,7 @@ impl Spc700 {
     // POP:  increment SP, read from $0100|SP into register. 4 cycles.
     // Neither instruction affects any flags.
     // =========================================================
- 
+
     /// PUSH A — push accumulator onto the stack. 4 cycles.
     fn inst_push_a(&mut self, mem: &mut Memory) {
         self.stack_push(mem, self.regs.a);
@@ -824,18 +769,15 @@ impl Spc700 {
     }
 
     /// SLEEP — halt CPU until an interrupt fires.
-    /// TODO: implement when interrupt handling is added (feature/ipl-boot-rom).
-    fn inst_sleep(&mut self) {
-        return;
-        //todo("SLEEP: halt until interrupt")
-    }
+    /// Currently a no-op: interrupt handling isn't implemented yet, and
+    /// halting would need a `halted` flag checked in `step`. Tracked for
+    /// the interrupt/IPL work.
+    fn inst_sleep(&mut self) {}
 
-    /// STOP — halt CPU permanently.
-    /// TODO: implement when interrupt handling is added (feature/ipl-boot-rom).
-    fn inst_stop(&mut self) {
-        return;
-        //todo!("STOP: permanent halt")
-    }
+    /// STOP — halt CPU permanently (until hardware reset).
+    /// Currently a no-op for the same reason as SLEEP above; a real
+    /// implementation parks the core via a `halted` flag.
+    fn inst_stop(&mut self) {}
 
     /// INC A — increment accumulator by 1. Sets N and Z. 2 cycles.
     fn inst_inc_a(&mut self) {
