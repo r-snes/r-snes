@@ -146,6 +146,18 @@ impl Apu {
         self.ipl != IplHle::Done
     }
 
+    /// Skip the HLE IPL boot entirely, handing the core to the SPC700
+    /// immediately. Intended for tests and tools that construct an `Apu`
+    /// and execute code directly, without performing the main-CPU upload
+    /// protocol. The announce values are still placed on the ports so
+    /// anything checking for the $AA/$BB handshake keeps working, and SP
+    /// keeps its post-IPL value of $EF from `new`.
+    pub fn skip_ipl_boot(&mut self) {
+        self.memory.port_out[0] = 0xAA;
+        self.memory.port_out[1] = 0xBB;
+        self.ipl = IplHle::Done;
+    }
+
     /// Re-arm the HLE IPL after uploaded code jumps back into the boot
     /// ROM region. Replicates the real IPL's startup side effects, which
     /// run unconditionally from the top on every entry:
@@ -351,14 +363,14 @@ mod tests {
         apu.step(2);
         assert_eq!(apu.memory.cpu_port_read(0), 0xCC, "IPL must ack $CC");
 
-        // 3. Upload three bytes
-        for (i, byte) in [0xDE_u8, 0xAD, 0xBE].iter().enumerate() {
+        // 3. Upload a 3-byte program: MOV A,#$42 ($E8 $42), then STOP ($FF).
+        for (i, byte) in [0xE8_u8, 0x42, 0xFF].iter().enumerate() {
             apu.memory.cpu_port_write(1, *byte);
             apu.memory.cpu_port_write(0, i as u8);
             apu.step(2);
             assert_eq!(apu.memory.cpu_port_read(0), i as u8, "IPL must echo index");
         }
-        assert_eq!(&apu.memory.ram[0x0200..0x0203], &[0xDE, 0xAD, 0xBE]);
+        assert_eq!(&apu.memory.ram[0x0200..0x0203], &[0xE8, 0x42, 0xFF]);
 
         // 4. Execute command: index jumped by >= 2, port1 = 0, addr = $0200
         apu.memory.cpu_port_write(2, 0x00);
@@ -371,14 +383,18 @@ mod tests {
         apu.step(IPL_EXEC_DELAY_CYCLES as u32 - 8);
         assert_eq!(apu.memory.cpu_port_read(0), 0x05, "ack stomped during exec delay");
         assert!(apu.ipl_active(), "chunk must not run during exec delay");
-        // ...and only then does the uploaded code start.
-        apu.step(16);
+        // ...then the uploaded program runs: MOV A,#$42 executes, STOP parks
+        // the core. The end-state proves execution began exactly at $0200
+        // with the real IPL's zeroed registers.
+        apu.step(32);
 
         assert!(!apu.ipl_active(), "IPL should have handed off");
-        assert_eq!(apu.cpu.regs.pc, 0x0200, "SPC700 must start at the entry point");
+        assert!(apu.cpu.halted, "uploaded STOP must have parked the core");
+        assert_eq!(apu.cpu.regs.a, 0x42, "uploaded MOV A,#$42 must have run");
+        assert_eq!(apu.cpu.regs.pc, 0x0203, "PC frozen just past the STOP");
         assert_eq!(apu.memory.ram[0x00], 0x00, "entry lo stored at $00 like the real IPL");
         assert_eq!(apu.memory.ram[0x01], 0x02, "entry hi stored at $01 like the real IPL");
-        assert_eq!((apu.cpu.regs.a, apu.cpu.regs.x, apu.cpu.regs.y), (0, 0, 0));
+        assert_eq!((apu.cpu.regs.x, apu.cpu.regs.y), (0, 0));
     }
 
     /// Regression test for the chunk-boundary race: a completion value the
