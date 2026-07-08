@@ -42,12 +42,12 @@ impl Renderer {
             let fy = if flip_y { 7 - fine_y } else { fine_y };
 
             // ============================================================
-            // Decode 4bpp pixel from CHR data
+            // Decode 2bpp pixel from CHR data
             // ============================================================
             let tile_word_base = tiledata_base as usize + tile_index as usize * 8;
             let color_index = Self::decode_2bpp_tile_pixel_from(&ppu.vram.memory, tile_word_base, fx, fy);
 
-            let palette_entry = ((palette_num as u8) << 4) | color_index;
+            let palette_entry = (palette_num as u8) * 4 + color_index;
             let color = ppu.cgram.read(palette_entry);
 
             let (r, g, b) = Self::apply_brightness(color, self.current_brightness as u16);
@@ -57,9 +57,9 @@ impl Renderer {
 
     pub fn decode_2bpp_tile_pixel_from(vram: &RawVRAM, tile_word_base: usize, x: usize, y: usize) -> u8 {
         // Planes 0+1: words 0-7
-        let w01 = vram[tile_word_base + y];
-        let p0 = (w01 & 0xFF) as u8; // lo byte = plane 0
-        let p1 = (w01 >> 8) as u8; // hi byte = plane 1
+        let w = vram[tile_word_base + y];
+        let p0 = (w & 0xFF) as u8;
+        let p1 = (w >> 8) as u8;
 
         let bit = 7 - x;
         ((p0 >> bit) & 1) | (((p1 >> bit) & 1) << 1)
