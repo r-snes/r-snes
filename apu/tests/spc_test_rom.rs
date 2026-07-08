@@ -46,20 +46,22 @@ fn run_chunk(spc_binary: &[u8], last_test_num_seed: u16) -> ChunkResult {
     // so a straight copy starting at RAM offset 0 is correct.
     apu.memory.ram[..spc_binary.len()].copy_from_slice(spc_binary);
 
-    // Skip the IPL handshake entirely -- jump straight to the code's
-    // entry point instead of reading the (currently nonexistent) real
-    // boot vector.
+    // A fresh Apu now boots into the HLE IPL, which owns the core until
+    // the main-CPU upload protocol completes -- Apu::step would run the
+    // boot state machine, not the SPC700, and this harness bypasses the
+    // protocol by design. Hand the core over explicitly.
+    apu.skip_ipl_boot();
+
+    // Jump straight to the code's entry point instead of going through
+    // an upload + execute command.
     apu.cpu.regs.pc = 0x0300;
 
-    // The real IPL ROM's first act after reset is `mov x,#$ef; mov sp,x`,
-    // leaving SP at $EF (not the raw post-reset $FF) before it ever hands
-    // off to user code. Tests in this suite are written assuming that
-    // real post-boot state -- e.g. test #0081 deliberately places its
-    // ADDW operand at $01FF, relying on the stack (which starts pushing
-    // at $01EF and grows downward) never reaching that high. Skipping
-    // this and leaving SP at $FF causes an unrelated `push` to clobber
-    // $01FF right before it's read, which looks like a CPU bug but isn't.
-    apu.cpu.regs.sp = 0xEF;
+    // Note: SP is already $EF -- Apu::new replicates the real IPL's
+    // `mov x,#$ef; mov sp,x` post-boot state. Tests in this suite depend
+    // on it (e.g. test #0081 places its ADDW operand at $01FF, relying
+    // on the stack, which pushes from $01EF downward, never reaching
+    // that high). This harness used to set it by hand; the invariant
+    // now lives in Apu::new so every boot path gets it.
 
     // Play the main-CPU side of the post-load handshake (see
     // spc_common.inc's `main:`): tell the SPC "go" (port1=1) and seed
