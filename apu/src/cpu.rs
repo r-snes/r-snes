@@ -23,6 +23,12 @@ pub const FLAG_N: u8 = 0x80; // Negative
 pub struct Spc700 {
     pub regs: Registers,
     pub cycles: u32,
+
+    /// Set by SLEEP ($EF) and STOP ($FF); cleared only by reset. On the
+    /// S-SMP these are equivalent: SLEEP waits for an interrupt, but the
+    /// SNES wires no interrupt sources to the SPC700, so both halt the
+    /// core permanently. While halted, `step` is a no-op.
+    pub halted: bool,
 }
 
 impl Spc700 {
@@ -30,6 +36,7 @@ impl Spc700 {
         Self {
             regs: Registers::default(),
             cycles: 0,
+            halted: false,
         }
     }
 
@@ -37,14 +44,25 @@ impl Spc700 {
         self.regs.pc = mem.read16(0xFFFE); // Reset vector
         self.regs.sp = 0xFF;
         self.regs.psw = 0;
+        self.halted = false; // reset is the only thing that wakes SLEEP/STOP
     }
 
     pub fn step(&mut self, mem: &mut Memory) {
+        if self.halted {
+            // Parked by SLEEP/STOP: no fetch, PC frozen. Time still
+            // passes for the rest of the APU (timers, DSP), which keeps
+            // running around a halted core exactly as hardware does.
+            self.cycles += 2;
+            return;
+        }
+
         let opcode = mem.read8_mut(self.regs.pc);
         self.regs.pc = self.regs.pc.wrapping_add(1);
 
         match opcode {
-            // All 256 opcodes in ascending order
+            // All 256 opcodes in ascending order. The match is
+            // exhaustive over u8, hence no `_` arm: adding or removing
+            // an opcode is a compile error rather than a silent gap.
             0x00 => self.inst_nop(),                  // NOP
             0x01 => self.inst_tcall(mem, 0),
             0x02 => self.inst_set1(mem, 0),
@@ -768,16 +786,20 @@ impl Spc700 {
         self.cycles += 4;
     }
 
-    /// SLEEP — halt CPU until an interrupt fires.
-    /// Currently a no-op: interrupt handling isn't implemented yet, and
-    /// halting would need a `halted` flag checked in `step`. Tracked for
-    /// the interrupt/IPL work.
-    fn inst_sleep(&mut self) {}
+    /// SLEEP — halt the CPU until an interrupt fires. The S-SMP has no
+    /// interrupt sources, so in practice this halts until reset, same as
+    /// STOP. 3 cycles to execute, then the core is parked.
+    fn inst_sleep(&mut self) {
+        self.halted = true;
+        self.cycles += 3;
+    }
 
-    /// STOP — halt CPU permanently (until hardware reset).
-    /// Currently a no-op for the same reason as SLEEP above; a real
-    /// implementation parks the core via a `halted` flag.
-    fn inst_stop(&mut self) {}
+    /// STOP — halt the CPU permanently (until hardware reset).
+    /// 3 cycles to execute, then the core is parked.
+    fn inst_stop(&mut self) {
+        self.halted = true;
+        self.cycles += 3;
+    }
 
     /// INC A — increment accumulator by 1. Sets N and Z. 2 cycles.
     fn inst_inc_a(&mut self) {
@@ -2460,5 +2482,49 @@ impl Spc700 {
         self.regs.a = (self.regs.a >> 4) | (self.regs.a << 4);
         self.set_zn_flags(self.regs.a);
         self.cycles += 5;
+    }
+}
+
+#[cfg(test)]
+mod halt_tests {
+    use super::*;
+    use crate::memory::Memory;
+
+    fn cpu_running_at(mem: &mut Memory, pc: u16, program: &[u8]) -> Spc700 {
+        for (i, b) in program.iter().enumerate() {
+            mem.write8(pc + i as u16, *b);
+        }
+        let mut cpu = Spc700::new();
+        cpu.regs.pc = pc;
+        cpu
+    }
+
+    #[test]
+    fn stop_parks_the_core() {
+        let mut mem = Memory::new();
+        // STOP, then a MOV A,#$42 that must never execute
+        let mut cpu = cpu_running_at(&mut mem, 0x0200, &[0xFF, 0xE8, 0x42]);
+
+        cpu.step(&mut mem);
+        assert!(cpu.halted);
+        let pc_after_stop = cpu.regs.pc;
+
+        for _ in 0..100 {
+            cpu.step(&mut mem);
+        }
+        assert_eq!(cpu.regs.pc, pc_after_stop, "PC must freeze while halted");
+        assert_ne!(cpu.regs.a, 0x42, "instructions after STOP must not run");
+    }
+
+    #[test]
+    fn sleep_parks_and_reset_wakes() {
+        let mut mem = Memory::new();
+        let mut cpu = cpu_running_at(&mut mem, 0x0200, &[0xEF]); // SLEEP
+
+        cpu.step(&mut mem);
+        assert!(cpu.halted);
+
+        cpu.reset(&mut mem);
+        assert!(!cpu.halted, "reset is the only wake source on the S-SMP");
     }
 }
