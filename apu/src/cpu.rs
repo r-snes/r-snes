@@ -13,7 +13,7 @@ pub struct Registers {
 // Processor status flags
 pub const FLAG_C: u8 = 0x01; // Carry
 pub const FLAG_Z: u8 = 0x02; // Zero
-pub const FLAG_I: u8 = 0x04; // Interrupt Disable
+pub const FLAG_I: u8 = 0x04; // Interrupt
 pub const FLAG_H: u8 = 0x08; // Half-Carry
 pub const FLAG_B: u8 = 0x10; // Break
 pub const FLAG_P: u8 = 0x20; // Direct Page
