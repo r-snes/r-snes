@@ -36,7 +36,42 @@ For now, the project is known to work on Linux (Wayland) and Windows, but could 
 
 ## Project structure
 
-Each component (hardware piece of the original console) is implemented in its own crate (thus in its own subfolder, see the up-to-date list of crates in the root `Cargo.toml`), and the main emulator program is implemented directly in `src/`.
+Each component (hardware piece of the original console) is implemented in its own crate, in its own subfolder at the repository root (see the up-to-date list of workspace members in the root `Cargo.toml`). The main emulator program (front-end, window/GUI, and top-level glue between crates) lives directly in `src/`.
+
+- **`cpu/`** - Emulation of the 65816 CPU core, including the full instruction set. Instructions are defined through a small custom DSL, compiled via the `instr_metalang_procmacro` proc-macro sub-crate.
+- **`ppu/`** - Emulation of the Picture Processing Unit: VRAM/CGRAM, PPU registers, and the frame rendering pipeline (one module per background/rendering mode).
+- **`apu/`** - Emulation of the Audio Processing Unit: the S-SMP CPU core and the S-DSP sound chip (ADSR envelopes, BRR sample decoding, voices, timers).
+- **`bus/`** - The system bus tying the components together: address space, WRAM, memory-mapped I/O, and ROM loading/header parsing.
+- **`common/`** - Small shared types and utilities used across the other crates (e.g. SNES address types, bit-splitting helpers).
+- **`plugins/`** - The Lua plugin system described [above](#plugins): the plugin runtime and the permission tree that gates what a plugin is allowed to do, with two dedicated derive-macro sub-crates.
+- **`product_order/`** - Derive-macro crate that provides comparison/ordering logic used by the permission tree in `plugins/`, so permission nodes can be compared against each other.
+
+At the repository root you'll also find the workspace's `Cargo.toml`/`Cargo.lock`, project documentation (`README.md`, `CONTRIBUTING.md`, `TECHNOLOGY_EVALUATION.md`, `LEGAL.md`, `FINANCE.md`), test ROMs used for validation (e.g. `cputest-*.sfc`, `spctest.sfc`), a Nix flake for a reproducible dev environment, and the project's static website under `site/`.
+
+```
+R-SNES/
+├── src/                  # main binary: front-end, GUI, wiring between crates
+│   └── rsnes/
+├── cpu/                  # 65816 CPU core + instruction set
+│   ├── instr_metalang_procmacro/
+│   ├── docs/
+│   │   └── README.md
+│   └── README.md
+├── ppu/                  # Picture Processing Unit (rendering, VRAM, CGRAM)
+│   └── rendering/
+├── apu/                  # Audio Processing Unit (S-SMP + S-DSP)
+│   └── dsp/
+├── bus/                  # system bus, WRAM, ROM loading/header
+│   └── rom/
+├── common/               # shared types & utilities
+├── plugins/              # Lua plugin runtime + permission system
+│   ├── perm_tree_node_derive/
+│   └── permission_derive_macro/
+├── product_order/        # permission-tree comparison/ordering derive macro
+├── site/                 # project website
+├── Cargo.toml            # workspace definition
+└── README.md
+```
 
 ## Language and technology choices
 
