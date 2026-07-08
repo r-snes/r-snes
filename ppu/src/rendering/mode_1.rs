@@ -12,6 +12,12 @@ impl Renderer {
         // BG1 scroll registers
         let scroll_x = ppu.regs.bg1hofs as usize;
         let scroll_y = ppu.regs.bg1vofs as usize;
+        
+        let backdrop = ppu.cgram.read(0);
+        let (br, bg, bb) = Self::apply_brightness(backdrop, self.current_brightness as u16);
+        for x in 0..SCREEN_WIDTH {
+            self.set_pixel(x, y, br, bg, bb);
+        }
 
         for x in 0..SCREEN_WIDTH {
             // ============================================================
