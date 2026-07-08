@@ -1900,21 +1900,43 @@ fn test_all_registers_push_pop_independent() {
 
 // ============================================================
 // SLEEP ($EF) / STOP ($FF) — halt instructions
-// Both need to be implemented
+// On the S-SMP these are equivalent in practice: SLEEP waits for an
+// interrupt, but the SNES wires no interrupt sources to the SPC700,
+// so both park the core until reset.
 // ============================================================
 
 #[test]
-#[should_panic(expected = "SLEEP: halt until interrupt")]
-fn test_sleep_panics_with_todo() {
+fn test_sleep_halts_until_reset() {
     let (mut cpu, mut mem) = make();
-    mem.write8(0x0200, 0xEF);
+    mem.write8(0x0200, 0xEF); // SLEEP
+    mem.write8(0x0201, 0xE8); // MOV A,#$42 — must never execute
+    mem.write8(0x0202, 0x42);
+
     cpu.step(&mut mem);
+    assert!(cpu.halted, "SLEEP must park the core");
+    let pc = cpu.regs.pc;
+
+    for _ in 0..10 {
+        cpu.step(&mut mem);
+    }
+    assert_eq!(cpu.regs.pc, pc, "PC must freeze while halted");
+    assert_ne!(cpu.regs.a, 0x42, "no instruction may run past SLEEP");
+
+    cpu.reset(&mut mem);
+    assert!(!cpu.halted, "reset is the only wake source on the S-SMP");
 }
 
 #[test]
-#[should_panic(expected = "STOP: permanent halt")]
-fn test_stop_panics_with_todo() {
+fn test_stop_halts_permanently() {
     let (mut cpu, mut mem) = make();
-    mem.write8(0x0200, 0xFF);
+    mem.write8(0x0200, 0xFF); // STOP
     cpu.step(&mut mem);
+    assert!(cpu.halted, "STOP must park the core");
+    assert_eq!(cpu.regs.pc, 0x0201, "PC frozen just past the STOP opcode");
+
+    let pc = cpu.regs.pc;
+    for _ in 0..10 {
+        cpu.step(&mut mem);
+    }
+    assert_eq!(cpu.regs.pc, pc, "a stopped core never advances");
 }
