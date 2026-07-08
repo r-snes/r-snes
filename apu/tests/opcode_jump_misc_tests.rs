@@ -376,14 +376,15 @@ fn test_brk_jumps_via_vector() {
 }
 
 #[test]
-fn test_brk_sets_break_and_interrupt_disable_flags() {
+fn test_brk_sets_break_and_clears_interrupt_enable() {
     let (mut cpu, mut mem) = make();
+    cpu.regs.psw = FLAG_I; // start with interrupts enabled
     mem.write8(0xFFDE, 0x00);
     mem.write8(0xFFDF, 0x06);
     mem.write8(0x0200, 0x0F);
     cpu.step(&mut mem);
-    assert!(cpu.get_flag(FLAG_B));
-    assert!(cpu.get_flag(FLAG_I));
+    assert!(cpu.get_flag(FLAG_B), "B must be set");
+    assert!(!cpu.get_flag(FLAG_I), "I (interrupt enable) must be cleared");
 }
 
 #[test]
