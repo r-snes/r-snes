@@ -21,6 +21,12 @@ Plugins will also be able to access things *outside* the emulator (which we refe
 Of course, plugins being able to do so much can cause risks since they might spread widely to non-developer communities (to people who can't easily audit what the plugin they are running is doing).
 For that, we require plugins to describe what permissions they require, and prompt the user to confirm that they do intend to grant said permissions to the plugin before running it, so they can at least raise an eyebrow if some plugin requires complete unrestricted access to the internet if it doesn't seem like it needs it.
 
+## Project documents
+
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Contribution policy. External pull requests are currently closed while the core systems (CPU, APU, PPU...) are under active development as part of a university project, but issues and discussions are welcome. Also covers the rules that apply once contributions open: one crate per component, mandatory unit tests (80% coverage minimum per crate), `cargo fmt`, zero warnings, and doc comments on all public items.
+- **[LEGAL.md](LEGAL.md)** - Legal and ethical framework for developing a SNES emulator under French/EU law: clean-room implementation, the private-copy exception, the interoperability exception for reverse engineering, and the project's policy of never distributing ROMs, BIOS, or firmware.
+- **[FINANCE.md](FINANCE.md)** - Funding policy: the project is non-commercial and won't be sold, voluntary donations are allowed, and a future model for commissioned plugins (public-release or exclusive-release) is outlined.
+
 ## Installing
 
 For now the only supported "install" method is building the emulator from source.
