@@ -176,9 +176,10 @@ mod tests {
 
     #[test]
     fn test_apu_ports_do_not_leak_into_io() {
-        // Sanity check: writing a port and then reading a nearby, non-port
-        // address should not be affected — port handling only fires for
-        // exactly $2140-$2143.
+        // $2140-$217F are ALL APU ports (the four CPUIO registers are
+        // mirrored every 4 bytes, matching hardware), so a "nearby" address
+        // like $2144 is still a port. Probe a genuinely unrelated, readable
+        // I/O register instead: DMAP0 at $4300.
         let (mut ppu, mut apu) = init_extern_components();
         let rom_data = create_valid_lorom(0x20000);
         let (rom_path, _dir) = create_temp_rom(&rom_data);
@@ -187,8 +188,11 @@ mod tests {
         let port_addr = snes_addr!(0:0x2140);
         bus.write(port_addr, 0x99, &mut ppu, &mut apu);
 
-        let io_addr = snes_addr!(0:0x2144); // just past the port range
+        let io_addr = snes_addr!(0:0x4300); // DMAP0 — real register storage
         bus.write(io_addr, 0x55, &mut ppu, &mut apu);
+
         assert_eq!(bus.read(io_addr, &mut ppu, &mut apu), 0x55);
+        assert_eq!(bus.io.dma_channels[0].dmap, 0x55, "write went to the DMA register");
+        assert_eq!(apu.memory.port_in[0], 0x99, "port write stayed in the APU");
     }
 }
