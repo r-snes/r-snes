@@ -184,13 +184,7 @@ impl Memory {
             0x00F3 => self.dsp.write_reg(self.dsp_addr, val),
 
             // $F4–$F7 CPUIO — SPC700 writes; SNES CPU reads these.
-            0x00F4..=0x00F7 => {
-                let port = (addr - 0x00F4) as usize;
-                // TEMP DEBUG — SPC-side half of the port traffic trace;
-                // remove together with the one in cpu_port_write.
-                eprintln!("[port] SPC700    -> port{port} = {val:#04x}");
-                self.port_out[port] = val;
-            }
+            0x00F4..=0x00F7 => self.port_out[(addr - 0x00F4) as usize] = val,
 
             // $F8–$F9 — auxiliary RAM.
             0x00F8 | 0x00F9 => self.ram[addr as usize] = val,
@@ -221,11 +215,6 @@ impl Memory {
     /// The SPC700 will read this via $F4+n.
     pub fn cpu_port_write(&mut self, port: usize, val: u8) {
         if port < 4 {
-            // TEMP DEBUG — port traffic trace for hunting the chunk-boundary
-            // handshake freeze. Run with `2> trace.log` and inspect the last
-            // lines before a hang alongside the [apu ipl] lines. Remove once
-            // the freeze is resolved.
-            eprintln!("[port] main CPU -> port{port} = {val:#04x}");
             self.port_in[port] = val;
         }
     }

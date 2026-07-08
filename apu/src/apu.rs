@@ -5,6 +5,16 @@ use crate::{cpu::Spc700, memory::Memory, timers::Timers};
 // We count CPU cycles and only tick the DSP when this threshold is reached.
 const DSP_CYCLES_PER_SAMPLE: u32 = 32;
 
+/// IPL boot-protocol trace, printed only in debug builds. Reads as a
+/// boot log (announce, upload blocks, execute) and is the first thing to
+/// check when a ROM hangs during the CPU<->APU handshake.
+macro_rules! ipl_trace {
+    ($($arg:tt)*) => {
+        #[cfg(debug_assertions)]
+        eprintln!($($arg)*);
+    };
+}
+
 /// High-level emulation of the SPC700 IPL boot ROM.
 ///
 /// The real hardware boots the SPC700 into a 64-byte mask ROM at
@@ -146,7 +156,7 @@ impl Apu {
     ///     drivers clear P before jumping to $FFC0)
     ///   - $AA/$BB announced on ports 0/1
     fn reenter_ipl(&mut self) {
-        eprintln!(
+        ipl_trace!(
             "[apu ipl] re-entered at pc={:#06x} — booting, will announce shortly",
             self.cpu.regs.pc
         );
@@ -165,7 +175,7 @@ impl Apu {
                     // Boot init "done" — announce. The main CPU spins on
                     // $2140/$2141 until it sees $AA/$BB; this is the
                     // handshake every upload starts with.
-                    eprintln!("[apu ipl] announcing $AA/$BB, awaiting upload");
+                    ipl_trace!("[apu ipl] announcing $AA/$BB, awaiting upload");
                     self.memory.port_out[0] = 0xAA;
                     self.memory.port_out[1] = 0xBB;
                     self.ipl = IplHle::AwaitStart;
@@ -182,10 +192,10 @@ impl Apu {
                     self.memory.port_out[0] = 0xCC;
 
                     if self.memory.port_in[1] != 0 {
-                        eprintln!("[apu ipl] start command: uploading block to {addr:#06x}");
+                        ipl_trace!("[apu ipl] start command: uploading block to {addr:#06x}");
                         self.ipl = IplHle::Transfer { addr, index: 0 };
                     } else {
-                        eprintln!("[apu ipl] start command: direct execute at {addr:#06x}");
+                        ipl_trace!("[apu ipl] start command: direct execute at {addr:#06x}");
                         self.ipl = IplHle::ExecDelay {
                             cycles_left: IPL_EXEC_DELAY_CYCLES,
                             entry:       addr,
@@ -220,10 +230,10 @@ impl Apu {
                     self.memory.port_out[0] = f4; // ack the command byte
 
                     if self.memory.port_in[1] != 0 {
-                        eprintln!("[apu ipl] next block at {new_addr:#06x}");
+                        ipl_trace!("[apu ipl] next block at {new_addr:#06x}");
                         self.ipl = IplHle::Transfer { addr: new_addr, index: 0 };
                     } else {
-                        eprintln!("[apu ipl] execute at {new_addr:#06x} — handing off shortly");
+                        ipl_trace!("[apu ipl] execute at {new_addr:#06x} — handing off shortly");
                         self.ipl = IplHle::ExecDelay {
                             cycles_left: IPL_EXEC_DELAY_CYCLES,
                             entry:       new_addr,
@@ -248,7 +258,7 @@ impl Apu {
                     self.cpu.regs.x  = 0;
                     self.cpu.regs.y  = 0;
                     self.cpu.regs.pc = entry;
-                    eprintln!("[apu ipl] SPC700 running at {entry:#06x}");
+                    ipl_trace!("[apu ipl] SPC700 running at {entry:#06x}");
                     self.ipl = IplHle::Done;
                 }
             }
