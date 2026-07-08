@@ -53,7 +53,12 @@ impl Renderer {
             let tile_word_base = tiledata_base as usize + tile_index as usize * 8;
             let color_index = Self::decode_2bpp_tile_pixel_from(&ppu.vram.memory, tile_word_base, fx, fy);
 
-            let palette_entry = (palette_num as u8) << 2 + color_index;
+            // Transparent pixel -> do nothing
+            if color_index == 0 {
+                continue;
+            }
+
+            let palette_entry = ((palette_num as u8) << 2) + color_index;
             let color = ppu.cgram.read(palette_entry);
 
             let (r, g, b) = Self::apply_brightness(color, self.current_brightness as u16);
