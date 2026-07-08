@@ -79,6 +79,49 @@ R-SNES/
 └── README.md
 ```
 
+## Project architecture
+
+Architecturally, the root `r-snes` crate (`src/`) acts as the orchestrator: it owns and steps every hardware component crate (`cpu`, `ppu`, `apu`) forward cycle by cycle, and collects their output (the rendered frame, the audio samples) to hand off to the front-end.
+
+The `cpu` and `ppu` crates don't talk to memory directly - they go through the `bus` crate, which owns the SNES memory map and knows how to route a given address to RAM, ROM, or a memory-mapped IO device. This keeps each component crate focused purely on its own emulation logic, while `bus` is the single place that knows *where things live in memory*.
+
+The `apu` crate is a bit different: it has its own internal CPU (the S-SMP) and its own separate memory zone, so it doesn't go through the shared `bus` crate at all - it manages its reads and writes internally. The main program only steps it forward cycle by cycle according to its own clock speed (which differs from the main CPU's), the same way it does for the CPU and PPU, and then collects its audio output.
+
+```
+                              +--------------------+    
+                              | r-snes crate: root |          | Key:    
+                              |--------------------|   2      |  1. Steps component cycles
+      +-----------------------|    main program:   |<------+  |  2. Fills output (image/audio)   
+      |                       |  orchestrates all  |----+  |  |  3. Read/Write requests
+      |  +------------------->|     components     |    |  |  |  4. Perform read/write
+      |  |                    +--------------------+    |  |  |  5. Return CPU reads
+      |  |2                     ^  |  |      |  ^      1|  |
+     1|  |                     3|  |1 |5     |  |       v  |
+      v  |                      |  v  v      |  |     +------------------------+
++-----------------+  +-------------------+   |  |     |    ppu crate: PPU      |
+| apu crate: APU  |  |  cpu crate: CPU   |   |  |     |------------------------|
+|-----------------|  |-------------------|   |  |     |  graphics processing.  |
+| audio rendering |  | handles execution |   |  |     | writes the framebuffer |
++-----------------+  |    of the main    |   |  |     |    according to        |
+         ^           |     program       |   |  |5    |    write requests      |
+         |           +-------------------+  3|  |     +------------------------+
+         |                                   |  |               ^
+         |               +------------------------------+       |
+         |               |         bus crate |  |       |       |
+         |               |-------------------|--|-------|       |
+         |               |                   v  |       |       |
+         |       4       |          +----------------+  |      4|
+         +---------------|--------->|      Bus       |<-|-------+
+                         |          |----------------|  | 
+                         |          | defines the    |  | 
+                         |  +-------| memory mapping |  | 
+                         |  |       +----------------+  | 
+                         |  |4      4|        4|        |
+                         |  v        v         v        |
+                         | RAM      ROM     IO devices  |
+                         +------------------------------+
+```
+
 ## Language and technology choices
 
 The emulator is implemented in Rust. This choice of language is mostly by personal preference, but our preferences are also influenced by having worked with C and C++ for a few years: we all came to agree that it is easier to collaborate with Rust (even though we had far less experience with it at the start of the project) than with other programming languages that can compete in performance and low-level control, such as C and C++.
