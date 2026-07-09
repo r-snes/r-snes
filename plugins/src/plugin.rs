@@ -1,5 +1,8 @@
 use crate::perm_tree::filesystem::FileWriteOptions;
-use crate::perm_tree::{PermTreeNode, RSnesPermissions};
+use crate::perm_tree::{
+    BusPermissions, ControlPermissions, CpuPermissions, ExternalPermissions, FileSystemPermissions,
+    InternalPermissions, PermTreeNode, PpuPermissions, RSnesPermissions,
+};
 use crate::permission::Permission;
 use crate::permission::helpers::AllOr;
 
@@ -404,32 +407,47 @@ impl<'a> PluginPermRequest<'a> {
 
         ui.separator();
 
-        let perms = &self.plugin.table.perms;
         ui.label(RichText::new("Requested permissions").heading());
+        let RSnesPermissions { internal, external } = &self.plugin.table.perms;
 
-        self.force_show_perm_collapsible(ui, &perms.internal, "Internal", |ui, internal| {
-            self.show_perm_collapsible(ui, &internal.cpu, "CPU", |ui, cpu| {
-                self.show_perm_bool(ui, cpu.registers, "Registers");
+        self.force_show_perm_collapsible(ui, internal, "Internal", |ui, internal| {
+            let InternalPermissions {
+                control,
+                cpu,
+                ppu,
+                bus,
+                input,
+            } = internal;
+
+            self.show_perm_collapsible(ui, cpu, "CPU", |ui, cpu| {
+                let CpuPermissions { registers } = cpu;
+                self.show_perm_bool(ui, *registers, "Registers");
             });
-            self.show_perm_collapsible(ui, &internal.bus, "Bus", |ui, bus| {
-                self.show_perm_bool(ui, bus.read, "Read");
-                self.show_perm_bool(ui, bus.write, "Write");
+            self.show_perm_collapsible(ui, bus, "Bus", |ui, bus| {
+                let BusPermissions { read, write } = bus;
+                self.show_perm_bool(ui, *read, "Read");
+                self.show_perm_bool(ui, *write, "Write");
             });
-            self.show_perm_collapsible(ui, &internal.ppu, "PPU", |ui, ppu| {
-                self.show_perm_bool(ui, ppu.display, "Display");
+            self.show_perm_collapsible(ui, ppu, "PPU", |ui, ppu| {
+                let PpuPermissions { display } = ppu;
+                self.show_perm_bool(ui, *display, "Display");
             });
-            self.show_perm_bool(ui, internal.input, "Input");
-            self.show_perm_collapsible(ui, &internal.control, "Control", |ui, control| {
-                self.show_perm_bool(ui, control.pause, "Pause");
-                self.show_perm_bool(ui, control.dialog, "Dialog");
+            self.show_perm_bool(ui, *input, "Input");
+            self.show_perm_collapsible(ui, control, "Control", |ui, control| {
+                let ControlPermissions { dialog, pause } = control;
+                self.show_perm_bool(ui, *pause, "Pause");
+                self.show_perm_bool(ui, *dialog, "Dialog");
             });
         });
 
-        self.force_show_perm_collapsible(ui, &perms.external, "External", |ui, external| {
-            self.show_perm_bool(ui, external.http, "HTTP");
-            self.show_perm_collapsible(ui, &external.filesystem, "Filesystem", |ui, fs| {
-                self.show_perm_bool(ui, fs.read, "Read");
-                self.show_perm_collapsible(ui, &fs.write, "Write", |ui, write| match write {
+        self.force_show_perm_collapsible(ui, external, "External", |ui, external| {
+            let ExternalPermissions { filesystem, http } = external;
+
+            self.show_perm_bool(ui, *http, "HTTP");
+            self.show_perm_collapsible(ui, filesystem, "Filesystem", |ui, fs| {
+                let FileSystemPermissions { read, write } = fs;
+                self.show_perm_bool(ui, *read, "Read");
+                self.show_perm_collapsible(ui, write, "Write", |ui, write| match write {
                     AllOr::All => {
                         ui.label(RichText::new("all").strong());
                     }
@@ -440,12 +458,10 @@ impl<'a> PluginPermRequest<'a> {
                                 ui.label(RichText::new(format!("{file:?}")).monospace());
                                 let label = match options {
                                     FileWriteOptions::NewOnly => "NewOnly",
-                                    FileWriteOptions::CanOverwrite { create, mode } => {
-                                        &format!(
-                                            ": {}{mode:?}",
-                                            if *create { "Create + " } else { "" }
-                                        )
-                                    }
+                                    FileWriteOptions::CanOverwrite { create, mode } => &format!(
+                                        ": {}{mode:?}",
+                                        if *create { "Create + " } else { "" }
+                                    ),
                                 };
                                 ui.label(label);
                             });
