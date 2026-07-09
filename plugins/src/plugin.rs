@@ -330,12 +330,6 @@ pub struct PluginPermRequest<'a> {
 }
 
 impl<'a> PluginPermRequest<'a> {
-    fn all() -> RichText {
-        RichText::new("all").strong()
-    }
-    fn none() -> RichText {
-        RichText::new("none").italics()
-    }
     fn perm_label(perm: &impl Permission, name: &str) -> impl Into<WidgetText> {
         let mut job = LayoutJob::default();
         job.append(name, 0.0, Default::default());
@@ -363,10 +357,7 @@ impl<'a> PluginPermRequest<'a> {
 
         job
     }
-    fn perm_collapsing_header(
-        perm: &impl Permission,
-        name: &str,
-    ) -> CollapsingHeader {
+    fn perm_collapsing_header(perm: &impl Permission, name: &str) -> CollapsingHeader {
         CollapsingHeader::new(Self::perm_label(perm, name))
     }
     fn force_show_perm_collapsible<T: Permission>(
@@ -376,11 +367,9 @@ impl<'a> PluginPermRequest<'a> {
         label: &str,
         draw_content: impl FnOnce(&mut egui::Ui, &T),
     ) {
-        self.show_perm(ui, perm, |ui, perm| {
-            Self::perm_collapsing_header(perm, label)
-                .default_open(true)
-                .show(ui, |ui| draw_content(ui, perm));
-        });
+        Self::perm_collapsing_header(perm, label)
+            .default_open(!perm.is_all() && !perm.is_none())
+            .show(ui, |ui| draw_content(ui, perm));
     }
     fn show_perm_collapsible<T: Permission>(
         &self,
@@ -390,9 +379,7 @@ impl<'a> PluginPermRequest<'a> {
         draw_content: impl FnOnce(&mut egui::Ui, &T),
     ) {
         self.show_perm(ui, perm, |ui, perm| {
-            Self::perm_collapsing_header(perm, label)
-                .default_open(!perm.is_all() && !perm.is_none())
-                .show(ui, |ui| draw_content(ui, perm));
+            Self::force_show_perm_collapsible(&self, ui, perm, label, draw_content);
         });
     }
     fn show_perm<T: Permission>(
@@ -417,64 +404,63 @@ impl<'a> PluginPermRequest<'a> {
 
         ui.separator();
 
-        ui.label(RichText::new("Requested permissions:").heading());
         let perms = &self.plugin.table.perms;
-        if perms.is_none() {
-            ui.indent((), |ui| ui.label(Self::none()));
-        } else {
-            self.force_show_perm_collapsible(ui, &perms.internal, "Internal", |ui, internal| {
-                self.show_perm_collapsible(ui, &internal.cpu, "CPU", |ui, cpu| {
-                    self.show_perm_bool(ui, cpu.registers, "Registers");
-                });
-                self.show_perm_collapsible(ui, &internal.bus, "Bus", |ui, bus| {
-                    self.show_perm_bool(ui, bus.read, "Read");
-                    self.show_perm_bool(ui, bus.write, "Write");
-                });
-                self.show_perm_collapsible(ui, &internal.ppu, "PPU", |ui, ppu| {
-                    self.show_perm_bool(ui, ppu.display, "Display");
-                });
-                self.show_perm_bool(ui, internal.input, "Input");
-                self.show_perm_collapsible(ui, &internal.control, "Control", |ui, control| {
-                    self.show_perm_bool(ui, control.pause, "Pause");
-                    self.show_perm_bool(ui, control.dialog, "Dialog");
-                });
-            });
+        ui.label(RichText::new("Requested permissions").heading());
 
-            self.force_show_perm_collapsible(ui, &perms.external, "External", |ui, external| {
-                self.show_perm_bool(ui, external.http, "HTTP");
-                self.show_perm_collapsible(ui, &external.filesystem, "Filesystem", |ui, fs| {
-                    self.show_perm_bool(ui, fs.read, "Read");
-                    self.show_perm_collapsible(ui, &fs.write, "Write", |ui, write| match write {
-                        AllOr::All => {
-                            ui.label(RichText::new("all").strong());
-                        }
-                        AllOr::Inner(files) => {
-                            for (file, options) in files.files.iter() {
-                                ui.horizontal(|ui| {
-                                    ui.spacing_mut().item_spacing.x = 0.;
-                                    ui.label(RichText::new(format!("{file:?}")).monospace());
-                                    let label = match options {
-                                        FileWriteOptions::NewOnly => "NewOnly",
-                                        FileWriteOptions::CanOverwrite { create, mode } => {
-                                            &format!(
-                                                ": {}{mode:?}",
-                                                if *create { "Create + " } else { "" }
-                                            )
-                                        }
-                                    };
-                                    ui.label(label);
-                                });
-                            }
-                        }
-                    })
-                });
+        self.force_show_perm_collapsible(ui, &perms.internal, "Internal", |ui, internal| {
+            self.show_perm_collapsible(ui, &internal.cpu, "CPU", |ui, cpu| {
+                self.show_perm_bool(ui, cpu.registers, "Registers");
             });
-        }
+            self.show_perm_collapsible(ui, &internal.bus, "Bus", |ui, bus| {
+                self.show_perm_bool(ui, bus.read, "Read");
+                self.show_perm_bool(ui, bus.write, "Write");
+            });
+            self.show_perm_collapsible(ui, &internal.ppu, "PPU", |ui, ppu| {
+                self.show_perm_bool(ui, ppu.display, "Display");
+            });
+            self.show_perm_bool(ui, internal.input, "Input");
+            self.show_perm_collapsible(ui, &internal.control, "Control", |ui, control| {
+                self.show_perm_bool(ui, control.pause, "Pause");
+                self.show_perm_bool(ui, control.dialog, "Dialog");
+            });
+        });
 
+        self.force_show_perm_collapsible(ui, &perms.external, "External", |ui, external| {
+            self.show_perm_bool(ui, external.http, "HTTP");
+            self.show_perm_collapsible(ui, &external.filesystem, "Filesystem", |ui, fs| {
+                self.show_perm_bool(ui, fs.read, "Read");
+                self.show_perm_collapsible(ui, &fs.write, "Write", |ui, write| match write {
+                    AllOr::All => {
+                        ui.label(RichText::new("all").strong());
+                    }
+                    AllOr::Inner(files) => {
+                        for (file, options) in files.files.iter() {
+                            ui.horizontal(|ui| {
+                                ui.spacing_mut().item_spacing.x = 0.;
+                                ui.label(RichText::new(format!("{file:?}")).monospace());
+                                let label = match options {
+                                    FileWriteOptions::NewOnly => "NewOnly",
+                                    FileWriteOptions::CanOverwrite { create, mode } => {
+                                        &format!(
+                                            ": {}{mode:?}",
+                                            if *create { "Create + " } else { "" }
+                                        )
+                                    }
+                                };
+                                ui.label(label);
+                            });
+                        }
+                    }
+                })
+            });
+        });
+
+        ui.add_space(8.0);
         ui.horizontal(|ui| {
             ui.checkbox(&mut self.show_none, "Show 'none' fields");
         });
 
+        ui.separator();
         ui.add_space(16.0);
 
         ui.horizontal(|ui| {
