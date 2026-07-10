@@ -44,8 +44,17 @@ pub enum EnvelopePhase {
 /// ADSR envelope for one voice.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Adsr {
-    /// true = ADSR mode, false = GAIN mode (GAIN not yet implemented)
+    /// true = ADSR mode, false = GAIN mode
     pub adsr_mode: bool,
+
+    /// Raw GAIN register value ($x7). Interpreted only when
+    /// `adsr_mode == false`:
+    ///   bit 7 = 0: direct gain, envelope = (value & 0x7F) * 16
+    ///   bit 7 = 1: envelope ramp, bits 6-5 select the mode
+    ///     (00 linear decrease, 01 exponential decrease,
+    ///      10 linear increase, 11 bent increase),
+    ///     bits 4-0 = rate index into ENVELOPE_RATE_TABLE.
+    pub gain_param: u8,
 
     /// Attack rate index (0–15). Maps into the rate table.
     pub attack_rate: u8,
@@ -75,6 +84,18 @@ impl Adsr {
     /// The hardware only steps the envelope every N ticks, where N is
     /// determined by the rate table. Each phase has its own rate source.
     pub fn update_envelope(&mut self) {
+        // Release and Off behave identically in ADSR and GAIN mode: KOFF
+        // always triggers the fixed -8/tick release fade on real hardware.
+        // For the keyed-on phases, GAIN mode replaces the ADSR state
+        // machine entirely.
+        if !self.adsr_mode
+            && self.envelope_phase != EnvelopePhase::Release
+            && self.envelope_phase != EnvelopePhase::Off
+        {
+            self.update_gain();
+            return;
+        }
+
         match self.envelope_phase {
             EnvelopePhase::Attack => {
                 if self.attack_rate == 15 {
@@ -143,6 +164,47 @@ impl Adsr {
 
             EnvelopePhase::Off => {}
         }
+    }
+
+    /// One envelope tick in GAIN mode ($x7 with ADSR1 bit 7 clear).
+    ///
+    /// Direct gain (bit 7 = 0) sets the envelope level immediately and
+    /// unconditionally — the driver "plays" the envelope by rewriting the
+    /// register. Ramp modes (bit 7 = 1) step the level at the table rate:
+    ///
+    ///   mode 0 (00): linear decrease,      -32 per step
+    ///   mode 1 (01): exponential decrease, -((level >> 8) + 1) per step
+    ///   mode 2 (10): linear increase,      +32 per step
+    ///   mode 3 (11): bent increase,        +32 below 0x600, +8 above
+    ///
+    /// GAIN has no phase transitions: a ramp that reaches 0 leaves the 
+    /// voice keyed on, and one that reaches 0x7FF simply holds there.
+    fn update_gain(&mut self) {
+        let g = self.gain_param;
+
+        if g & 0x80 == 0 {
+            self.envelope_level = ((g & 0x7F) as u16) << 4;
+            return;
+        }
+
+        let period = ENVELOPE_RATE_TABLE[(g & 0x1F) as usize];
+        if !self.tick_due(period) {
+            return;
+        }
+
+        self.envelope_level = match (g >> 5) & 0x03 {
+            0 => self.envelope_level.saturating_sub(32),
+            1 => {
+                let step = (self.envelope_level >> 8) + 1;
+                self.envelope_level.saturating_sub(step)
+            }
+            2 => (self.envelope_level + 32).min(0x7FF),
+            3 => {
+                let step = if self.envelope_level < 0x600 { 32 } else { 8 };
+                (self.envelope_level + step).min(0x7FF)
+            }
+            _ => unreachable!("2-bit field"),
+        };
     }
 
     /// Returns true if enough ticks have elapsed for an envelope step.

@@ -120,8 +120,11 @@ impl Dsp {
                 adsr.sustain_rate  =  value & 0x1F;
             }
 
-            // +7: GAIN — TODO: implement GAIN mode
-            (_v, 0x7) => todo!("GAIN mode"),
+            // +7: GAIN — envelope control when ADSR1 bit 7 is clear.
+            // Stored raw; Adsr::update_gain interprets it per tick.
+            // Writable at any time (drivers sweep it for hand-rolled
+            // envelopes and fades)
+            (v, 0x7) => self.voices[v].adsr.gain_param = value,
 
             // ---- Global registers ----
             _ => match idx {
