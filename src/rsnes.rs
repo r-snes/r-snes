@@ -268,7 +268,7 @@ mod tests {
     use bus::rom::test_rom::*;
     use common::snes_addr;
 
-    fn make_rsnes() -> RSnesCore {
+    pub(super) fn make_rsnes() -> RSnesCore {
         let rom_data = create_valid_lorom(0x20000);
         let (rom_path, _dir) = create_temp_rom(&rom_data);
         RSnesCore::load_rom(&rom_path).unwrap()
