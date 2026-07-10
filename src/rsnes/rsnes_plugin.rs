@@ -313,7 +313,7 @@ mod test {
     use super::*;
     use crate::rsnes::tests::make_rsnes;
     use cpu::registers::Registers;
-    use piccolo::{Executor, StashedExecutor, StashedTable, StashedValue, meta_ops};
+    use piccolo::{Executor, Function, StashedExecutor, StashedTable, StashedValue, meta_ops};
     use plugins::perm_tree::RSnesPermissions;
 
     #[test]
@@ -462,5 +462,66 @@ mod test {
             ),
             "A value should have been left unmodified"
         );
+    }
+
+    #[test]
+    fn input() {
+        let core = Rc::new(RefCell::new(make_rsnes()));
+
+        let mut plugin = Plugin::load_from_raw(
+            br#"return {
+                permissions = {
+                    internal = {
+                        input = "all"
+                    }
+                }
+            }"#,
+            None,
+        )
+        .unwrap();
+        {
+            let mut res_perms = RSnesPermissions::none();
+            res_perms.internal.input = true;
+            assert_eq!(plugin.table.perms, res_perms);
+        }
+
+        let initial_globals_len = plugin.lua.enter(|ctx| ctx.globals().iter().count());
+
+        RSnesCore::inject_into_lua(&core, &mut plugin);
+        let (press_a, release_a) = plugin.lua.enter(|ctx| {
+            assert_eq!(
+                ctx.globals().iter().count(),
+                initial_globals_len + 1,
+                "only 1 global should have been added",
+            );
+
+            let rsnes: Table = ctx.get_global("rsnes").unwrap();
+            assert_eq!(rsnes.iter().count(), 1, "only input table should be loaded",);
+
+            let input: Table = rsnes.get(ctx, "input").unwrap();
+
+            let press = input.get::<_, Function>(ctx, "press_a").unwrap();
+            let release = input.get::<_, Function>(ctx, "release_a").unwrap();
+            (ctx.stash(press), ctx.stash(release))
+        });
+
+        let mut run_lua = |f| {
+            Plugin::run_lua::<_, ()>(&mut plugin.lua, f).unwrap();
+        };
+
+        core.borrow_mut().bus.io.joy1 = 0;
+        assert!(core.borrow().bus.io.joy1 & (1 << 7) == 0);
+        run_lua(&press_a);
+        assert!(core.borrow().bus.io.joy1 & (1 << 7) != 0);
+        run_lua(&press_a);
+        assert!(core.borrow().bus.io.joy1 & (1 << 7) != 0);
+        run_lua(&release_a);
+        assert!(core.borrow().bus.io.joy1 & (1 << 7) == 0);
+        run_lua(&press_a);
+        assert!(core.borrow().bus.io.joy1 & (1 << 7) != 0);
+        run_lua(&release_a);
+        assert!(core.borrow().bus.io.joy1 & (1 << 7) == 0);
+        run_lua(&release_a);
+        assert!(core.borrow().bus.io.joy1 & (1 << 7) == 0);
     }
 }
