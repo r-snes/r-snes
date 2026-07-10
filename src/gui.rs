@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use sdl2::audio::{AudioQueue, AudioSpecDesired};
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 
@@ -9,6 +10,12 @@ pub struct Gui {
     _sdl_ctx: sdl2::Sdl,
     canvas: sdl2::render::Canvas<sdl2::video::Window>,
     event_pump: sdl2::EventPump,
+
+    /// Host audio output. A push-model queue fed with interleaved stereo
+    /// i16 at the DSP's native 32 kHz (`Apu::drain_samples` format), so no
+    /// resampling or format conversion happens anywhere in between.
+    /// Opened paused; call `audio_play` to start output.
+    audio_queue: AudioQueue<i16>,
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -57,10 +64,22 @@ impl Gui {
 
         let event_pump = sdl_ctx.event_pump()?;
 
+        let audio_subsystem = sdl_ctx.audio()?;
+        let desired = AudioSpecDesired {
+            freq: Some(32_000), // native S-DSP output rate
+            channels: Some(2),  // stereo, interleaved L R
+            samples: Some(512), // device buffer: 16 ms — latency vs. underrun
+        };
+        // `None` = default output device. SDL may hand back a different
+        // spec than desired; AudioQueue<i16> converts as needed, so the
+        // queue always accepts our 32 kHz stereo i16 regardless.
+        let audio_queue = audio_subsystem.open_queue::<i16, _>(None, &desired)?;
+
         Ok(Gui {
             _sdl_ctx: sdl_ctx,
             canvas,
             event_pump,
+            audio_queue,
         })
     }
 
@@ -130,6 +149,44 @@ impl Gui {
 
             _ => None,
         }
+    }
+
+    /// Start (or resume) audio playback. Queued samples begin draining
+    /// to the device.
+    pub fn audio_play(&self) {
+        self.audio_queue.resume();
+    }
+
+    /// Stop audio playback and discard anything still queued, so the next
+    /// `audio_play` starts silent instead of replaying stale sound.
+    pub fn audio_stop(&self) {
+        self.audio_queue.pause();
+        self.audio_queue.clear();
+    }
+
+    /// Queue interleaved stereo i16 samples (L, R, L, R, ...) at 32 kHz —
+    /// exactly what `Apu::drain_samples` produces.
+    pub fn audio_queue_samples(&self, samples: &[i16]) -> Result<(), String> {
+        self.audio_queue.queue_audio(samples)
+    }
+
+    /// Number of stereo frames currently queued and not yet played.
+    /// (`size` is in bytes; 1 frame = 2 channels × 2 bytes.)
+    pub fn audio_buffered_frames(&self) -> u32 {
+        self.audio_queue.size() / 4
+    }
+
+    /// Non-blocking event check: returns the next mapped event if one is
+    /// pending, `None` otherwise. Complements `wait_for_event` for loops
+    /// that must keep doing work (e.g. feeding the audio queue) while
+    /// staying responsive.
+    pub fn poll_event(&mut self) -> Option<RSnesEvent> {
+        while let Some(event) = self.event_pump.poll_event() {
+            if let Some(mapped) = Self::map_event(event) {
+                return Some(mapped);
+            }
+        }
+        None
     }
 
     fn handle_events(&mut self) -> impl Iterator<Item = RSnesEvent> {
