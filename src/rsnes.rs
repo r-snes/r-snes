@@ -30,6 +30,7 @@ pub struct RSnesCore {
     pub apu: Apu,
     pub master_cycles: u64,
     pub cpu_master_cycles_to_wait: u32,
+    apu_cycle_debt: u64,
 }
 
 /// R-SNES core + optionally lua runtime for plugin execution (in
@@ -65,6 +66,7 @@ impl RSnesCore {
             apu,
             master_cycles: 0,
             cpu_master_cycles_to_wait: 0,
+            apu_cycle_debt: 0,
         })
     }
 
@@ -180,9 +182,21 @@ impl RSnesCore {
         }
     }
 
+    /// Advance the APU by however many of its own 1.024 MHz cycles are
+    /// owed, given one more master clock cycle has just elapsed.
+    /// ~1 APU cycle per 20.97 master cycles
+    fn update_apu_cycles(&mut self) {
+        self.apu_cycle_debt += Apu::CLOCK_HZ;
+        while self.apu_cycle_debt >= Self::MASTER_CLOCK_HZ {
+            self.apu_cycle_debt -= Self::MASTER_CLOCK_HZ;
+            self.apu.step(1);
+        }
+    }
+
     /// This function will be called every master cycle, it will update the CPU, PPU and APU state accordingly
     pub fn update(&mut self) {
         self.update_cpu_cycles();
+        self.update_apu_cycles();
 
         self.master_cycles += 1;
     }

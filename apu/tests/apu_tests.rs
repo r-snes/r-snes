@@ -41,6 +41,10 @@ fn setup_cpu(apu: &mut Apu, start_addr: u16, nop_count: usize) {
     apu.memory.write8(0xFFFF, (start_addr >> 8)   as u8);
     write_nops(apu, start_addr, nop_count);
     apu.cpu.reset(&mut apu.memory);
+    // A fresh Apu boots into the HLE IPL, which owns the core until the
+    // upload protocol completes — step() would run the boot state machine,
+    // not the SPC700. These tests drive the CPU directly, so skip the boot.
+    apu.skip_ipl_boot();
 }
 
 /// Set up a silent looping BRR voice on voice 0 via the $F2/$F3 protocol.
@@ -148,9 +152,11 @@ fn test_new_cycle_counters_zero() {
 
 #[test]
 fn test_new_cpu_sp_initialised() {
-    // reset() sets SP to 0xFF
+    // Apu::new leaves the post-IPL-boot state: the real boot ROM's first
+    // act is `mov x,#$EF / mov sp,x`, and uploaded code (e.g. spc test
+    // #0081) relies on the stack starting at $01EF.
     let apu = Apu::new();
-    assert_eq!(apu.cpu.regs.sp, 0xFF, "SP must be 0xFF after reset");
+    assert_eq!(apu.cpu.regs.sp, 0xEF, "SP must be 0xEF after IPL boot");
 }
 
 #[test]

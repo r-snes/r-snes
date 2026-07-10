@@ -15,6 +15,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+//     cargo run --features cli -- /path/to/cputest-basic.sfc
 fn gui_emu_loop(
     gui: &mut gui::Gui,
     rsnes: RSnesCore,
@@ -198,7 +199,9 @@ fn main() -> Result<(), String> {
     let cli = cfg_select! {
         feature = "cli" => Cli::parse(),
         _ => {{
-            if std::env::args().len() != 0 {
+            // args() always contains at least the program name, so only
+            // warn when the user actually passed extra arguments
+            if std::env::args().len() > 1 {
                 eprintln!("CLI feature disabled at compile time, CLI arguments are ignored");
             }
             Cli::default()

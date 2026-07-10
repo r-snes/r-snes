@@ -3,11 +3,10 @@ use crate::rom::Rom;
 use crate::wram::Wram;
 use apu::Apu;
 use common::snes_address::SnesAddress;
+use duplicate::duplicate;
 use ppu::ppu::PPU;
 use std::error::Error;
 use std::path::Path;
-
-use duplicate::duplicate;
 
 pub struct Bus {
     pub wram: Wram,
@@ -129,6 +128,71 @@ mod tests {
         // Create an address mapped to an offset beyond the 128 KiB dummy ROM.
         let addr = snes_addr!(0x7D:0xFFFF);
         bus.read(addr, &mut ppu, &mut apu);
-        // bus.rom.read(addr);
+    }
+
+    // ---- APU communication port tests (from the APU link branch) ----
+    // The port handling itself now lives in Io ($2140-$2143 within the
+    // 0x2000..0x6000 range routed to io.read/io.write with `apu`), but
+    // these tests still exercise the full path through the Bus and
+    // verify the CPU<->SPC700 port protocol end to end.
+
+    #[test]
+    fn test_apu_port_read_returns_spc700_output() {
+        // The main CPU reads $2140 — it should see what the SPC700 wrote
+        // to its own $F4 (port_out), not anything the main CPU wrote itself.
+        let (mut ppu, mut apu) = init_extern_components();
+        let rom_data = create_valid_lorom(0x20000);
+        let (rom_path, _dir) = create_temp_rom(&rom_data);
+        let mut bus = Bus::new(&rom_path).unwrap();
+
+        apu.memory.port_out[0] = 0xAB; // simulate SPC700 having written this
+        let addr = snes_addr!(0:0x2140);
+        assert_eq!(bus.read(addr, &mut ppu, &mut apu), 0xAB);
+    }
+
+    #[test]
+    fn test_apu_port_write_lands_in_port_in() {
+        let (mut ppu, mut apu) = init_extern_components();
+        let rom_data = create_valid_lorom(0x20000);
+        let (rom_path, _dir) = create_temp_rom(&rom_data);
+        let mut bus = Bus::new(&rom_path).unwrap();
+
+        let addr = snes_addr!(0:0x2140);
+        bus.write(addr, 0xCD, &mut ppu, &mut apu);
+        assert_eq!(apu.memory.port_in[0], 0xCD, "SPC700 reads this via its own $F4");
+    }
+
+    #[test]
+    fn test_apu_ports_mirrored_across_banks() {
+        let (mut ppu, mut apu) = init_extern_components();
+        let rom_data = create_valid_lorom(0x20000);
+        let (rom_path, _dir) = create_temp_rom(&rom_data);
+        let mut bus = Bus::new(&rom_path).unwrap();
+
+        let addr = snes_addr!(0x80:0x2143); // port 3, mirrored bank
+        bus.write(addr, 0xEF, &mut ppu, &mut apu);
+        assert_eq!(apu.memory.port_in[3], 0xEF);
+    }
+
+    #[test]
+    fn test_apu_ports_do_not_leak_into_io() {
+        // $2140-$217F are ALL APU ports (the four CPUIO registers are
+        // mirrored every 4 bytes, matching hardware), so a "nearby" address
+        // like $2144 is still a port. Probe a genuinely unrelated, readable
+        // I/O register instead: DMAP0 at $4300.
+        let (mut ppu, mut apu) = init_extern_components();
+        let rom_data = create_valid_lorom(0x20000);
+        let (rom_path, _dir) = create_temp_rom(&rom_data);
+        let mut bus = Bus::new(&rom_path).unwrap();
+
+        let port_addr = snes_addr!(0:0x2140);
+        bus.write(port_addr, 0x99, &mut ppu, &mut apu);
+
+        let io_addr = snes_addr!(0:0x4300); // DMAP0 — real register storage
+        bus.write(io_addr, 0x55, &mut ppu, &mut apu);
+
+        assert_eq!(bus.read(io_addr, &mut ppu, &mut apu), 0x55);
+        assert_eq!(bus.io.dma_channels[0].dmap, 0x55, "write went to the DMA register");
+        assert_eq!(apu.memory.port_in[0], 0x99, "port write stayed in the APU");
     }
 }
