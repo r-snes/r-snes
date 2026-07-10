@@ -19,13 +19,24 @@ fn gain_adsr(gain_param: u8) -> Adsr {
     }
 }
 
+/// ADSR-mode envelope. `Adsr::default()` has `adsr_mode == false`, which
+/// (correctly, matching hardware reset) means GAIN mode — where a
+/// gain_param of 0 pins the level to 0 via direct gain. Tests exercising
+/// the ADSR state machine must therefore opt in explicitly.
+fn adsr() -> Adsr {
+    Adsr {
+        adsr_mode: true,
+        ..Default::default()
+    }
+}
+
 // ============================================================
 // ADSR — EnvelopePhase::Off
 // ============================================================
 
 #[test]
 fn test_adsr_off_does_nothing() {
-    let mut adsr = Adsr::default();
+    let mut adsr = adsr();
     // Default phase is Off; envelope_level must stay 0 forever.
     for _ in 0..1000 {
         adsr.update_envelope();
@@ -40,7 +51,7 @@ fn test_adsr_off_does_nothing() {
 
 #[test]
 fn test_adsr_attack_rate15_jumps_1024_per_tick() {
-    let mut adsr = Adsr::default();
+    let mut adsr = adsr();
     adsr.envelope_phase = EnvelopePhase::Attack;
     adsr.attack_rate = 15; // fast-path: no rate gating
 
@@ -51,7 +62,7 @@ fn test_adsr_attack_rate15_jumps_1024_per_tick() {
 
 #[test]
 fn test_adsr_attack_rate15_reaches_max_within_2_ticks() {
-    let mut adsr = Adsr::default();
+    let mut adsr = adsr();
     adsr.envelope_phase = EnvelopePhase::Attack;
     adsr.attack_rate = 15;
     adsr.update_envelope(); // +1024 → 1024
@@ -67,7 +78,7 @@ fn test_adsr_attack_rate15_reaches_max_within_2_ticks() {
 fn test_adsr_attack_normal_rate_gated() {
     // attack_rate=0 → rate_idx=1 → period=2048 ticks between steps.
     // After 1 tick nothing should have changed.
-    let mut adsr = Adsr::default();
+    let mut adsr = adsr();
     adsr.envelope_phase = EnvelopePhase::Attack;
     adsr.attack_rate = 0;
 
@@ -79,7 +90,7 @@ fn test_adsr_attack_normal_rate_gated() {
 #[test]
 fn test_adsr_attack_transitions_to_decay_at_max() {
     // Use rate=15 to reach max quickly.
-    let mut adsr = Adsr::default();
+    let mut adsr = adsr();
     adsr.envelope_phase = EnvelopePhase::Attack;
     adsr.attack_rate = 15;
 
@@ -97,7 +108,7 @@ fn test_adsr_attack_transitions_to_decay_at_max() {
 
 #[test]
 fn test_adsr_attack_level_never_exceeds_max() {
-    let mut adsr = Adsr::default();
+    let mut adsr = adsr();
     adsr.envelope_phase = EnvelopePhase::Attack;
     adsr.attack_rate = 15;
     for _ in 0..20 {
@@ -113,7 +124,7 @@ fn test_adsr_attack_level_never_exceeds_max() {
 #[test]
 fn test_adsr_decay_falls_toward_sustain_target() {
     // decay_rate=7 → rate_idx = 7*2+16 = 30 → period=2 (very fast)
-    let mut adsr = Adsr::default();
+    let mut adsr = adsr();
     adsr.envelope_phase  = EnvelopePhase::Decay;
     adsr.decay_rate      = 7;
     adsr.sustain_level   = 3; // target = (3+1)*0x100 = 0x400
@@ -137,7 +148,7 @@ fn test_adsr_decay_step_is_exponential() {
     // At high levels the step is larger than at low levels.
     // decay_rate=7 (period=2), run two steps from two different starting points.
     let step_at = |start: u16| -> u16 {
-        let mut adsr = Adsr::default();
+        let mut adsr = adsr();
         adsr.envelope_phase = EnvelopePhase::Decay;
         adsr.decay_rate     = 7;
         adsr.sustain_level  = 0; // target = 0x100
@@ -162,7 +173,7 @@ fn test_adsr_decay_step_is_exponential() {
 #[test]
 fn test_adsr_decay_rate0_is_slow() {
     // decay_rate=0 → rate_idx=16 → period=64: after 10 ticks, no step.
-    let mut adsr = Adsr::default();
+    let mut adsr = adsr();
     adsr.envelope_phase = EnvelopePhase::Decay;
     adsr.decay_rate     = 0;
     adsr.sustain_level  = 0;
@@ -181,7 +192,7 @@ fn test_adsr_decay_rate0_is_slow() {
 #[test]
 fn test_adsr_sustain_rate0_holds_forever() {
     // sustain_rate=0 → period=0 → tick_due always returns false → level never changes.
-    let mut adsr = Adsr::default();
+    let mut adsr = adsr();
     adsr.envelope_phase  = EnvelopePhase::Sustain;
     adsr.sustain_rate    = 0;
     adsr.envelope_level  = 0x400;
@@ -196,7 +207,7 @@ fn test_adsr_sustain_rate0_holds_forever() {
 #[test]
 fn test_adsr_sustain_decreases_with_nonzero_rate() {
     // sustain_rate=31 → period=1 (every tick)
-    let mut adsr = Adsr::default();
+    let mut adsr = adsr();
     adsr.envelope_phase = EnvelopePhase::Sustain;
     adsr.sustain_rate   = 31;
     adsr.envelope_level = 0x400;
@@ -208,7 +219,7 @@ fn test_adsr_sustain_decreases_with_nonzero_rate() {
 
 #[test]
 fn test_adsr_sustain_reaches_off_at_zero() {
-    let mut adsr = Adsr::default();
+    let mut adsr = adsr();
     adsr.envelope_phase = EnvelopePhase::Sustain;
     adsr.sustain_rate   = 31;
     adsr.envelope_level = 1; // one step away from 0
@@ -223,7 +234,7 @@ fn test_adsr_sustain_reaches_off_at_zero() {
 fn test_adsr_sustain_step_is_exponential() {
     // Higher level → bigger step, like Decay.
     let step_at = |start: u16| -> u16 {
-        let mut adsr = Adsr::default();
+        let mut adsr = adsr();
         adsr.envelope_phase = EnvelopePhase::Sustain;
         adsr.sustain_rate   = 31;
         adsr.envelope_level = start;
@@ -240,7 +251,7 @@ fn test_adsr_sustain_step_is_exponential() {
 fn test_tick_due_period_zero_never_fires() {
     // period=0 (sustain_rate=0) must never step the envelope — covers the
     // early-return guard inside tick_due.
-    let mut adsr = Adsr::default();
+    let mut adsr = adsr();
     adsr.envelope_phase  = EnvelopePhase::Sustain;
     adsr.sustain_rate    = 0; // ENVELOPE_RATE_TABLE[0] = 0
     adsr.envelope_level  = 0x400;
@@ -255,7 +266,7 @@ fn test_tick_due_period_zero_never_fires() {
 fn test_tick_due_fires_exactly_at_period() {
     // decay_rate=7 → period = ENVELOPE_RATE_TABLE[30] = 2.
     // Must not step on tick 1, must step on tick 2.
-    let mut adsr = Adsr::default();
+    let mut adsr = adsr();
     adsr.envelope_phase = EnvelopePhase::Decay;
     adsr.decay_rate     = 7;
     adsr.sustain_level  = 0;
@@ -274,7 +285,7 @@ fn test_tick_due_fires_exactly_at_period() {
 
 #[test]
 fn test_adsr_release_decreases_by_8_per_tick() {
-    let mut adsr = Adsr::default();
+    let mut adsr = adsr();
     adsr.envelope_phase = EnvelopePhase::Release;
     adsr.envelope_level = 100;
 
@@ -284,7 +295,7 @@ fn test_adsr_release_decreases_by_8_per_tick() {
 
 #[test]
 fn test_adsr_release_reaches_off() {
-    let mut adsr = Adsr::default();
+    let mut adsr = adsr();
     adsr.envelope_phase = EnvelopePhase::Release;
     adsr.envelope_level = 0x7FF;
 
@@ -298,7 +309,7 @@ fn test_adsr_release_reaches_off() {
 
 #[test]
 fn test_adsr_release_clamps_at_zero_not_underflow() {
-    let mut adsr = Adsr::default();
+    let mut adsr = adsr();
     adsr.envelope_phase = EnvelopePhase::Release;
     adsr.envelope_level = 4; // 4 - 8 would underflow without saturating_sub
 
@@ -313,7 +324,7 @@ fn test_adsr_release_clamps_at_zero_not_underflow() {
 
 #[test]
 fn test_adsr_full_cycle() {
-    let mut adsr = Adsr::default();
+    let mut adsr = adsr();
     adsr.attack_rate    = 15;  // instant
     adsr.decay_rate     = 7;   // fast
     adsr.sustain_level  = 2;   // target = 0x300
@@ -345,7 +356,7 @@ fn test_adsr_full_cycle() {
 #[test]
 fn test_adsr_key_off_mid_attack_enters_release() {
     // Even if still in Attack, switching phase to Release should work normally.
-    let mut adsr = Adsr::default();
+    let mut adsr = adsr();
     adsr.envelope_phase = EnvelopePhase::Attack;
     adsr.attack_rate    = 0; // slow
     adsr.envelope_level = 500;
