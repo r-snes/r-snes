@@ -1,6 +1,6 @@
 use plugins::plugin::{
     Plugin,
-    PluginPermRequest,
+    gui::PluginPermRequest,
 };
 use eframe::egui;
 
