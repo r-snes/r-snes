@@ -411,6 +411,12 @@ impl<'a> PluginPermRequest<'a> {
         let RSnesPermissions { internal, external } = &self.plugin.table.perms;
 
         self.force_show_perm_collapsible(ui, internal, "Internal", |ui, internal| {
+            // we intentionally destructure the stuct listing out all fields (without `..`),
+            // so that we get a compile error in case we forget to list a field in the
+            // destructure (and a warning if we write it just below but don't use it).
+            // This guarantees that we render all requested permissions in the GUI,
+            // which guarantees some security to the user (they at least know what is
+            // requested)
             let InternalPermissions {
                 control,
                 cpu,
