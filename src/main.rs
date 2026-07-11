@@ -15,7 +15,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-//     cargo run --features cli -- /path/to/cputest-basic.sfc
 fn gui_emu_loop(
     gui: &mut gui::Gui,
     rsnes: RSnesCore,
