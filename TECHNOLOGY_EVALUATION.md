@@ -65,27 +65,33 @@ Finally, the team explicitly wanted the project to be a vehicle for learning a m
 
 **SDL2**, for its stability, its complete feature coverage and its mature Rust bindings. minifb, pixels, and egui/eframe were rejected as too narrow in scope (presentation- or GUI-only, missing input/audio/controller support); SDL3 as too recent, with bindings not yet production-ready. This decision should be **revisited** once the SDL3 Rust ecosystem stabilizes; the migration path from SDL2 is well documented, and the presentation layer is isolated in its own module to keep that migration cheap.
 
-## 4. Audio backend: cpal vs rodio vs adapted fork (evaluation in progress)
+## 4. Audio backend: cpal vs rodio vs SDL2 audio queue vs adapted fork
 
 ### Context
 
-The SNES APU (S-SMP + S-DSP) produces a 16-bit stereo stream at 32 kHz. The audio backend's job is narrow but demanding: deliver that stream to the host's audio device with low latency, precise buffer control, and resampling to the device's native rate, while staying synchronized with the emulation clock. Audio is the subsystem where synchronization problems are the most audible: buffer underruns produce immediately noticeable crackling.
+The SNES APU (S-SMP + S-DSP) produces a 16-bit stereo stream at a fixed 32 kHz. The backend's job is narrow but demanding: deliver that stream to the host audio device with low latency and precise buffer control, while staying synchronized with the emulation clock - underruns produce immediately audible crackling, over-buffering produces lag behind the video. One structural property matters throughout: the emulator *pushes* ready samples once per frame (the APU buffers its DSP output internally and exposes a single drain call), so a backend that pulls samples from an audio thread adds a synchronization problem we don't otherwise have.
 
-| Criterion | cpal | rodio | Adapted fork |
-|---|---|---|---|
-| Level of abstraction | Low - raw device streams | High - playback, mixing, decoding (built on cpal) | Tailored to our needs |
-| Buffer/latency control | Full | Limited (managed internally) | Full |
-| Resampling | Manual (we implement it) | Built-in | Depends on base |
-| Maintenance burden | Low | Low | High - we own it |
-| Fit for continuous synthesized streams | Good | Designed more for sample/file playback | Good by construction |
+| Criterion | cpal | rodio | SDL2 audio queue | Adapted fork |
+|---|---|---|---|---|
+| Delivery model | Pull (device callback, audio thread) | Pull, hidden behind `Sink`/`Source` | Push, from the emulation thread | Depends on base |
+| Buffer/latency control | Full | Limited (managed internally) | Direct (queued size is readable) | Full |
+| Resampling from 32 kHz | Manual (we implement it) | Built-in | Built-in (device conversion) | Depends on base |
+| New dependency | Yes | Yes | No - SDL2 already adopted (§3) | Yes, and we own it |
+| Maintenance burden | Low, but ring buffer + underrun policy are ours | Low | Low | High |
 
-### Analysis (ongoing)
+### Analysis
 
-rodio's convenience features (decoding, mixing, sinks) solve problems an emulator does not have; we generate exactly one continuous stream, while its internal buffer management takes away the control we need most. cpal exposes the device callback directly, which lets us tie buffer fill level to emulation pacing, at the cost of implementing resampling and the ring buffer ourselves. A fork would only be justified if a specific blocking limitation is found in cpal.
+**rodio** solves problems an emulator does not have - decoding, mixing, sinks - while its internal buffer management takes away the control we need most: latency is not precisely tunable, and feeding one continuous synthesized stream means wrapping our output in a custom `Source` only to lose visibility into how much of it is buffered.
 
-### Status
+**cpal** was the initial working hypothesis and is the strongest standalone candidate: the device callback allows tying buffer fill level directly to emulation pacing. Its cost is the pull model itself - a producer/consumer split across threads, so the lock-free ring buffer, underrun policy and 32 kHz resampling are all code we write and maintain, to obtain a capability that turned out to already be in our dependency tree.
 
-**Evaluation in progress.** Current working hypothesis: **cpal**, with a small internal ring-buffer and resampling layer, because latency and synchronization control outweigh rodio's convenience for this use case. Final decision pending prototype measurements.
+**SDL2's audio queue** became the natural fit once the front-end decision (§3) landed on SDL2, whose scope already includes audio. Its push model matches the emulator's structure exactly: each frame, the emulation loop queues the drained samples and moves on; SDL converts from 32 kHz to the device rate, and the queued-size query provides the same pacing signal cpal's callback would have - synchronization becomes a single-threaded comparison instead of a cross-thread protocol. The only part we own is a small bounded buffer inside the APU, drained once per frame and capped so unconsumed audio is discarded rather than accumulated.
+
+**An adapted fork** was kept only as a contingency: owning platform audio backends (WASAPI, ALSA, CoreAudio) is exactly the burden these libraries exist to absorb, and no blocking limitation justifying it was found.
+
+### Decision
+
+**SDL2's audio queue, fed by a small buffering layer in the APU.** Retained because it matches the emulator's push-based output, gives direct latency control, and adds no dependency or audio-thread synchronization. cpal was rejected as redundant once SDL2 was in the stack; rodio for insufficient buffer control; a fork for its maintenance cost. The accepted trade-off is coupling audio to SDL2: an eventual SDL3 migration (§3) takes the audio path with it, mitigated by the same isolation - the core only exposes `drain_samples()`, and everything SDL-specific lives in the front-end.
 
 ## 5. Decision summary
 
@@ -93,4 +99,4 @@ rodio's convenience features (decoding, mixing, sinks) solve problems an emulato
 |---|---|---|---|
 | Language | Rust | Final |  |
 | Graphics/windowing | SDL2 | Final | SDL3 Rust bindings reach stability |
-| Audio | cpal (working hypothesis) | In progress | Prototype latency measurements |
+| Audio | SDL2 audio queue + in-APU buffering | Final | Measured latency/underrun problems; SDL3 migration (moves with §3) |
