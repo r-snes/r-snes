@@ -4,7 +4,6 @@ mod voice;
 
 // Re-export everything tests and external code need
 pub use adsr::{Adsr, EnvelopePhase};
-use adsr::ENVELOPE_RATE_TABLE;
 pub use brr::{Brr, decode_brr_nibble, decode_brr_block};
 pub use voice::Voice;
 
@@ -32,6 +31,12 @@ pub struct Dsp {
 
     /// $1C MVOLR — master right volume, signed (-128..+127).
     master_vol_right: i8,
+}
+
+impl Default for Dsp {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Dsp {

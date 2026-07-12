@@ -8,7 +8,7 @@
 /// Voice/register mapping tests → voice_tests.rs
 /// BRR decode tests → brr_tests.rs
 
-use apu::dsp::{Adsr, Brr, Dsp, EnvelopePhase, Voice};
+use apu::dsp::{Dsp, EnvelopePhase};
 use apu::Memory;
 
 // ============================================================
@@ -336,7 +336,7 @@ fn test_step_pitch_counter_advances() {
     let mut mem = Memory::new();
     setup_single_voice_end_block(&mut mem);
 
-    let counter_before = mem.dsp.voices[0].pitch_counter;
+    let _counter_before = mem.dsp.voices[0].pitch_counter;
     mem.dsp.step(&mem.ram);
     // pitch=0x1000 is added each tick; counter wraps at 0x1000 so
     // after one tick from zero the high nibble has consumed one sample

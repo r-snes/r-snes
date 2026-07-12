@@ -8,7 +8,7 @@
 ///   - Brr struct defaults and field semantics
 ///   - BrrState block-advance and wrap logic
 
-use apu::dsp::{decode_brr_nibble, decode_brr_block, Brr, EnvelopePhase};
+use apu::dsp::{decode_brr_nibble, decode_brr_block, Brr};
 use apu::Memory;
 
 // ============================================================
@@ -470,7 +470,7 @@ fn test_output_always_within_16bit_signed_range() {
                     for &p2 in &[-16384i16, 0, 16383] {
                         let s = decode_brr_nibble(nibble, shift, filter, p1, p2);
                         assert!(
-                            s >= i16::MIN && s <= i16::MAX,
+                            (i16::MIN..=i16::MAX).contains(&s),
                             "out of i16 range: nibble={nibble} shift={shift} filter={filter} \
                              p1={p1} p2={p2} → {s}"
                         );

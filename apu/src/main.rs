@@ -31,7 +31,7 @@
 ///   ffplay -f s16le -ar 32000 -ac 1 test1_sine.raw
 ///   ffplay -f s16le -ar 32000 -ac 2 test5_stereo.raw
 
-use apu::dsp::{Dsp, EnvelopePhase};
+use apu::dsp::EnvelopePhase;
 use apu::Memory;
 use std::fs::File;
 use std::io::Write;
@@ -193,12 +193,12 @@ fn write_sine_brr(mem: &mut Memory, start_addr: u16, freq_hz: f32, num_blocks: u
 /// Generate a looping square wave (two blocks: half high, half low, loop back).
 fn write_square_brr_loop(mem: &mut Memory, start_addr: u16) {
     // Block 0: first half of a square wave cycle (positive)
-    let mut pos_samples = [16383i16; 16];
+    let pos_samples = [16383i16; 16];
     let block0 = encode_brr_block(&pos_samples, false, false);
     write_brr_block(mem, start_addr, &block0);
 
     // Block 1: second half (negative), end + loop back to block 0
-    let mut neg_samples = [-16384i16; 16];
+    let neg_samples = [-16384i16; 16];
     let block1 = encode_brr_block(&neg_samples, true, true);
     write_brr_block(mem, start_addr + 9, &block1);
 }
@@ -367,12 +367,12 @@ fn test3_adsr() {
 
     key_on(&mut mem, 0x01);
 
-    let hold_samples  = SAMPLE_RATE;       // 1 s attack+decay+sustain
+    let _hold_samples  = SAMPLE_RATE;       // 1 s attack+decay+sustain
     let release_start = SAMPLE_RATE;       // key-off after 1 s
     let total_samples = SAMPLE_RATE * 3;   // 3 s total
 
     let mut out = Vec::with_capacity(total_samples as usize);
-    let mut phase_log: Vec<(u32, &str, u16)> = Vec::new();
+    let _phase_log: Vec<(u32, &str, u16)> = Vec::new();
     let mut last_phase = EnvelopePhase::Off;
 
     for i in 0..total_samples {

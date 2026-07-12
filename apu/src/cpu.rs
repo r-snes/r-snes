@@ -31,6 +31,12 @@ pub struct Spc700 {
     pub halted: bool,
 }
 
+impl Default for Spc700 {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Spc700 {
     pub fn new() -> Self {
         Self {
@@ -2479,7 +2485,7 @@ impl Spc700 {
     /// XCN A — exchange the high and low nibbles of A.
     /// Sets N and Z from the result. 5 cycles.
     fn inst_xcn_a(&mut self) {
-        self.regs.a = (self.regs.a >> 4) | (self.regs.a << 4);
+        self.regs.a = self.regs.a.rotate_left(4);
         self.set_zn_flags(self.regs.a);
         self.cycles += 5;
     }

@@ -66,6 +66,12 @@ pub struct Memory {
     pub timer_out: [u8; 3],
 }
 
+impl Default for Memory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Memory {
     pub fn new() -> Self {
         Self {

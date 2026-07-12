@@ -88,6 +88,12 @@ pub struct Apu {
     ipl: Option<IplHle>,
 }
 
+impl Default for Apu {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Apu {
     /// The SPC700 runs at a fixed 1.024 MHz, derived from its own
     /// independent 24.576 MHz crystal -- it is NOT phase-locked to the

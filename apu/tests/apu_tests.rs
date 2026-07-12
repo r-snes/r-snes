@@ -305,7 +305,7 @@ fn test_dsp_tick_count_proportional_to_cycles() {
 
     // 3 DSP ticks = 96 CPU cycles; level should be min(3*1024, 0x7FF)
     apu.step(96);
-    let expected = (3u16 * 1024).min(0x7FF);
+    let expected = 0x7FF;
     assert_eq!(
         apu.memory.dsp.voices[0].adsr.envelope_level,
         expected,

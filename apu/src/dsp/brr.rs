@@ -32,7 +32,7 @@ pub struct Brr {
 /// Used to smoothly interpolate between decoded BRR samples,
 /// eliminating the aliasing that would occur with nearest-neighbour
 /// sample selection at non-native pitches.
-pub(super) const GAUSS: [i16; 512] = [
+pub(super) const _GAUSS: [i16; 512] = [
       0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
       1,   1,   1,   1,   1,   1,   1,   1,   1,   1,   1,   2,   2,   2,   2,   2,
       2,   2,   3,   3,   3,   3,   3,   4,   4,   4,   4,   4,   5,   5,   5,   5,

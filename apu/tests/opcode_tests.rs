@@ -99,7 +99,7 @@ fn test_set_flag_does_not_affect_other_bits() {
     cpu.regs.psw = 0xFF;
     cpu.set_flag(FLAG_C, false);
     // All other bits must remain set
-    assert_eq!(cpu.regs.psw & !FLAG_C, !FLAG_C & 0xFF);
+    assert_eq!(cpu.regs.psw & !FLAG_C, !FLAG_C);
 }
 
 #[test]
