@@ -218,9 +218,8 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "ERROR: Could not identify mapping of ROM")]
     fn test_from_byte_invalid_mapping_mode() {
-        SpeedAndMappingMode::from_byte(0x02);
+        assert!(SpeedAndMappingMode::from_byte(0x02).is_none());
     }
 
     #[test]
