@@ -206,7 +206,7 @@ impl Plugin {
         // Enter a context
         let plugin = lua.try_enter(|ctx| {
             // Run the lua script in the global context
-            let closure = picc::Closure::load(ctx, path.as_ref().map(|p| p.to_str()).flatten(), file)?;
+            let closure = picc::Closure::load(ctx, path.as_ref().and_then(|p| p.to_str()), file)?;
 
             // Create an executor that will run the lua script
             let ex = picc::Executor::start(ctx, closure.into(), ());
