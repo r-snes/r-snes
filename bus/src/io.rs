@@ -311,20 +311,14 @@ impl Io {
         );
     }
 
-    fn read_cpu(&mut self, addr: SnesAddress, _: &mut Apu) -> u8 {
+    fn read_cpu(&mut self, addr: SnesAddress, apu: &mut Apu) -> u8 {
         match addr.addr {
-            // Data-from-APU register
-            // TODO : Link with the actual apu component
-            #[cfg(not(tarpaulin_include))]
+            // $2140-$2143 — APU communication ports (CPUIO0-3), mirrored
+            // every 4 bytes up to $217F. The main CPU reads what the
+            // SPC700 most recently wrote to its own $F4-$F7 (port_out).
             0x2140..0x2180 => {
-                let reg_nb = addr.addr % 4;
-                match reg_nb {
-                    0 => todo!("{} : Implement APU channel n°1 reads", addr.addr),
-                    1 => todo!("{} : Implement APU channel n°2 reads", addr.addr),
-                    2 => todo!("{} : Implement APU channel n°3 reads", addr.addr),
-                    3 => todo!("{} : Implement APU channel n°4 reads", addr.addr),
-                    _ => unreachable!(),
-                }
+                let port = (addr.addr % 4) as usize;
+                apu.memory.cpu_port_read(port)
             }
 
             // S-WRAM Data Registers (Expansion port not implemented yet)
@@ -408,19 +402,14 @@ impl Io {
         }
     }
 
-    fn write_cpu(&mut self, value: u8, addr: SnesAddress, _: &mut Apu) {
+    fn write_cpu(&mut self, value: u8, addr: SnesAddress, apu: &mut Apu) {
         match addr.addr {
-            // Data-to-APU register
-            #[cfg(not(tarpaulin_include))]
+            // $2140-$2143 — APU communication ports (CPUIO0-3), mirrored
+            // every 4 bytes up to $217F. Main CPU writes land in port_in,
+            // which the SPC700 reads back at its own $F4-$F7.
             0x2140..0x2180 => {
-                let reg_nb = addr.addr % 4;
-                match reg_nb {
-                    0 => todo!("{} : Implement APU channel n°1 writes", addr.addr),
-                    1 => todo!("{} : Implement APU channel n°2 writes", addr.addr),
-                    2 => todo!("{} : Implement APU channel n°3 writes", addr.addr),
-                    3 => todo!("{} : Implement APU channel n°4 writes", addr.addr),
-                    _ => unreachable!(),
-                }
+                let port = (addr.addr % 4) as usize;
+                apu.memory.cpu_port_write(port, value);
             }
 
             // S-WRAM Data Registers (Expansion port not implemented yet)
@@ -561,6 +550,36 @@ mod tests {
         let apu = Apu::new();
 
         (io, ppu, apu)
+    }
+
+    #[test]
+    fn test_apu_port_read_returns_spc700_output() {
+        let (mut io, mut ppu, mut apu) = init_all();
+
+        apu.memory.port_out[0] = 0xAB; // simulate SPC700 having written this
+        let addr = snes_addr!(0:0x2140);
+        assert_eq!(io.read(addr, &mut ppu, &mut apu), 0xAB);
+    }
+
+    #[test]
+    fn test_apu_port_write_lands_in_port_in() {
+        let (mut io, mut ppu, mut apu) = init_all();
+
+        let addr = snes_addr!(0:0x2143);
+        io.write(addr, 0xCD, &mut ppu, &mut apu);
+        assert_eq!(apu.memory.port_in[3], 0xCD, "SPC700 reads this via its own $F7");
+    }
+
+    #[test]
+    fn test_apu_ports_mirrored_every_4_bytes() {
+        let (mut io, mut ppu, mut apu) = init_all();
+
+        // $2144 aliases port 0, $2179 aliases port 1 (0x2179 % 4 == 1)
+        io.write(snes_addr!(0:0x2144), 0x11, &mut ppu, &mut apu);
+        assert_eq!(apu.memory.port_in[0], 0x11);
+
+        apu.memory.port_out[1] = 0x22;
+        assert_eq!(io.read(snes_addr!(0:0x2179), &mut ppu, &mut apu), 0x22);
     }
 
     #[test]

@@ -855,8 +855,22 @@ fn test_div_by_zero_sets_overflow() {
     mem.write8(0x0200, 0x9E);
     cpu.step(&mut mem);
     assert!(cpu.get_flag(FLAG_V), "V must be set on division by zero");
-    assert_eq!(cpu.regs.a, 0xFF);
-    assert_eq!(cpu.regs.y, 0xFF);
+    assert_eq!(cpu.regs.a, 0xFE, "A' = 255 - Y = 255 - 1");
+    assert_eq!(cpu.regs.y, 0x00, "Y' = old A = 0");
+}
+
+#[test]
+fn test_div_by_zero_closed_form() {
+    // Second point on the X = 0 line: A' = 255 - Y, Y' = A.
+    let (mut cpu, mut mem) = make();
+    cpu.regs.y = 0x22;
+    cpu.regs.a = 0x11;
+    cpu.regs.x = 0x00;
+    mem.write8(0x0200, 0x9E);
+    cpu.step(&mut mem);
+    assert!(cpu.get_flag(FLAG_V));
+    assert_eq!(cpu.regs.a, 0xDD, "A' = 255 - 0x22");
+    assert_eq!(cpu.regs.y, 0x11, "Y' = old A");
 }
 
 #[test]

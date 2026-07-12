@@ -114,20 +114,30 @@ fn test_f1_read_returns_zero() {
     assert_eq!(mem.read8(0x00F1), 0x00);
 }
 
+// Hardware $F1 CONTROL bit layout (the old bit-7/bit-6 port clears were
+// wrong and caused stale-port IPL handshake freezes):
+//   bit 4 — clear ports 0-1 input latches (PC01)
+//   bit 5 — clear ports 2-3 input latches (PC23)
+//   bit 7 — IPL ROM mapping enable (no port side effects)
+
 #[test]
-fn test_f1_bit7_clears_port3_in() {
+fn test_f1_bit4_clears_ports_0_and_1_in() {
     let mut mem = Memory::new();
-    mem.port_in[3] = 0xAB;
-    mem.write8(0x00F1, 0x80); // bit 7 set → clear port 3 input latch
-    assert_eq!(mem.port_in[3], 0, "port_in[3] must be cleared by CONTROL bit 7");
+    mem.port_in[0] = 0xAB;
+    mem.port_in[1] = 0xCD;
+    mem.write8(0x00F1, 0x10); // bit 4 → clear ports 0-1 input latches
+    assert_eq!(mem.port_in[0], 0, "port_in[0] must be cleared by CONTROL bit 4");
+    assert_eq!(mem.port_in[1], 0, "port_in[1] must be cleared by CONTROL bit 4");
 }
 
 #[test]
-fn test_f1_bit6_clears_port2_in() {
+fn test_f1_bit5_clears_ports_2_and_3_in() {
     let mut mem = Memory::new();
-    mem.port_in[2] = 0xCD;
-    mem.write8(0x00F1, 0x40); // bit 6 set → clear port 2 input latch
-    assert_eq!(mem.port_in[2], 0, "port_in[2] must be cleared by CONTROL bit 6");
+    mem.port_in[2] = 0xAB;
+    mem.port_in[3] = 0xCD;
+    mem.write8(0x00F1, 0x20); // bit 5 → clear ports 2-3 input latches
+    assert_eq!(mem.port_in[2], 0, "port_in[2] must be cleared by CONTROL bit 5");
+    assert_eq!(mem.port_in[3], 0, "port_in[3] must be cleared by CONTROL bit 5");
 }
 
 #[test]
@@ -137,11 +147,39 @@ fn test_f1_port_clear_bits_do_not_affect_other_ports() {
     mem.port_in[1] = 0x22;
     mem.port_in[2] = 0x33;
     mem.port_in[3] = 0x44;
-    mem.write8(0x00F1, 0xC0); // clear ports 2 and 3 only
+    mem.write8(0x00F1, 0x20); // clear ports 2-3 only
     assert_eq!(mem.port_in[0], 0x11, "port 0 must be unaffected");
     assert_eq!(mem.port_in[1], 0x22, "port 1 must be unaffected");
     assert_eq!(mem.port_in[2], 0,    "port 2 must be cleared");
     assert_eq!(mem.port_in[3], 0,    "port 3 must be cleared");
+}
+
+#[test]
+fn test_f1_port_clears_do_not_touch_port_out() {
+    // The clears reset the *input* latches only; what the SPC700 wrote
+    // for the main CPU to read must survive.
+    let mut mem = Memory::new();
+    mem.port_out = [0x11, 0x22, 0x33, 0x44];
+    mem.write8(0x00F1, 0x30); // clear all input latches
+    assert_eq!(mem.port_out, [0x11, 0x22, 0x33, 0x44]);
+}
+
+#[test]
+fn test_f1_bit7_is_rom_enable_not_a_port_clear() {
+    let mut mem = Memory::new();
+    mem.port_in = [0x11, 0x22, 0x33, 0x44];
+    mem.write8(0x00F1, 0x80);
+    assert_eq!(mem.control & 0x80, 0x80, "bit 7 must be stored");
+    assert_eq!(mem.port_in, [0x11, 0x22, 0x33, 0x44], "bit 7 must clear nothing");
+}
+
+#[test]
+fn test_control_resets_with_ipl_rom_mapped() {
+    // Power-on state: IPL ROM enabled (bit 7). Apu::step gates boot
+    // re-entry on this bit, so code that never writes $F1 must still be
+    // able to re-enter the boot ROM.
+    let mem = Memory::new();
+    assert_eq!(mem.control, 0x80);
 }
 
 // ============================================================
