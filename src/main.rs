@@ -1,13 +1,14 @@
 mod gui;
 mod rsnes;
+mod state;
+mod widgets;
 
 use crate::{
-    gui::{Gui, RSnesEvent},
+    gui::{Gui, GuiFrameData, RSnesEvent},
     rsnes::{RSnesCore, RSnesEmu},
 };
 #[cfg(feature = "cli")]
 use clap::Parser;
-use egui_sdl2::egui;
 #[cfg(feature = "plugins")]
 use plugins::plugin::Plugin;
 use ppu::constants::SCREEN_HEIGHT;
@@ -28,6 +29,10 @@ fn gui_emu_loop(
     let mut last_instant = Instant::now();
     let mut frame_accum: f64 = 0.0;
     let mut master_cycle_accum: f64 = 0.0;
+
+    // Snapshot the ROM header once — it never changes while the ROM is loaded,
+    // so there's no reason to rebuild it every frame.
+    let rom_info = rsnes.rom_info();
 
     let mut emu = cfg_select! {
         feature = "plugins" => RSnesEmu::new_with_plugin(rsnes, plugin).unwrap(),
@@ -81,43 +86,13 @@ fn gui_emu_loop(
         // temporary: toggle VBLANK each rendered frame
         emu_mut.bus.io.rdnmi = !emu_mut.bus.io.rdnmi;
 
-        let mut close_clicked = false;
-        #[cfg(feature = "plugins")]
-        let mut run_plugin_clicked = false;
-
-        let events = gui.update(&emu_mut.ppu_renderer.framebuffer, |ctx| {
-            // `EguiCanvas::run` only provides `&Context`, so there does not seems to be no non-deprecated
-            // way to show a top-level panel here yet.
-            #[allow(deprecated)]
-            egui::Panel::top("game_menu_bar").show(ctx, |ui| {
-                egui::MenuBar::new().ui(ui, |ui| {
-                    ui.menu_button("Game", |ui| {
-                        if ui.button("Close ROM").clicked() {
-                            close_clicked = true;
-                            ui.close();
-                        }
-
-                        #[cfg(feature = "plugins")]
-                        if ui.button("Run plugin default").clicked() {
-                            run_plugin_clicked = true;
-                            ui.close();
-                        }
-                    });
-                });
-            });
-        });
+        let events = gui.update(
+            &emu_mut.ppu_renderer.framebuffer,
+            GuiFrameData {
+                rom_info: Some(rom_info.clone()),
+            },
+        );
         drop(emu_mut);
-
-        if close_clicked {
-            break 'emu_loop None;
-        }
-
-        #[cfg(feature = "plugins")]
-        if run_plugin_clicked {
-            if let Some(p) = emu.plugin_mut() {
-                p.run_default().unwrap();
-            }
-        }
 
         for state_event in events {
             match state_event {
@@ -167,33 +142,9 @@ fn gui_idle_loop(
     loop {
         let frame_start = Instant::now();
 
-        let mut load_rom_request: Option<PathBuf> = None;
-        let mut quit_clicked = false;
-
-        let events = gui.update(default_framebuffer, |ctx| {
-            #[allow(deprecated)]
-            egui::Panel::top("menu_bar").show(ctx, |ui| {
-                egui::MenuBar::new().ui(ui, |ui| {
-                    ui.menu_button("File", |ui| {
-                        if ui.button("Load ROM...").clicked() {
-                            load_rom_request = rfd::FileDialog::new().pick_file();
-                            ui.close();
-                        }
-                        if ui.button("Quit").clicked() {
-                            quit_clicked = true;
-                            ui.close();
-                        }
-                    });
-                });
-            });
-        });
-
-        if let Some(path) = load_rom_request {
-            return RSnesEvent::LoadRom { path };
-        }
-        if quit_clicked {
-            return RSnesEvent::Quit;
-        }
+        // No ROM loaded, so no rom_info to show — the overlay will say so
+        // if the user opens it.
+        let events = gui.update(default_framebuffer, GuiFrameData::default());
 
         for event in events {
             match event {

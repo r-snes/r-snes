@@ -13,6 +13,8 @@ use common::snes_address::SnesAddress;
 use cpu::cpu::CPU;
 use cpu::cpu::CycleResult;
 
+use bus::rom::header::RomHeader;
+use common::snes_addr;
 use ppu::ppu::PPU;
 use std::error::Error;
 use std::path::Path;
@@ -33,6 +35,28 @@ pub struct RSnesCore {
     apu_cycle_debt: u64,
 }
 
+/// Snapshot of the loaded ROM's metadata for display in the GUI.
+///
+/// Clones the header rather than borrowing so the GUI can hold it across
+/// frames without keeping the core borrowed.
+#[derive(Clone)]
+pub struct RomInfo {
+    pub path: PathBuf,
+    /// Actual size of the ROM file on disk, in KB — not the header's
+    /// `rom_size` exponent, which is what the cartridge *claims*.
+    pub file_size_kb: usize,
+    pub header: RomHeader,
+}
+impl RSnesCore {
+    /// Builds a display snapshot of the loaded ROM's metadata.
+    pub fn rom_info(&self) -> RomInfo {
+        RomInfo {
+            path: self._rom_path.clone(),
+            file_size_kb: self.bus.rom.data.len() / 1024,
+            header: self.bus.rom.header.clone(),
+        }
+    }
+}
 /// R-SNES core + optionally lua runtime for plugin execution (in
 /// case the feature is enabled)
 pub struct RSnesEmu {
