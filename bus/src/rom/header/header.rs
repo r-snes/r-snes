@@ -50,7 +50,7 @@ impl RomHeader {
         let SpeedAndMappingMode {
             rom_speed,
             mapping_mode,
-        } = SpeedAndMappingMode::from_byte(header_bytes[HEADER_SPEED_MAP_OFFSET]);
+        } = SpeedAndMappingMode::from_byte(header_bytes[HEADER_SPEED_MAP_OFFSET]).unwrap();
 
         RomHeader {
             bytes: header_bytes,
