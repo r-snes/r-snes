@@ -30,6 +30,9 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@1.95.0
 
+      - name: Cache cargo registry and build artifacts
+        uses: Swatinem/rust-cache@v2
+
       - name: Install SDL2
         uses: libsdl-org/setup-sdl@main
         id: sdl
@@ -58,6 +61,15 @@ jobs:
 
       - name: Install rust
         uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache cargo registry and build artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        timeout-minutes: 2
+        run: cargo fmt --all --check 
 
       - name: Install cargo-tarpaulin if not cached
         run: |
@@ -77,6 +89,10 @@ jobs:
         run: |
           echo "LIBRARY_PATH=${{ steps.sdl.outputs.prefix }}/lib" >> $GITHUB_ENV
           echo "LD_LIBRARY_PATH=${{ steps.sdl.outputs.prefix }}/lib" >> $GITHUB_ENV
+
+      - name: Run clippy
+        timeout-minutes: 3
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
       - name: Run coverage
         run: cargo tarpaulin --out html
