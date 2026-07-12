@@ -128,7 +128,7 @@ impl MappingMode {
         let mut score: u32 = 0;
 
         let map_mode = SpeedAndMappingMode::from_byte(rom_data[address + HEADER_SPEED_MAP_OFFSET])
-            .map_or(None, |a| Some(a.mapping_mode));
+            .map(|a| a.mapping_mode);
         let complement = u16::from_le_bytes([
             rom_data[address + HEADER_CHECKSUM_COMPLEMENT_OFFSET],
             rom_data[address + HEADER_CHECKSUM_COMPLEMENT_OFFSET + 1],
