@@ -54,23 +54,23 @@ pub enum RomSpeed {
 /// Returns:
 ///     A SpeedAndMappingMode struct which contains the rom speed and the mapping mode
 impl SpeedAndMappingMode {
-    pub fn from_byte(byte: u8) -> SpeedAndMappingMode {
+    pub fn from_byte(byte: u8) -> Option<SpeedAndMappingMode> {
         let mapping_mode = match byte & 0x0F {
             0x0 => MappingMode::LoRom,
             0x1 => MappingMode::HiRom,
-            _ => panic!("ERROR: Could not identify mapping of ROM"),
+            _ => return None,
         };
 
         let rom_speed = match (byte >> 4) & 1 {
             0 => RomSpeed::Slow,
             1 => RomSpeed::Fast,
-            _ => panic!("ERROR: Could not identify speed of ROM"),
+            _ => return None,
         };
 
-        SpeedAndMappingMode {
+        Some(SpeedAndMappingMode {
             mapping_mode,
             rom_speed,
-        }
+        })
     }
 }
 
@@ -128,7 +128,7 @@ impl MappingMode {
         let mut score: u32 = 0;
 
         let map_mode = SpeedAndMappingMode::from_byte(rom_data[address + HEADER_SPEED_MAP_OFFSET])
-            .mapping_mode;
+            .map_or(None, |a| Some(a.mapping_mode));
         let complement = u16::from_le_bytes([
             rom_data[address + HEADER_CHECKSUM_COMPLEMENT_OFFSET],
             rom_data[address + HEADER_CHECKSUM_COMPLEMENT_OFFSET + 1],
@@ -147,10 +147,10 @@ impl MappingMode {
             score += 8;
         }
 
-        if address == LOROM_HEADER_OFFSET && map_mode == MappingMode::LoRom {
+        if address == LOROM_HEADER_OFFSET && map_mode == Some(MappingMode::LoRom) {
             score += 4;
         }
-        if address == HIROM_HEADER_OFFSET && map_mode == MappingMode::HiRom {
+        if address == HIROM_HEADER_OFFSET && map_mode == Some(MappingMode::HiRom) {
             score += 4;
         }
 
@@ -211,10 +211,10 @@ mod tests {
     #[test]
     #[rustfmt::skip]
     fn test_from_byte_valid() {
-        assert_eq!(SpeedAndMappingMode::from_byte(0x00).mapping_mode, MappingMode::LoRom);
-        assert_eq!(SpeedAndMappingMode::from_byte(0x01).mapping_mode, MappingMode::HiRom);
-        assert_eq!(SpeedAndMappingMode::from_byte(0x10).mapping_mode, MappingMode::LoRom);
-        assert_eq!(SpeedAndMappingMode::from_byte(0x11).mapping_mode, MappingMode::HiRom);
+        assert_eq!(SpeedAndMappingMode::from_byte(0x00).unwrap().mapping_mode, MappingMode::LoRom);
+        assert_eq!(SpeedAndMappingMode::from_byte(0x01).unwrap().mapping_mode, MappingMode::HiRom);
+        assert_eq!(SpeedAndMappingMode::from_byte(0x10).unwrap().mapping_mode, MappingMode::LoRom);
+        assert_eq!(SpeedAndMappingMode::from_byte(0x11).unwrap().mapping_mode, MappingMode::HiRom);
     }
 
     #[test]
@@ -236,7 +236,10 @@ mod tests {
     fn test_rom_speed_from_byte_slow() {
         let bytes = [0x00, 0x01];
         for &b in &bytes {
-            assert_eq!(SpeedAndMappingMode::from_byte(b).rom_speed, RomSpeed::Slow);
+            assert_eq!(
+                SpeedAndMappingMode::from_byte(b).unwrap().rom_speed,
+                RomSpeed::Slow
+            );
         }
     }
 
@@ -244,7 +247,10 @@ mod tests {
     fn test_rom_speed_from_byte_fast() {
         let bytes = [0x10, 0x11];
         for &b in &bytes {
-            assert_eq!(SpeedAndMappingMode::from_byte(b).rom_speed, RomSpeed::Fast);
+            assert_eq!(
+                SpeedAndMappingMode::from_byte(b).unwrap().rom_speed,
+                RomSpeed::Fast
+            );
         }
     }
 }
