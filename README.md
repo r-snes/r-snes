@@ -37,6 +37,12 @@ For now, the project is known to work on Linux (wayland) and Windows, but could 
 
 Each component (hardware piece of the original console) is implemented in its own crate (thus in its own subfolder, see the up to date list of crates in the root Cargo.toml), and the main emulator program is implemented directly in `src/`.
 
+### Test fixtures
+
+The `spc_tests*.spc` files in `apu/tests/fixtures/` are built from the `spctest` sources of [gilyon/snes-tests](https://github.com/gilyon/snes-tests), assembled with [spcasm](https://github.com/kleinesfilmroellchen/spcasm) (`-f plain`). The `*_continue.spc` variants include a one-line patch (`jmp fail` → `call fail` in `spc_common.inc`) so that a run reports every failing test instead of halting on the first one.
+
+snes-tests is distributed under the MIT license, the same license as this project: these files are covered by the [LICENSE](LICENSE) file at the root of this repository.
+
 ## Language choice
 
 The emulator is implemented in Rust. This choice of language is mostly by personal preference, but our preferences are also influenced by having worked with C and C++ for a few years, and we all come to agree it is easier to collaborate with Rust (even though we had far less experience with it at the start of the project) than with other programming languages which can compete in performance and low-level control such as C and C++.
