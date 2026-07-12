@@ -114,7 +114,7 @@ impl Default for ParserState {
         Self {
             inc_pc: true,
             addrmode: AddrBusPosition::Opcode, // at instr start, addrbus is on PC
-            imm_offset: VarWidth::constw(1),    // at instr start, the first imm value is 1 after PC
+            imm_offset: VarWidth::constw(1),   // at instr start, the first imm value is 1 after PC
             operand_size: OpSize::Constant,
             wrapping_mode: AddrWrappingMode::BankWrap,
         }
@@ -1122,9 +1122,10 @@ impl Instr {
     }
 
     pub fn parse(stream: TokenStream, inc_pc: bool) -> Result<Self, &'static str> {
-        let mut pstate = ParserState::default();
-        pstate.inc_pc = inc_pc;
-
+        let mut pstate = ParserState {
+            inc_pc,
+            ..Default::default()
+        };
         let mut it = stream.into_iter();
         let Some(TokenTree::Ident(name)) = it.next() else {
             Err("Expecting the instruction name")?

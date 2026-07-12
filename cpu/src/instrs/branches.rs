@@ -29,6 +29,7 @@ duplicate! {
         }
 
         // idle if the branch is taken across a page boundary (cpu doc note 6)
+        #[allow(clippy::nonminimal_bool, reason = "false positive for BRA")]
         meta IDLE_IF DUP_flag
             && cpu.registers.E
             && *cpu.internal_data_bus.hi() != *cpu.registers.PC.hi();
