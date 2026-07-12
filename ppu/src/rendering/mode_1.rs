@@ -12,6 +12,12 @@ impl Renderer {
         // BG1 scroll registers
         let scroll_x = ppu.regs.bg1hofs as usize;
         let scroll_y = ppu.regs.bg1vofs as usize;
+        
+        let backdrop = ppu.cgram.read(0);
+        let (br, bg, bb) = Self::apply_brightness(backdrop, self.current_brightness as u16);
+        for x in 0..SCREEN_WIDTH {
+            self.set_pixel(x, y, br, bg, bb);
+        }
 
         for x in 0..SCREEN_WIDTH {
             // ============================================================
@@ -222,7 +228,7 @@ mod tests {
     // render_scanline_mode1 - transparent pixels
     // ============================================================
 
-    /// A fully transparent tile (all zero CHR data) must leave the framebuffer unchanged.
+    /// A fully transparent tile must leave pixels filled with the backdrop color (CGRAM entry 0).
     #[test]
     fn test_render_mode1_transparent_tile_leaves_framebuffer() {
         let mut renderer = Renderer::new();
@@ -232,15 +238,17 @@ mod tests {
 
         let mut ppu = make_ppu_mode1();
         // Tilemap entry at (0,0): tile 0, palette 0 - CHR data is all zero -> transparent
-        ppu.vram.memory[0] = 0x0000; // tilemap entry: tile index 0
-        // CHR data for tile 0 is already all zero
+        ppu.vram.memory[0] = 0x0000;
 
         renderer.render_scanline_mode1(&ppu, 0);
 
-        // All pixels on scanline 0 must still be 0xAA (untouched)
+        // All pixels on scanline 0 must be the backdrop color
+        let (br, bg, bb) = Renderer::apply_brightness(ppu.cgram.read(0), 15);
         for x in 0..SCREEN_WIDTH {
             let idx = x * 3;
-            assert_eq!(renderer.framebuffer[idx], 0xAA, "R changed at x={}", x);
+            assert_eq!(renderer.framebuffer[idx],     br, "R at x={}", x);
+            assert_eq!(renderer.framebuffer[idx + 1], bg, "G at x={}", x);
+            assert_eq!(renderer.framebuffer[idx + 2], bb, "B at x={}", x);
         }
     }
 
