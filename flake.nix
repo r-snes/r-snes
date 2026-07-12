@@ -37,6 +37,7 @@
           buildInputs = with rust-pkgs; [
             rustc
             cargo
+            clippy
             cargo-tarpaulin
             cargo-expand
             rustfmt
