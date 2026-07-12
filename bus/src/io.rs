@@ -567,7 +567,10 @@ mod tests {
 
         let addr = snes_addr!(0:0x2143);
         io.write(addr, 0xCD, &mut ppu, &mut apu);
-        assert_eq!(apu.memory.port_in[3], 0xCD, "SPC700 reads this via its own $F7");
+        assert_eq!(
+            apu.memory.port_in[3], 0xCD,
+            "SPC700 reads this via its own $F7"
+        );
     }
 
     #[test]
