@@ -114,7 +114,7 @@ impl Default for ParserState {
         Self {
             inc_pc: true,
             addrmode: AddrBusPosition::Opcode, // at instr start, addrbus is on PC
-            imm_offset: VarWidth::constw(1), // at instr start, the first imm value is 1 after PC
+            imm_offset: VarWidth::constw(1),    // at instr start, the first imm value is 1 after PC
             operand_size: OpSize::Constant,
             wrapping_mode: AddrWrappingMode::BankWrap,
         }
@@ -155,7 +155,7 @@ impl Binding {
     }
 
     pub fn expand_mut(&self) -> VarWidth<TokenStream> {
-        let &Self { ref name, ref value } = self;
+        let Self { name, value } = self;
 
         VarWidth::varw(
             quote! {
@@ -168,7 +168,7 @@ impl Binding {
     }
 
     pub fn expand(&self) -> VarWidth<TokenStream> {
-        let &Self { ref name, ref value } = self;
+        let Self { name, value } = self;
 
         VarWidth::varw(
             quote! {
@@ -470,7 +470,9 @@ impl MetaInstruction {
             "SET_NZ_OP" => MetaInstruction::SetNZOperand(it.by_ref().collect()),
 
             "LET_VARWIDTH" => MetaInstruction::LetVarWidth(Binding::parse(it.by_ref().collect())),
-            "LET_VARWIDTH_MUT" => MetaInstruction::LetVarWidthMut(Binding::parse(it.by_ref().collect())),
+            "LET_VARWIDTH_MUT" => {
+                MetaInstruction::LetVarWidthMut(Binding::parse(it.by_ref().collect()))
+            }
 
             "IF_8" => MetaInstruction::If8(it.by_ref().collect()),
             "IF_16" => MetaInstruction::If16(it.by_ref().collect()),
@@ -508,7 +510,7 @@ impl MetaInstruction {
                 match arg.to_string().as_str() {
                     "AccMem" => pstate.operand_size = OpSize::AccMem,
                     "Index" => pstate.operand_size = OpSize::Index,
-                    _ => panic!("Only valid operand sizes are AccMem and Index")
+                    _ => panic!("Only valid operand sizes are AccMem and Index"),
                 }
             }
 
@@ -520,16 +522,22 @@ impl MetaInstruction {
                 pstate.wrapping_mode = AddrWrappingMode::BankWrap;
                 match pstate.addrmode {
                     AddrBusPosition::Immediate => {} // already imm, nothing to do
-                    AddrBusPosition::Opcode => { // addrbus is already at PB:PC
-                        ret += pstate.imm_offset.map_into(|increment| quote! {
-                            // in practice the increment is always 1
-                            cpu.addr_bus.addr = cpu.addr_bus.addr.wrapping_add(#increment);
+                    AddrBusPosition::Opcode => {
+                        // addrbus is already at PB:PC
+                        ret += pstate.imm_offset.map_into(|increment| {
+                            quote! {
+                                // in practice the increment is always 1
+                                cpu.addr_bus.addr = cpu.addr_bus.addr.wrapping_add(#increment);
+                            }
                         });
                     }
-                    _ => { // default case, reset entire addrbus from scratch
-                        ret += pstate.imm_offset.map_into(|increment| quote! {
-                            cpu.addr_bus.bank = cpu.registers.PB;
-                            cpu.addr_bus.addr = cpu.registers.PC.wrapping_add(#increment);
+                    _ => {
+                        // default case, reset entire addrbus from scratch
+                        ret += pstate.imm_offset.map_into(|increment| {
+                            quote! {
+                                cpu.addr_bus.bank = cpu.registers.PB;
+                                cpu.addr_bus.addr = cpu.registers.PC.wrapping_add(#increment);
+                            }
                         });
                     }
                 }
@@ -567,7 +575,9 @@ impl MetaInstruction {
                     AddrWrappingMode::BankCross,
                     "absl should leave wrap mode as bank cross"
                 );
-                ret += pstate.wrapping_mode.increment_addrbus(quote!(cpu.registers.X));
+                ret += pstate
+                    .wrapping_mode
+                    .increment_addrbus(quote!(cpu.registers.X));
             }
             Self::SetAddrModeAbsoluteX => {
                 ret += Self::SetAddrModeAbsolute.expand(pstate);
@@ -577,7 +587,9 @@ impl MetaInstruction {
                     "abs should leave wrap mode as bank cross"
                 );
 
-                let new_addr = pstate.wrapping_mode.incremented_addrbus(quote!(cpu.registers.X));
+                let new_addr = pstate
+                    .wrapping_mode
+                    .incremented_addrbus(quote!(cpu.registers.X));
                 ret += InstrBody::note4(quote!(#new_addr.addr));
                 ret += quote! {
                     cpu.addr_bus = #new_addr;
@@ -591,7 +603,9 @@ impl MetaInstruction {
                     "abs should leave wrap mode as bank cross"
                 );
 
-                let new_addr = pstate.wrapping_mode.incremented_addrbus(quote!(cpu.registers.Y));
+                let new_addr = pstate
+                    .wrapping_mode
+                    .incremented_addrbus(quote!(cpu.registers.Y));
                 ret += InstrBody::note4(quote!(#new_addr.addr));
                 ret += quote! {
                     cpu.addr_bus = #new_addr;
@@ -640,7 +654,9 @@ impl MetaInstruction {
                     AddrWrappingMode::BankCross,
                     "direct indirect should leave wrap mode as bank cross"
                 );
-                let new_addr = pstate.wrapping_mode.incremented_addrbus(quote!(cpu.registers.Y));
+                let new_addr = pstate
+                    .wrapping_mode
+                    .incremented_addrbus(quote!(cpu.registers.Y));
                 ret += InstrBody::note4(quote!(#new_addr.addr));
                 ret += quote! {
                     cpu.addr_bus = #new_addr;
@@ -648,7 +664,9 @@ impl MetaInstruction {
             }
             Self::SetAddrModeDirectIndirectLongY => {
                 ret += Self::SetAddrModeDirectIndirectLong.expand(pstate);
-                ret += pstate.wrapping_mode.increment_addrbus(quote!(cpu.registers.Y));
+                ret += pstate
+                    .wrapping_mode
+                    .increment_addrbus(quote!(cpu.registers.Y));
             }
             Self::SetAddrModeDirectIndirectLong => {
                 ret += Self::SetAddrModeDirect.expand(pstate);
@@ -703,7 +721,9 @@ impl MetaInstruction {
                     cpu.addr_bus.addr = cpu.internal_data_bus;
                 };
                 pstate.wrapping_mode = AddrWrappingMode::BankCross;
-                ret += pstate.wrapping_mode.increment_addrbus(quote!(cpu.registers.Y));
+                ret += pstate
+                    .wrapping_mode
+                    .increment_addrbus(quote!(cpu.registers.Y));
             }
 
             Self::Fetch8Into(dest) => {
@@ -719,7 +739,8 @@ impl MetaInstruction {
 
                 ret += Self::Fetch8Into(quote! { *#into.lo_mut() }).expand(pstate);
                 ret += pstate.wrapping_mode.increment_addrbus(quote!(1));
-                if is_imm { // if we started as imm, now we are imm again
+                if is_imm {
+                    // if we started as imm, now we are imm again
                     pstate.addrmode = AddrBusPosition::Immediate;
                 }
                 ret += Self::Fetch8Into(quote! { *#into.hi_mut() }).expand(pstate);
@@ -736,8 +757,10 @@ impl MetaInstruction {
                     // instr bodies
                     pstate.addrmode = AddrBusPosition::Unaligned;
                 }
-                ret += MetaInstrExpansion::VarWidth{
-                    short: Self::Fetch8Into(quote! { *#into.lo_mut() }).expand(pstate).expect_const(),
+                ret += MetaInstrExpansion::VarWidth {
+                    short: Self::Fetch8Into(quote! { *#into.lo_mut() })
+                        .expand(pstate)
+                        .expect_const(),
                     long: Self::Fetch16Into(into).expand(pstate).expect_const(),
                     data: (),
                 };
@@ -801,8 +824,10 @@ impl MetaInstruction {
                 ret += Self::PullN8Into(quote! { *#into.hi_mut() }).expand(pstate);
             }
             Self::PullOpInto(into) => {
-                ret += MetaInstrExpansion::VarWidth{
-                    short: Self::Pull8Into(quote! { *#into.lo_mut() }).expand(pstate).expect_const(),
+                ret += MetaInstrExpansion::VarWidth {
+                    short: Self::Pull8Into(quote! { *#into.lo_mut() })
+                        .expand(pstate)
+                        .expect_const(),
                     long: Self::Pull16Into(into).expand(pstate).expect_const(),
                     data: (),
                 };
@@ -813,7 +838,7 @@ impl MetaInstruction {
                     quote! {
                         cpu.data_bus = #data;
                     },
-                    quote! { Write }
+                    quote! { Write },
                 )]);
             }
             Self::Write16(data) => {
@@ -823,8 +848,10 @@ impl MetaInstruction {
             }
 
             Self::WriteOperand(op) => {
-                ret += MetaInstrExpansion::VarWidth{
-                    short: Self::Write8(quote! { *#op.lo() }).expand(pstate).expect_const(),
+                ret += MetaInstrExpansion::VarWidth {
+                    short: Self::Write8(quote! { *#op.lo() })
+                        .expand(pstate)
+                        .expect_const(),
                     long: Self::Write16(op).expand(pstate).expect_const(),
                     data: (),
                 };
@@ -862,8 +889,10 @@ impl MetaInstruction {
                 ret += Self::PushN8(quote! { *#data.lo() }).expand(pstate);
             }
             Self::PushOp(op) => {
-                ret += MetaInstrExpansion::VarWidth{
-                    short: Self::Push8(quote! { *#op.lo() }).expand(pstate).expect_const(),
+                ret += MetaInstrExpansion::VarWidth {
+                    short: Self::Push8(quote! { *#op.lo() })
+                        .expand(pstate)
+                        .expect_const(),
                     long: Self::Push16(op).expand(pstate).expect_const(),
                     data: (),
                 };
@@ -881,8 +910,10 @@ impl MetaInstruction {
                 }
             }
             Self::SetNZOperand(op) => {
-                ret += MetaInstrExpansion::VarWidth{
-                    short: Self::SetNZ8(quote!(*#op.lo())).expand(pstate).expect_const(),
+                ret += MetaInstrExpansion::VarWidth {
+                    short: Self::SetNZ8(quote!(*#op.lo()))
+                        .expand(pstate)
+                        .expect_const(),
                     long: Self::SetNZ16(op).expand(pstate).expect_const(),
                     data: (),
                 }
@@ -902,7 +933,9 @@ impl MetaInstruction {
                         panic!("unexpected trailing tokens after braced If8");
                     }
                     ret += VarWidth::short(
-                        InstrBody::parse(body.stream(), pstate).unwrap().expect_const()
+                        InstrBody::parse(body.stream(), pstate)
+                            .unwrap()
+                            .expect_const(),
                     );
                 } else {
                     let rest = it.collect::<TokenStream>();
@@ -918,7 +951,9 @@ impl MetaInstruction {
                         panic!("unexpected trailing tokens after braced If16");
                     }
                     ret += VarWidth::long(
-                        InstrBody::parse(body.stream(), pstate).unwrap().expect_const()
+                        InstrBody::parse(body.stream(), pstate)
+                            .unwrap()
+                            .expect_const(),
                     );
                 } else {
                     let rest = it.collect::<TokenStream>();
@@ -938,7 +973,7 @@ pub(crate) enum VarWidth<T, U = ()> {
 
     /// Potentially different values in the 8- and 16-bit branches
     /// of the instruction
-    VarWidth{short: T, long: T, data: U},
+    VarWidth { short: T, long: T, data: U },
 }
 
 impl<T, U> VarWidth<T, U> {
@@ -958,7 +993,7 @@ impl<T, U: Clone> VarWidth<T, U> {
     pub fn map_into<T2>(&self, mut mapfunc: impl FnMut(&T) -> T2) -> VarWidth<T2, U> {
         match self {
             Self::ConstWidth(x) => VarWidth::ConstWidth(mapfunc(x)),
-            Self::VarWidth{short, long, data} => VarWidth::VarWidth {
+            Self::VarWidth { short, long, data } => VarWidth::VarWidth {
                 short: mapfunc(short),
                 long: mapfunc(long),
                 data: data.clone(),
@@ -969,17 +1004,29 @@ impl<T, U: Clone> VarWidth<T, U> {
 
 impl<T, U: Default> VarWidth<T, U> {
     pub fn varw(short: T, long: T) -> Self {
-        Self::VarWidth{short, long, data: U::default()}
+        Self::VarWidth {
+            short,
+            long,
+            data: U::default(),
+        }
     }
 }
 
 impl<T: Default, U: Default> VarWidth<T, U> {
     pub fn short(short: T) -> Self {
-        Self::VarWidth{short, long: T::default(), data: U::default()}
+        Self::VarWidth {
+            short,
+            long: T::default(),
+            data: U::default(),
+        }
     }
 
     pub fn long(long: T) -> Self {
-        Self::VarWidth{short: T::default(), long, data: U::default()}
+        Self::VarWidth {
+            short: T::default(),
+            long,
+            data: U::default(),
+        }
     }
 }
 
@@ -997,7 +1044,11 @@ where
     fn add_assign(&mut self, x: V) {
         match *self {
             Self::ConstWidth(ref mut body) => *body += x,
-            Self::VarWidth{ref mut short, ref mut long, ..} => {
+            Self::VarWidth {
+                ref mut short,
+                ref mut long,
+                ..
+            } => {
                 *short += x.clone();
                 *long += x;
             }
@@ -1018,17 +1069,27 @@ where
 
             // both self and other are var width, add each respective part together
             (
-                VarWidth::VarWidth{short: s_short, long: s_long, ..},
-                VarWidth::VarWidth{short: o_short, long: o_long, ..},
+                VarWidth::VarWidth {
+                    short: s_short,
+                    long: s_long,
+                    ..
+                },
+                VarWidth::VarWidth {
+                    short: o_short,
+                    long: o_long,
+                    ..
+                },
             ) => {
                 *s_short += o_short;
                 *s_long += o_long;
             }
 
             // self is constant, other is variable: split self in half, then call the case above
-            (self_@Self::ConstWidth(_), other@VarWidth::VarWidth{..}) => {
-                let Self::ConstWidth(b) = self_ else { unreachable!(); };
-                *self_ = Self::VarWidth{
+            (self_ @ Self::ConstWidth(_), other @ VarWidth::VarWidth { .. }) => {
+                let Self::ConstWidth(b) = self_ else {
+                    unreachable!();
+                };
+                *self_ = Self::VarWidth {
                     short: b.clone(),
                     long: b.clone(),
                     data: U1::default(),
@@ -1079,23 +1140,36 @@ impl Instr {
         ret.body += InstrBody::parse(body.stream(), &mut pstate)?;
 
         // Set PC to point at the next opcode
-        match (&mut ret.body, pstate.imm_offset.map_into(|i| pstate.conditionally_inc_pc(*i))) {
+        match (
+            &mut ret.body,
+            pstate
+                .imm_offset
+                .map_into(|i| pstate.conditionally_inc_pc(*i)),
+        ) {
             (VarWidth::ConstWidth(ib), VarWidth::ConstWidth(offs)) => {
                 *ib.cycles.last_mut().expect("at least 1 cycle") += offs;
             }
 
-            (VarWidth::ConstWidth(_), VarWidth::VarWidth{..}) => {
+            (VarWidth::ConstWidth(_), VarWidth::VarWidth { .. }) => {
                 panic!("var-width offset with const width instr")
             }
 
-            (VarWidth::VarWidth{short, long, ..}, VarWidth::ConstWidth(offs)) => {
+            (VarWidth::VarWidth { short, long, .. }, VarWidth::ConstWidth(offs)) => {
                 *short.cycles.last_mut().expect("at least 1 cycle") += offs.clone();
                 *long.cycles.last_mut().expect("at least 1 cycle") += offs;
             }
 
             (
-                VarWidth::VarWidth{short: i_s, long: i_l, ..},
-                VarWidth::VarWidth{short: o_s, long: o_l, ..}
+                VarWidth::VarWidth {
+                    short: i_s,
+                    long: i_l,
+                    ..
+                },
+                VarWidth::VarWidth {
+                    short: o_s,
+                    long: o_l,
+                    ..
+                },
             ) => {
                 *i_s.cycles.last_mut().expect("at least 1 cycle") += o_s;
                 *i_l.cycles.last_mut().expect("at least 1 cycle") += o_l;
@@ -1103,11 +1177,11 @@ impl Instr {
         }
 
         // here `data` is the condition in which the instr is in 16-bit mode
-        if let VarWidth::VarWidth{ref mut data, .. } = ret.body {
+        if let VarWidth::VarWidth { ref mut data, .. } = ret.body {
             match pstate.operand_size {
-                OpSize::Constant => panic!(
-                    "Variable width instructions used without setting the operand size"
-                ),
+                OpSize::Constant => {
+                    panic!("Variable width instructions used without setting the operand size")
+                }
                 OpSize::Index => *data = quote!(!cpu.registers.E && !cpu.registers.P.X),
                 OpSize::AccMem => *data = quote!(!cpu.registers.E && !cpu.registers.P.M),
             }
@@ -1184,14 +1258,19 @@ impl InstrBody {
     }
 
     /// Parses a piece of instrbody, calling meta-instr expansions
-    pub fn parse(body: TokenStream, pstate: &mut ParserState) -> Result<VarWidth<Self>, &'static str> {
+    pub fn parse(
+        body: TokenStream,
+        pstate: &mut ParserState,
+    ) -> Result<VarWidth<Self>, &'static str> {
         let mut it = body.into_iter().peekable();
         let mut ret = VarWidth::<Self>::default();
 
         loop {
             let it = it.by_ref();
 
-            ret += it.take_while(|token| token.to_string() != "meta").collect::<TokenStream>();
+            ret += it
+                .take_while(|token| token.to_string() != "meta")
+                .collect::<TokenStream>();
 
             if it.peek().is_none() {
                 break;
@@ -1201,7 +1280,7 @@ impl InstrBody {
                 let TokenTree::Punct(p) = token else {
                     return true;
                 };
-                return p.as_char() != ';';
+                p.as_char() != ';'
             }))?;
 
             ret += meta_instr.expand(pstate);
@@ -1221,7 +1300,7 @@ impl InstrBody {
     /// This should be called before setting the new address in the address bus.
     pub fn note4(new_address: TokenStream) -> Self {
         Self::cycles(vec![Cycle::conditional(
-            quote!(!cpu.registers.P.X || *cpu.addr_bus.addr.hi() != *#new_address.hi())
+            quote!(!cpu.registers.P.X || *cpu.addr_bus.addr.hi() != *#new_address.hi()),
         )])
     }
 
@@ -1244,7 +1323,7 @@ impl InstrBody {
 #[derive(Clone)]
 pub(crate) enum Cycle {
     /// An unconditional cycle: always executes
-    Unconditional{
+    Unconditional {
         /// Raw function body
         body: TokenStream,
         /// Cycle type (part of the function return value; should evaluate
@@ -1254,7 +1333,7 @@ pub(crate) enum Cycle {
 
     /// A cycle during which the CPU might idle if a condition is met,
     /// or skip to the next cycle otherwise
-    ConditionalIdle{
+    ConditionalIdle {
         /// The condition for which the conditional cycle is idled
         condition: TokenStream,
 
@@ -1271,13 +1350,16 @@ impl Cycle {
     }
 
     fn conditional(condition: TokenStream) -> Self {
-        Self::ConditionalIdle{condition, body: quote!()}
+        Self::ConditionalIdle {
+            condition,
+            body: quote!(),
+        }
     }
 
     fn body_mut(&mut self) -> &mut TokenStream {
         match self {
-            Self::Unconditional{body, ..} => body,
-            Self::ConditionalIdle{body, ..} => body,
+            Self::Unconditional { body, .. } => body,
+            Self::ConditionalIdle { body, .. } => body,
         }
     }
 }

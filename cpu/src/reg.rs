@@ -1,29 +1,17 @@
+use duplicate::duplicate;
+use std::cmp::Eq;
 use std::num::Wrapping;
 use std::ops::{
-    Add,
-    AddAssign,
-    BitAnd,
-    BitAndAssign,
-    BitOr,
-    BitOrAssign,
-    BitXor,
-    BitXorAssign,
-    Shl,
-    ShlAssign,
-    Shr,
-    ShrAssign,
-    Sub,
-    SubAssign,
-    Not,
+    Add, AddAssign, BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not, Shl,
+    ShlAssign, Shr, ShrAssign, Sub, SubAssign,
 };
-use std::cmp::Eq;
-use duplicate::duplicate;
 
 /// Trait describing values which the CPU operates on: u8 and u16
 ///
 /// This enables us to use generics instead of code duplication for
 /// code that should work for both sizes
-pub(crate) trait Reg : Copy
+pub(crate) trait Reg:
+    Copy
     + Add<Output = Self>
     + AddAssign
     + BitAnd<Output = Self>
@@ -117,7 +105,8 @@ impl AddBcd for u8 {
         let mut c: bool = carry_in;
 
         ret = (a & W(0x0f)) + (op & W(0x0f)) + W(c as u8);
-        if ret >= W(0xA) { // new base 10 carry
+        if ret >= W(0xA) {
+            // new base 10 carry
             // adjust the hex representation so that the hex digits
             // match the decimal representation of the value
             ret += 0x0006;
@@ -145,7 +134,8 @@ impl AddBcd for u16 {
         let mut c: bool = carry_in;
 
         ret = (a & W(0x000f)) + (op & W(0x000f)) + W(c as u16);
-        if ret >= W(0xA) { // new base 10 carry
+        if ret >= W(0xA) {
+            // new base 10 carry
             // adjust the hex representation so that the hex digits
             // match the decimal representation of the value
             ret += 0x0006;
@@ -184,7 +174,6 @@ impl SubBcd for u8 {
         ret += W(a & 0xF) + W(op & 0xF) + W(carry_in as Self);
         if ret.0 <= 0xF {
             ret -= 0x6;
-        } else {
         }
 
         let ret = ret.0;
@@ -197,7 +186,6 @@ impl SubBcd for u8 {
 
         if !c {
             ret -= 0x60;
-        } else {
         }
 
         (ret.0, c, v)

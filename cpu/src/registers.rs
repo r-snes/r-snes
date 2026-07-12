@@ -129,7 +129,7 @@ impl From<u8> for RegisterP {
 
 impl From<RegisterP> for u8 {
     fn from(val: RegisterP) -> Self {
-        u8::from(val.C) << 0
+        u8::from(val.C)
             | u8::from(val.Z) << 1
             | u8::from(val.I) << 2
             | u8::from(val.D) << 3
