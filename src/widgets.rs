@@ -1,4 +1,4 @@
-use egui_sdl2::egui;
+use egui_sdl2::egui::{self, accesskit::Invalid::True};
 
 use crate::rsnes::RomInfo;
 
@@ -15,11 +15,16 @@ fn decode_size_kb(exponent: u8) -> Option<usize> {
 pub fn rom_info(ctx: &egui::Context, open: &mut bool, info: Option<RomInfo>) {
     egui::Window::new("ROM Information")
         .open(open)
-        .resizable(false)
+        .resizable(true)
         .collapsible(false)
+        .default_width(340.0)
+        .default_height(360.0)
+        .vscroll(true)
         .show(ctx, |ui| {
             let Some(info) = info else {
-                ui.label("No ROM loaded.");
+                ui.centered_and_justified(|ui| {
+                    ui.label("No ROM loaded.");
+                });
                 return;
             };
 
@@ -69,9 +74,13 @@ pub fn rom_info(ctx: &egui::Context, open: &mut bool, info: Option<RomInfo>) {
                             ui.end_row();
 
                             ui.label("Coprocessor");
-                            ui.label(match &h.hardware.coprocessor {
-                                Some(c) => c.to_string(),
-                                None => "None".to_owned(),
+                            ui.label(if h.hardware.has_coprocessor() {
+                                match &h.hardware.coprocessor {
+                                    Some(c) => c.to_string(),
+                                    None => "Unknown".to_owned(),
+                                }
+                            } else {
+                                "None".to_owned()
                             });
                             ui.end_row();
 
