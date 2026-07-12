@@ -4,7 +4,6 @@ use cpu::cpu::CPU;
 use piccolo::Callback;
 use piccolo::CallbackReturn;
 use piccolo::Context;
-use piccolo::IntoMultiValue;
 use piccolo::IntoValue;
 use piccolo::Table;
 use piccolo::Value;
@@ -12,7 +11,6 @@ use piccolo::error::LuaError;
 use plugins::perm_tree::FileSystemPermissions;
 use plugins::perm_tree::FileWritePermissions;
 use plugins::perm_tree::filesystem::FileWriteOptions;
-use plugins::perm_tree::filesystem::OverwriteMode;
 use plugins::permission::Permission;
 use plugins::permission::helpers::AllOr;
 use plugins::plugin::Plugin;
@@ -77,7 +75,11 @@ impl RSnesCore {
             ctx,
             "__index",
             Callback::from_fn(ctx.mutation(), move |ctx, _, mut stack| {
-                let (_, key): (Table, piccolo::String) = stack.consume(ctx)?;
+                let (_, key): (Table, Value) = stack.consume(ctx)?;
+                let Value::String(key) = key else {
+                    stack.replace(ctx, Value::Nil);
+                    return Ok(piccolo::CallbackReturn::Return);
+                };
                 let cpu: &CPU = &emu.borrow().cpu;
 
                 let val = match key.as_bytes() {
@@ -273,7 +275,9 @@ impl RSnesCore {
                 let seek_mode = match stack.pop_front() {
                     None | Some(Value::Nil) => SeekFrom::Current,
                     Some(Value::String(s)) if s.as_bytes() == b"cur" => SeekFrom::Current,
-                    Some(Value::String(s)) if s.as_bytes() == b"set" => |i| SeekFrom::Start(i as u64),
+                    Some(Value::String(s)) if s.as_bytes() == b"set" => {
+                        |i| SeekFrom::Start(i as u64)
+                    }
                     Some(Value::String(s)) if s.as_bytes() == b"end" => SeekFrom::End,
                     _ => {
                         return Err(piccolo::Error::Lua(LuaError(
@@ -301,5 +305,223 @@ impl RSnesCore {
 
     fn add_read_perms<'gc>(_: Context<'gc>, _: Table<'gc>, _: &bool) {
         eprintln!("todo: handle read permissions")
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::rsnes::tests::make_rsnes;
+    use cpu::registers::Registers;
+    use piccolo::{Executor, Function, StashedExecutor, StashedTable, StashedValue, meta_ops};
+    use plugins::perm_tree::RSnesPermissions;
+
+    #[test]
+    fn cpu_regs_perms() {
+        let mut core = make_rsnes();
+        core.cpu = CPU::new(Registers {
+            A: 1000,
+            D: 4000,
+            DB: 8,
+            E: false,
+            P: 123.into(),
+            PB: 100,
+            PC: 8000,
+            S: 1600,
+            X: 4242,
+            Y: 34,
+        });
+        let core = Rc::new(RefCell::new(core));
+
+        let mut plugin = Plugin::load_from_raw(
+            br#"return {
+                permissions = {
+                    internal = {
+                        cpu = { "registers" }
+                    }
+                }
+            }"#,
+            None,
+        )
+        .unwrap();
+        {
+            let mut res_perms = RSnesPermissions::none();
+            res_perms.internal.cpu.registers = true;
+            assert_eq!(plugin.table.perms, res_perms);
+        }
+
+        let initial_globals_len = plugin.lua.enter(|ctx| ctx.globals().iter().count());
+
+        RSnesCore::inject_into_lua(&core, &mut plugin);
+        let cpu_tab = plugin.lua.enter(|ctx| {
+            assert_eq!(
+                ctx.globals().iter().count(),
+                initial_globals_len + 1,
+                "only 1 global should have been added",
+            );
+
+            let rsnes: Table = ctx.get_global("rsnes").unwrap();
+            assert_eq!(rsnes.iter().count(), 1, "only cpu table should be loaded",);
+
+            let cpu: Table = rsnes.get(ctx, "cpu").unwrap();
+            assert_eq!(
+                cpu.iter().count(),
+                0,
+                "regs table shouldn't have concrete fields"
+            );
+
+            ctx.stash(cpu)
+        });
+
+        fn get_reg_<'a, T>(
+            plugin: &'a mut Plugin,
+            cpu_tab: &'a StashedTable,
+            key: T,
+        ) -> StashedValue
+        where
+            T: for<'gc> IntoValue<'gc>,
+        {
+            enum A {
+                Val(StashedValue),
+                Ex(StashedExecutor),
+            }
+            let a = plugin.lua.enter(|ctx| {
+                let cpu = ctx.fetch(cpu_tab);
+                let meta_res =
+                    meta_ops::index(ctx, Value::Table(cpu), IntoValue::into_value(key, ctx))
+                        .unwrap();
+
+                match meta_res {
+                    meta_ops::MetaResult::Value(val) => A::Val(ctx.stash(val)),
+                    meta_ops::MetaResult::Call(call) => A::Ex(ctx.stash(Executor::start(
+                        ctx,
+                        call.function,
+                        dbg!((call.args[0], call.args[1])),
+                    ))),
+                }
+            });
+
+            match a {
+                A::Val(val) => val,
+                A::Ex(ex) => {
+                    plugin.lua.finish(&ex).unwrap();
+                    plugin.lua.enter(|ctx| {
+                        ctx.stash(ctx.fetch(&ex).take_result::<Value>(ctx).unwrap().unwrap())
+                    })
+                }
+            }
+        }
+        let mut get_reg = |key| get_reg_(&mut plugin, &cpu_tab, key);
+
+        assert!(matches!(get_reg("A"), StashedValue::Integer(1000)));
+        assert!(matches!(get_reg("D"), StashedValue::Integer(4000)));
+        assert!(matches!(get_reg("DB"), StashedValue::Integer(8)));
+        assert!(matches!(get_reg("E"), StashedValue::Boolean(false)));
+        assert!(matches!(get_reg("P"), StashedValue::Integer(123)));
+        assert!(matches!(get_reg("PB"), StashedValue::Integer(100)));
+        assert!(matches!(get_reg("PC"), StashedValue::Integer(8000)));
+        assert!(matches!(get_reg("S"), StashedValue::Integer(1600)));
+        assert!(matches!(get_reg("X"), StashedValue::Integer(4242)));
+        assert!(matches!(get_reg("Y"), StashedValue::Integer(34)));
+
+        assert!(matches!(get_reg("bus_addr"), StashedValue::Integer(_)));
+        assert!(matches!(get_reg("bus_bank"), StashedValue::Integer(_)));
+
+        // indexing non-existant fields yields `nil`
+        assert!(matches!(get_reg("foobar"), StashedValue::Nil));
+        assert!(matches!(
+            get_reg_(&mut plugin, &cpu_tab, 42),
+            StashedValue::Nil
+        ));
+
+        // try to overwrite a register
+        let ex = plugin.lua.enter(|ctx| {
+            let cpu = ctx.fetch(&cpu_tab);
+            meta_ops::new_index(
+                ctx,
+                Value::Table(cpu),
+                "A".into_value(ctx),
+                11111.into_value(ctx),
+            )
+            .unwrap()
+            .map(|call| {
+                ctx.stash(Executor::start(
+                    ctx,
+                    call.function,
+                    (call.args[0], call.args[1], call.args[2]),
+                ))
+            })
+        });
+        ex.inspect(|ex| {
+            plugin.lua.execute::<()>(ex).unwrap();
+        });
+        assert!(
+            matches!(
+                get_reg_(&mut plugin, &cpu_tab, "A"),
+                StashedValue::Integer(1000)
+            ),
+            "A value should have been left unmodified"
+        );
+    }
+
+    #[test]
+    fn input() {
+        let core = Rc::new(RefCell::new(make_rsnes()));
+
+        let mut plugin = Plugin::load_from_raw(
+            br#"return {
+                permissions = {
+                    internal = {
+                        input = "all"
+                    }
+                }
+            }"#,
+            None,
+        )
+        .unwrap();
+        {
+            let mut res_perms = RSnesPermissions::none();
+            res_perms.internal.input = true;
+            assert_eq!(plugin.table.perms, res_perms);
+        }
+
+        let initial_globals_len = plugin.lua.enter(|ctx| ctx.globals().iter().count());
+
+        RSnesCore::inject_into_lua(&core, &mut plugin);
+        let (press_a, release_a) = plugin.lua.enter(|ctx| {
+            assert_eq!(
+                ctx.globals().iter().count(),
+                initial_globals_len + 1,
+                "only 1 global should have been added",
+            );
+
+            let rsnes: Table = ctx.get_global("rsnes").unwrap();
+            assert_eq!(rsnes.iter().count(), 1, "only input table should be loaded",);
+
+            let input: Table = rsnes.get(ctx, "input").unwrap();
+
+            let press = input.get::<_, Function>(ctx, "press_a").unwrap();
+            let release = input.get::<_, Function>(ctx, "release_a").unwrap();
+            (ctx.stash(press), ctx.stash(release))
+        });
+
+        let mut run_lua = |f| {
+            Plugin::run_lua::<_, ()>(&mut plugin.lua, f).unwrap();
+        };
+
+        core.borrow_mut().bus.io.joy1 = 0;
+        assert!(core.borrow().bus.io.joy1 & (1 << 7) == 0);
+        run_lua(&press_a);
+        assert!(core.borrow().bus.io.joy1 & (1 << 7) != 0);
+        run_lua(&press_a);
+        assert!(core.borrow().bus.io.joy1 & (1 << 7) != 0);
+        run_lua(&release_a);
+        assert!(core.borrow().bus.io.joy1 & (1 << 7) == 0);
+        run_lua(&press_a);
+        assert!(core.borrow().bus.io.joy1 & (1 << 7) != 0);
+        run_lua(&release_a);
+        assert!(core.borrow().bus.io.joy1 & (1 << 7) == 0);
+        run_lua(&release_a);
+        assert!(core.borrow().bus.io.joy1 & (1 << 7) == 0);
     }
 }
