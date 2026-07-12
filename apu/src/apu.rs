@@ -75,7 +75,7 @@ const IPL_EXEC_DELAY_CYCLES: u16 = 256;
 
 pub struct Apu {
     pub cpu:    Spc700,
-    pub memory: Memory,   // Memory::dsp is the *only* Dsp — there is no separate field
+    pub memory: Memory,
     pub timers: Timers,
 
     /// Total CPU cycles elapsed since APU creation.
