@@ -16,13 +16,15 @@ pub struct Wram {
     pub data: Box<[u8; WRAM_SIZE]>,
 }
 
-impl Wram {
-    pub fn new() -> Self {
+impl Default for Wram {
+    fn default() -> Self {
         Self {
             data: Box::new([0; WRAM_SIZE]),
         }
     }
+}
 
+impl Wram {
     fn panic_invalid_addr(addr: SnesAddress) -> ! {
         panic!(
             "Incorrect access to the WRAM at address: {:06X}",
@@ -57,10 +59,12 @@ impl Wram {
     pub fn read(&self, addr: SnesAddress) -> u8 {
         let offset = Self::to_offset(addr);
 
-        return *self.data.get(offset).expect(&format!(
-            "ERROR: Couldn't extract value from RAM at address: {:06X}",
-            usize::from(addr)
-        ));
+        *self.data.get(offset).unwrap_or_else(|| {
+            panic!(
+                "ERROR: Couldn't extract value from RAM at address: {:06X}",
+                usize::from(addr)
+            )
+        })
     }
 
     /// Writes a byte to WRAM at the given `SnesAddress`.
@@ -110,7 +114,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "Incorrect access to the WRAM at address: E32345")]
     fn test_bad_map_addr_panic_message_read() {
-        let wram = Wram::new();
+        let wram = Wram::default();
 
         wram.read(snes_addr!(0xE3:0x2345));
     }
@@ -118,14 +122,14 @@ mod tests {
     #[test]
     #[should_panic(expected = "Incorrect access to the WRAM at address: E32345")]
     fn test_bad_map_addr_panic_message_write() {
-        let mut wram = Wram::new();
+        let mut wram = Wram::default();
 
         wram.write(snes_addr!(0xE3:0x2345), 0x43);
     }
 
     #[test]
     fn test_simple_read_write() {
-        let mut wram = Wram::new();
+        let mut wram = Wram::default();
         let mirrored_addr = snes_addr!(0x20:0x1456);
         let first_full_bank_addr = snes_addr!(0x7E:0x4444);
         let second_full_bank_addr = snes_addr!(0x7F:0x3E58);
@@ -142,7 +146,7 @@ mod tests {
 
     #[test]
     fn test_full_bank_edges() {
-        let mut wram = Wram::new();
+        let mut wram = Wram::default();
         let first_bank_end = snes_addr!(0x7E:0xFFFF);
         let second_bank_start = snes_addr!(0x7F:0x0000);
         let second_bank_end = snes_addr!(0x7F:0x0000);

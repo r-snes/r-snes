@@ -335,7 +335,7 @@ impl Io {
             // TODO : Implement open bus on unused bits
             0x4210 => {
                 let value = self.rdnmi;
-                self.rdnmi = self.rdnmi & 0x7F; // Reset V-Blank flag
+                self.rdnmi &= 0x7F; // Reset V-Blank flag
                 value
             }
 
@@ -343,7 +343,7 @@ impl Io {
             // TODO : Implement open bus on unused bits
             0x4211 => {
                 let value = self.timeup;
-                self.timeup = self.timeup & 0x7F; // Reset Timer flag
+                self.timeup &= 0x7F; // Reset Timer flag
                 value
             }
 
