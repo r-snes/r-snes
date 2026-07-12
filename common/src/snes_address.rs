@@ -73,10 +73,10 @@ impl SnesAddress {
 /// token (a direct variable name or number).
 macro_rules! snes_addr {
     ( $bank:tt : $addr:expr ) => {
-            SnesAddress {
-                bank: $bank,
-                addr: $addr,
-            }
+        SnesAddress {
+            bank: $bank,
+            addr: $addr,
+        }
     };
 }
 pub use snes_addr;
@@ -176,7 +176,13 @@ mod test {
     fn test_snes_addr_macro() {
         let addr = snes_addr!(0xab:0xcdef);
 
-        assert_eq!(addr, SnesAddress { bank: 0xab, addr: 0xcdef });
+        assert_eq!(
+            addr,
+            SnesAddress {
+                bank: 0xab,
+                addr: 0xcdef
+            }
+        );
     }
 
     #[test]
@@ -184,6 +190,12 @@ mod test {
         let ba = (0x12, 0x3456);
         let addr = snes_addr!((ba.0):ba.1);
 
-        assert_eq!(addr, SnesAddress { bank: 0x12, addr: 0x3456 });
+        assert_eq!(
+            addr,
+            SnesAddress {
+                bank: 0x12,
+                addr: 0x3456
+            }
+        );
     }
 }
