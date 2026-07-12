@@ -239,6 +239,10 @@ impl RSnesCore {
 }
 
 impl RSnesEmu {
+    #[cfg_attr(
+        feature = "plugins",
+        expect(unused, reason = "unused for now, but makes sense to have")
+    )]
     pub fn new(core: RSnesCore) -> Self {
         cfg_select! {
             feature = "plugins" => Self {
