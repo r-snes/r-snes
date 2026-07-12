@@ -61,8 +61,6 @@ enum IplHle {
     /// provides a small window here via its jump-sequence overhead; we
     /// provide a more generous one.
     ExecDelay { cycles_left: u16, entry: u16 },
-    /// Upload finished; the SPC700 core is executing uploaded code.
-    Done,
 }
 
 /// SPC700 cycles the HLE IPL spends "booting" before announcing $AA/$BB,
@@ -92,8 +90,9 @@ pub struct Apu {
     /// while audio output isn't wired to the frontend.
     sample_buf: Vec<i16>,
 
-    /// HLE IPL boot state (see IplHle docs).
-    ipl: IplHle,
+    /// HLE IPL boot state. `None` once the upload has
+    /// finished and the SPC700 core is executing uploaded code.
+    ipl: Option<IplHle>,
 }
 
 /// Upper bound on buffered samples before `step` starts discarding:
@@ -119,7 +118,7 @@ impl Apu {
             cycles:     0,
             dsp_cycles: 0,
             sample_buf: Vec::new(),
-            ipl:        IplHle::BootDelay { cycles_left: IPL_BOOT_CYCLES },
+            ipl:        Some(IplHle::BootDelay { cycles_left: IPL_BOOT_CYCLES }),
         };
 
         // Load the reset vector and initialise SP so the CPU starts correctly.
@@ -153,12 +152,12 @@ impl Apu {
         // on the very next cycle creates a race where the main CPU can
         // miss that signal and deadlock. The announce happens when
         // BootDelay elapses, in ipl_step.
-        self.ipl = IplHle::BootDelay { cycles_left: IPL_BOOT_CYCLES };
+        self.ipl = Some(IplHle::BootDelay { cycles_left: IPL_BOOT_CYCLES });
     }
 
     /// True while the HLE IPL owns the SPC700 (before the execute command).
     pub fn ipl_active(&self) -> bool {
-        self.ipl != IplHle::Done
+        self.ipl.is_some()
     }
 
     /// Skip the HLE IPL boot entirely, handing the core to the SPC700
@@ -170,7 +169,7 @@ impl Apu {
     pub fn skip_ipl_boot(&mut self) {
         self.memory.port_out[0] = 0xAA;
         self.memory.port_out[1] = 0xBB;
-        self.ipl = IplHle::Done;
+        self.ipl = None;
     }
 
     /// Re-arm the HLE IPL after uploaded code jumps back into the boot
@@ -193,41 +192,44 @@ impl Apu {
     /// One tick of the HLE IPL state machine. Called from `step` in place
     /// of `Spc700::step` while the boot upload is in progress. Polls the
     /// input ports exactly like the real IPL's wait loops do.
-    fn ipl_step(&mut self) {
-        match self.ipl {
+    ///
+    /// Takes the current (necessarily active) state and returns the next
+    /// one; `None` means the IPL has handed control to the SPC700 core.
+    fn ipl_step(&mut self, state: IplHle) -> Option<IplHle> {
+        match state {
             IplHle::BootDelay { cycles_left } => {
                 if cycles_left > 1 {
-                    self.ipl = IplHle::BootDelay { cycles_left: cycles_left - 1 };
-                } else {
-                    // Boot init "done" — announce. The main CPU spins on
-                    // $2140/$2141 until it sees $AA/$BB; this is the
-                    // handshake every upload starts with.
-                    ipl_trace!("[apu ipl] announcing $AA/$BB, awaiting upload");
-                    self.memory.port_out[0] = 0xAA;
-                    self.memory.port_out[1] = 0xBB;
-                    self.ipl = IplHle::AwaitStart;
+                    return Some(IplHle::BootDelay { cycles_left: cycles_left - 1 });
                 }
+                // Boot init "done" — announce. The main CPU spins on
+                // $2140/$2141 until it sees $AA/$BB; this is the
+                // handshake every upload starts with.
+                ipl_trace!("[apu ipl] announcing $AA/$BB, awaiting upload");
+                self.memory.port_out[0] = 0xAA;
+                self.memory.port_out[1] = 0xBB;
+                Some(IplHle::AwaitStart)
             }
 
             IplHle::AwaitStart => {
-                if self.memory.port_in[0] == 0xCC {
-                    let addr = u16::from_le_bytes([
-                        self.memory.port_in[2],
-                        self.memory.port_in[3],
-                    ]);
-                    // Ack the start command by echoing $CC.
-                    self.memory.port_out[0] = 0xCC;
+                if self.memory.port_in[0] != 0xCC {
+                    return Some(state); // keep waiting for the start command
+                }
+                let addr = u16::from_le_bytes([
+                    self.memory.port_in[2],
+                    self.memory.port_in[3],
+                ]);
+                // Ack the start command by echoing $CC.
+                self.memory.port_out[0] = 0xCC;
 
-                    if self.memory.port_in[1] != 0 {
-                        ipl_trace!("[apu ipl] start command: uploading block to {addr:#06x}");
-                        self.ipl = IplHle::Transfer { addr, index: 0 };
-                    } else {
-                        ipl_trace!("[apu ipl] start command: direct execute at {addr:#06x}");
-                        self.ipl = IplHle::ExecDelay {
-                            cycles_left: IPL_EXEC_DELAY_CYCLES,
-                            entry:       addr,
-                        };
-                    }
+                if self.memory.port_in[1] != 0 {
+                    ipl_trace!("[apu ipl] start command: uploading block to {addr:#06x}");
+                    Some(IplHle::Transfer { addr, index: 0 })
+                } else {
+                    ipl_trace!("[apu ipl] start command: direct execute at {addr:#06x}");
+                    Some(IplHle::ExecDelay {
+                        cycles_left: IPL_EXEC_DELAY_CYCLES,
+                        entry:       addr,
+                    })
                 }
             }
 
@@ -244,10 +246,10 @@ impl Apu {
                     let data = self.memory.port_in[1];
                     self.memory.ram[addr as usize] = data;
                     self.memory.port_out[0] = index; // ack by echoing index
-                    self.ipl = IplHle::Transfer {
+                    Some(IplHle::Transfer {
                         addr:  addr.wrapping_add(1),
                         index: index.wrapping_add(1),
-                    };
+                    })
                 } else if delta > 0 {
                     // New command: next block, or execute.
                     let new_addr = u16::from_le_bytes([
@@ -258,39 +260,38 @@ impl Apu {
 
                     if self.memory.port_in[1] != 0 {
                         ipl_trace!("[apu ipl] next block at {new_addr:#06x}");
-                        self.ipl = IplHle::Transfer { addr: new_addr, index: 0 };
+                        Some(IplHle::Transfer { addr: new_addr, index: 0 })
                     } else {
                         ipl_trace!("[apu ipl] execute at {new_addr:#06x} — handing off shortly");
-                        self.ipl = IplHle::ExecDelay {
+                        Some(IplHle::ExecDelay {
                             cycles_left: IPL_EXEC_DELAY_CYCLES,
                             entry:       new_addr,
-                        };
+                        })
                     }
+                } else {
+                    // delta < 0: main CPU hasn't advanced yet; keep waiting.
+                    Some(state)
                 }
-                // delta < 0: main CPU hasn't advanced yet; keep waiting.
             }
 
             IplHle::ExecDelay { cycles_left, entry } => {
                 if cycles_left > 1 {
-                    self.ipl = IplHle::ExecDelay { cycles_left: cycles_left - 1, entry };
-                } else {
-                    // Hand off with the real IPL's documented post-jump
-                    // state: the jump tail stores the entry address at
-                    // $00/$01 and reaches the jmp with A = X = Y = 0.
-                    // Uploaded code is entitled to assume all of this.
-                    let [lo, hi] = entry.to_le_bytes();
-                    self.memory.ram[0x00] = lo;
-                    self.memory.ram[0x01] = hi;
-                    self.cpu.regs.a  = 0;
-                    self.cpu.regs.x  = 0;
-                    self.cpu.regs.y  = 0;
-                    self.cpu.regs.pc = entry;
-                    ipl_trace!("[apu ipl] SPC700 running at {entry:#06x}");
-                    self.ipl = IplHle::Done;
+                    return Some(IplHle::ExecDelay { cycles_left: cycles_left - 1, entry });
                 }
+                // Hand off with the real IPL's documented post-jump
+                // state: the jump tail stores the entry address at
+                // $00/$01 and reaches the jmp with A = X = Y = 0.
+                // Uploaded code is entitled to assume all of this.
+                let [lo, hi] = entry.to_le_bytes();
+                self.memory.ram[0x00] = lo;
+                self.memory.ram[0x01] = hi;
+                self.cpu.regs.a  = 0;
+                self.cpu.regs.x  = 0;
+                self.cpu.regs.y  = 0;
+                self.cpu.regs.pc = entry;
+                ipl_trace!("[apu ipl] SPC700 running at {entry:#06x}");
+                None
             }
-
-            IplHle::Done => unreachable!("guarded by caller"),
         }
     }
 
@@ -305,10 +306,10 @@ impl Apu {
     /// separate Dsp field on Apu.
     pub fn step(&mut self, cycles: u32) {
         for _ in 0..cycles {
-            if self.ipl_active() {
+            if let Some(state) = self.ipl {
                 // The real chip spends this time executing IPL code from
                 // the boot ROM; we run the HLE state machine instead.
-                self.ipl_step();
+                self.ipl = self.ipl_step(state);
             } else if self.cpu.regs.pc >= 0xFFC0 && self.memory.control & 0x80 != 0 {
                 // Jumping into $FFC0-$FFFF *while CONTROL bit 7 (IPL ROM
                 // enable) is set* re-runs the boot ROM: drivers do this to
@@ -441,7 +442,7 @@ mod tests {
         // back into the boot ROM region.
         apu.memory.port_out[0] = 0x77; // completion signal
         apu.memory.control = 0x80;     // IPL ROM mapping enabled
-        apu.ipl = IplHle::Done;
+        apu.ipl = None;
         apu.cpu.regs.pc = 0xFFC0;
 
         // For the entire boot delay the signal must remain visible...
