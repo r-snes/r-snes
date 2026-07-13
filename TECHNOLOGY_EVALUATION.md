@@ -69,11 +69,11 @@ Finally, the team explicitly wanted the project to be a vehicle for learning a m
 
 ### Context
 
-Once SDL2 was settled as the presentation layer, a separate need emerged during development: floating debug/introspection widgets (register views, memory inspectors, logs) layered on top of the emulator's framebuffer. SDL2 alone gives no immediate-mode UI primitives, and building one from scratch was out of scope for a debug tool. This was not part of the initial technology evaluation - it surfaced once SDL2 was already in place, as a follow-on integration need rather than a fresh multi-candidate comparison.
+Once SDL2 was settled as the presentation layer, a separate need emerged during development: floating debug/introspection widgets (register views, rom informations, memory inspectors, logs,) layered on top of the emulator's framebuffer. SDL2 alone gives no UI widget primitives, and building a widget toolkit from scratch was out of scope for a minor tool. This was not part of the initial technology evaluation - it surfaced once SDL2 was already in place, as a follow-on integration need rather than a fresh multi-candidate comparison.
 
 ### Analysis
 
-Since egui was already the team's preferred immediate-mode GUI (it had been evaluated in Section 3 for the presentation layer, and rejected only because it lacked controller support for that specific role), the natural path was to combine it with SDL2 rather than introduce a second GUI toolkit. An existing integration crate binding egui's rendering to an SDL2 backend was already available and maintained, so rather than writing an SDL2/egui bridge ourselves, the team adopted that existing crate directly.
+Since egui was already the team's preferred UI library for its ease of use (it had been evaluated in Section 3 for the presentation layer, and rejected only because it lacked controller support for that specific role), the natural path was to combine it with SDL2 rather than introduce a second GUI toolkit. An existing integration crate binding egui's rendering to an SDL2 backend was already available and maintained, so rather than writing an SDL2/egui bridge ourselves, the team adopted that existing crate directly.
 
 Integration required some care around input routing (keeping egui from leaking keyboard/mouse input to the emulated controller) and texture handling, but nothing that changed the overall approach. Framebuffer rendering itself was kept on the SDL2 canvas rather than routed through egui, with egui reserved purely for the floating UI widgets layered on top.
 
