@@ -1,3 +1,4 @@
+use bus::rom::header::RomHeader;
 use egui_sdl2::egui;
 
 use crate::rsnes::RomInfo;
@@ -28,7 +29,21 @@ pub fn rom_info(ctx: &egui::Context, open: &mut bool, info: Option<&RomInfo>) {
                 return;
             };
 
-            let h = &info.header;
+            let RomHeader {
+                bytes: _,
+                title,
+                rom_speed,
+                mapping_mode,
+                hardware,
+                rom_size,
+                ram_size,
+                country,
+                video_standard,
+                developer_id,
+                rom_version,
+                checksum_complement,
+                checksum,
+            } = &info.header;
 
             // --- Primary info: what you actually want at a glance ---
             egui::Grid::new("rom_info_primary")
@@ -38,15 +53,15 @@ pub fn rom_info(ctx: &egui::Context, open: &mut bool, info: Option<&RomInfo>) {
                 .show(ui, |ui| {
                     ui.label("Title");
                     // Header titles are space-padded to 21 bytes.
-                    ui.label(h.title.trim());
+                    ui.label(title.trim());
                     ui.end_row();
 
                     ui.label("Mapping mode");
-                    ui.label(h.mapping_mode.to_string());
+                    ui.label(mapping_mode.to_string());
                     ui.end_row();
 
                     ui.label("ROM speed");
-                    ui.label(h.rom_speed.to_string());
+                    ui.label(rom_speed.to_string());
                     ui.end_row();
 
                     ui.label("File size");
@@ -54,7 +69,7 @@ pub fn rom_info(ctx: &egui::Context, open: &mut bool, info: Option<&RomInfo>) {
                     ui.end_row();
 
                     ui.label("Region");
-                    ui.label(format!("{} ({})", h.country, h.video_standard));
+                    ui.label(format!("{} ({})", country, video_standard));
                     ui.end_row();
                 });
 
@@ -70,12 +85,12 @@ pub fn rom_info(ctx: &egui::Context, open: &mut bool, info: Option<&RomInfo>) {
                         .striped(true)
                         .show(ui, |ui| {
                             ui.label("Layout");
-                            ui.label(h.hardware.layout.to_string());
+                            ui.label(hardware.layout.to_string());
                             ui.end_row();
 
                             ui.label("Coprocessor");
-                            ui.label(if h.hardware.has_coprocessor() {
-                                match &h.hardware.coprocessor {
+                            ui.label(if hardware.has_coprocessor() {
+                                match &hardware.coprocessor {
                                     Some(c) => c.to_string(),
                                     None => "Unknown".to_owned(),
                                 }
@@ -85,15 +100,15 @@ pub fn rom_info(ctx: &egui::Context, open: &mut bool, info: Option<&RomInfo>) {
                             ui.end_row();
 
                             ui.label("ROM size (header)");
-                            ui.label(match decode_size_kb(h.rom_size) {
-                                Some(kb) => format!("{} KB (exp. {})", kb, h.rom_size),
-                                None => format!("none (exp. {})", h.rom_size),
+                            ui.label(match decode_size_kb(*rom_size) {
+                                Some(kb) => format!("{} KB (exp. {})", kb, rom_size),
+                                None => format!("none (exp. {})", rom_size),
                             });
                             ui.end_row();
 
                             ui.label("SRAM size");
-                            ui.label(match decode_size_kb(h.ram_size) {
-                                Some(kb) => format!("{} KB (exp. {})", kb, h.ram_size),
+                            ui.label(match decode_size_kb(*ram_size) {
+                                Some(kb) => format!("{} KB (exp. {})", kb, ram_size),
                                 None => "None".to_owned(),
                             });
                             ui.end_row();
@@ -109,23 +124,23 @@ pub fn rom_info(ctx: &egui::Context, open: &mut bool, info: Option<&RomInfo>) {
                         .striped(true)
                         .show(ui, |ui| {
                             ui.label("Developer ID");
-                            ui.label(format!("${:02X}", h.developer_id));
+                            ui.label(format!("${:02X}", developer_id));
                             ui.end_row();
 
                             ui.label("ROM version");
-                            ui.label(format!("1.{}", h.rom_version));
+                            ui.label(format!("1.{}", rom_version));
                             ui.end_row();
 
                             ui.label("Checksum");
-                            ui.label(format!("${:04X}", h.checksum));
+                            ui.label(format!("${:04X}", checksum));
                             ui.end_row();
 
                             ui.label("Complement");
                             // The two should XOR to 0xFFFF on a valid cartridge.
-                            let valid = h.checksum ^ h.checksum_complement == 0xFFFF;
+                            let valid = checksum ^ checksum_complement == 0xFFFF;
                             ui.label(format!(
                                 "${:04X} {}",
-                                h.checksum_complement,
+                                checksum_complement,
                                 if valid { "[OK]" } else { "[BAD]" }
                             ));
                             ui.end_row();
