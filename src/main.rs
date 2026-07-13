@@ -198,8 +198,8 @@ fn gui_idle_loop(gui: &mut Gui) -> RSnesEvent {
             jingle_failed = true;
         }
 
-        // ~256 ms of queued audio makes a 5 ms nap entirely safe, and
-        // keeps this loop invisible in `top`.
+        // ~256 ms of queued audio makes a 5 ms nap safe, and
+        // keeps this loop's idle overhead minimal.
         std::thread::sleep(Duration::from_millis(5));
     }
 }
