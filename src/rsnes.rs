@@ -14,7 +14,6 @@ use cpu::cpu::CPU;
 use cpu::cpu::CycleResult;
 
 use bus::rom::header::RomHeader;
-use common::snes_addr;
 use ppu::ppu::PPU;
 use std::error::Error;
 use std::path::Path;
