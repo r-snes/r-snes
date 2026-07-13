@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use egui_sdl2::canvas::EguiCanvas;
 use egui_sdl2::{egui, sdl2};
-use sdl2::event::Event;
+use sdl2::event::Event as SdlEvent;
 use sdl2::keyboard::Keycode;
 use sdl2::render::Texture;
 
@@ -106,15 +106,15 @@ impl Gui {
     }
 
     /// Maps an SDL event to a GUI-only action (toggling overlays).
-    fn map_gui_action(event: &Event) -> Option<GuiAction> {
+    fn map_gui_action(event: &SdlEvent) -> Option<GuiAction> {
         match event {
-            Event::KeyDown {
+            SdlEvent::KeyDown {
                 keycode: Some(Keycode::F1),
                 repeat: false,
                 ..
             } => Some(GuiAction::ToggleRomInfo),
 
-            Event::KeyDown {
+            SdlEvent::KeyDown {
                 keycode: Some(Keycode::Escape),
                 repeat: false,
                 ..
@@ -124,24 +124,24 @@ impl Gui {
         }
     }
 
-    fn map_event(event: &Event) -> Option<RSnesEvent> {
+    fn map_event(event: &SdlEvent) -> Option<RSnesEvent> {
         use sdl2::keyboard::Mod;
 
         match event {
-            Event::Quit { .. } => Some(RSnesEvent::Quit),
-            Event::KeyDown {
+            SdlEvent::Quit { .. } => Some(RSnesEvent::Quit),
+            SdlEvent::KeyDown {
                 keycode: Some(Keycode::Q),
                 keymod,
                 ..
             } if keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => Some(RSnesEvent::Quit),
 
-            Event::KeyDown {
+            SdlEvent::KeyDown {
                 keycode: Some(Keycode::Escape),
                 repeat: false,
                 ..
             } => Some(RSnesEvent::Close),
 
-            Event::KeyDown {
+            SdlEvent::KeyDown {
                 keycode: Some(Keycode::L),
                 keymod,
                 ..
@@ -149,7 +149,7 @@ impl Gui {
                 .pick_file()
                 .map(|path| RSnesEvent::LoadRom { path }),
 
-            Event::KeyDown {
+            SdlEvent::KeyDown {
                 keycode: Some(Keycode::Space),
                 repeat: false,
                 keymod,
@@ -160,12 +160,12 @@ impl Gui {
                 Some(RSnesEvent::ButtonDown)
             }
 
-            Event::KeyUp {
+            SdlEvent::KeyUp {
                 keycode: Some(Keycode::Space),
                 ..
             } => Some(RSnesEvent::ButtonUp),
 
-            Event::KeyDown {
+            SdlEvent::KeyDown {
                 keycode: Some(Keycode::R),
                 keymod,
                 ..
@@ -183,7 +183,7 @@ impl Gui {
     /// consume: first to GUI actions (handled here), then to emulator events
     /// (returned to the caller).
     fn handle_events(&mut self) -> Vec<RSnesEvent> {
-        let pending: Vec<Event> = self.event_pump.poll_iter().collect();
+        let pending: Vec<SdlEvent> = self.event_pump.poll_iter().collect();
 
         let mut out = Vec::new();
         for event in pending {
