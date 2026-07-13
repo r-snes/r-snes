@@ -4,6 +4,7 @@ use plugins::plugin::{
     gui::PluginPermRequest,
 };
 use eframe::egui;
+use plugins::plugin::{Plugin, PluginPermRequest};
 
 struct PermRequestApp<'app, 'req> {
     title: String,
@@ -40,7 +41,7 @@ fn main() -> eframe::Result {
             dbg!(e);
             std::process::exit(1);
         }
-        Ok(p) => p
+        Ok(p) => p,
     };
 
     env_logger::init();

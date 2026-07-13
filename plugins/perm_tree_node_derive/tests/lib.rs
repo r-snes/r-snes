@@ -1,10 +1,7 @@
-use permission_derive_macro::Permission;
 use perm_tree_node_derive::PermTreeNode;
+use permission_derive_macro::Permission;
 
-use plugins::{
-    permission::Permission,
-    perm_tree::PermTreeNode,
-};
+use plugins::{perm_tree::PermTreeNode, permission::Permission};
 
 #[derive(Debug, Eq, PartialEq, PartialOrd, Permission, PermTreeNode)]
 struct PermTreeRoot {
@@ -15,7 +12,7 @@ struct PermTreeRoot {
 
 #[derive(Debug, Eq, PartialEq, PartialOrd, Permission, PermTreeNode)]
 struct Node1 {
-    subnode: SubNode
+    subnode: SubNode,
 }
 
 #[derive(Debug, Eq, PartialEq, PartialOrd, Permission, PermTreeNode)]

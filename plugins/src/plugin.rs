@@ -69,13 +69,16 @@ pub struct PluginAutoActions {
 }
 
 impl<'gc> picc::FromValue<'gc> for PluginTable {
-    fn from_value(ctx: picc::Context<'gc>, value: picc::Value<'gc>) -> Result<Self, picc::TypeError> {
+    fn from_value(
+        ctx: picc::Context<'gc>,
+        value: picc::Value<'gc>,
+    ) -> Result<Self, picc::TypeError> {
         use picc::*;
 
         let picc::Value::Table(tab) = value else {
             return Err(picc::TypeError {
                 expected: "table",
-                found: value.type_name()
+                found: value.type_name(),
             });
         };
 
@@ -88,30 +91,42 @@ impl<'gc> picc::FromValue<'gc> for PluginTable {
             };
 
             match key.as_bytes() {
-                b"init" => ret.init = match value {
-                    Value::Function(Function::Closure(c)) => Some(ctx.stash(c)),
-                    v => return Err(picc::TypeError {
-                        expected: "init function or nil",
-                        found: v.type_name(),
-                    }),
-                },
-                b"exit" => ret.exit = match value {
-                    Value::Function(Function::Closure(c)) => Some(ctx.stash(c)),
-                    v => return Err(picc::TypeError {
-                        expected: "exit function or nil",
-                        found: v.type_name(),
-                    }),
-                },
-                b"permissions" => ret.perms = RSnesPermissions::from_lua(ctx, value)
-                    .ok_or(picc::TypeError {
+                b"init" => {
+                    ret.init = match value {
+                        Value::Function(Function::Closure(c)) => Some(ctx.stash(c)),
+                        v => {
+                            return Err(picc::TypeError {
+                                expected: "init function or nil",
+                                found: v.type_name(),
+                            });
+                        }
+                    }
+                }
+                b"exit" => {
+                    ret.exit = match value {
+                        Value::Function(Function::Closure(c)) => Some(ctx.stash(c)),
+                        v => {
+                            return Err(picc::TypeError {
+                                expected: "exit function or nil",
+                                found: v.type_name(),
+                            });
+                        }
+                    }
+                }
+                b"permissions" => {
+                    ret.perms = RSnesPermissions::from_lua(ctx, value).ok_or(picc::TypeError {
                         expected: "permission table",
                         found: "nil",
-                    })?,
+                    })?
+                }
 
                 b"actions" => ret.actions = FromValue::from_value(ctx, value)?,
                 b"autoactions" => ret.autoactions = FromValue::from_value(ctx, value)?,
 
-                _ => eprintln!("found unknow key in plugin table: [{:?}]", key.debug_lossy()),
+                _ => eprintln!(
+                    "found unknow key in plugin table: [{:?}]",
+                    key.debug_lossy()
+                ),
             }
         }
 
@@ -120,13 +135,16 @@ impl<'gc> picc::FromValue<'gc> for PluginTable {
 }
 
 impl<'gc> picc::FromValue<'gc> for PluginActions {
-    fn from_value(ctx: picc::Context<'gc>, value: picc::Value<'gc>) -> Result<Self, picc::TypeError> {
+    fn from_value(
+        ctx: picc::Context<'gc>,
+        value: picc::Value<'gc>,
+    ) -> Result<Self, picc::TypeError> {
         use picc::*;
 
         let picc::Value::Table(tab) = value else {
             return Err(picc::TypeError {
                 expected: "table",
-                found: value.type_name()
+                found: value.type_name(),
             });
         };
 
@@ -139,14 +157,21 @@ impl<'gc> picc::FromValue<'gc> for PluginActions {
             };
 
             match key.as_bytes() {
-                b"default" => ret.default = match value {
-                    Value::Function(Function::Closure(c)) => Some(ctx.stash(c)),
-                    v => return Err(picc::TypeError {
-                        expected: "default function or nil",
-                        found: v.type_name(),
-                    }),
-                },
-                _ => eprintln!("found unknow key in plugin table: [{:?}]", key.debug_lossy()),
+                b"default" => {
+                    ret.default = match value {
+                        Value::Function(Function::Closure(c)) => Some(ctx.stash(c)),
+                        v => {
+                            return Err(picc::TypeError {
+                                expected: "default function or nil",
+                                found: v.type_name(),
+                            });
+                        }
+                    }
+                }
+                _ => eprintln!(
+                    "found unknow key in plugin table: [{:?}]",
+                    key.debug_lossy()
+                ),
             }
         }
 
@@ -155,13 +180,16 @@ impl<'gc> picc::FromValue<'gc> for PluginActions {
 }
 
 impl<'gc> picc::FromValue<'gc> for PluginAutoActions {
-    fn from_value(ctx: picc::Context<'gc>, value: picc::Value<'gc>) -> Result<Self, picc::TypeError> {
+    fn from_value(
+        ctx: picc::Context<'gc>,
+        value: picc::Value<'gc>,
+    ) -> Result<Self, picc::TypeError> {
         use picc::*;
 
         let picc::Value::Table(tab) = value else {
             return Err(picc::TypeError {
                 expected: "table",
-                found: value.type_name()
+                found: value.type_name(),
             });
         };
 
@@ -174,14 +202,21 @@ impl<'gc> picc::FromValue<'gc> for PluginAutoActions {
             };
 
             match key.as_bytes() {
-                b"on_instr" => ret.on_instr = match value {
-                    Value::Function(Function::Closure(c)) => Some(ctx.stash(c)),
-                    v => return Err(picc::TypeError {
-                        expected: "on_instr function or nil",
-                        found: v.type_name(),
-                    }),
-                },
-                _ => eprintln!("found unknow key in plugin table: [{:?}]", key.debug_lossy()),
+                b"on_instr" => {
+                    ret.on_instr = match value {
+                        Value::Function(Function::Closure(c)) => Some(ctx.stash(c)),
+                        v => {
+                            return Err(picc::TypeError {
+                                expected: "on_instr function or nil",
+                                found: v.type_name(),
+                            });
+                        }
+                    }
+                }
+                _ => eprintln!(
+                    "found unknow key in plugin table: [{:?}]",
+                    key.debug_lossy()
+                ),
             }
         }
 
@@ -195,35 +230,39 @@ impl Plugin {
         let file = fs::File::open(path).map_err(PluginLoadError::OpenError)?;
         let mut file = p_io::buffered_read(file).map_err(PluginLoadError::BufCreationError)?;
         let mut source = Vec::new();
-        file.read_to_end(&mut source).map_err(PluginLoadError::ReadError)?;
+        file.read_to_end(&mut source)
+            .map_err(PluginLoadError::ReadError)?;
 
         Self::load_from_raw(source.as_slice(), Some(path.to_path_buf()))
     }
 
-    pub fn load_from_raw(file: &[u8], path: Option<std::path::PathBuf>) -> Result<Self, PluginLoadError> {
+    pub fn load_from_raw(
+        file: &[u8],
+        path: Option<std::path::PathBuf>,
+    ) -> Result<Self, PluginLoadError> {
         let mut lua = picc::Lua::full();
 
         // Enter a context
-        let plugin = lua.try_enter(|ctx| {
-            // Run the lua script in the global context
-            let closure = picc::Closure::load(ctx, path.as_ref().and_then(|p| p.to_str()), file)?;
+        let plugin = lua
+            .try_enter(|ctx| {
+                // Run the lua script in the global context
+                let closure =
+                    picc::Closure::load(ctx, path.as_ref().and_then(|p| p.to_str()), file)?;
 
-            // Create an executor that will run the lua script
-            let ex = picc::Executor::start(ctx, closure.into(), ());
+                // Create an executor that will run the lua script
+                let ex = picc::Executor::start(ctx, closure.into(), ());
 
-            // Return the executor to ouside the scope. We must stash
-            // it to allow it to escape the scope.
-            Ok(ctx.stash(ex))
-        }).map_err(PluginLoadError::LuaError)?;
+                // Return the executor to ouside the scope. We must stash
+                // it to allow it to escape the scope.
+                Ok(ctx.stash(ex))
+            })
+            .map_err(PluginLoadError::LuaError)?;
 
-        let table = lua.execute::<PluginTable>(&plugin)
+        let table = lua
+            .execute::<PluginTable>(&plugin)
             .map_err(PluginLoadError::PluginTabError)?;
 
-        Ok(Self {
-            lua,
-            table,
-            path,
-        })
+        Ok(Self { lua, table, path })
     }
 
     pub fn perm_request<'a>(&'a self) -> PluginPermRequest<'a> {
@@ -262,7 +301,7 @@ impl Plugin {
     /// in case there was None
     pub fn run_option_lua<F>(
         lua: &mut picc::Lua,
-        stashed: &Option<F>
+        stashed: &Option<F>,
     ) -> Result<(), picc::ExternError>
     where
         F: for<'gc> picc::stash::Fetchable<Fetched<'gc>: Into<picc::Function<'gc>>>,
@@ -278,7 +317,7 @@ impl Plugin {
     pub fn run_option_lua_with_args<F, A>(
         lua: &mut picc::Lua,
         stashed: &Option<F>,
-        args: A
+        args: A,
     ) -> Result<(), picc::ExternError>
     where
         F: for<'gc> picc::stash::Fetchable<Fetched<'gc>: Into<picc::Function<'gc>>>,
@@ -290,10 +329,7 @@ impl Plugin {
         Self::run_lua_with_args(lua, stashed, args)
     }
 
-    pub fn run_lua<F, R>(
-        lua: &mut picc::Lua,
-        stashed: &F
-    ) -> Result<R, picc::ExternError>
+    pub fn run_lua<F, R>(lua: &mut picc::Lua, stashed: &F) -> Result<R, picc::ExternError>
     where
         F: for<'gc> picc::stash::Fetchable<Fetched<'gc>: Into<picc::Function<'gc>>>,
         R: for<'gc> picc::FromMultiValue<'gc>,
@@ -305,7 +341,7 @@ impl Plugin {
     pub fn run_lua_with_args<F, R, A>(
         lua: &mut picc::Lua,
         stashed: &F,
-        args: A
+        args: A,
     ) -> Result<R, picc::ExternError>
     where
         F: for<'gc> picc::stash::Fetchable<Fetched<'gc>: Into<picc::Function<'gc>>>,
@@ -346,7 +382,10 @@ mod tests {
     fn load_empty_plugin() {
         let plugin = Plugin::load_from_raw(b"return { permissions = {}}", None).unwrap();
 
-        assert!(plugin.table.perms.is_none(), "empty perm table gives 0 permission");
+        assert!(
+            plugin.table.perms.is_none(),
+            "empty perm table gives 0 permission"
+        );
     }
 
     #[test]
@@ -394,7 +433,8 @@ mod tests {
                 },
             }"#,
             None,
-        ).unwrap();
+        )
+        .unwrap();
 
         plugin.run_init().unwrap();
 
@@ -407,7 +447,10 @@ mod tests {
 
         plugin.lua.enter(|ctx| {
             assert!(matches!(ctx.get_global_value("i"), Value::Integer(13)));
-            assert!(matches!(ctx.get_global_value("done"), Value::Boolean(false)));
+            assert!(matches!(
+                ctx.get_global_value("done"),
+                Value::Boolean(false)
+            ));
         });
 
         // after running exit we should see `done` set to true
@@ -439,7 +482,8 @@ mod tests {
                 },
             }"#,
             None,
-        ).unwrap();
+        )
+        .unwrap();
 
         plugin.run_init().unwrap();
 
@@ -450,7 +494,10 @@ mod tests {
         plugin.run_on_instr(0xff, snes_addr!(0:0)).unwrap();
 
         plugin.lua.enter(|ctx| {
-            assert!(matches!(ctx.get_global_value("xce_counter"), Value::Integer(2)));
+            assert!(matches!(
+                ctx.get_global_value("xce_counter"),
+                Value::Integer(2)
+            ));
         });
 
         // run exit should be a no-op as there's none
