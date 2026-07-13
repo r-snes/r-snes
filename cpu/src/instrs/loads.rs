@@ -291,11 +291,21 @@ mod tests {
         if DUP_idle {
             expect_internal_cycle(&mut cpu, "indexing");
         }
-        expect_read_cycle(&mut cpu, snes_addr!(0xdb:(0xbbaa + DUP_idx_val)), 0x44, "value low");
+        expect_read_cycle(
+            &mut cpu,
+            snes_addr!(0xdb:(0xbbaa + DUP_idx_val)),
+            0x44,
+            "value low",
+        );
         *expected_regs.DUP_reg.lo_mut() = 0x44;
 
         if DUP_16 {
-            expect_read_cycle(&mut cpu, snes_addr!(0xdb:0xbbaa + DUP_idx_val + 1), 0x33, "value high");
+            expect_read_cycle(
+                &mut cpu,
+                snes_addr!(0xdb:0xbbaa + DUP_idx_val + 1),
+                0x33,
+                "value high",
+            );
             *expected_regs.DUP_reg.hi_mut() = 0x33;
         }
         expect_opcode_fetch_cycle(&mut cpu);
@@ -348,7 +358,6 @@ mod tests {
             assert_eq!(*cpu.regs(), expected_regs);
         }
 
-
         // duplicate for all direct indexed addrmodes
         #[duplicate_item(
             DUP2_name   DUP2_opcode     DUP2_reg    DUP2_index;
@@ -399,7 +408,7 @@ mod tests {
 
             let mut expected_regs = regs.clone();
             let mut cpu = CPU::new(regs);
-            
+
             expect_opcode_fetch(&mut cpu, 0xb2);
             expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3457), 0x12, "direct offset");
             if DUP1_idle {
@@ -430,15 +439,25 @@ mod tests {
 
             let mut expected_regs = regs.clone();
             let mut cpu = CPU::new(regs);
-            
+
             expect_opcode_fetch(&mut cpu, 0xa1);
             expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3457), 0x12, "direct offset");
             if DUP1_idle {
                 expect_internal_cycle(&mut cpu, "idle when DL != 0");
             }
             expect_internal_cycle(&mut cpu, "indexing");
-            expect_read_cycle(&mut cpu, snes_addr!(0:(DUP1_D + 0x12 + 0x1020)), 0x88, "AAL");
-            expect_read_cycle(&mut cpu, snes_addr!(0:(DUP1_D + 0x13 + 0x1020)), 0x77, "AAH");
+            expect_read_cycle(
+                &mut cpu,
+                snes_addr!(0:(DUP1_D + 0x12 + 0x1020)),
+                0x88,
+                "AAL",
+            );
+            expect_read_cycle(
+                &mut cpu,
+                snes_addr!(0:(DUP1_D + 0x13 + 0x1020)),
+                0x77,
+                "AAH",
+            );
             expect_load16_read(&mut cpu, snes_addr!(0xee:0x7788), 0x1234);
             expect_opcode_fetch_cycle(&mut cpu);
 
@@ -472,7 +491,7 @@ mod tests {
 
             let mut expected_regs = regs.clone();
             let mut cpu = CPU::new(regs);
-            
+
             expect_opcode_fetch(&mut cpu, 0xb1);
             expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3457), 0x12, "direct offset");
             if DUP1_idle {
@@ -504,7 +523,7 @@ mod tests {
 
             let mut expected_regs = regs.clone();
             let mut cpu = CPU::new(regs);
-            
+
             expect_opcode_fetch(&mut cpu, 0xa7);
             expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3457), 0x12, "direct offset");
             if DUP1_idle {
@@ -535,7 +554,7 @@ mod tests {
 
             let mut expected_regs = regs.clone();
             let mut cpu = CPU::new(regs);
-            
+
             expect_opcode_fetch(&mut cpu, 0xb7);
             expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3457), 0x12, "direct offset");
             if DUP1_idle {
@@ -563,7 +582,7 @@ mod tests {
         regs.P.M = false; // M=0 so A is 16-bit
         regs.A = 0x9999; // value which will be overwritten
         regs.S = 0x0402;
-            
+
         let mut expected_regs = regs.clone();
         let mut cpu = CPU::new(regs);
 
@@ -591,7 +610,7 @@ mod tests {
         regs.S = 0x0402;
         regs.DB = 0xdb;
         regs.Y = 0x3030;
-            
+
         let mut expected_regs = regs.clone();
         let mut cpu = CPU::new(regs);
 

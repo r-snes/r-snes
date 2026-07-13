@@ -1,5 +1,5 @@
-use instr_metalang_procmacro::cpu_instr;
 use duplicate::duplicate;
+use instr_metalang_procmacro::cpu_instr;
 
 duplicate! {
     [

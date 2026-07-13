@@ -1,6 +1,6 @@
-use duplicate::{duplicate_item, duplicate};
-use instr_metalang_procmacro::cpu_instr;
 use super::algorithms;
+use duplicate::{duplicate, duplicate_item};
+use instr_metalang_procmacro::cpu_instr;
 
 // duplicate over these 6 instructions which share the same 15 addressing modes
 #[duplicate_item(
@@ -306,8 +306,8 @@ mod tests {
         let mut cpu = CPU::new(regs);
 
         expect_opcode_fetch(&mut cpu, 0x2c);
-        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3457), 0xcd, "operand address lo");
-        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3458), 0xab, "operand address hi");
+        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3457), 0xcd, "operand addr lo");
+        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3458), 0xab, "operand addr hi");
         expect_read_cycle(&mut cpu, snes_addr!(0:0xabcd), 0x00, "operand lo");
         expect_read_cycle(&mut cpu, snes_addr!(0:0xabce), 0xff, "operand hi");
         expect_opcode_fetch_cycle(&mut cpu);

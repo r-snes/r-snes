@@ -1,8 +1,8 @@
 mod parser;
 use parser::{Cycle, Instr, InstrBody, VarWidth};
 
-use proc_macro2::{TokenStream, Ident};
-use quote::{format_ident, quote, ToTokens};
+use proc_macro2::{Ident, TokenStream};
+use quote::{ToTokens, format_ident, quote};
 
 fn gen_cycle_functions(name: &Ident, instr_body: InstrBody) -> TokenStream {
     let cycles = &instr_body.cycles;
@@ -30,10 +30,9 @@ fn gen_cycle_functions(name: &Ident, instr_body: InstrBody) -> TokenStream {
                 }
             };
 
-
             let (body, cyc_type) = match cyc {
-                Cycle::Unconditional{body, cyc_type} => (body, cyc_type),
-                Cycle::ConditionalIdle{body, condition} => (
+                Cycle::Unconditional { body, cyc_type } => (body, cyc_type),
+                Cycle::ConditionalIdle { body, condition } => (
                     &quote! {
                         #body
                         if !(#condition) {
@@ -51,7 +50,8 @@ fn gen_cycle_functions(name: &Ident, instr_body: InstrBody) -> TokenStream {
                     (#cyc_type, InstrCycle(#next_func_name))
                 }
             }
-        }).collect::<TokenStream>()
+        })
+        .collect::<TokenStream>()
 }
 
 /// Function that actually implements all the logic for the proc macro,
@@ -67,7 +67,7 @@ pub(crate) fn cpu_instr2(input: TokenStream, inc_pc: bool) -> TokenStream {
 
     let cycle_funcs = match body {
         VarWidth::ConstWidth(instr_body) => gen_cycle_functions(&name, instr_body),
-        VarWidth::VarWidth{short, long, data} => {
+        VarWidth::VarWidth { short, long, data } => {
             let cyc_funcs8 = gen_cycle_functions(&name, short);
             let cyc_funcs16 = gen_cycle_functions(&name, long);
             let condition = data;
@@ -84,19 +84,19 @@ pub(crate) fn cpu_instr2(input: TokenStream, inc_pc: bool) -> TokenStream {
                 }
 
                 pub(crate) mod _8 {
-                    use crate::instrs::prelude::*;
                     use super::*;
+                    use crate::instrs::prelude::*;
 
                     #cyc_funcs8
                 }
                 pub(crate) mod _16 {
-                    use crate::instrs::prelude::*;
                     use super::*;
+                    use crate::instrs::prelude::*;
 
                     #cyc_funcs16
                 }
             }
-        },
+        }
     };
 
     // wrap the generated instruction in a submodule for it to be easier
@@ -104,8 +104,8 @@ pub(crate) fn cpu_instr2(input: TokenStream, inc_pc: bool) -> TokenStream {
     quote! {
         pub(crate) use #name::*;
         pub(crate) mod #name {
-            use crate::instrs::prelude::*;
             use super::*;
+            use crate::instrs::prelude::*;
 
             #cycle_funcs
         }
@@ -202,8 +202,8 @@ mod test {
             quote!(
                 pub(crate) use instr_inx::*;
                 pub(crate) mod instr_inx {
-                    use crate::instrs::prelude::*;
                     use super::*;
+                    use crate::instrs::prelude::*;
 
                     pub(crate) fn instr_inx_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
                         cpu.registers.X = cpu.registers.X.wrapping_add(1);
@@ -233,8 +233,8 @@ mod test {
             quote!(
                 pub(crate) use some_instr::*;
                 pub(crate) mod some_instr {
-                    use crate::instrs::prelude::*;
                     use super::*;
+                    use crate::instrs::prelude::*;
 
                     pub(crate) fn some_instr_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
                         some_function1(cpu);
@@ -257,6 +257,7 @@ mod test {
     }
 
     #[test]
+    #[rustfmt::skip]
     fn conditional_cycle_type() {
         assert_macro_produces(
             quote!(test_instr {
@@ -264,25 +265,32 @@ mod test {
 
                 meta END_CYCLE some_func_which_determines_cyc_type();
             }),
-            quote!(
+            quote! {
                 pub(crate) use test_instr::*;
                 pub(crate) mod test_instr {
-                    use crate::instrs::prelude::*;
                     use super::*;
+                    use crate::instrs::prelude::*;
 
                     pub(crate) fn test_instr_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
-                        (if 1 == 0 { Internal } else { Read }, InstrCycle(test_instr_cyc2))
+                        (
+                            if 1 == 0 { Internal } else { Read },
+                            InstrCycle(test_instr_cyc2)
+                        )
                     }
 
                     pub(crate) fn test_instr_cyc2(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
-                        (some_func_which_determines_cyc_type(), InstrCycle(opcode_fetch))
+                        (
+                            some_func_which_determines_cyc_type(),
+                            InstrCycle(opcode_fetch)
+                        )
                     }
                 }
-            ),
+            },
         );
     }
 
     #[test]
+    #[rustfmt::skip]
     fn post_cycle_code() {
         assert_macro_produces(
             quote!(test_instr {
@@ -293,15 +301,18 @@ mod test {
             quote!(
                 pub(crate) use test_instr::*;
                 pub(crate) mod test_instr {
-                    use crate::instrs::prelude::*;
                     use super::*;
+                    use crate::instrs::prelude::*;
 
                     pub(crate) fn test_instr_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
-                        (Read, InstrCycle(|cpu| {
-                            cpu.registers.X = cpu.data_bus as u16;
+                        (
+                            Read,
+                            InstrCycle(|cpu| {
+                                cpu.registers.X = cpu.data_bus as u16;
 
-                            opcode_fetch(cpu)
-                        }))
+                                opcode_fetch(cpu)
+                            })
+                        )
                     }
                 }
             ),
@@ -321,8 +332,8 @@ mod test {
             quote!(
                 pub(crate) use test_instr::*;
                 pub(crate) mod test_instr {
-                    use crate::instrs::prelude::*;
                     use super::*;
+                    use crate::instrs::prelude::*;
 
                     pub(crate) fn test_instr_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
                         call_func1();
@@ -351,8 +362,8 @@ mod test {
             quote!(
                 pub(crate) use cond::*;
                 pub(crate) mod cond {
-                    use crate::instrs::prelude::*;
                     use super::*;
+                    use crate::instrs::prelude::*;
 
                     pub(crate) fn cond_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
                         let a = 0;
@@ -372,6 +383,7 @@ mod test {
     }
 
     #[test]
+    #[rustfmt::skip]
     fn variable_width() {
         assert_macro_produces(
             quote!(varwidth {
@@ -382,8 +394,8 @@ mod test {
             quote!(
                 pub(crate) use varwidth::*;
                 pub(crate) mod varwidth {
-                    use crate::instrs::prelude::*;
                     use super::*;
+                    use crate::instrs::prelude::*;
 
                     pub(crate) fn varwidth_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
                         if !cpu.registers.E && !cpu.registers.P.M {
@@ -394,20 +406,23 @@ mod test {
                     }
 
                     pub(crate) mod _8 {
-                        use crate::instrs::prelude::*;
                         use super::*;
+                        use crate::instrs::prelude::*;
                         pub(crate) fn varwidth_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
                             cpu.addr_bus.addr = cpu.addr_bus.addr.wrapping_add(1u16);
-                            (Read, InstrCycle(|cpu| {
-                                *cpu.internal_data_bus.lo_mut() = cpu.data_bus;
-                                opcode_fetch(cpu)
-                            }))
+                            (
+                                Read,
+                                InstrCycle(|cpu| {
+                                    *cpu.internal_data_bus.lo_mut() = cpu.data_bus;
+                                    opcode_fetch(cpu)
+                                })
+                            )
                         }
                     }
 
                     pub(crate) mod _16 {
-                        use crate::instrs::prelude::*;
                         use super::*;
+                        use crate::instrs::prelude::*;
                         pub(crate) fn varwidth_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
                             cpu.addr_bus.addr = cpu.addr_bus.addr.wrapping_add(1u16);
                             (Read, InstrCycle(varwidth_cyc2))
@@ -417,10 +432,13 @@ mod test {
                             *cpu.internal_data_bus.lo_mut() = cpu.data_bus;
                             cpu.addr_bus.addr = cpu.addr_bus.addr.wrapping_add(1);
 
-                            (Read, InstrCycle(|cpu| {
-                                *cpu.internal_data_bus.hi_mut() = cpu.data_bus;
-                                opcode_fetch(cpu)
-                            }))
+                            (
+                                Read,
+                                InstrCycle(|cpu| {
+                                    *cpu.internal_data_bus.hi_mut() = cpu.data_bus;
+                                    opcode_fetch(cpu)
+                                })
+                            )
                         }
                     }
                 }

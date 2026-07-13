@@ -72,7 +72,7 @@ mod tests {
         expect_internal_cycle(&mut cpu, "clear flag");
 
         expected_regs.PC = expected_regs.PC + 1; // We expect PC to be incremented
-        expected_regs.P.DUP_set_flag = false;    // and the flag to be cleared
+        expected_regs.P.DUP_set_flag = false; // and the flag to be cleared
         assert_eq!(cpu.registers, expected_regs, "Flag should be cleared");
 
         // Execute the instruction once more to check the flag stays clear
@@ -106,7 +106,7 @@ mod tests {
         expect_internal_cycle(&mut cpu, "set flag");
 
         expected_regs.PC = expected_regs.PC + 1; // We expect PC to be incremented
-        expected_regs.P.DUP_set_flag = true;     // and the flag to be set
+        expected_regs.P.DUP_set_flag = true; // and the flag to be set
         assert_eq!(cpu.registers, expected_regs, "Flag should be set");
 
         // Execute the instruction once more to check the flag stays set

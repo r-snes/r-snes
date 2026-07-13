@@ -1,5 +1,5 @@
-use instr_metalang_procmacro::cpu_instr;
 use duplicate::duplicate;
+use instr_metalang_procmacro::cpu_instr;
 
 // Push variable width registers
 duplicate! {
@@ -324,7 +324,7 @@ mod tests {
         expected_regs.S = 0x0864;
         assert_eq!(*cpu.regs(), expected_regs);
     }
-    
+
     #[test]
     fn pei() {
         let mut regs = Registers::default();

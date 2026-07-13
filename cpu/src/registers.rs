@@ -174,7 +174,7 @@ impl fmt::Debug for RegisterP {
             (self.C, 'C'),
         ] {
             std::write!(f, "{}", if flag { c } else { '-' })?;
-        };
+        }
         Ok(())
     }
 }

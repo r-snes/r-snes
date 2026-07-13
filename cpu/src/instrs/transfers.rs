@@ -7,8 +7,8 @@
 //! for example TXS means 'Transfer X to S'.
 
 use super::algorithms;
-use instr_metalang_procmacro::cpu_instr;
 use duplicate::duplicate;
+use instr_metalang_procmacro::cpu_instr;
 
 // duplicate over all transfers to S, because S becomes 8 bit
 // in emu mode

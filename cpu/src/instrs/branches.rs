@@ -1,5 +1,5 @@
-use instr_metalang_procmacro::cpu_instr_no_inc_pc;
 use duplicate::duplicate;
+use instr_metalang_procmacro::cpu_instr_no_inc_pc;
 
 duplicate! {
     [
@@ -133,7 +133,12 @@ mod test {
 
             expect_opcode_fetch(&mut cpu, DUP1_opcode);
             // we jump to 0x60 lower, crossing a page boundary
-            expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3457), -0x60_i8 as u8, "jump offset");
+            expect_read_cycle(
+                &mut cpu,
+                snes_addr!(0x12:0x3457),
+                -0x60_i8 as u8,
+                "jump offset",
+            );
             expect_internal_cycle(&mut cpu, "branch taken");
             if DUP2_emu {
                 expect_internal_cycle(&mut cpu, "branch taken across page boundary");

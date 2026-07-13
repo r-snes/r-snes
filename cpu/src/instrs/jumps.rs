@@ -167,18 +167,8 @@ mod tests {
         let mut cpu = CPU::new(regs);
 
         expect_opcode_fetch(&mut cpu, 0x4c);
-        expect_read_cycle(
-            &mut cpu,
-            snes_addr!(0x12:0x3457),
-            0xcd,
-            "jump address (low)",
-        );
-        expect_read_cycle(
-            &mut cpu,
-            snes_addr!(0x12:0x3458),
-            0xab,
-            "jump address (high)",
-        );
+        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3457), 0xcd, "jump addr (lo)");
+        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3458), 0xab, "jump addr (hi)");
 
         expect_opcode_fetch_cycle(&mut cpu);
 
@@ -196,24 +186,9 @@ mod tests {
         let mut cpu = CPU::new(regs);
 
         expect_opcode_fetch(&mut cpu, 0x5c);
-        expect_read_cycle(
-            &mut cpu,
-            snes_addr!(0x12:0x3457),
-            0xef,
-            "jump address (PC low)",
-        );
-        expect_read_cycle(
-            &mut cpu,
-            snes_addr!(0x12:0x3458),
-            0xcd,
-            "jump address (PC high)",
-        );
-        expect_read_cycle(
-            &mut cpu,
-            snes_addr!(0x12:0x3459),
-            0xab,
-            "jump address (PB)",
-        );
+        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3457), 0xef, "jump addr (PC lo)");
+        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3458), 0xcd, "jump addr (PC hi)");
+        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3459), 0xab, "jump addr (PB)");
 
         expect_opcode_fetch_cycle(&mut cpu);
 
@@ -232,30 +207,10 @@ mod tests {
         let mut cpu = CPU::new(regs);
 
         expect_opcode_fetch(&mut cpu, 0x6c);
-        expect_read_cycle(
-            &mut cpu,
-            snes_addr!(0x12:0x3457),
-            0x00,
-            "operand address (low)",
-        );
-        expect_read_cycle(
-            &mut cpu,
-            snes_addr!(0x12:0x3458),
-            0x22,
-            "operand address (high)",
-        );
-        expect_read_cycle(
-            &mut cpu,
-            snes_addr!(0:0x2200),
-            0x89,
-            "jump address (PC low)",
-        );
-        expect_read_cycle(
-            &mut cpu,
-            snes_addr!(0:0x2201),
-            0x67,
-            "jump address (PC high)",
-        );
+        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3457), 0x00, "op addr (lo)");
+        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3458), 0x22, "op addr (hi)");
+        expect_read_cycle(&mut cpu, snes_addr!(0:0x2200), 0x89, "jump addr (PC lo)");
+        expect_read_cycle(&mut cpu, snes_addr!(0:0x2201), 0x67, "jump addr (PC hi)");
 
         expect_opcode_fetch_cycle(&mut cpu);
 
@@ -274,31 +229,11 @@ mod tests {
         let mut cpu = CPU::new(regs);
 
         expect_opcode_fetch(&mut cpu, 0x7c);
-        expect_read_cycle(
-            &mut cpu,
-            snes_addr!(0x12:0x3457),
-            0xa0,
-            "operand address (low)",
-        );
-        expect_read_cycle(
-            &mut cpu,
-            snes_addr!(0x12:0x3458),
-            0xb0,
-            "operand address (high)",
-        );
+        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3457), 0xa0, "op addr (lo)");
+        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3458), 0xb0, "op addr (hi)");
         expect_internal_cycle(&mut cpu, "internal cycle for X-indexing");
-        expect_read_cycle(
-            &mut cpu,
-            snes_addr!(0x12:0xc0a0), // PB:(addr+X)
-            0x89,
-            "jump address (PC low)",
-        );
-        expect_read_cycle(
-            &mut cpu,
-            snes_addr!(0x12:0xc0a1), // PB:(addr+X+1)
-            0x67,
-            "jump address (PC high)",
-        );
+        expect_read_cycle(&mut cpu, snes_addr!(0x12:0xc0a0), 0x89, "jump addr (PC lo)"); // PB:(addr+X)
+        expect_read_cycle(&mut cpu, snes_addr!(0x12:0xc0a1), 0x67, "jump addr (PC hi)"); // PB:(addr+X+1)
 
         expect_opcode_fetch_cycle(&mut cpu);
 
@@ -317,31 +252,11 @@ mod tests {
         let mut cpu = CPU::new(regs);
 
         expect_opcode_fetch(&mut cpu, 0x7c);
-        expect_read_cycle(
-            &mut cpu,
-            snes_addr!(0x12:0x3457),
-            0x30,
-            "operand address (low)",
-        );
-        expect_read_cycle(
-            &mut cpu,
-            snes_addr!(0x12:0x3458),
-            0x20,
-            "operand address (high)",
-        );
+        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3457), 0x30, "op addr (lo)");
+        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3458), 0x20, "op addr (hi)");
         expect_internal_cycle(&mut cpu, "internal cycle for X-indexing");
-        expect_read_cycle(
-            &mut cpu,
-            snes_addr!(0x12:0x1030), // PB:(addr+X)
-            0x89,
-            "jump address (PC low)",
-        );
-        expect_read_cycle(
-            &mut cpu,
-            snes_addr!(0x12:0x1031), // PB:(addr+X+1)
-            0x67,
-            "jump address (PC high)",
-        );
+        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x1030), 0x89, "jump addr (PC lo)"); // PB:(addr+X)
+        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x1031), 0x67, "jump addr (PC hi)"); // PB:(addr+X+1)
 
         expect_opcode_fetch_cycle(&mut cpu);
 
@@ -359,36 +274,11 @@ mod tests {
         let mut cpu = CPU::new(regs);
 
         expect_opcode_fetch(&mut cpu, 0xdc);
-        expect_read_cycle(
-            &mut cpu,
-            snes_addr!(0x12:0x3457),
-            0x77,
-            "operand address (low)",
-        );
-        expect_read_cycle(
-            &mut cpu,
-            snes_addr!(0x12:0x3458),
-            0x88,
-            "operand address (high)",
-        );
-        expect_read_cycle(
-            &mut cpu,
-            snes_addr!(0:0x8877),
-            0xef,
-            "jump address (PC low)",
-        );
-        expect_read_cycle(
-            &mut cpu,
-            snes_addr!(0:0x8878),
-            0xcd,
-            "jump address (PC high)",
-        );
-        expect_read_cycle(
-            &mut cpu,
-            snes_addr!(0:0x8879),
-            0xab,
-            "jump address (PB)",
-        );
+        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3457), 0x77, "op addr (lo)");
+        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3458), 0x88, "op addr (hi)");
+        expect_read_cycle(&mut cpu, snes_addr!(0:0x8877), 0xef, "jump addr (PC lo)");
+        expect_read_cycle(&mut cpu, snes_addr!(0:0x8878), 0xcd, "jump addr (PC hi)");
+        expect_read_cycle(&mut cpu, snes_addr!(0:0x8879), 0xab, "jump addr (PB)");
 
         expect_opcode_fetch_cycle(&mut cpu);
 
@@ -408,31 +298,12 @@ mod tests {
         let mut cpu = CPU::new(regs);
 
         expect_opcode_fetch(&mut cpu, 0x20);
-        expect_read_cycle(
-            &mut cpu,
-            snes_addr!(0x12:0x3457),
-            0xcd,
-            "jump address (PC high)",
-        );
-        expect_read_cycle(
-            &mut cpu,
-            snes_addr!(0x12:0x3458),
-            0xab,
-            "jump address (PC high)",
-        );
+        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3457), 0xcd, "jump addr (PC hi)");
+        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3458), 0xab, "jump addr (PC hi)");
         expect_internal_cycle(&mut cpu, "stall between fetch and push");
-        expect_write_cycle(
-            &mut cpu,
-            snes_addr!(0:0x0188),
-            0x34,
-            "push PC high",
-        );
-        expect_write_cycle(
-            &mut cpu,
-            snes_addr!(0:0x0187),
-            0x58, // PC points to the last byte of this instruction
-            "push PC high",
-        );
+        expect_write_cycle(&mut cpu, snes_addr!(0:0x0188), 0x34, "push PC hi");
+        // PC points to the last byte of this instruction
+        expect_write_cycle(&mut cpu, snes_addr!(0:0x0187), 0x58, "push PC hi");
         expect_opcode_fetch_cycle(&mut cpu);
 
         expected_regs.PC = 0xabcd; // PC has been read
@@ -452,43 +323,14 @@ mod tests {
         let mut cpu = CPU::new(regs);
 
         expect_opcode_fetch(&mut cpu, 0xfc);
-        expect_read_cycle(
-            &mut cpu,
-            snes_addr!(0x12:0x3457),
-            0x77,
-            "operand address high",
-        );
-        expect_write_cycle(
-            &mut cpu,
-            snes_addr!(0:0x0122),
-            0x34,
-            "push PCH"
-        );
-        expect_write_cycle(
-            &mut cpu,
-            snes_addr!(0:0x0121),
-            0x58, // PC points the last byte of this instruction
-            "push PCL"
-        );
-        expect_read_cycle(
-            &mut cpu,
-            snes_addr!(0x12:0x3458),
-            0x88,
-            "operand address low",
-        );
+        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3457), 0x77, "op addr hi");
+        expect_write_cycle(&mut cpu, snes_addr!(0:0x0122), 0x34, "push PCH");
+        // PC points the last byte of this instruction
+        expect_write_cycle(&mut cpu, snes_addr!(0:0x0121), 0x58, "push PCL");
+        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3458), 0x88, "op addr lo");
         expect_internal_cycle(&mut cpu, "X-indexing");
-        expect_read_cycle(
-            &mut cpu,
-            snes_addr!(0x12:0x8997), // PB:AAH+X
-            0xbb,
-            "PCL",
-        );
-        expect_read_cycle(
-            &mut cpu,
-            snes_addr!(0x12:0x8998), // PB:AAH+X+1
-            0xaa,
-            "PCH",
-        );
+        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x8997), 0xbb, "PCL"); // PB:AAH+X
+        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x8998), 0xaa, "PCH"); // PB:AAH+X+1
         expect_opcode_fetch_cycle(&mut cpu);
 
         expected_regs.S = 0x0120;
@@ -506,43 +348,14 @@ mod tests {
         let mut cpu = CPU::new(regs);
 
         expect_opcode_fetch(&mut cpu, 0x22);
-        expect_read_cycle(
-            &mut cpu,
-            snes_addr!(0x12:0x3457),
-            0xef,
-            "PCL",
-        );
-        expect_read_cycle(
-            &mut cpu,
-            snes_addr!(0x12:0x3458),
-            0xcd,
-            "PCH",
-        );
-        expect_write_cycle(
-            &mut cpu,
-            snes_addr!(0:0x0199),
-            0x12,
-            "push PB",
-        );
+        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3457), 0xef, "PCL");
+        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3458), 0xcd, "PCH");
+        expect_write_cycle(&mut cpu, snes_addr!(0:0x0199), 0x12, "push PB");
         expect_internal_cycle(&mut cpu, "stall between push PB and read PB");
-        expect_read_cycle(
-            &mut cpu,
-            snes_addr!(0x12:0x3459),
-            0xab,
-            "PB",
-        );
-        expect_write_cycle(
-            &mut cpu,
-            snes_addr!(0:0x0198),
-            0x34,
-            "push PCH",
-        );
-        expect_write_cycle(
-            &mut cpu,
-            snes_addr!(0:0x0197),
-            0x59, // pushed PC points the last byte of the instr
-            "push PCL",
-        );
+        expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3459), 0xab, "PB");
+        expect_write_cycle(&mut cpu, snes_addr!(0:0x0198), 0x34, "push PCH");
+        // pushed PC points the last byte of the instr
+        expect_write_cycle(&mut cpu, snes_addr!(0:0x0197), 0x59, "push PCL");
         expect_opcode_fetch_cycle(&mut cpu);
 
         expected_regs.PB = 0xab;
@@ -563,23 +376,13 @@ mod tests {
         expect_opcode_fetch(&mut cpu, 0x60);
         expect_internal_cycle(&mut cpu, "first stall cycle");
         expect_internal_cycle(&mut cpu, "second stall cycle");
-        expect_read_cycle(
-            &mut cpu,
-            snes_addr!(0:0x0156),
-            0xbb,
-            "pull PCL",
-        );
-        expect_read_cycle(
-            &mut cpu,
-            snes_addr!(0:0x0157),
-            0xaa,
-            "pull PCH",
-        );
+        expect_read_cycle(&mut cpu, snes_addr!(0:0x0156), 0xbb, "pull PCL");
+        expect_read_cycle(&mut cpu, snes_addr!(0:0x0157), 0xaa, "pull PCH");
         expect_internal_cycle(&mut cpu, "second stall cycle");
         expect_opcode_fetch_cycle(&mut cpu);
 
         expected_regs.S = 0x0157;
-        // [the pulled value + 1]: jsr/jsl push [address of the next opcode - 1]
+        // [the pulled value + 1]: jsr/jsl push [addr of the next opcode - 1]
         expected_regs.PC = 0xaabc;
         assert_eq!(*cpu.regs(), expected_regs);
     }
@@ -596,28 +399,13 @@ mod tests {
         expect_opcode_fetch(&mut cpu, 0x6b);
         expect_internal_cycle(&mut cpu, "first stall cycle");
         expect_internal_cycle(&mut cpu, "second stall cycle");
-        expect_read_cycle(
-            &mut cpu,
-            snes_addr!(0:0x0156),
-            0xbb,
-            "pull PCL",
-        );
-        expect_read_cycle(
-            &mut cpu,
-            snes_addr!(0:0x0157),
-            0xaa,
-            "pull PCH",
-        );
-        expect_read_cycle(
-            &mut cpu,
-            snes_addr!(0:0x0158),
-            0xee,
-            "pull PB",
-        );
+        expect_read_cycle(&mut cpu, snes_addr!(0:0x0156), 0xbb, "pull PCL");
+        expect_read_cycle(&mut cpu, snes_addr!(0:0x0157), 0xaa, "pull PCH");
+        expect_read_cycle(&mut cpu, snes_addr!(0:0x0158), 0xee, "pull PB");
         expect_opcode_fetch_cycle(&mut cpu);
 
         expected_regs.S = 0x0158;
-        // [the pulled value + 1]: jsr/jsl push [address of the next opcode - 1]
+        // [the pulled value + 1]: jsr/jsl push [addr of the next opcode - 1]
         expected_regs.PB = 0xee;
         expected_regs.PC = 0xaabc;
         assert_eq!(*cpu.regs(), expected_regs);
