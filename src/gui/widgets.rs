@@ -126,7 +126,7 @@ pub fn rom_info(ctx: &egui::Context, open: &mut bool, info: Option<RomInfo>) {
                             ui.label(format!(
                                 "${:04X} {}",
                                 h.checksum_complement,
-                                if valid { "✓" } else { "✗" }
+                                if valid { "[OK]" } else { "[BAD]" }
                             ));
                             ui.end_row();
                         });
