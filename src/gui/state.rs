@@ -6,7 +6,6 @@
 #[derive(Default)]
 pub struct GuiState {
     pub show_rom_info: bool,
-    // Future overlays go here:
 }
 
 impl GuiState {
