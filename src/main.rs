@@ -31,6 +31,8 @@ fn gui_emu_loop(
     // Snapshot the ROM header once — it never changes while the ROM is loaded,
     // so there's no reason to rebuild it every frame.
     let rom_info = rsnes.rom_info();
+    let title = rom_info.header.title.trim();
+    gui.set_rom_title(if title.is_empty() { None } else { Some(title) });
 
     let mut emu = cfg_select! {
         feature = "plugins" => RSnesEmu::new_with_plugin(rsnes, plugin).unwrap(),
@@ -137,6 +139,8 @@ fn gui_idle_loop(
     gui: &mut gui::Gui,
     default_framebuffer: &ppu::rendering::RawFramebuffer,
 ) -> RSnesEvent {
+    gui.set_rom_title(None);
+
     loop {
         let frame_start = Instant::now();
 

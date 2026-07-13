@@ -88,6 +88,23 @@ impl Gui {
         })
     }
 
+    /// Sets the SDL2 window title. Pass `None` to reset to the default.
+    pub fn set_rom_title(&mut self, title: Option<&str>) {
+        let window_title = match title {
+            Some(t) => format!("R-SNES - {t}"),
+            None => "R-SNES".to_string(),
+        };
+
+        // Ignore the error: a failed title update is cosmetic, not worth
+        // propagating up through the emu loop.
+        let _ = self
+            .egui_canvas
+            .painter
+            .canvas
+            .window_mut()
+            .set_title(&window_title);
+    }
+
     /// Maps an SDL event to a GUI-only action (toggling overlays).
     fn map_gui_action(event: &Event) -> Option<GuiAction> {
         match event {
