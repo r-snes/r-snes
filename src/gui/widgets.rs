@@ -12,7 +12,7 @@ fn decode_size_kb(exponent: u8) -> Option<usize> {
 }
 
 /// ROM information overlay. Toggled with F1.
-pub fn rom_info(ctx: &egui::Context, open: &mut bool, info: Option<RomInfo>) {
+pub fn rom_info(ctx: &egui::Context, open: &mut bool, info: Option<&RomInfo>) {
     egui::Window::new("ROM Information")
         .open(open)
         .resizable(true)

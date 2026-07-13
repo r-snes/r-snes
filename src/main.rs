@@ -89,7 +89,7 @@ fn gui_emu_loop(
         let events = gui.update(
             &emu_mut.ppu_renderer.framebuffer,
             GuiFrameData {
-                rom_info: Some(rom_info.clone()),
+                rom_info: Some(&rom_info),
             },
         );
         drop(emu_mut);

@@ -29,8 +29,8 @@ pub struct Gui {
 /// Add a field here when a new overlay needs new data; `main.rs` never
 /// touches egui directly.
 #[derive(Default)]
-pub struct GuiFrameData {
-    pub rom_info: Option<RomInfo>,
+pub struct GuiFrameData<'a> {
+    pub rom_info: Option<&'a RomInfo>,
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -248,7 +248,7 @@ impl Gui {
     /// Draws every currently-open overlay. Adding a new window means adding
     /// one line here plus one field in `GuiState` — nothing in `main.rs`.
     fn draw_overlays(state: &mut GuiState, data: &GuiFrameData, ctx: &egui::Context) {
-        widgets::rom_info(ctx, &mut state.show_rom_info, data.rom_info.clone());
+        widgets::rom_info(ctx, &mut state.show_rom_info, data.rom_info);
     }
 
     /// One frame: poll input, blit the framebuffer, draw overlays, present.
