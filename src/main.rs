@@ -1,7 +1,5 @@
 mod gui;
 mod rsnes;
-mod state;
-mod widgets;
 
 use crate::{
     gui::{Gui, GuiFrameData, RSnesEvent},

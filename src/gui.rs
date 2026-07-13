@@ -1,3 +1,6 @@
+pub mod state;
+pub mod widgets;
+
 use std::path::PathBuf;
 
 use egui_sdl2::canvas::EguiCanvas;
@@ -9,8 +12,7 @@ use sdl2::render::Texture;
 use ppu::constants::{SCREEN_HEIGHT, SCREEN_WIDTH};
 
 use crate::rsnes::RomInfo;
-use crate::state::GuiState;
-use crate::widgets;
+use state::GuiState;
 
 pub struct Gui {
     _sdl_ctx: sdl2::Sdl,
