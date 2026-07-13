@@ -65,7 +65,23 @@ Finally, the team explicitly wanted the project to be a vehicle for learning a m
 
 **SDL2**, for its stability, its complete feature coverage and its mature Rust bindings. minifb, pixels, and egui/eframe were rejected as too narrow in scope (presentation- or GUI-only, missing input/audio/controller support); SDL3 as too recent, with bindings not yet production-ready. This decision should be **revisited** once the SDL3 Rust ecosystem stabilizes; the migration path from SDL2 is well documented, and the presentation layer is isolated in its own module to keep that migration cheap.
 
-## 4. Audio backend: cpal vs rodio vs adapted fork (evaluation in progress)
+## 4. UI overlay: egui-sdl2
+
+### Context
+
+Once SDL2 was settled as the presentation layer, a separate need emerged during development: floating debug/introspection widgets (register views, memory inspectors, logs) layered on top of the emulator's framebuffer. SDL2 alone gives no immediate-mode UI primitives, and building one from scratch was out of scope for a debug tool. This was not part of the initial technology evaluation - it surfaced once SDL2 was already in place, as a follow-on integration need rather than a fresh multi-candidate comparison.
+
+### Analysis
+
+Since egui was already the team's preferred immediate-mode GUI (it had been evaluated in Section 3 for the presentation layer, and rejected only because it lacked controller support for that specific role), the natural path was to combine it with SDL2 rather than introduce a second GUI toolkit. An existing integration crate binding egui's rendering to an SDL2 backend was already available and maintained, so rather than writing an SDL2/egui bridge ourselves, the team adopted that existing crate directly.
+
+Integration required some care around input routing (keeping egui from leaking keyboard/mouse input to the emulated controller) and texture handling, but nothing that changed the overall approach. Framebuffer rendering itself was kept on the SDL2 canvas rather than routed through egui, with egui reserved purely for the floating UI widgets layered on top.
+
+### Decision
+
+**egui-sdl2**, adopted directly on top of the existing SDL2 choice rather than evaluated against alternatives, since it reuses the team's existing egui investment and required no new rendering backend. Scope is intentionally limited to floating debug/introspection widgets; the core framebuffer presentation path remains plain SDL2.
+
+## 5. Audio backend: cpal vs rodio vs adapted fork (evaluation in progress)
 
 ### Context
 
@@ -87,10 +103,11 @@ rodio's convenience features (decoding, mixing, sinks) solve problems an emulato
 
 **Evaluation in progress.** Current working hypothesis: **cpal**, with a small internal ring-buffer and resampling layer, because latency and synchronization control outweigh rodio's convenience for this use case. Final decision pending prototype measurements.
 
-## 5. Decision summary
+## 6. Decision summary
 
 | Domain | Decision | Status | Revisit condition |
 |---|---|---|---|
 | Language | Rust | Final |  |
 | Graphics/windowing | SDL2 | Final | SDL3 Rust bindings reach stability |
+| UI overlay | egui-sdl2 | Final | - |
 | Audio | cpal (working hypothesis) | In progress | Prototype latency measurements |
