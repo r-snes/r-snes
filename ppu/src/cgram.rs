@@ -9,6 +9,12 @@ pub struct CGRAM {
     pub ppu_open_bus: u8,              // bit 7 used during high-byte read
 }
 
+impl Default for CGRAM {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CGRAM {
     pub fn new() -> Self {
         Self {

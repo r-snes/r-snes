@@ -9,6 +9,12 @@ pub struct VRAM {
     pub vram_latch: u16,      // word latch for reads
 }
 
+impl Default for VRAM {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl VRAM {
     pub fn new() -> Self {
         Self {

@@ -244,6 +244,12 @@ pub struct PPURegisters {
     pub opvct_latch: WriteTwice,
 }
 
+impl Default for PPURegisters {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PPURegisters {
     pub fn new() -> Self {
         Self {

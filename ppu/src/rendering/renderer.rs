@@ -11,6 +11,12 @@ pub struct Renderer {
     brightness_delay: u8,
 }
 
+impl Default for Renderer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Renderer {
     pub fn new() -> Self {
         Self {
@@ -60,9 +66,9 @@ impl Renderer {
     }
 
     pub fn apply_brightness(color: u16, brightness: u16) -> (u8, u8, u8) {
-        let mut r = (color & 0x1F) as u16;
-        let mut g = ((color >> 5) & 0x1F) as u16;
-        let mut b = ((color >> 10) & 0x1F) as u16;
+        let mut r = color & 0x1F;
+        let mut g = (color >> 5) & 0x1F;
+        let mut b = (color >> 10) & 0x1F;
 
         r = (r * (brightness + 1)) >> 4;
         g = (g * (brightness + 1)) >> 4;

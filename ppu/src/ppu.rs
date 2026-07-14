@@ -14,6 +14,12 @@ pub struct PPU {
     pub frame_ready: bool,
 }
 
+impl Default for PPU {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PPU {
     pub fn new() -> Self {
         Self {
