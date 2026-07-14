@@ -55,12 +55,14 @@ mod test {
 
     #[test]
     fn brk_emu() {
-        let mut regs = Registers::default();
-        regs.PB = 0x12;
-        regs.PC = 0x3456;
-        regs.S = 0x0180;
-        regs.P = 0b10101010.into();
-        regs.E = true;
+        let regs = Registers {
+            PB: 0x12,
+            PC: 0x3456,
+            S: 0x0180,
+            P: 0b10101010.into(),
+            E: true,
+            ..Default::default()
+        };
 
         let mut expected_regs = regs;
 
@@ -102,12 +104,14 @@ mod test {
 
     #[test]
     fn brk_nat() {
-        let mut regs = Registers::default();
-        regs.PB = 0x12;
-        regs.PC = 0x3456;
-        regs.S = 0x0180;
-        regs.P = 0b10101010.into();
-        regs.E = false;
+        let regs = Registers {
+            PB: 0x12,
+            PC: 0x3456,
+            S: 0x0180,
+            P: 0b10101010.into(),
+            E: false,
+            ..Default::default()
+        };
 
         let mut expected_regs = regs;
 
@@ -150,11 +154,13 @@ mod test {
 
     #[test]
     fn rti_emu() {
-        let mut regs = Registers::default();
-        regs.PB = 0; // interrupt code will usually be in bank 0
-        regs.PC = 0x3456;
-        regs.S = 0x0180;
-        regs.E = true;
+        let regs = Registers {
+            PB: 0, // interrupt code will usually be in bank 0
+            PC: 0x3456,
+            S: 0x0180,
+            E: true,
+            ..Default::default()
+        };
 
         let mut expected_regs = regs;
 
@@ -177,11 +183,13 @@ mod test {
 
     #[test]
     fn rti_nat() {
-        let mut regs = Registers::default();
-        regs.PB = 0; // interrupt code will usually be in bank 0
-        regs.PC = 0x3456;
-        regs.S = 0x0180;
-        regs.E = false;
+        let regs = Registers {
+            PB: 0, // interrupt code will usually be in bank 0
+            PC: 0x3456,
+            S: 0x0180,
+            E: false,
+            ..Default::default()
+        };
 
         let mut expected_regs = regs;
 

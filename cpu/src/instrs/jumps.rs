@@ -159,9 +159,11 @@ mod tests {
 
     #[test]
     fn test_jump_absolute() {
-        let mut regs = Registers::default();
-        regs.PB = 0x12;
-        regs.PC = 0x3456;
+        let regs = Registers {
+            PB: 0x12,
+            PC: 0x3456,
+            ..Default::default()
+        };
         let mut expected_regs = regs;
 
         let mut cpu = CPU::new(regs);
@@ -178,9 +180,11 @@ mod tests {
 
     #[test]
     fn test_jump_absolute_long() {
-        let mut regs = Registers::default();
-        regs.PB = 0x12;
-        regs.PC = 0x3456;
+        let regs = Registers {
+            PB: 0x12,
+            PC: 0x3456,
+            ..Default::default()
+        };
         let mut expected_regs = regs;
 
         let mut cpu = CPU::new(regs);
@@ -199,9 +203,11 @@ mod tests {
 
     #[test]
     fn test_jmp_abs_ind() {
-        let mut regs = Registers::default();
-        regs.PB = 0x12;
-        regs.PC = 0x3456;
+        let regs = Registers {
+            PB: 0x12,
+            PC: 0x3456,
+            ..Default::default()
+        };
         let mut expected_regs = regs;
 
         let mut cpu = CPU::new(regs);
@@ -220,10 +226,12 @@ mod tests {
 
     #[test]
     fn test_jmp_abs_ind_indx() {
-        let mut regs = Registers::default();
-        regs.PB = 0x12;
-        regs.PC = 0x3456;
-        regs.X = 0x1000;
+        let regs = Registers {
+            PB: 0x12,
+            PC: 0x3456,
+            X: 0x1000,
+            ..Default::default()
+        };
         let mut expected_regs = regs;
 
         let mut cpu = CPU::new(regs);
@@ -243,10 +251,12 @@ mod tests {
 
     #[test]
     fn test_jmp_abs_ind_indx_wraparound() {
-        let mut regs = Registers::default();
-        regs.PB = 0x12;
-        regs.PC = 0x3456;
-        regs.X = 0xf000; // We set a large X so that the X-indexing wraps around
+        let regs = Registers {
+            PB: 0x12,
+            PC: 0x3456,
+            X: 0xf000, // We set a large X so that the X-indexing wraps around
+            ..Default::default()
+        };
         let mut expected_regs = regs;
 
         let mut cpu = CPU::new(regs);
@@ -266,9 +276,11 @@ mod tests {
 
     #[test]
     fn test_jump_long() {
-        let mut regs = Registers::default();
-        regs.PB = 0x12;
-        regs.PC = 0x3456;
+        let regs = Registers {
+            PB: 0x12,
+            PC: 0x3456,
+            ..Default::default()
+        };
         let mut expected_regs = regs;
 
         let mut cpu = CPU::new(regs);
@@ -289,10 +301,12 @@ mod tests {
 
     #[test]
     fn test_jsr_abs() {
-        let mut regs = Registers::default();
-        regs.PB = 0x12;
-        regs.PC = 0x3456;
-        regs.S = 0x0188; // set the stack pointer in page 1
+        let regs = Registers {
+            PB: 0x12,
+            PC: 0x3456,
+            S: 0x0188, // set the stack pointer in page 1
+            ..Default::default()
+        };
         let mut expected_regs = regs;
 
         let mut cpu = CPU::new(regs);
@@ -313,11 +327,13 @@ mod tests {
 
     #[test]
     fn test_jsr_abs_ind_xind() {
-        let mut regs = Registers::default();
-        regs.PB = 0x12;
-        regs.S = 0x0122;
-        regs.X = 0x0120;
-        regs.PC = 0x3456;
+        let regs = Registers {
+            PB: 0x12,
+            S: 0x0122,
+            X: 0x0120,
+            PC: 0x3456,
+            ..Default::default()
+        };
         let mut expected_regs = regs;
 
         let mut cpu = CPU::new(regs);
@@ -340,10 +356,12 @@ mod tests {
 
     #[test]
     fn test_jsl() {
-        let mut regs = Registers::default();
-        regs.PB = 0x12;
-        regs.PC = 0x3456;
-        regs.S = 0x0199;
+        let regs = Registers {
+            PB: 0x12,
+            PC: 0x3456,
+            S: 0x0199,
+            ..Default::default()
+        };
         let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
 
@@ -366,10 +384,12 @@ mod tests {
 
     #[test]
     fn test_rts() {
-        let mut regs = Registers::default();
-        regs.PB = 0x12;
-        regs.PC = 0x3456;
-        regs.S = 0x0155;
+        let regs = Registers {
+            PB: 0x12,
+            PC: 0x3456,
+            S: 0x0155,
+            ..Default::default()
+        };
         let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
 
@@ -389,10 +409,12 @@ mod tests {
 
     #[test]
     fn test_rtl() {
-        let mut regs = Registers::default();
-        regs.PB = 0x12;
-        regs.PC = 0x3456;
-        regs.S = 0x0155;
+        let regs = Registers {
+            PB: 0x12,
+            PC: 0x3456,
+            S: 0x0155,
+            ..Default::default()
+        };
         let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
 

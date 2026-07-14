@@ -43,7 +43,8 @@ duplicate! {
 
 #[cfg(test)]
 mod tests {
-    use crate::instrs::test_prelude::*;
+    #![expect(clippy::nonminimal_bool)]
+    use crate::{instrs::test_prelude::*, registers::RegisterP};
     use duplicate::duplicate_item;
 
     fn expect_load16_read(cpu: &mut CPU, mut from: SnesAddress, value: u16) {
@@ -60,6 +61,8 @@ mod tests {
         [ldy_imm]   [Y]         [X]         [0xa0];
     )]
     mod DUP1_mod {
+        use crate::registers::RegisterP;
+
         use super::*;
 
         // duplicate for all output combinations of N and Z flags
@@ -72,16 +75,22 @@ mod tests {
         )]
         #[test]
         fn DUP2_name() {
-            let mut regs = Registers::default();
-            regs.PB = 0x12;
-            regs.PC = 0x3456;
-            regs.E = false; // need to disable emu mode for 16-bit load
-            regs.P.DUP1_flag = false; // and turn off M flag too
-            regs.DUP1_reg = 0x9999; // value which will be overwritten
+            let regs = Registers {
+                PB: 0x12,
+                PC: 0x3456,
+                DUP1_reg: 0x9999, // value which will be overwritten
 
-            // start with flags set to the opposite of the expected
-            regs.P.Z = !DUP2_Z;
-            regs.P.N = !DUP2_N;
+                E: false, // need to disable emu mode for 16-bit load
+                P: RegisterP {
+                    DUP1_flag: false, // and turn off M flag too
+
+                    // start with flags set to the opposite of the expected
+                    Z: !DUP2_Z,
+                    N: !DUP2_N,
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
 
             let mut expected_regs = regs;
             let mut cpu = CPU::new(regs);
@@ -118,16 +127,21 @@ mod tests {
             )]
             #[test]
             fn DUP3_name() {
-                let mut regs = Registers::default();
-                regs.PB = 0x12;
-                regs.PC = 0x3456;
-                regs.E = DUP3_emu;
-                regs.P.DUP1_flag = DUP3_index;
-                regs.DUP1_reg = 0x9999; // value which will be overwritten
+                let regs = Registers {
+                    PB: 0x12,
+                    PC: 0x3456,
+                    E: DUP3_emu,
+                    DUP1_reg: 0x9999, // value which will be overwritten
+                    P: RegisterP {
+                        DUP1_flag: DUP3_index,
 
-                // start with flags set to the opposite of the expected
-                regs.P.Z = !DUP2_Z;
-                regs.P.N = !DUP2_N;
+                        // start with flags set to the opposite of the expected
+                        Z: !DUP2_Z,
+                        N: !DUP2_N,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                };
 
                 let mut expected_regs = regs;
                 let mut cpu = CPU::new(regs);
@@ -158,14 +172,19 @@ mod tests {
     )]
     #[test]
     fn DUP_name() {
-        let mut regs = Registers::default();
-        regs.PB = 0x12;
-        regs.PC = 0x3456;
-        regs.E = false; // non-emu mode for 16-bit instr
-        regs.P.X = false; // unset both X and M
-        regs.P.M = false; // so that all instrs are 16-bit
-        regs.DB = 0xdb;
-        regs.DUP_reg = 0x9999; // value which will be overwritten
+        let regs = Registers {
+            PB: 0x12,
+            PC: 0x3456,
+            E: false, // non-emu mode for 16-bit instr
+            DB: 0xdb,
+            DUP_reg: 0x9999, // value which will be overwritten
+            P: RegisterP {
+                X: false, // unset both X and M
+                M: false, // so that all instrs are 16-bit
+                ..Default::default()
+            },
+            ..Default::default()
+        };
 
         let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
@@ -185,13 +204,18 @@ mod tests {
     // absl addrmode only exists for LDA
     #[test]
     fn lda_absl() {
-        let mut regs = Registers::default();
-        regs.PB = 0x12;
-        regs.PC = 0x3456;
-        regs.E = false; // non-emu mode for 16-bit instr
-        regs.P.X = false; // unset both X and M
-        regs.P.M = false; // so that all instrs are 16-bit
-        regs.A = 0x9999; // value which will be overwritten
+        let regs = Registers {
+            PB: 0x12,
+            PC: 0x3456,
+            E: false,  // non-emu mode for 16-bit instr
+            A: 0x9999, // value which will be overwritten
+            P: RegisterP {
+                X: false, // unset both X and M
+                M: false, // so that all instrs are 16-bit
+                ..Default::default()
+            },
+            ..Default::default()
+        };
 
         let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
@@ -212,14 +236,19 @@ mod tests {
     // abslx addrmode only exists for LDA
     #[test]
     fn lda_abslx() {
-        let mut regs = Registers::default();
-        regs.PB = 0x12;
-        regs.PC = 0x3456;
-        regs.E = false; // non-emu mode for 16-bit instr
-        regs.P.X = false; // unset both X and M
-        regs.P.M = false; // so that all instrs are 16-bit
-        regs.A = 0x9999; // value which will be overwritten
-        regs.X = 0x0102;
+        let regs = Registers {
+            PB: 0x12,
+            PC: 0x3456,
+            E: false,  // non-emu mode for 16-bit instr
+            A: 0x9999, // value which will be overwritten
+            X: 0x0102,
+            P: RegisterP {
+                X: false, // unset both X and M
+                M: false, // so that all instrs are 16-bit
+                ..Default::default()
+            },
+            ..Default::default()
+        };
 
         let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
@@ -272,15 +301,20 @@ mod tests {
     )]
     #[test]
     fn DUP_name() {
-        let mut regs = Registers::default();
-        regs.PB = 0x12;
-        regs.PC = 0x3456;
-        regs.E = false; // non-emu mode to enable 16-bit instrs
-        regs.P.M = false; // M=0 so A is 16-bit
-        regs.P.X = DUP_xf;
-        regs.DUP_reg = 0x9999; // value which will be overwritten
-        regs.DUP_idx = DUP_idx_val;
-        regs.DB = 0xdb;
+        let regs = Registers {
+            PB: 0x12,
+            PC: 0x3456,
+            E: false,        // non-emu mode to enable 16-bit instrs
+            DUP_reg: 0x9999, // value which will be overwritten
+            DUP_idx: DUP_idx_val,
+            DB: 0xdb,
+            P: RegisterP {
+                M: false, // M=0 so A is 16-bit
+                X: DUP_xf,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
 
         let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
@@ -333,14 +367,19 @@ mod tests {
         )]
         #[test]
         fn DUP2_name() {
-            let mut regs = Registers::default();
-            regs.PB = 0x12;
-            regs.PC = 0x3456;
-            regs.E = false; // non-emu mode to enable 16-bit instrs
-            regs.P.M = false; // M=0 so A is 16-bit
-            regs.P.X = false; // X=0 so X and Y are 16-bit
-            regs.DUP2_reg = 0x9999; // value which will be overwritten
-            regs.D = DUP1_D;
+            let regs = Registers {
+                PB: 0x12,
+                PC: 0x3456,
+                E: false,         // non-emu mode to enable 16-bit instrs
+                DUP2_reg: 0x9999, // value which will be overwritten
+                D: DUP1_D,
+                P: RegisterP {
+                    M: false, // M=0 so A is 16-bit
+                    X: false, // X=0 so X and Y are 16-bit
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
 
             let mut expected_regs = regs;
             let mut cpu = CPU::new(regs);
@@ -367,15 +406,20 @@ mod tests {
         )]
         #[test]
         fn DUP2_name() {
-            let mut regs = Registers::default();
-            regs.PB = 0x12;
-            regs.PC = 0x3456;
-            regs.E = false; // non-emu mode to enable 16-bit instrs
-            regs.P.M = false; // M=0 so A is 16-bit
-            regs.P.X = false; // X=0 so X and Y are 16-bit
-            regs.DUP2_reg = 0x9999; // value which will be overwritten
-            regs.DUP2_index = 0x10;
-            regs.D = DUP1_D;
+            let regs = Registers {
+                PB: 0x12,
+                PC: 0x3456,
+                E: false,         // non-emu mode to enable 16-bit instrs
+                DUP2_reg: 0x9999, // value which will be overwritten
+                DUP2_index: 0x10,
+                D: DUP1_D,
+                P: RegisterP {
+                    M: false, // M=0 so A is 16-bit
+                    X: false, // X=0 so X and Y are 16-bit
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
 
             let mut expected_regs = regs;
             let mut cpu = CPU::new(regs);
@@ -397,14 +441,19 @@ mod tests {
         // direct indirect only exists for LDA
         #[test]
         fn lda_dind() {
-            let mut regs = Registers::default();
-            regs.PB = 0x12;
-            regs.PC = 0x3456;
-            regs.E = false; // non-emu mode to enable 16-bit instrs
-            regs.P.M = false; // M=0 so A is 16-bit
-            regs.A = 0x9999; // value which will be overwritten
-            regs.D = DUP1_D;
-            regs.DB = 0xee;
+            let regs = Registers {
+                PB: 0x12,
+                PC: 0x3456,
+                E: false,  // non-emu mode to enable 16-bit instrs
+                A: 0x9999, // value which will be overwritten
+                D: DUP1_D,
+                DB: 0xee,
+                P: RegisterP {
+                    M: false, // M=0 so A is 16-bit
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
 
             let mut expected_regs = regs;
             let mut cpu = CPU::new(regs);
@@ -427,15 +476,20 @@ mod tests {
         // direct x indirect only exists for LDA
         #[test]
         fn lda_dxind() {
-            let mut regs = Registers::default();
-            regs.PB = 0x12;
-            regs.PC = 0x3456;
-            regs.E = false; // non-emu mode to enable 16-bit instrs
-            regs.P.M = false; // M=0 so A is 16-bit
-            regs.A = 0x9999; // value which will be overwritten
-            regs.D = DUP1_D;
-            regs.X = 0x1020;
-            regs.DB = 0xee;
+            let regs = Registers {
+                PB: 0x12,
+                PC: 0x3456,
+                E: false,  // non-emu mode to enable 16-bit instrs
+                A: 0x9999, // value which will be overwritten
+                D: DUP1_D,
+                X: 0x1020,
+                DB: 0xee,
+                P: RegisterP {
+                    M: false, // M=0 so A is 16-bit
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
 
             let mut expected_regs = regs;
             let mut cpu = CPU::new(regs);
@@ -478,16 +532,21 @@ mod tests {
         )]
         #[test]
         fn DUP2_name() {
-            let mut regs = Registers::default();
-            regs.PB = 0x12;
-            regs.PC = 0x3456;
-            regs.E = false; // non-emu mode to enable 16-bit instrs
-            regs.P.M = false; // M=0 so A is 16-bit
-            regs.P.X = DUP2_xf;
-            regs.Y = DUP2_y;
-            regs.A = 0x9999; // value which will be overwritten
-            regs.D = DUP1_D;
-            regs.DB = 0xee;
+            let regs = Registers {
+                PB: 0x12,
+                PC: 0x3456,
+                E: false, // non-emu mode to enable 16-bit instrs
+                Y: DUP2_y,
+                A: 0x9999, // value which will be overwritten
+                D: DUP1_D,
+                DB: 0xee,
+                P: RegisterP {
+                    M: false, // M=0 so A is 16-bit
+                    X: DUP2_xf,
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
 
             let mut expected_regs = regs;
             let mut cpu = CPU::new(regs);
@@ -513,13 +572,18 @@ mod tests {
         // direct indirect long only exists for LDA
         #[test]
         fn lda_dindl() {
-            let mut regs = Registers::default();
-            regs.PB = 0x12;
-            regs.PC = 0x3456;
-            regs.E = false; // non-emu mode to enable 16-bit instrs
-            regs.P.M = false; // M=0 so A is 16-bit
-            regs.A = 0x9999; // value which will be overwritten
-            regs.D = DUP1_D;
+            let regs = Registers {
+                PB: 0x12,
+                PC: 0x3456,
+                E: false,  // non-emu mode to enable 16-bit instrs
+                A: 0x9999, // value which will be overwritten
+                D: DUP1_D,
+                P: RegisterP {
+                    M: false, // M=0 so A is 16-bit
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
 
             let mut expected_regs = regs;
             let mut cpu = CPU::new(regs);
@@ -543,14 +607,19 @@ mod tests {
         // direct indirect long y only exists for LDA
         #[test]
         fn lda_dindly() {
-            let mut regs = Registers::default();
-            regs.PB = 0x12;
-            regs.PC = 0x3456;
-            regs.E = false; // non-emu mode to enable 16-bit instrs
-            regs.P.M = false; // M=0 so A is 16-bit
-            regs.A = 0x9999; // value which will be overwritten
-            regs.D = DUP1_D;
-            regs.Y = 0x0303;
+            let regs = Registers {
+                PB: 0x12,
+                PC: 0x3456,
+                E: false,  // non-emu mode to enable 16-bit instrs
+                A: 0x9999, // value which will be overwritten
+                D: DUP1_D,
+                Y: 0x0303,
+                P: RegisterP {
+                    M: false, // M=0 so A is 16-bit
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
 
             let mut expected_regs = regs;
             let mut cpu = CPU::new(regs);
@@ -575,13 +644,18 @@ mod tests {
     // stack relative only exists for LDA
     #[test]
     fn lda_sr() {
-        let mut regs = Registers::default();
-        regs.PB = 0x12;
-        regs.PC = 0x3456;
-        regs.E = false; // non-emu mode to enable 16-bit instrs
-        regs.P.M = false; // M=0 so A is 16-bit
-        regs.A = 0x9999; // value which will be overwritten
-        regs.S = 0x0402;
+        let regs = Registers {
+            PB: 0x12,
+            PC: 0x3456,
+            E: false,  // non-emu mode to enable 16-bit instrs
+            A: 0x9999, // value which will be overwritten
+            S: 0x0402,
+            P: RegisterP {
+                M: false, // M=0 so A is 16-bit
+                ..Default::default()
+            },
+            ..Default::default()
+        };
 
         let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
@@ -601,15 +675,20 @@ mod tests {
     // stack relative indirect Y only exists for LDA
     #[test]
     fn lda_sry() {
-        let mut regs = Registers::default();
-        regs.PB = 0x12;
-        regs.PC = 0x3456;
-        regs.E = false; // non-emu mode to enable 16-bit instrs
-        regs.P.M = false; // M=0 so A is 16-bit
-        regs.A = 0x9999; // value which will be overwritten
-        regs.S = 0x0402;
-        regs.DB = 0xdb;
-        regs.Y = 0x3030;
+        let regs = Registers {
+            PB: 0x12,
+            PC: 0x3456,
+            E: false,  // non-emu mode to enable 16-bit instrs
+            A: 0x9999, // value which will be overwritten
+            S: 0x0402,
+            DB: 0xdb,
+            Y: 0x3030,
+            P: RegisterP {
+                M: false, // M=0 so A is 16-bit
+                ..Default::default()
+            },
+            ..Default::default()
+        };
 
         let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);

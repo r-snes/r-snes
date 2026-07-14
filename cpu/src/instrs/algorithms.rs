@@ -128,6 +128,7 @@ pub fn trb<T: Reg>(op: &mut T, a: T, p: &mut RegisterP) {
 
 #[cfg(test)]
 mod tests {
+    #![expect(clippy::bool_assert_comparison, clippy::nonminimal_bool)]
     use crate::registers::RegisterP;
     use duplicate::duplicate_item;
 
@@ -234,10 +235,12 @@ mod tests {
     #[allow(non_snake_case)]
     #[test]
     fn DUP_name() {
-        let mut p = RegisterP::default();
+        let mut p = RegisterP {
+            C: DUP_c_in,
+            ..Default::default()
+        };
         let mut acc: u16 = DUP_a;
         let operand: u16 = DUP_op;
-        p.C = DUP_c_in;
 
         super::adc(&mut acc, operand, &mut p);
         assert_eq!(acc, DUP_res);
@@ -250,13 +253,14 @@ mod tests {
     // for sbc, we only test a basic case it calls adc internally anyways
     #[test]
     fn sbc() {
-        let mut p = RegisterP::default();
+        let mut p = RegisterP {
+            // sbc does (acc = acc - operand - 1 + carry), so we set the carry
+            // so that we can have 2 = 5 - 3
+            C: true,
+            ..Default::default()
+        };
         let mut acc: u16 = 5;
         let operand: u16 = 3;
-
-        // sbc does (acc = acc - operand - 1 + carry), so we set the carry
-        // so that we can have 2 = 5 - 3
-        p.C = true;
 
         super::sbc(&mut acc, operand, &mut p);
         assert_eq!(acc, 2);
@@ -277,11 +281,12 @@ mod tests {
     #[test]
     fn DUP_name() {
         let mut a: u8 = DUP_a;
-        let mut p = RegisterP::default();
-
-        p.C = !DUP_c;
-        p.N = !DUP_n;
-        p.Z = !DUP_z;
+        let mut p = RegisterP {
+            C: !DUP_c,
+            N: !DUP_n,
+            Z: !DUP_z,
+            ..Default::default()
+        };
 
         super::asl(&mut a, &mut p);
 
@@ -331,11 +336,12 @@ mod tests {
     #[test]
     fn DUP_name() {
         let mut a: u8 = DUP_a;
-        let mut p = RegisterP::default();
-
-        p.C = DUP_c_in;
-        p.N = !DUP_n;
-        p.Z = !DUP_z;
+        let mut p = RegisterP {
+            C: DUP_c_in,
+            N: !DUP_n,
+            Z: !DUP_z,
+            ..Default::default()
+        };
 
         let b: u8 = (1 << 1) | 1;
         println!("b: {b}");
@@ -361,11 +367,12 @@ mod tests {
     #[test]
     fn DUP_name() {
         let mut a: u8 = DUP_a;
-        let mut p = RegisterP::default();
-
-        p.C = DUP_c_in;
-        p.N = !DUP_n;
-        p.Z = !DUP_z;
+        let mut p = RegisterP {
+            C: DUP_c_in,
+            N: !DUP_n,
+            Z: !DUP_z,
+            ..Default::default()
+        };
 
         let b: u8 = (1 << 1) | 1;
         println!("b: {b}");

@@ -49,6 +49,7 @@ cpu_instr_no_inc_pc!(brl {
 
 #[cfg(test)]
 mod test {
+    #![expect(clippy::nonminimal_bool)]
     use super::super::test_prelude::*;
     use duplicate::duplicate_item;
 
@@ -74,9 +75,12 @@ mod test {
                 return; // always pass test for BRA, it never takes a branch
             }
 
-            let mut regs = Registers::default();
-            regs.PB = 0x12;
-            regs.PC = 0x3456;
+            #[allow(unused_mut, reason = "for BRA")]
+            let mut regs = Registers {
+                PB: 0x12,
+                PC: 0x3456,
+                ..Default::default()
+            };
 
             DUP1_flag = !DUP1_set; // branch not taken
 
@@ -94,9 +98,12 @@ mod test {
 
         #[test]
         fn branch_taken_no_page_crossed() {
-            let mut regs = Registers::default();
-            regs.PB = 0x12;
-            regs.PC = 0x3456;
+            #[allow(unused_mut, reason = "for BRA")]
+            let mut regs = Registers {
+                PB: 0x12,
+                PC: 0x3456,
+                ..Default::default()
+            };
 
             DUP1_flag = DUP1_set; // case where we do jump
 
@@ -121,9 +128,12 @@ mod test {
         )]
         #[test]
         fn DUP2_name() {
-            let mut regs = Registers::default();
-            regs.PB = 0x12;
-            regs.PC = 0x3456;
+            #[allow(unused_mut, reason = "for BRA")]
+            let mut regs = Registers {
+                PB: 0x12,
+                PC: 0x3456,
+                ..Default::default()
+            };
 
             DUP1_flag = DUP1_set; // case where we do jump
             regs.E = DUP2_emu;
@@ -152,9 +162,11 @@ mod test {
 
     #[test]
     fn brl() {
-        let mut regs = Registers::default();
-        regs.PB = 0x12;
-        regs.PC = 0x3456;
+        let regs = Registers {
+            PB: 0x12,
+            PC: 0x3456,
+            ..Default::default()
+        };
 
         let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);

@@ -59,9 +59,11 @@ mod tests {
     )]
     #[test]
     fn DUP_instr_name() {
-        let mut regs = Registers::default();
-        regs.PB = 0x12;
-        regs.PC = 0x3456;
+        let mut regs = Registers {
+            PB: 0x12,
+            PC: 0x3456,
+            ..Default::default()
+        };
         let mut expected_regs = regs;
 
         regs.P.DUP_set_flag = true;
@@ -93,9 +95,11 @@ mod tests {
     )]
     #[test]
     fn DUP_instr_name() {
-        let mut regs = Registers::default();
-        regs.PB = 0x12;
-        regs.PC = 0x3456;
+        let mut regs = Registers {
+            PB: 0x12,
+            PC: 0x3456,
+            ..Default::default()
+        };
         let mut expected_regs = regs;
 
         regs.P.DUP_set_flag = false;

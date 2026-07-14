@@ -150,15 +150,17 @@ mod stp {
 
 #[cfg(test)]
 mod tests {
-    use crate::instrs::test_prelude::*;
+    use crate::{instrs::test_prelude::*, registers::RegisterP};
 
     #[test]
     fn test_1_plus_1_is_2_cycle_api() {
-        let mut regs = Registers::default();
-        regs.PB = 0x12;
-        regs.PC = 0x3456;
+        let regs = Registers {
+            PB: 0x12,
+            PC: 0x3456,
 
-        regs.X = 1;
+            X: 1,
+            ..Default::default()
+        };
         let mut cpu = CPU::new(regs);
 
         expect_opcode_fetch(&mut cpu, 0xe8);
@@ -171,9 +173,11 @@ mod tests {
 
     #[test]
     fn nop_does_nothing() {
-        let mut regs = Registers::default();
-        regs.PB = 0x12;
-        regs.PC = 0x3456;
+        let regs = Registers {
+            PB: 0x12,
+            PC: 0x3456,
+            ..Default::default()
+        };
         let mut expected_regs = regs;
 
         let mut cpu = CPU::new(regs);
@@ -192,9 +196,11 @@ mod tests {
 
     #[test]
     fn wdm() {
-        let mut regs = Registers::default();
-        regs.PB = 0x12;
-        regs.PC = 0x3456;
+        let regs = Registers {
+            PB: 0x12,
+            PC: 0x3456,
+            ..Default::default()
+        };
         let mut expected_regs = regs;
 
         let mut cpu = CPU::new(regs);
@@ -214,10 +220,15 @@ mod tests {
 
     #[test]
     fn xce_to_emu() {
-        let mut regs = Registers::default();
-        regs.PB = 0x12;
-        regs.PC = 0x3456;
-        regs.P.C = true; // C will move to E
+        let regs = Registers {
+            PB: 0x12,
+            PC: 0x3456,
+            P: RegisterP {
+                C: true, // C will move to E
+                ..Default::default()
+            },
+            ..Default::default()
+        };
         let mut expected_regs = regs;
 
         let mut cpu = CPU::new(regs);
@@ -239,11 +250,16 @@ mod tests {
 
     #[test]
     fn xce_to_nat() {
-        let mut regs = Registers::default();
-        regs.PB = 0x12;
-        regs.PC = 0x3456;
-        regs.P.C = false; // C will move to E
-        regs.E = true;
+        let regs = Registers {
+            PB: 0x12,
+            PC: 0x3456,
+            E: true,
+            P: RegisterP {
+                C: false, // C will move to E
+                ..Default::default()
+            },
+            ..Default::default()
+        };
         let mut expected_regs = regs;
 
         let mut cpu = CPU::new(regs);
@@ -262,10 +278,15 @@ mod tests {
 
     #[test]
     fn sep() {
-        let mut regs = Registers::default();
-        regs.PB = 0x12;
-        regs.PC = 0x3456;
-        regs.P.Z = true; // set Z now and set it again with SEP, shouldn't change
+        let regs = Registers {
+            PB: 0x12,
+            PC: 0x3456,
+            P: RegisterP {
+                Z: true, // set Z now and set it again with SEP, shouldn't change
+                ..Default::default()
+            },
+            ..Default::default()
+        };
         let mut expected_regs = regs;
 
         let mut cpu = CPU::new(regs);
@@ -289,10 +310,15 @@ mod tests {
 
     #[test]
     fn rep() {
-        let mut regs = Registers::default();
-        regs.PB = 0x12;
-        regs.PC = 0x3456;
-        regs.P.Z = true; // set Z for it to be reset by REP
+        let regs = Registers {
+            PB: 0x12,
+            PC: 0x3456,
+            P: RegisterP {
+                Z: true, // set Z for it to be reset by REP
+                ..Default::default()
+            },
+            ..Default::default()
+        };
         let mut expected_regs = regs;
 
         let mut cpu = CPU::new(regs);
@@ -315,10 +341,12 @@ mod tests {
 
     #[test]
     fn xba() {
-        let mut regs = Registers::default();
-        regs.PB = 0x12;
-        regs.PC = 0x3456;
-        regs.A = 0xbbaa;
+        let regs = Registers {
+            PB: 0x12,
+            PC: 0x3456,
+            A: 0xbbaa,
+            ..Default::default()
+        };
         let mut expected_regs = regs;
 
         let mut cpu = CPU::new(regs);
@@ -336,12 +364,14 @@ mod tests {
 
     #[test]
     fn mvn() {
-        let mut regs = Registers::default();
-        regs.PB = 0x12;
-        regs.PC = 0x3456;
-        regs.A = 2; // so we'll copy 3 bytes
-        regs.X = 0x2222; // source is 2222
-        regs.Y = 0x5555; // dest 5555
+        let regs = Registers {
+            PB: 0x12,
+            PC: 0x3456,
+            A: 2,      // so we'll copy 3 bytes
+            X: 0x2222, // source is 2222
+            Y: 0x5555, // dest 5555
+            ..Default::default()
+        };
         let mut expected_regs = regs;
 
         let mut cpu = CPU::new(regs);
@@ -392,12 +422,14 @@ mod tests {
 
     #[test]
     fn mvp() {
-        let mut regs = Registers::default();
-        regs.PB = 0x12;
-        regs.PC = 0x3456;
-        regs.A = 120; // so we'll copy 121 bytes
-        regs.X = 0x8888; // source is 8888
-        regs.Y = 0x5555; // dest 5555
+        let regs = Registers {
+            PB: 0x12,
+            PC: 0x3456,
+            A: 120,    // so we'll copy 121 bytes
+            X: 0x8888, // source is 8888
+            Y: 0x5555, // dest 5555
+            ..Default::default()
+        };
         let mut expected_regs = regs;
 
         let mut cpu = CPU::new(regs);
@@ -441,13 +473,18 @@ mod tests {
 
     #[test]
     fn mvn_pagewrap() {
-        let mut regs = Registers::default();
-        regs.PB = 0x12;
-        regs.PC = 0x3456;
-        regs.A = 1; // so we'll copy 2 bytes
-        regs.X = 0x00fe; // source
-        regs.Y = 0x00ff; // dest
-        regs.P.X = true; // set X and Y to 8-bit mode, which will cause pagewrap
+        let regs = Registers {
+            PB: 0x12,
+            PC: 0x3456,
+            A: 1,      // so we'll copy 2 bytes
+            X: 0x00fe, // source
+            Y: 0x00ff, // dest
+            P: RegisterP {
+                X: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
         let mut expected_regs = regs;
 
         let mut cpu = CPU::new(regs);
@@ -480,9 +517,11 @@ mod tests {
 
     #[test]
     fn stp_spin_loops() {
-        let mut regs = Registers::default();
-        regs.PB = 0x12;
-        regs.PC = 0x3456;
+        let regs = Registers {
+            PB: 0x12,
+            PC: 0x3456,
+            ..Default::default()
+        };
 
         let mut cpu = CPU::new(regs);
 

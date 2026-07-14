@@ -207,19 +207,24 @@ duplicate! {
 
 #[cfg(test)]
 mod tests {
-    use crate::instrs::test_prelude::*;
+    use crate::{instrs::test_prelude::*, registers::RegisterP};
 
     #[test]
     fn adc_imm8() {
-        let mut regs = Registers::default();
-        regs.PB = 0x12;
-        regs.PC = 0x3456;
-        regs.A = 0x44;
-        regs.E = true;
-        regs.P.Z = true;
-        regs.P.N = false;
-        regs.P.V = false;
-        regs.P.C = false;
+        let regs = Registers {
+            PB: 0x12,
+            PC: 0x3456,
+            A: 0x44,
+            E: true,
+            P: RegisterP {
+                Z: true,
+                N: false,
+                V: false,
+                C: false,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
 
         let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
@@ -239,15 +244,20 @@ mod tests {
 
     #[test]
     fn adc_imm16() {
-        let mut regs = Registers::default();
-        regs.PB = 0x12;
-        regs.PC = 0x3456;
-        regs.A = 0x5588;
-        regs.E = false;
-        regs.P.M = false;
-        regs.P.Z = true;
-        regs.P.N = true;
-        regs.P.C = false;
+        let regs = Registers {
+            PB: 0x12,
+            PC: 0x3456,
+            A: 0x5588,
+            E: false,
+            P: RegisterP {
+                M: false,
+                Z: true,
+                N: true,
+                C: false,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
 
         let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
@@ -267,15 +277,20 @@ mod tests {
 
     #[test]
     fn bit_imm16() {
-        let mut regs = Registers::default();
-        regs.PB = 0x12;
-        regs.PC = 0x3456;
-        regs.A = 0x00ff;
-        regs.E = false;
-        regs.P.M = false;
-        regs.P.Z = false;
-        regs.P.N = false;
-        regs.P.V = false;
+        let regs = Registers {
+            PB: 0x12,
+            PC: 0x3456,
+            A: 0x00ff,
+            E: false,
+            P: RegisterP {
+                M: false,
+                Z: false,
+                N: false,
+                V: false,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
 
         let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
@@ -292,15 +307,20 @@ mod tests {
 
     #[test]
     fn bit_abs16() {
-        let mut regs = Registers::default();
-        regs.PB = 0x12;
-        regs.PC = 0x3456;
-        regs.A = 0x00ff;
-        regs.E = false;
-        regs.P.M = false;
-        regs.P.Z = false;
-        regs.P.N = false;
-        regs.P.V = false;
+        let regs = Registers {
+            PB: 0x12,
+            PC: 0x3456,
+            A: 0x00ff,
+            E: false,
+            P: RegisterP {
+                M: false,
+                Z: false,
+                N: false,
+                V: false,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
 
         let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
@@ -321,15 +341,20 @@ mod tests {
 
     #[test]
     fn asl_abs16() {
-        let mut regs = Registers::default();
-        regs.PB = 0x12;
-        regs.PC = 0x3456;
-        regs.E = false;
-        regs.P.M = false;
+        let regs = Registers {
+            PB: 0x12,
+            PC: 0x3456,
+            E: false,
+            P: RegisterP {
+                M: false,
 
-        regs.P.Z = true;
-        regs.P.N = true;
-        regs.P.C = true;
+                Z: true,
+                N: true,
+                C: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
 
         let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
@@ -353,14 +378,18 @@ mod tests {
 
     #[test]
     fn asl_abs8() {
-        let mut regs = Registers::default();
-        regs.PB = 0x12;
-        regs.PC = 0x3456;
-        regs.E = true;
-
-        regs.P.Z = true;
-        regs.P.N = true;
-        regs.P.C = true;
+        let regs = Registers {
+            PB: 0x12,
+            PC: 0x3456,
+            E: true,
+            P: RegisterP {
+                Z: true,
+                N: true,
+                C: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
 
         let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
@@ -382,16 +411,20 @@ mod tests {
 
     #[test]
     fn asl_acc8() {
-        let mut regs = Registers::default();
-        regs.PB = 0x12;
-        regs.PC = 0x3456;
-        regs.E = true;
+        let regs = Registers {
+            PB: 0x12,
+            PC: 0x3456,
+            E: true,
 
-        regs.A = 0x0f;
-
-        regs.P.Z = true;
-        regs.P.N = true;
-        regs.P.C = true;
+            A: 0x0f,
+            P: RegisterP {
+                Z: true,
+                N: true,
+                C: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
 
         let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
