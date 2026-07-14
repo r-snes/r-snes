@@ -1,6 +1,7 @@
 pub mod state;
 pub mod widgets;
 
+use std::error::Error;
 use std::path::PathBuf;
 
 use egui_sdl2::canvas::EguiCanvas;
@@ -249,6 +250,7 @@ impl Gui {
     /// one line here plus one field in `GuiState` — nothing in `main.rs`.
     fn draw_overlays(state: &mut GuiState, data: &GuiFrameData, ctx: &egui::Context) {
         widgets::rom_info(ctx, &mut state.show_rom_info, data.rom_info);
+        widgets::error_box(ctx, &mut state.error_popup)
     }
 
     /// One frame: poll input, blit the framebuffer, draw overlays, present.
@@ -272,5 +274,19 @@ impl Gui {
         self.egui_canvas.present();
 
         events
+    }
+
+    pub fn pass_error(&mut self, err: Box<dyn Error>) {
+        self.state.error_popup = Some(err);
+    }
+
+    pub fn unwrap_result<T: Default, E: Error + 'static>(&mut self, res: Result<T, E>) -> T {
+        match res {
+            Ok(x) => x,
+            Err(e) => {
+                self.pass_error(Box::new(e));
+                Default::default()
+            }
+        }
     }
 }
