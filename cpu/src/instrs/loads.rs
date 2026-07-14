@@ -83,7 +83,7 @@ mod tests {
             regs.P.Z = !DUP2_Z;
             regs.P.N = !DUP2_N;
 
-            let mut expected_regs = regs.clone();
+            let mut expected_regs = regs;
             let mut cpu = CPU::new(regs);
 
             expect_opcode_fetch(&mut cpu, DUP1_opcode);
@@ -129,7 +129,7 @@ mod tests {
                 regs.P.Z = !DUP2_Z;
                 regs.P.N = !DUP2_N;
 
-                let mut expected_regs = regs.clone();
+                let mut expected_regs = regs;
                 let mut cpu = CPU::new(regs);
 
                 expect_opcode_fetch(&mut cpu, DUP1_opcode);
@@ -167,7 +167,7 @@ mod tests {
         regs.DB = 0xdb;
         regs.DUP_reg = 0x9999; // value which will be overwritten
 
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
 
         expect_opcode_fetch(&mut cpu, DUP_opcode);
@@ -193,7 +193,7 @@ mod tests {
         regs.P.M = false; // so that all instrs are 16-bit
         regs.A = 0x9999; // value which will be overwritten
 
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
 
         expect_opcode_fetch(&mut cpu, 0xaf);
@@ -221,7 +221,7 @@ mod tests {
         regs.A = 0x9999; // value which will be overwritten
         regs.X = 0x0102;
 
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
 
         expect_opcode_fetch(&mut cpu, 0xbf);
@@ -282,7 +282,7 @@ mod tests {
         regs.DUP_idx = DUP_idx_val;
         regs.DB = 0xdb;
 
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
 
         expect_opcode_fetch(&mut cpu, DUP_opcode);
@@ -342,7 +342,7 @@ mod tests {
             regs.DUP2_reg = 0x9999; // value which will be overwritten
             regs.D = DUP1_D;
 
-            let mut expected_regs = regs.clone();
+            let mut expected_regs = regs;
             let mut cpu = CPU::new(regs);
 
             expect_opcode_fetch(&mut cpu, DUP2_opcode);
@@ -377,7 +377,7 @@ mod tests {
             regs.DUP2_index = 0x10;
             regs.D = DUP1_D;
 
-            let mut expected_regs = regs.clone();
+            let mut expected_regs = regs;
             let mut cpu = CPU::new(regs);
 
             expect_opcode_fetch(&mut cpu, DUP2_opcode);
@@ -406,7 +406,7 @@ mod tests {
             regs.D = DUP1_D;
             regs.DB = 0xee;
 
-            let mut expected_regs = regs.clone();
+            let mut expected_regs = regs;
             let mut cpu = CPU::new(regs);
 
             expect_opcode_fetch(&mut cpu, 0xb2);
@@ -437,7 +437,7 @@ mod tests {
             regs.X = 0x1020;
             regs.DB = 0xee;
 
-            let mut expected_regs = regs.clone();
+            let mut expected_regs = regs;
             let mut cpu = CPU::new(regs);
 
             expect_opcode_fetch(&mut cpu, 0xa1);
@@ -489,7 +489,7 @@ mod tests {
             regs.D = DUP1_D;
             regs.DB = 0xee;
 
-            let mut expected_regs = regs.clone();
+            let mut expected_regs = regs;
             let mut cpu = CPU::new(regs);
 
             expect_opcode_fetch(&mut cpu, 0xb1);
@@ -521,7 +521,7 @@ mod tests {
             regs.A = 0x9999; // value which will be overwritten
             regs.D = DUP1_D;
 
-            let mut expected_regs = regs.clone();
+            let mut expected_regs = regs;
             let mut cpu = CPU::new(regs);
 
             expect_opcode_fetch(&mut cpu, 0xa7);
@@ -552,7 +552,7 @@ mod tests {
             regs.D = DUP1_D;
             regs.Y = 0x0303;
 
-            let mut expected_regs = regs.clone();
+            let mut expected_regs = regs;
             let mut cpu = CPU::new(regs);
 
             expect_opcode_fetch(&mut cpu, 0xb7);
@@ -583,7 +583,7 @@ mod tests {
         regs.A = 0x9999; // value which will be overwritten
         regs.S = 0x0402;
 
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
 
         expect_opcode_fetch(&mut cpu, 0xa3);
@@ -611,7 +611,7 @@ mod tests {
         regs.DB = 0xdb;
         regs.Y = 0x3030;
 
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
 
         expect_opcode_fetch(&mut cpu, 0xb3);

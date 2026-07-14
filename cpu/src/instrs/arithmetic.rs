@@ -221,7 +221,7 @@ mod tests {
         regs.P.V = false;
         regs.P.C = false;
 
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
 
         expect_opcode_fetch(&mut cpu, 0x69);
@@ -249,7 +249,7 @@ mod tests {
         regs.P.N = true;
         regs.P.C = false;
 
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
 
         expect_opcode_fetch(&mut cpu, 0x69);
@@ -277,7 +277,7 @@ mod tests {
         regs.P.N = false;
         regs.P.V = false;
 
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
 
         expect_opcode_fetch(&mut cpu, 0x89);
@@ -302,7 +302,7 @@ mod tests {
         regs.P.N = false;
         regs.P.V = false;
 
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
 
         expect_opcode_fetch(&mut cpu, 0x2c);
@@ -331,7 +331,7 @@ mod tests {
         regs.P.N = true;
         regs.P.C = true;
 
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
 
         expect_opcode_fetch(&mut cpu, 0x0e);
@@ -362,7 +362,7 @@ mod tests {
         regs.P.N = true;
         regs.P.C = true;
 
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
 
         expect_opcode_fetch(&mut cpu, 0x0e);
@@ -393,7 +393,7 @@ mod tests {
         regs.P.N = true;
         regs.P.C = true;
 
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
 
         expect_opcode_fetch(&mut cpu, 0x0a);

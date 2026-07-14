@@ -162,7 +162,7 @@ mod tests {
         let mut regs = Registers::default();
         regs.PB = 0x12;
         regs.PC = 0x3456;
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
 
         let mut cpu = CPU::new(regs);
 
@@ -181,7 +181,7 @@ mod tests {
         let mut regs = Registers::default();
         regs.PB = 0x12;
         regs.PC = 0x3456;
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
 
         let mut cpu = CPU::new(regs);
 
@@ -202,7 +202,7 @@ mod tests {
         let mut regs = Registers::default();
         regs.PB = 0x12;
         regs.PC = 0x3456;
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
 
         let mut cpu = CPU::new(regs);
 
@@ -224,7 +224,7 @@ mod tests {
         regs.PB = 0x12;
         regs.PC = 0x3456;
         regs.X = 0x1000;
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
 
         let mut cpu = CPU::new(regs);
 
@@ -247,7 +247,7 @@ mod tests {
         regs.PB = 0x12;
         regs.PC = 0x3456;
         regs.X = 0xf000; // We set a large X so that the X-indexing wraps around
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
 
         let mut cpu = CPU::new(regs);
 
@@ -269,7 +269,7 @@ mod tests {
         let mut regs = Registers::default();
         regs.PB = 0x12;
         regs.PC = 0x3456;
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
 
         let mut cpu = CPU::new(regs);
 
@@ -293,7 +293,7 @@ mod tests {
         regs.PB = 0x12;
         regs.PC = 0x3456;
         regs.S = 0x0188; // set the stack pointer in page 1
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
 
         let mut cpu = CPU::new(regs);
 
@@ -318,7 +318,7 @@ mod tests {
         regs.S = 0x0122;
         regs.X = 0x0120;
         regs.PC = 0x3456;
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
 
         let mut cpu = CPU::new(regs);
 
@@ -344,7 +344,7 @@ mod tests {
         regs.PB = 0x12;
         regs.PC = 0x3456;
         regs.S = 0x0199;
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
 
         expect_opcode_fetch(&mut cpu, 0x22);
@@ -370,7 +370,7 @@ mod tests {
         regs.PB = 0x12;
         regs.PC = 0x3456;
         regs.S = 0x0155;
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
 
         expect_opcode_fetch(&mut cpu, 0x60);
@@ -393,7 +393,7 @@ mod tests {
         regs.PB = 0x12;
         regs.PC = 0x3456;
         regs.S = 0x0155;
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
 
         expect_opcode_fetch(&mut cpu, 0x6b);

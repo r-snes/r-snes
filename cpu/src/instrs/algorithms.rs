@@ -308,7 +308,7 @@ mod tests {
 
         assert_eq!(a, DUP_res);
         assert_eq!(p.C, DUP_c);
-        assert_eq!(p.N, false, "N is always false as we shift right");
+        assert!(!p.N, "N is always false as we shift right");
         assert_eq!(p.Z, DUP_z);
     }
 
@@ -385,30 +385,30 @@ mod tests {
 
         super::inc(&mut a, &mut p);
         assert_eq!(a, 127);
-        assert_eq!(p.Z, false);
-        assert_eq!(p.N, false);
+        assert!(!p.Z);
+        assert!(!p.N);
 
         super::inc(&mut a, &mut p);
         assert_eq!(a, 128);
-        assert_eq!(p.Z, false);
-        assert_eq!(p.N, true);
+        assert!(!p.Z);
+        assert!(p.N);
 
         super::inc(&mut a, &mut p);
         assert_eq!(a, 129);
-        assert_eq!(p.Z, false);
-        assert_eq!(p.N, true);
+        assert!(!p.Z);
+        assert!(p.N);
 
         a = 254;
 
         super::inc(&mut a, &mut p);
         assert_eq!(a, 255);
-        assert_eq!(p.Z, false);
-        assert_eq!(p.N, true);
+        assert!(!p.Z);
+        assert!(p.N);
 
         super::inc(&mut a, &mut p);
         assert_eq!(a, 0);
-        assert_eq!(p.Z, true);
-        assert_eq!(p.N, false);
+        assert!(p.Z);
+        assert!(!p.N);
     }
 
     #[test]
@@ -418,35 +418,35 @@ mod tests {
 
         super::dec(&mut a, &mut p);
         assert_eq!(a, 128);
-        assert_eq!(p.Z, false);
-        assert_eq!(p.N, true);
+        assert!(!p.Z);
+        assert!(p.N);
 
         super::dec(&mut a, &mut p);
         assert_eq!(a, 127);
-        assert_eq!(p.Z, false);
-        assert_eq!(p.N, false);
+        assert!(!p.Z);
+        assert!(!p.N);
 
         super::dec(&mut a, &mut p);
         assert_eq!(a, 126);
-        assert_eq!(p.Z, false);
-        assert_eq!(p.N, false);
+        assert!(!p.Z);
+        assert!(!p.N);
 
         a = 2;
 
         super::dec(&mut a, &mut p);
         assert_eq!(a, 1);
-        assert_eq!(p.Z, false);
-        assert_eq!(p.N, false);
+        assert!(!p.Z);
+        assert!(!p.N);
 
         super::dec(&mut a, &mut p);
         assert_eq!(a, 0);
-        assert_eq!(p.Z, true);
-        assert_eq!(p.N, false);
+        assert!(p.Z);
+        assert!(!p.N);
 
         super::dec(&mut a, &mut p);
         assert_eq!(a, 255);
-        assert_eq!(p.Z, false);
-        assert_eq!(p.N, true);
+        assert!(!p.Z);
+        assert!(p.N);
     }
 
     #[duplicate_item(

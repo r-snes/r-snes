@@ -370,7 +370,7 @@ mod tests {
     #[test]
     #[cfg(target_family = "unix")]
     fn load_from_file() {
-        let plugin = Plugin::load_from_file(&Path::new("/dev/null"));
+        let plugin = Plugin::load_from_file(Path::new("/dev/null"));
 
         assert!(
             matches!(plugin, Err(PluginLoadError::PluginTabError(_))),

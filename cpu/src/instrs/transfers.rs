@@ -86,7 +86,7 @@ mod tests {
         regs.S = 0x0133;
         regs.E = true; // for 8-bit transfer
 
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
 
         expect_opcode_fetch(&mut cpu, 0x9a);
@@ -107,7 +107,7 @@ mod tests {
         regs.S = 0x0133;
         regs.E = false; // for 16-bit transfer
 
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
 
         expect_opcode_fetch(&mut cpu, 0x9a);
@@ -129,7 +129,7 @@ mod tests {
         regs.X = 0x0033;
         regs.P.X = true; // for 8-bit transfer
 
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
 
         expect_opcode_fetch(&mut cpu, 0xaa);
@@ -151,7 +151,7 @@ mod tests {
         regs.E = false; // for 16-bit transfer
         regs.P.X = false; // for 16-bit transfer
 
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
 
         expect_opcode_fetch(&mut cpu, 0xaa);
@@ -173,7 +173,7 @@ mod tests {
         regs.A = 0xff44;
         regs.D = 0x0133;
 
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
 
         expect_opcode_fetch(&mut cpu, 0x5b);

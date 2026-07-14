@@ -62,7 +62,7 @@ mod tests {
         let mut regs = Registers::default();
         regs.PB = 0x12;
         regs.PC = 0x3456;
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
 
         regs.P.DUP_set_flag = true;
         let mut cpu = CPU::new(regs);
@@ -71,7 +71,7 @@ mod tests {
         expect_opcode_fetch(&mut cpu, DUP_opcode);
         expect_internal_cycle(&mut cpu, "clear flag");
 
-        expected_regs.PC = expected_regs.PC + 1; // We expect PC to be incremented
+        expected_regs.PC += 1; // We expect PC to be incremented
         expected_regs.P.DUP_set_flag = false; // and the flag to be cleared
         assert_eq!(cpu.registers, expected_regs, "Flag should be cleared");
 
@@ -79,7 +79,7 @@ mod tests {
         expect_opcode_fetch(&mut cpu, DUP_opcode);
         expect_internal_cycle(&mut cpu, "clearing the flag again");
 
-        expected_regs.PC = expected_regs.PC + 1; // PC should be incremented once again
+        expected_regs.PC += 1; // PC should be incremented once again
         assert_eq!(cpu.registers, expected_regs, "Flag should stay cleared");
 
         expect_opcode_fetch_cycle(&mut cpu);
@@ -96,7 +96,7 @@ mod tests {
         let mut regs = Registers::default();
         regs.PB = 0x12;
         regs.PC = 0x3456;
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
 
         regs.P.DUP_set_flag = false;
         let mut cpu = CPU::new(regs);
@@ -105,7 +105,7 @@ mod tests {
         expect_opcode_fetch(&mut cpu, DUP_opcode);
         expect_internal_cycle(&mut cpu, "set flag");
 
-        expected_regs.PC = expected_regs.PC + 1; // We expect PC to be incremented
+        expected_regs.PC += 1; // We expect PC to be incremented
         expected_regs.P.DUP_set_flag = true; // and the flag to be set
         assert_eq!(cpu.registers, expected_regs, "Flag should be set");
 
@@ -113,7 +113,7 @@ mod tests {
         expect_opcode_fetch(&mut cpu, DUP_opcode);
         expect_internal_cycle(&mut cpu, "setting the flag again");
 
-        expected_regs.PC = expected_regs.PC + 1; // PC should be incremented once again
+        expected_regs.PC += 1; // PC should be incremented once again
         assert_eq!(cpu.registers, expected_regs, "Flag should stay set");
 
         expect_opcode_fetch_cycle(&mut cpu);

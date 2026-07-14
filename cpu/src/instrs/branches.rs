@@ -80,7 +80,7 @@ mod test {
 
             DUP1_flag = !DUP1_set; // branch not taken
 
-            let mut expected_regs = regs.clone();
+            let mut expected_regs = regs;
             let mut cpu = CPU::new(regs);
 
             expect_opcode_fetch(&mut cpu, DUP1_opcode);
@@ -100,7 +100,7 @@ mod test {
 
             DUP1_flag = DUP1_set; // case where we do jump
 
-            let mut expected_regs = regs.clone();
+            let mut expected_regs = regs;
             let mut cpu = CPU::new(regs);
 
             expect_opcode_fetch(&mut cpu, DUP1_opcode);
@@ -128,7 +128,7 @@ mod test {
             DUP1_flag = DUP1_set; // case where we do jump
             regs.E = DUP2_emu;
 
-            let mut expected_regs = regs.clone();
+            let mut expected_regs = regs;
             let mut cpu = CPU::new(regs);
 
             expect_opcode_fetch(&mut cpu, DUP1_opcode);
@@ -156,7 +156,7 @@ mod test {
         regs.PB = 0x12;
         regs.PC = 0x3456;
 
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
 
         expect_opcode_fetch(&mut cpu, 0x82);

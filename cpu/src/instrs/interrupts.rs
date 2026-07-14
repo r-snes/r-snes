@@ -62,7 +62,7 @@ mod test {
         regs.P = 0b10101010.into();
         regs.E = true;
 
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
 
         let mut cpu = CPU::new(regs);
 
@@ -109,7 +109,7 @@ mod test {
         regs.P = 0b10101010.into();
         regs.E = false;
 
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
 
         let mut cpu = CPU::new(regs);
 
@@ -156,7 +156,7 @@ mod test {
         regs.S = 0x0180;
         regs.E = true;
 
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
 
         let mut cpu = CPU::new(regs);
 
@@ -183,7 +183,7 @@ mod test {
         regs.S = 0x0180;
         regs.E = false;
 
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
 
         let mut cpu = CPU::new(regs);
 

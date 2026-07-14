@@ -71,7 +71,7 @@ mod tests {
         regs.E = true; // 8-bit mode
         regs.DB = 0xdb;
 
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
 
         expect_opcode_fetch(&mut cpu, DUP_opcode);
@@ -98,7 +98,7 @@ mod tests {
         regs.X = 0xabcd;
         regs.Y = 0xabcd;
 
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
 
         expect_opcode_fetch(&mut cpu, 0x9c);
@@ -122,7 +122,7 @@ mod tests {
         regs.P.M = false;
         regs.DB = 0xdb;
 
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
 
         expect_opcode_fetch(&mut cpu, 0x8d);
