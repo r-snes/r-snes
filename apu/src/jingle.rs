@@ -330,8 +330,9 @@ pub fn build_driver() -> Vec<u8> {
 
     // --- one-time DSP / timer / variable setup ---
     a.dsp_write(0x6C, 0x20);                    // FLG: unmuted, echo writes off
-    a.dsp_write(0x0C, 0x60);                    // MVOLL (3 voices: headroom)
-    a.dsp_write(0x1C, 0x60);                    // MVOLR
+    // Master volume handled here
+    a.dsp_write(0x0C, 0x10);                    // MVOLL (3 voices: headroom)
+    a.dsp_write(0x1C, 0x10);                    // MVOLR
     a.dsp_write(0x5D, (DIR_ADDR >> 8) as u8);   // DIR page
     let vols: [u8; 3] = [0x38, 0x46, 0x24];
     for v in 0..3u8 {
