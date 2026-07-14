@@ -203,7 +203,7 @@ fn gui_loop(
         match ev {
             RSnesEvent::LoadRom { path } => match rsnes::RSnesCore::load_rom(&path) {
                 Ok(some_emu) => rsnes_core = Some(some_emu),
-                Err(err) => println!("Error loading ROM: {}", err),
+                Err(err) => gui.pass_error(err),
             },
             RSnesEvent::Quit | RSnesEvent::Close => break,
             _ => {}
