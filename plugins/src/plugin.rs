@@ -1,15 +1,18 @@
-use crate::perm_tree::{
-    RSnesPermissions,
-    PermTreeNode,
-};
+// uncomment below if code coverage is getting too low, as
+// it would be "fine" to count GUI code towards coverage
+// #[cfg(not(tarpaulin_include))]
+pub mod gui;
+
+use crate::perm_tree::{PermTreeNode, RSnesPermissions};
+use crate::plugin::gui::PluginPermRequest;
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-use std::fs as fs;
 use common::snes_address::SnesAddress;
 use piccolo as picc;
 use piccolo::io as p_io;
+use std::fs;
 
 #[derive(Debug)]
 pub enum PluginLoadError {
@@ -227,6 +230,7 @@ impl Plugin {
         PluginPermRequest {
             plugin: self,
             allow_all: false,
+            show_none: false,
         }
     }
 
@@ -316,38 +320,6 @@ impl Plugin {
         });
 
         lua.execute(&ex)
-    }
-}
-
-pub struct PluginPermRequest<'a> {
-    pub plugin: &'a Plugin,
-    pub allow_all: bool,
-}
-
-impl<'a> PluginPermRequest<'a> {
-    pub fn show_gui(&mut self, ui: &mut egui::Ui) {
-        let close = |ui: &mut egui::Ui| {
-            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
-        };
-
-        ui.label("This is still very much a work in progress");
-
-        ui.separator();
-
-        ui.horizontal(|ui| {
-            if ui.button("Grant requested permissions").clicked() {
-                self.allow_all = true;
-                close(ui);
-            }
-            if ui.button("Cancel plugin execution").clicked() {
-                self.allow_all = false;
-                close(ui);
-            }
-        });
-
-        ui.collapsing("we can even have collapsing content", |ui| {
-            ui.label("peekaboo!");
-        });
     }
 }
 

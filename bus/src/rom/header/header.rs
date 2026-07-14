@@ -13,7 +13,7 @@ use crate::rom::header::mapping_mode::{MappingMode, RomSpeed, SpeedAndMappingMod
 /// Represents the header of a SNES ROM.
 ///
 /// Contains all metadata extracted from the ROM header.
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone, Debug)]
 pub struct RomHeader {
     pub bytes: [u8; HEADER_SIZE], // Raw bytes of the ROM header
     pub title: String,
@@ -50,7 +50,7 @@ impl RomHeader {
         let SpeedAndMappingMode {
             rom_speed,
             mapping_mode,
-        } = SpeedAndMappingMode::from_byte(header_bytes[HEADER_SPEED_MAP_OFFSET]);
+        } = SpeedAndMappingMode::from_byte(header_bytes[HEADER_SPEED_MAP_OFFSET]).unwrap();
 
         RomHeader {
             bytes: header_bytes,

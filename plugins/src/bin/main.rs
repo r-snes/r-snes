@@ -1,6 +1,7 @@
+use egui::ScrollArea;
 use plugins::plugin::{
     Plugin,
-    PluginPermRequest,
+    gui::PluginPermRequest,
 };
 use eframe::egui;
 
@@ -21,8 +22,10 @@ impl<'app, 'req> PermRequestApp<'app, 'req> {
 impl eframe::App for PermRequestApp<'_, '_> {
     fn ui(&mut self, ui: &mut egui::Ui, _: &mut eframe::Frame) {
         egui::CentralPanel::default().show_inside(ui, |ui| {
-            ui.heading(&self.title);
-            self.perm_request.show_gui(ui);
+            ScrollArea::both().show(ui, |ui| {
+                ui.heading(&self.title);
+                self.perm_request.show_gui(ui);
+            });
         });
     }
 }

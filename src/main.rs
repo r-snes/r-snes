@@ -2,7 +2,7 @@ mod gui;
 mod rsnes;
 
 use crate::{
-    gui::{Gui, RSnesEvent},
+    gui::{Gui, GuiFrameData, RSnesEvent},
     rsnes::{RSnesCore, RSnesEmu},
 };
 #[cfg(feature = "cli")]
@@ -19,8 +19,7 @@ fn gui_emu_loop(
     gui: &mut gui::Gui,
     rsnes: RSnesCore,
 
-    #[cfg(feature = "plugins")]
-    plugin: Option<Plugin>,
+    #[cfg(feature = "plugins")] plugin: Option<Plugin>,
 ) -> Option<RSnesEvent> {
     let mut frame_nb = 0_u64;
     let exec_start = Instant::now();
@@ -28,6 +27,12 @@ fn gui_emu_loop(
     let mut last_instant = Instant::now();
     let mut frame_accum: f64 = 0.0;
     let mut master_cycle_accum: f64 = 0.0;
+
+    // Snapshot the ROM header once — it never changes while the ROM is loaded,
+    // so there's no reason to rebuild it every frame.
+    let rom_info = rsnes.rom_info();
+    let title = rom_info.header.title.trim();
+    gui.set_rom_title(if title.is_empty() { None } else { Some(title) });
 
     let mut emu = cfg_select! {
         feature = "plugins" => RSnesEmu::new_with_plugin(rsnes, plugin).unwrap(),
@@ -81,14 +86,16 @@ fn gui_emu_loop(
         // temporary: toggle VBLANK each rendered frame
         emu_mut.bus.io.rdnmi = !emu_mut.bus.io.rdnmi;
 
-        let events = gui.update(&emu_mut.ppu_renderer.framebuffer);
-        drop(emu_mut); // release the RefCell so that we're able to call plugins
+        let events = gui.update(
+            &emu_mut.ppu_renderer.framebuffer,
+            GuiFrameData {
+                rom_info: Some(&rom_info),
+            },
+        );
+        drop(emu_mut);
+
         for state_event in events {
             match state_event {
-                // RSnesEvent::LoadRom { path } => match rsnes::RSnes::load_rom(&path) {
-                //     Ok(emu_) => emu = emu_,
-                //     Err(err) => eprintln!("Error loading ROM: {}", err),
-                // },
                 RSnesEvent::Quit => break 'emu_loop Some(RSnesEvent::Quit),
                 RSnesEvent::Close => break 'emu_loop None,
                 RSnesEvent::ButtonDown => {
@@ -128,33 +135,45 @@ fn gui_emu_loop(
     closing_ev
 }
 
-/// The no-ROM idle state: sit on the logo screen, and after a few
-/// seconds start the waiting music — a real SPC700 driver uploaded into
-/// a standalone APU over the IPL boot protocol (see `apu::jingle`).
+/// The no-ROM idle state: render the logo screen (plus any open overlays)
+/// at the normal frame rate, and after a few seconds start the waiting
+/// music — a real SPC700 driver uploaded into a standalone APU over the
+/// IPL boot protocol (see `apu::jingle`).
 ///
 /// Returns the first event the outer loop cares about. Input-only events
 /// (buttons, plugin actions) are meaningless without a game and are
 /// swallowed here.
-fn gui_idle_loop(gui: &mut Gui) -> RSnesEvent {
+fn gui_idle_loop(
+    gui: &mut Gui,
+    default_framebuffer: &ppu::rendering::RawFramebuffer,
+) -> RSnesEvent {
     use apu::jingle::IdleJingle;
 
     /// Silence on the logo screen before the music starts.
     const JINGLE_DELAY: Duration = Duration::from_secs(3);
-    /// Keep ~256 ms queued on the device: far more than one 5 ms poll
+    /// Keep ~256 ms queued on the device: far more than one ~16 ms frame
     /// interval, so scheduling hiccups never underrun, while staying
     /// small enough to stop quickly when the user loads a ROM.
     const TARGET_BUFFERED_FRAMES: u32 = 8_192;
     /// Generation chunk: 32 ms of audio per `generate` call.
     const CHUNK_FRAMES: usize = 1_024;
 
+    gui.set_rom_title(None);
+
     let idle_start = Instant::now();
     let mut jingle: Option<IdleJingle> = None;
     let mut jingle_failed = false;
 
     loop {
-        // Events first, so Quit/Close/LoadRom never wait on audio work.
-        while let Some(ev) = gui.poll_event() {
-            match ev {
+        let frame_start = Instant::now();
+
+        // Render the logo + overlays; this also polls input (routed
+        // through egui first). No ROM loaded, so no rom_info to show —
+        // the overlay will say so if the user opens it.
+        let events = gui.update(default_framebuffer, GuiFrameData::default());
+
+        for event in events {
+            match event {
                 RSnesEvent::ButtonDown
                 | RSnesEvent::ButtonUp
                 | RSnesEvent::RunPluginDefault => {}
@@ -198,24 +217,23 @@ fn gui_idle_loop(gui: &mut Gui) -> RSnesEvent {
             jingle_failed = true;
         }
 
-        // ~256 ms of queued audio makes a 5 ms nap safe, and
-        // keeps this loop's idle overhead minimal.
-        std::thread::sleep(Duration::from_millis(5));
+        // ~256 ms of queued audio makes sleeping out the rest of the
+        // frame safe for the jingle.
+        let elapsed = frame_start.elapsed().as_secs_f64();
+        if elapsed < Gui::FRAME_DURATION {
+            std::thread::sleep(Duration::from_secs_f64(Gui::FRAME_DURATION - elapsed));
+        }
     }
 }
 
 fn gui_loop(
     mut rsnes_core: Option<RSnesCore>,
 
-    #[cfg(feature = "plugins")]
-    mut plugin: Option<Plugin>,
+    #[cfg(feature = "plugins")] mut plugin: Option<Plugin>,
 ) -> Result<(), String> {
     let mut gui = gui::Gui::new()?;
     const DEFAULT_FRAMEBUFFER: &ppu::rendering::RawFramebuffer =
         include_bytes!("../logo_framebuffer.raw");
-
-    gui.draw_framebuffer(DEFAULT_FRAMEBUFFER)?;
-    gui.present();
 
     loop {
         // move out of the `Option` in case it's `Some`
@@ -223,7 +241,7 @@ fn gui_loop(
         // guaranteeing that the `RSnes` is destructed when
         // we leave the loop
         let ev = match rsnes_core.take() {
-            None => Some(gui_idle_loop(&mut gui)),
+            None => gui_idle_loop(&mut gui, DEFAULT_FRAMEBUFFER),
 
             Some(emu) => {
                 let ret_ev = cfg_select! {
@@ -231,18 +249,13 @@ fn gui_loop(
                     _ => gui_emu_loop(&mut gui, emu),
                 };
 
-                if ret_ev != Some(RSnesEvent::Quit) {
-                    // re-render default framebuffer after game has exited
-                    gui.draw_framebuffer(DEFAULT_FRAMEBUFFER)?;
-                    gui.present();
+                match ret_ev {
+                    Some(ev) => ev,
+                    None => continue,
                 }
-
-                ret_ev
             }
         };
-        let Some(ev) = ev else {
-            continue;
-        };
+
         match ev {
             RSnesEvent::LoadRom { path } => match rsnes::RSnesCore::load_rom(&path) {
                 Ok(some_emu) => rsnes_core = Some(some_emu),
