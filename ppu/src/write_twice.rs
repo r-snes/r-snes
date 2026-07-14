@@ -32,7 +32,7 @@ impl WriteTwice {
     pub fn new() -> Self {
         Self {
             latch: 0,
-            phase: BytePhase::Low
+            phase: BytePhase::Low,
         }
     }
 

@@ -1,7 +1,7 @@
+use crate::cgram::CGRAM;
 use crate::constants::SCANLINES_PER_FRAME;
 use crate::registers::PPURegisters;
 use crate::vram::VRAM;
-use crate::cgram::CGRAM;
 use common::u16_split::U16Split;
 
 pub struct PPU {
@@ -36,10 +36,10 @@ impl PPU {
             // ==========================
             // OAM
             // ==========================
-            0x2101 => self.regs.objsel = value, // TODO
+            0x2101 => self.regs.objsel = value,           // TODO
             0x2102 => *self.regs.oamadd.lo_mut() = value, // TODO
             0x2103 => *self.regs.oamadd.hi_mut() = value & 0x01, // TODO
-            0x2104 => self.regs.oamdata = value, // TODO
+            0x2104 => self.regs.oamdata = value,          // TODO
 
             // ==========================
             // BACKGROUNDS
@@ -156,37 +156,43 @@ impl PPU {
             // Mode 7
             // ==========================
             0x211A => self.regs.m7sel = value, // TODO
-            0x211B => { // M7A (W8x2)
+            0x211B => {
+                // M7A (W8x2)
                 let lo = self.regs.mode7_latch;
                 *self.regs.m7a.lo_mut() = lo;
                 *self.regs.m7a.hi_mut() = value;
                 self.regs.mode7_latch = value;
             }
-            0x211C => { // M7B (W8x2)
+            0x211C => {
+                // M7B (W8x2)
                 let lo = self.regs.mode7_latch;
                 *self.regs.m7b.lo_mut() = lo;
                 *self.regs.m7b.hi_mut() = value;
                 self.regs.mode7_latch = value;
             }
-            0x211D => { // M7C (W8x2)
+            0x211D => {
+                // M7C (W8x2)
                 let lo = self.regs.mode7_latch;
                 *self.regs.m7c.lo_mut() = lo;
                 *self.regs.m7c.hi_mut() = value;
                 self.regs.mode7_latch = value;
             }
-            0x211E => { // M7D (W8x2)
+            0x211E => {
+                // M7D (W8x2)
                 let lo = self.regs.mode7_latch;
                 *self.regs.m7d.lo_mut() = lo;
                 *self.regs.m7d.hi_mut() = value;
                 self.regs.mode7_latch = value;
             }
-            0x211F => { // M7X (W8x2)
+            0x211F => {
+                // M7X (W8x2)
                 let lo = self.regs.mode7_latch;
                 *self.regs.m7x.lo_mut() = lo;
                 *self.regs.m7x.hi_mut() = value;
                 self.regs.mode7_latch = value;
             }
-            0x2120 => { // M7Y (W8x2)
+            0x2120 => {
+                // M7Y (W8x2)
                 let lo = self.regs.mode7_latch;
                 *self.regs.m7y.lo_mut() = lo;
                 *self.regs.m7y.hi_mut() = value;
@@ -202,29 +208,32 @@ impl PPU {
             // ==========================
             // Window
             // ==========================
-            0x2123 => self.regs.w12sel = value, // TODO
-            0x2124 => self.regs.w34sel = value, // TODO
+            0x2123 => self.regs.w12sel = value,  // TODO
+            0x2124 => self.regs.w34sel = value,  // TODO
             0x2125 => self.regs.wobjsel = value, // TODO
-            0x2126 => self.regs.wh0 = value, // TODO
-            0x2127 => self.regs.wh1 = value, // TODO
-            0x2128 => self.regs.wh2 = value, // TODO
-            0x2129 => self.regs.wh3 = value, // TODO
-            0x212A => self.regs.wbglog = value, // TODO
+            0x2126 => self.regs.wh0 = value,     // TODO
+            0x2127 => self.regs.wh1 = value,     // TODO
+            0x2128 => self.regs.wh2 = value,     // TODO
+            0x2129 => self.regs.wh3 = value,     // TODO
+            0x212A => self.regs.wbglog = value,  // TODO
             0x212B => self.regs.wobjlog = value, // TODO
 
             // ==========================
             // COLOR MATH / LAYER ENABLE
             // ==========================
             0x212C => self.regs.tm = value,
-            0x212D => self.regs.ts = value, // TODO
-            0x212E => self.regs.tmw = value, // TODO
-            0x212F => self.regs.tsw = value, // TODO
-            0x2130 => self.regs.cgwsel = value, // TODO
+            0x212D => self.regs.ts = value,      // TODO
+            0x212E => self.regs.tmw = value,     // TODO
+            0x212F => self.regs.tsw = value,     // TODO
+            0x2130 => self.regs.cgwsel = value,  // TODO
             0x2131 => self.regs.cgadsub = value, // TODO
             0x2132 => self.regs.coldata = value, // TODO
 
             _ => {
-                println!("PPU WRITE IGNORED: ${:04X} = {:02X} (register not handled by PPU)", addr, value);
+                println!(
+                    "PPU WRITE IGNORED: ${:04X} = {:02X} (register not handled by PPU)",
+                    addr, value
+                );
             }
         }
     }
@@ -268,7 +277,10 @@ impl PPU {
             0x213F => Self::unimplemented_read_only(addr), // TODO
 
             _ => {
-                println!("PPU READ IGNORED: ${:04X} (register not handled by PPU)", addr);
+                println!(
+                    "PPU READ IGNORED: ${:04X} (register not handled by PPU)",
+                    addr
+                );
                 0
             }
         }
@@ -294,10 +306,7 @@ impl PPU {
     }
 
     fn unimplemented_read_only(addr: u16) -> u8 {
-        println!(
-            "PPU READ IGNORED: ${:04X} (unimplemented register)",
-            addr
-        );
+        println!("PPU READ IGNORED: ${:04X} (unimplemented register)", addr);
         0
     }
 }
@@ -662,7 +671,12 @@ mod tests {
         for &(addr, getter) in cases {
             let mut ppu = PPU::new();
             ppu.write(addr, 0xA5);
-            assert_eq!(getter(&ppu.regs), 0xA5, "register at ${:04X} did not store value", addr);
+            assert_eq!(
+                getter(&ppu.regs),
+                0xA5,
+                "register at ${:04X} did not store value",
+                addr
+            );
         }
     }
 
@@ -691,7 +705,12 @@ mod tests {
         for &(addr, getter) in cases {
             let mut ppu = PPU::new();
             ppu.write(addr, 0xA5);
-            assert_eq!(getter(&ppu.regs), 0xA5, "register at ${:04X} did not store value", addr);
+            assert_eq!(
+                getter(&ppu.regs),
+                0xA5,
+                "register at ${:04X} did not store value",
+                addr
+            );
         }
     }
 

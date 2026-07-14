@@ -100,7 +100,11 @@ mod tests {
     fn make_ppu_with_mode(mode: u8, force_blank: bool, brightness: u8) -> PPU {
         let mut ppu = PPU::new();
         // INIDISP: bit7 = force blank, bits[3:0] = brightness
-        let inidisp = if force_blank { 0x80 | (brightness & 0x0F) } else { brightness & 0x0F };
+        let inidisp = if force_blank {
+            0x80 | (brightness & 0x0F)
+        } else {
+            brightness & 0x0F
+        };
         ppu.write(0x2100, inidisp);
         ppu.write(0x2105, mode & 0x07);
         ppu
@@ -148,7 +152,7 @@ mod tests {
         let mut renderer = Renderer::new();
         renderer.set_pixel(0, 1, 0xAA, 0xBB, 0xCC);
         let idx = SCREEN_WIDTH * 3;
-        assert_eq!(renderer.framebuffer[idx],     0xAA);
+        assert_eq!(renderer.framebuffer[idx], 0xAA);
         assert_eq!(renderer.framebuffer[idx + 1], 0xBB);
         assert_eq!(renderer.framebuffer[idx + 2], 0xCC);
     }
@@ -159,9 +163,9 @@ mod tests {
         let mut renderer = Renderer::new();
         renderer.set_pixel(5, 3, 0xFF, 0xFF, 0xFF);
         // pixel at (4, 3) and (6, 3) must stay black
-        let left  = (3 * SCREEN_WIDTH + 4) * 3;
+        let left = (3 * SCREEN_WIDTH + 4) * 3;
         let right = (3 * SCREEN_WIDTH + 6) * 3;
-        assert_eq!(renderer.framebuffer[left],  0);
+        assert_eq!(renderer.framebuffer[left], 0);
         assert_eq!(renderer.framebuffer[right], 0);
     }
 
@@ -248,12 +252,14 @@ mod tests {
     fn test_render_scanline_force_blank_outputs_black() {
         let mut renderer = Renderer::new();
         // Pre-fill with non-black to detect overwrite
-        for b in renderer.framebuffer.iter_mut() { *b = 0xFF; }
+        for b in renderer.framebuffer.iter_mut() {
+            *b = 0xFF;
+        }
         let ppu = make_ppu_with_mode(1, true, 15);
         renderer.render_scanline(&ppu, 0);
         for x in 0..SCREEN_WIDTH {
             let idx = x * 3;
-            assert_eq!(renderer.framebuffer[idx],     0, "R not black at x={}", x);
+            assert_eq!(renderer.framebuffer[idx], 0, "R not black at x={}", x);
             assert_eq!(renderer.framebuffer[idx + 1], 0, "G not black at x={}", x);
             assert_eq!(renderer.framebuffer[idx + 2], 0, "B not black at x={}", x);
         }
@@ -263,7 +269,9 @@ mod tests {
     #[test]
     fn test_render_scanline_force_blank_only_affects_target_scanline() {
         let mut renderer = Renderer::new();
-        for b in renderer.framebuffer.iter_mut() { *b = 0xFF; }
+        for b in renderer.framebuffer.iter_mut() {
+            *b = 0xFF;
+        }
         let ppu = make_ppu_with_mode(1, true, 15);
         renderer.render_scanline(&ppu, 1); // blank scanline 1
         // Scanline 0 must be untouched
@@ -278,12 +286,14 @@ mod tests {
     #[test]
     fn test_render_scanline_unknown_mode_outputs_black() {
         let mut renderer = Renderer::new();
-        for b in renderer.framebuffer.iter_mut() { *b = 0xFF; }
+        for b in renderer.framebuffer.iter_mut() {
+            *b = 0xFF;
+        }
         let ppu = make_ppu_with_mode(0, false, 15); // mode 0 not implemented
         renderer.render_scanline(&ppu, 0);
         for x in 0..SCREEN_WIDTH {
             let idx = x * 3;
-            assert_eq!(renderer.framebuffer[idx],     0);
+            assert_eq!(renderer.framebuffer[idx], 0);
             assert_eq!(renderer.framebuffer[idx + 1], 0);
             assert_eq!(renderer.framebuffer[idx + 2], 0);
         }
@@ -314,7 +324,7 @@ mod tests {
         assert_eq!(renderer.current_brightness, 15);
     }
 
-     /// After the delay counts down, brightness must step by 1 toward the target each call.
+    /// After the delay counts down, brightness must step by 1 toward the target each call.
     #[test]
     fn test_brightness_steps_toward_target_after_delay() {
         let mut renderer = Renderer::new();

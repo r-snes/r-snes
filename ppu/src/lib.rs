@@ -1,8 +1,8 @@
-pub mod constants;
-pub mod vram;
 pub mod cgram;
+pub mod constants;
 pub mod ppu;
 pub mod registers;
+pub mod vram;
 pub mod write_twice;
 
 pub mod rendering;

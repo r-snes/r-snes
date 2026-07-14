@@ -6,7 +6,7 @@ pub type RawVRAM = [u16; VRAM_SIZE / 2];
 
 pub struct VRAM {
     pub memory: Box<RawVRAM>, // VRAM stored as u16 words
-    pub vram_latch: u16, // word latch for reads
+    pub vram_latch: u16,      // word latch for reads
 }
 
 impl VRAM {
@@ -205,8 +205,8 @@ mod tests {
         assert_eq!(VRAM::increment_amount(&make_regs(0b10, 0)), 128);
         assert_eq!(VRAM::increment_amount(&make_regs(0b11, 0)), 128);
         // Upper bits masked out
-        assert_eq!(VRAM::increment_amount(&make_regs(0xFC, 0)), 1);   // 0xFC & 0b11 == 0b00
-        assert_eq!(VRAM::increment_amount(&make_regs(0x85, 0)), 32);  // 0x85 & 0b11 == 0b01
+        assert_eq!(VRAM::increment_amount(&make_regs(0xFC, 0)), 1); // 0xFC & 0b11 == 0b00
+        assert_eq!(VRAM::increment_amount(&make_regs(0x85, 0)), 32); // 0x85 & 0b11 == 0b01
         assert_eq!(VRAM::increment_amount(&make_regs(0x86, 0)), 128); // 0x86 & 0b11 == 0b10
     }
 
@@ -232,7 +232,7 @@ mod tests {
     // ============================================================
     // write_vmadd ($2116 / $2117)
     // ============================================================
- 
+
     /// write_vmadd_low updates the low byte of vmadd and reloads the latch;
     /// write_vmadd_high strips bit 7, updates the high byte, reloads the latch,
     /// and must not touch the low byte.
@@ -241,13 +241,13 @@ mod tests {
         let mut vram = VRAM::new();
         vram.memory[0x0005] = 0xABCD;
         vram.memory[0x0142] = 0x1234; // address resulting from vmadd=0x0042, high write 0x81 & 0x7F = 0x01
- 
+
         // Low byte write
         let mut regs = make_regs(0, 0x0000);
         vram.write_vmadd_low(&mut regs, 0x05);
         assert_eq!(regs.vmadd, 0x0005);
         assert_eq!(vram.vram_latch, 0xABCD);
- 
+
         // High byte write: bit 7 masked, low byte untouched
         let mut regs = make_regs(0, 0x0042);
         vram.write_vmadd_high(&mut regs, 0x81);
