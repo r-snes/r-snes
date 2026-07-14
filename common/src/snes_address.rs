@@ -83,8 +83,6 @@ pub use snes_addr;
 
 #[cfg(test)]
 mod test {
-    use std::u16;
-
     use super::*;
 
     #[test]

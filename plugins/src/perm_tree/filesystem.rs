@@ -372,7 +372,7 @@ mod test {
         assert!(abc > ab); // abc contains more files than ab
         assert!(abc > ca); // abc contains more files than ca
 
-        assert!(!(ab >= ca) && !(ab <= ca)); // ab and ca aren't comparable
+        assert_eq!(ab.partial_cmp(&ca), None); // ab and ca aren't comparable
 
         let all = build_file_write_perms("\"all\"");
         for t in [abc, ab, ca] {
