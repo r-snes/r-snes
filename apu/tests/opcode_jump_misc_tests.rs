@@ -1,7 +1,6 @@
-/// Jump/branch/misc instruction tests
-
-use apu::cpu::{Spc700, FLAG_B, FLAG_I, FLAG_N, FLAG_Z};
 use apu::Memory;
+/// Jump/branch/misc instruction tests
+use apu::cpu::{FLAG_B, FLAG_I, FLAG_N, FLAG_Z, Spc700};
 
 // ============================================================
 // Helper
@@ -384,7 +383,10 @@ fn test_brk_sets_break_and_clears_interrupt_enable() {
     mem.write8(0x0200, 0x0F);
     cpu.step(&mut mem);
     assert!(cpu.get_flag(FLAG_B), "B must be set");
-    assert!(!cpu.get_flag(FLAG_I), "I (interrupt enable) must be cleared");
+    assert!(
+        !cpu.get_flag(FLAG_I),
+        "I (interrupt enable) must be cleared"
+    );
 }
 
 #[test]

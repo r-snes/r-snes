@@ -1,3 +1,4 @@
+use apu::Memory;
 /// BRR decoder tests
 ///
 /// Covers:
@@ -7,9 +8,7 @@
 ///   - decode_brr_block: header parsing, end/loop flags, history threading
 ///   - Brr struct defaults and field semantics
 ///   - BrrState block-advance and wrap logic
-
-use apu::dsp::{decode_brr_nibble, decode_brr_block, Brr};
-use apu::Memory;
+use apu::dsp::{Brr, decode_brr_block, decode_brr_nibble};
 
 // ============================================================
 // decode_brr_nibble — core arithmetic
@@ -81,7 +80,10 @@ fn test_nibble_shift_above_12_non_negative_saturates_to_zero() {
     // shift=13-15 with non-negative nibble → 0
     for shift in 13u8..=15 {
         let s = decode_brr_nibble(4, shift, 0, 0, 0);
-        assert_eq!(s, 0, "shift={shift} should saturate non-negative nibble to 0");
+        assert_eq!(
+            s, 0,
+            "shift={shift} should saturate non-negative nibble to 0"
+        );
     }
 }
 
@@ -108,7 +110,7 @@ fn test_filter1_uses_prev1_only() {
 #[test]
 fn test_filter1_ignores_prev2() {
     // prev2 should have no effect in filter 1
-    let s_no_prev2  = decode_brr_nibble(0, 0, 1, 512, 0);
+    let s_no_prev2 = decode_brr_nibble(0, 0, 1, 512, 0);
     let s_with_prev2 = decode_brr_nibble(0, 0, 1, 512, 9999);
     assert_eq!(s_no_prev2, s_with_prev2);
 }
@@ -208,7 +210,7 @@ fn test_block_end_flag_parsed() {
     let mut p2 = 0i16;
     let (_, end, do_loop) = decode_brr_block(&mem.ram, 0x0100, &mut p1, &mut p2);
 
-    assert!(end,     "end flag should be set");
+    assert!(end, "end flag should be set");
     assert!(!do_loop, "loop flag should not be set");
 }
 
@@ -222,7 +224,7 @@ fn test_block_loop_flag_parsed() {
     let mut p2 = 0i16;
     let (_, end, do_loop) = decode_brr_block(&mem.ram, 0x0100, &mut p1, &mut p2);
 
-    assert!(!end,   "end flag should not be set");
+    assert!(!end, "end flag should not be set");
     assert!(do_loop, "loop flag should be set");
 }
 
@@ -311,7 +313,10 @@ fn test_block_prev_updated_after_decode() {
     let (samples, _, _) = decode_brr_block(&mem.ram, 0x0500, &mut p1, &mut p2);
 
     assert_eq!(p1, samples[15], "p1 must equal last decoded sample");
-    assert_eq!(p2, samples[14], "p2 must equal second-to-last decoded sample");
+    assert_eq!(
+        p2, samples[14],
+        "p2 must equal second-to-last decoded sample"
+    );
 }
 
 #[test]
@@ -334,11 +339,11 @@ fn test_block_16_samples_decoded() {
 #[test]
 fn test_brr_default_state() {
     let brr = Brr::default();
-    assert_eq!(brr.addr,        0);
-    assert_eq!(brr.nibble_idx,  0);
-    assert_eq!(brr.prev1,       0);
-    assert_eq!(brr.prev2,       0);
-    assert_eq!(brr.loop_addr,   0);
+    assert_eq!(brr.addr, 0);
+    assert_eq!(brr.nibble_idx, 0);
+    assert_eq!(brr.prev1, 0);
+    assert_eq!(brr.prev2, 0);
+    assert_eq!(brr.loop_addr, 0);
     assert_eq!(brr.buffer_fill, 0);
     assert_eq!(brr.sample_buffer, [0i16; 16]);
 }
@@ -374,7 +379,7 @@ fn test_brr_addr_advances_by_9_at_block_boundary() {
 #[test]
 fn test_brr_loop_addr_stored_separately() {
     let mut brr = Brr::default();
-    brr.addr      = 0x2000;
+    brr.addr = 0x2000;
     brr.loop_addr = 0x1500;
     // On a loop event the DSP copies loop_addr → addr
     brr.addr = brr.loop_addr;
@@ -399,7 +404,7 @@ fn test_brr_history_reset_on_loop() {
     let mut brr = Brr::default();
     brr.prev1 = 9999;
     brr.prev2 = 8888;
-    brr.addr  = brr.loop_addr;
+    brr.addr = brr.loop_addr;
     brr.prev1 = 0;
     brr.prev2 = 0;
     assert_eq!(brr.prev1, 0);
@@ -412,10 +417,10 @@ fn test_brr_buffer_fill_set_after_decode() {
     let mut brr = Brr::default();
     // Simulate what the DSP does after a successful block decode
     brr.sample_buffer = [100i16; 16];
-    brr.buffer_fill   = 16;
-    brr.nibble_idx    = 0;
+    brr.buffer_fill = 16;
+    brr.nibble_idx = 0;
     assert_eq!(brr.buffer_fill, 16);
-    assert_eq!(brr.nibble_idx,  0);
+    assert_eq!(brr.nibble_idx, 0);
 }
 
 // ============================================================

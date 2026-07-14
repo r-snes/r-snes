@@ -14,7 +14,6 @@
 ///   - $F200–$F27F:       direct DSP window (test-code path)
 ///   - read16/write16:    little-endian, correct wrapping at $FFFF
 ///   - cpu_port_write/read: SNES↔APU communication helpers
-
 use apu::Memory;
 
 // ============================================================
@@ -126,8 +125,14 @@ fn test_f1_bit4_clears_ports_0_and_1_in() {
     mem.port_in[0] = 0xAB;
     mem.port_in[1] = 0xCD;
     mem.write8(0x00F1, 0x10); // bit 4 → clear ports 0-1 input latches
-    assert_eq!(mem.port_in[0], 0, "port_in[0] must be cleared by CONTROL bit 4");
-    assert_eq!(mem.port_in[1], 0, "port_in[1] must be cleared by CONTROL bit 4");
+    assert_eq!(
+        mem.port_in[0], 0,
+        "port_in[0] must be cleared by CONTROL bit 4"
+    );
+    assert_eq!(
+        mem.port_in[1], 0,
+        "port_in[1] must be cleared by CONTROL bit 4"
+    );
 }
 
 #[test]
@@ -136,8 +141,14 @@ fn test_f1_bit5_clears_ports_2_and_3_in() {
     mem.port_in[2] = 0xAB;
     mem.port_in[3] = 0xCD;
     mem.write8(0x00F1, 0x20); // bit 5 → clear ports 2-3 input latches
-    assert_eq!(mem.port_in[2], 0, "port_in[2] must be cleared by CONTROL bit 5");
-    assert_eq!(mem.port_in[3], 0, "port_in[3] must be cleared by CONTROL bit 5");
+    assert_eq!(
+        mem.port_in[2], 0,
+        "port_in[2] must be cleared by CONTROL bit 5"
+    );
+    assert_eq!(
+        mem.port_in[3], 0,
+        "port_in[3] must be cleared by CONTROL bit 5"
+    );
 }
 
 #[test]
@@ -150,8 +161,8 @@ fn test_f1_port_clear_bits_do_not_affect_other_ports() {
     mem.write8(0x00F1, 0x20); // clear ports 2-3 only
     assert_eq!(mem.port_in[0], 0x11, "port 0 must be unaffected");
     assert_eq!(mem.port_in[1], 0x22, "port 1 must be unaffected");
-    assert_eq!(mem.port_in[2], 0,    "port 2 must be cleared");
-    assert_eq!(mem.port_in[3], 0,    "port 3 must be cleared");
+    assert_eq!(mem.port_in[2], 0, "port 2 must be cleared");
+    assert_eq!(mem.port_in[3], 0, "port 3 must be cleared");
 }
 
 #[test]
@@ -170,7 +181,11 @@ fn test_f1_bit7_is_rom_enable_not_a_port_clear() {
     mem.port_in = [0x11, 0x22, 0x33, 0x44];
     mem.write8(0x00F1, 0x80);
     assert_eq!(mem.control & 0x80, 0x80, "bit 7 must be stored");
-    assert_eq!(mem.port_in, [0x11, 0x22, 0x33, 0x44], "bit 7 must clear nothing");
+    assert_eq!(
+        mem.port_in,
+        [0x11, 0x22, 0x33, 0x44],
+        "bit 7 must clear nothing"
+    );
 }
 
 #[test]
@@ -194,7 +209,11 @@ fn test_f2_stores_dsp_address_latch() {
     mem.write8(0x00F2, 0x5D); // latch DIR register index
     mem.write8(0x00F3, 0x08); // write 0x08 to DIR
     // Read back via $F3 with the same latch still set
-    assert_eq!(mem.read8(0x00F3), 0x08, "latch must route $F3 to the correct register");
+    assert_eq!(
+        mem.read8(0x00F3),
+        0x08,
+        "latch must route $F3 to the correct register"
+    );
 }
 
 #[test]
@@ -207,7 +226,11 @@ fn test_f2_masks_to_7_bits() {
     mem.write8(0x00F3, 0xAB);
     // Now latch 0x7F directly and read back — must return the same value
     mem.write8(0x00F2, 0x7F);
-    assert_eq!(mem.read8(0x00F3), 0xAB, "0xFF and 0x7F must select the same DSP register");
+    assert_eq!(
+        mem.read8(0x00F3),
+        0xAB,
+        "0xFF and 0x7F must select the same DSP register"
+    );
 }
 
 #[test]
@@ -227,8 +250,11 @@ fn test_f2_latch_persists_across_unrelated_writes() {
     mem.write8(0x0100, 0xFF); // unrelated RAM write
     mem.write8(0x00FA, 0x20); // timer divisor write
     // $F2 latch must still point at 0x5D so $F3 reads DIR
-    assert_eq!(mem.read8(0x00F3), 0x04,
-        "DSP latch must not be disturbed by unrelated writes");
+    assert_eq!(
+        mem.read8(0x00F3),
+        0x04,
+        "DSP latch must not be disturbed by unrelated writes"
+    );
 }
 
 // ============================================================
@@ -240,15 +266,23 @@ fn test_f3_write_reaches_dsp_register() {
     let mut mem = Memory::new();
     mem.write8(0x00F2, 0x5D); // select DIR register
     mem.write8(0x00F3, 0x08); // write value 8 to DIR
-    assert_eq!(mem.dsp.read_reg(0x5D), 0x08, "$F3 write must update DSP register");
+    assert_eq!(
+        mem.dsp.read_reg(0x5D),
+        0x08,
+        "$F3 write must update DSP register"
+    );
 }
 
 #[test]
 fn test_f3_read_returns_dsp_register() {
     let mut mem = Memory::new();
     mem.dsp.write_reg(0x5D, 0x12); // set DIR directly
-    mem.write8(0x00F2, 0x5D);      // latch the index
-    assert_eq!(mem.read8(0x00F3), 0x12, "$F3 read must return DSP register value");
+    mem.write8(0x00F2, 0x5D); // latch the index
+    assert_eq!(
+        mem.read8(0x00F3),
+        0x12,
+        "$F3 read must return DSP register value"
+    );
 }
 
 #[test]
@@ -289,11 +323,17 @@ fn test_f3_write_does_not_change_latch() {
     mem.write8(0x00F2, 0x2C); // latch EVOLL ($2C)
     mem.write8(0x00F3, 0xAA); // write 0xAA to EVOLL
     mem.write8(0x00F3, 0xBB); // second write — must still hit EVOLL
-    assert_eq!(mem.dsp.read_reg(0x2C), 0xBB,
-        "second $F3 write must still target the latched register");
+    assert_eq!(
+        mem.dsp.read_reg(0x2C),
+        0xBB,
+        "second $F3 write must still target the latched register"
+    );
     // Also confirm a different register was NOT accidentally written
-    assert_eq!(mem.dsp.read_reg(0x2D), 0x00,
-        "adjacent register must be unaffected");
+    assert_eq!(
+        mem.dsp.read_reg(0x2D),
+        0x00,
+        "adjacent register must be unaffected"
+    );
 }
 
 // ============================================================
@@ -321,7 +361,11 @@ fn test_spc700_reads_port_in_from_cpu() {
     mem.port_in[1] = 0xBB;
     mem.port_in[2] = 0xCC;
     mem.port_in[3] = 0xDD;
-    assert_eq!(mem.read8(0x00F4), 0xAA, "SPC700 must read SNES-written value at $F4");
+    assert_eq!(
+        mem.read8(0x00F4),
+        0xAA,
+        "SPC700 must read SNES-written value at $F4"
+    );
     assert_eq!(mem.read8(0x00F5), 0xBB);
     assert_eq!(mem.read8(0x00F6), 0xCC);
     assert_eq!(mem.read8(0x00F7), 0xDD);
@@ -332,10 +376,17 @@ fn test_port_in_and_port_out_are_independent() {
     // Writing from SPC700 side must not affect what the SPC700 reads,
     // and vice versa — they use separate storage.
     let mut mem = Memory::new();
-    mem.port_in[0]  = 0x12; // SNES → APU
+    mem.port_in[0] = 0x12; // SNES → APU
     mem.write8(0x00F4, 0x99); // APU → SNES (writes port_out)
-    assert_eq!(mem.read8(0x00F4), 0x12, "SPC700 read must still return port_in value");
-    assert_eq!(mem.port_out[0],   0x99, "port_out must hold SPC700-written value");
+    assert_eq!(
+        mem.read8(0x00F4),
+        0x12,
+        "SPC700 read must still return port_in value"
+    );
+    assert_eq!(
+        mem.port_out[0], 0x99,
+        "port_out must hold SPC700-written value"
+    );
 }
 
 #[test]
@@ -422,7 +473,11 @@ fn test_timer_div_read_returns_0xff() {
     // Timer divisors are write-only from the SPC700's perspective.
     let mut mem = Memory::new();
     mem.write8(0x00FA, 0x20);
-    assert_eq!(mem.read8(0x00FA), 0xFF, "$FA must read as 0xFF (write-only register)");
+    assert_eq!(
+        mem.read8(0x00FA),
+        0xFF,
+        "$FA must read as 0xFF (write-only register)"
+    );
     assert_eq!(mem.read8(0x00FB), 0xFF);
     assert_eq!(mem.read8(0x00FC), 0xFF);
 }
@@ -454,9 +509,9 @@ fn test_timer_out_read_returns_counter() {
 fn test_timer_out_read8_mut_clears_counter() {
     let mut mem = Memory::new();
     set_timer_out(&mut mem, 0, 9);
-    let first  = mem.read8_mut(0x00FD);
+    let first = mem.read8_mut(0x00FD);
     let second = mem.read8_mut(0x00FD);
-    assert_eq!(first,  9, "first read must return the counter value");
+    assert_eq!(first, 9, "first read must return the counter value");
     assert_eq!(second, 0, "second read must return 0 after clear-on-read");
 }
 
@@ -466,7 +521,10 @@ fn test_timer_out_read8_does_not_clear() {
     let mut mem = Memory::new();
     set_timer_out(&mut mem, 1, 5);
     let _ = mem.read8(0x00FE);
-    assert_eq!(mem.timer_out[1], 5, "immutable read must not clear the counter");
+    assert_eq!(
+        mem.timer_out[1], 5,
+        "immutable read must not clear the counter"
+    );
 }
 
 #[test]
@@ -475,7 +533,10 @@ fn test_timer_out_write_is_ignored() {
     let mut mem = Memory::new();
     set_timer_out(&mut mem, 2, 4);
     mem.write8(0x00FF, 0xFF); // attempt to overwrite
-    assert_eq!(mem.timer_out[2], 4, "write to $FF must not alter timer_out[2]");
+    assert_eq!(
+        mem.timer_out[2], 4,
+        "write to $FF must not alter timer_out[2]"
+    );
 }
 
 #[test]
@@ -521,12 +582,20 @@ fn test_direct_dsp_window_and_f2f3_protocol_share_same_dsp() {
     // Write via direct window, read via $F2/$F3 protocol
     mem.write8(0xF200 + 0x0C, 0x55); // MVOLL via direct window
     mem.write8(0x00F2, 0x0C);
-    assert_eq!(mem.read8(0x00F3), 0x55, "direct-window write must be visible via $F3");
+    assert_eq!(
+        mem.read8(0x00F3),
+        0x55,
+        "direct-window write must be visible via $F3"
+    );
 
     // Write via $F2/$F3 protocol, read via direct window
     mem.write8(0x00F2, 0x1C);
     mem.write8(0x00F3, 0x66); // MVOLR via protocol
-    assert_eq!(mem.read8(0xF200 + 0x1C), 0x66, "$F3 write must be visible via direct window");
+    assert_eq!(
+        mem.read8(0xF200 + 0x1C),
+        0x66,
+        "$F3 write must be visible via direct window"
+    );
 }
 
 // ============================================================

@@ -61,13 +61,13 @@ impl Voice {
         if self.brr.buffer_fill == 0 {
             let dir_entry = self.brr.addr;
 
-            let start_lo = ram_read8(ram, dir_entry)     as u16;
+            let start_lo = ram_read8(ram, dir_entry) as u16;
             let start_hi = ram_read8(ram, dir_entry + 1) as u16;
-            let loop_lo  = ram_read8(ram, dir_entry + 2) as u16;
-            let loop_hi  = ram_read8(ram, dir_entry + 3) as u16;
+            let loop_lo = ram_read8(ram, dir_entry + 2) as u16;
+            let loop_hi = ram_read8(ram, dir_entry + 3) as u16;
 
-            self.brr.addr      = (start_hi << 8) | start_lo;
-            self.brr.loop_addr = (loop_hi  << 8) | loop_lo;
+            self.brr.addr = (start_hi << 8) | start_lo;
+            self.brr.loop_addr = (loop_hi << 8) | loop_lo;
 
             self.decode_next_block(i, ram, registers);
         }
@@ -113,16 +113,12 @@ impl Voice {
     ///
     /// Sets bit `i` of `registers[0x7C]` (ENDX) when an end block is reached.
     fn decode_next_block(&mut self, i: usize, ram: &RawARAM, registers: &mut [u8; 128]) {
-        let (samples, end, do_loop) = decode_brr_block(
-            ram,
-            self.brr.addr,
-            &mut self.brr.prev1,
-            &mut self.brr.prev2,
-        );
+        let (samples, end, do_loop) =
+            decode_brr_block(ram, self.brr.addr, &mut self.brr.prev1, &mut self.brr.prev2);
 
         self.brr.sample_buffer = samples;
-        self.brr.buffer_fill   = 16;
-        self.brr.nibble_idx    = 0;
+        self.brr.buffer_fill = 16;
+        self.brr.nibble_idx = 0;
 
         if end {
             registers[0x7C] |= 1u8 << i;

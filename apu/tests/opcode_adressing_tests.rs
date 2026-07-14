@@ -1,3 +1,4 @@
+use apu::Memory;
 /// MOV addressing mode tests
 /// Currently covers:
 /// - MOV A,(X)  ($E6)
@@ -24,9 +25,7 @@
 /// - MOV dp,dp ($FA)
 /// - MOV X,SP ($9D)
 /// - MOV SP,X ($BD)
-
-use apu::cpu::{Spc700, FLAG_N, FLAG_P, FLAG_Z};
-use apu::Memory;
+use apu::cpu::{FLAG_N, FLAG_P, FLAG_Z, Spc700};
 
 // ============================================================
 // Helper
@@ -315,15 +314,21 @@ fn test_mov_ixp_a_and_mov_a_ixp_round_trip() {
     mem.write8(0x0205, 0xBF);
 
     cpu.regs.x = 0x20;
-    cpu.regs.a = 0x11; cpu.step(&mut mem); // write $11 to $0020
-    cpu.regs.a = 0x22; cpu.step(&mut mem); // write $22 to $0021
-    cpu.regs.a = 0x33; cpu.step(&mut mem); // write $33 to $0022
+    cpu.regs.a = 0x11;
+    cpu.step(&mut mem); // write $11 to $0020
+    cpu.regs.a = 0x22;
+    cpu.step(&mut mem); // write $22 to $0021
+    cpu.regs.a = 0x33;
+    cpu.step(&mut mem); // write $33 to $0022
 
     // X is now $23 — reset to $20 to read back
     cpu.regs.x = 0x20;
-    cpu.step(&mut mem); assert_eq!(cpu.regs.a, 0x11);
-    cpu.step(&mut mem); assert_eq!(cpu.regs.a, 0x22);
-    cpu.step(&mut mem); assert_eq!(cpu.regs.a, 0x33);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x11);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x22);
+    cpu.step(&mut mem);
+    assert_eq!(cpu.regs.a, 0x33);
 }
 
 // ============================================================

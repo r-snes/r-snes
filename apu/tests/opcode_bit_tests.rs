@@ -1,3 +1,4 @@
+use apu::Memory;
 /// Bit-level instruction tests (feature/spc700-bit-ops)
 ///
 /// One file for the entire PR — grows by opcode group as each is added.
@@ -14,9 +15,7 @@
 /// - AND1 m.b,C ($6A)
 /// - EOR1 C,m.b ($8A)
 /// - NOT1 m.b ($EA)
-
-use apu::cpu::{Spc700, FLAG_N, FLAG_P, FLAG_Z, FLAG_C};
-use apu::Memory;
+use apu::cpu::{FLAG_C, FLAG_N, FLAG_P, FLAG_Z, Spc700};
 
 // ============================================================
 // Helper
@@ -501,7 +500,10 @@ fn test_bbs_does_not_branch_when_bit_clear() {
     mem.write8(0x0201, 0x20);
     mem.write8(0x0202, 0x05);
     cpu.step(&mut mem);
-    assert_eq!(cpu.regs.pc, 0x0203, "PC should just advance past the instruction");
+    assert_eq!(
+        cpu.regs.pc, 0x0203,
+        "PC should just advance past the instruction"
+    );
 }
 
 #[test]
@@ -559,7 +561,11 @@ fn test_bbs_does_not_modify_dp_memory() {
     mem.write8(0x0201, 0x20);
     mem.write8(0x0202, 0x05);
     cpu.step(&mut mem);
-    assert_eq!(mem.read8(0x0020), 0b0000_0001, "BBS must not write to the tested byte");
+    assert_eq!(
+        mem.read8(0x0020),
+        0b0000_0001,
+        "BBS must not write to the tested byte"
+    );
 }
 
 #[test]

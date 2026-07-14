@@ -1,10 +1,9 @@
+use apu::Memory;
 /// Shift instruction tests
 ///
 /// Currently covers:
 ///   - ASL A ($1C)
-
-use apu::cpu::{Spc700, FLAG_C, FLAG_N, FLAG_Z, FLAG_P};
-use apu::Memory;
+use apu::cpu::{FLAG_C, FLAG_N, FLAG_P, FLAG_Z, Spc700};
 
 // ============================================================
 // Helper
@@ -49,7 +48,10 @@ fn test_asl_a_clears_carry_when_bit7_clear() {
     cpu.regs.psw = FLAG_C; // pre-set carry
     mem.write8(0x0200, 0x1C);
     cpu.step(&mut mem);
-    assert!(!cpu.get_flag(FLAG_C), "carry must be cleared when bit 7 was 0");
+    assert!(
+        !cpu.get_flag(FLAG_C),
+        "carry must be cleared when bit 7 was 0"
+    );
 }
 
 #[test]

@@ -1,3 +1,4 @@
+use apu::Memory;
 /// Control flow instruction tests
 /// Currently covers:
 /// - BRA ($2F) — branch always
@@ -20,9 +21,7 @@
 /// - PUSH Y ($BF) — push Y to stack
 /// - POP Y ($AF) — pop Y from stack
 /// - SLEEP ($DB) — sleep until interrupt
-
-use apu::cpu::{Spc700, FLAG_C, FLAG_N, FLAG_Z, FLAG_V};
-use apu::Memory;
+use apu::cpu::{FLAG_C, FLAG_N, FLAG_V, FLAG_Z, Spc700};
 
 // ============================================================
 // Helper
@@ -450,7 +449,7 @@ fn test_bpl_not_taken_after_negative_load() {
 // ============================================================
 // BMI ($30) — branch if Negative set
 // ============================================================
- 
+
 #[test]
 fn test_bmi_taken_when_n_set() {
     let (mut cpu, mut mem) = make();
@@ -460,7 +459,7 @@ fn test_bmi_taken_when_n_set() {
     cpu.step(&mut mem);
     assert_eq!(cpu.regs.pc, 0x0206);
 }
- 
+
 #[test]
 fn test_bmi_taken_costs_4_cycles() {
     let (mut cpu, mut mem) = make();
@@ -470,7 +469,7 @@ fn test_bmi_taken_costs_4_cycles() {
     cpu.step(&mut mem);
     assert_eq!(cpu.cycles, 4);
 }
- 
+
 #[test]
 fn test_bmi_not_taken_when_n_clear() {
     let (mut cpu, mut mem) = make();
@@ -480,7 +479,7 @@ fn test_bmi_not_taken_when_n_clear() {
     cpu.step(&mut mem);
     assert_eq!(cpu.regs.pc, 0x0202);
 }
- 
+
 #[test]
 fn test_bmi_not_taken_costs_2_cycles() {
     let (mut cpu, mut mem) = make();
@@ -490,7 +489,7 @@ fn test_bmi_not_taken_costs_2_cycles() {
     cpu.step(&mut mem);
     assert_eq!(cpu.cycles, 2);
 }
- 
+
 #[test]
 fn test_bmi_taken_with_other_flags_also_set() {
     let (mut cpu, mut mem) = make();
@@ -500,7 +499,7 @@ fn test_bmi_taken_with_other_flags_also_set() {
     cpu.step(&mut mem);
     assert_eq!(cpu.regs.pc, 0x0206);
 }
- 
+
 #[test]
 fn test_bmi_not_taken_when_only_z_set() {
     let (mut cpu, mut mem) = make();
@@ -510,7 +509,7 @@ fn test_bmi_not_taken_when_only_z_set() {
     cpu.step(&mut mem);
     assert_eq!(cpu.regs.pc, 0x0202);
 }
- 
+
 #[test]
 fn test_bmi_does_not_modify_flags() {
     let (mut cpu, mut mem) = make();
@@ -520,7 +519,7 @@ fn test_bmi_does_not_modify_flags() {
     cpu.step(&mut mem);
     assert_eq!(cpu.regs.psw, FLAG_N | FLAG_C);
 }
- 
+
 #[test]
 fn test_bmi_taken_after_negative_load() {
     // LDA #$80 sets N=1 → BMI must branch
@@ -532,12 +531,12 @@ fn test_bmi_taken_after_negative_load() {
     mem.write8(0x0204, 0xFF); // skipped
     mem.write8(0x0205, 0xFF); // skipped
     mem.write8(0x0206, 0x00); // NOP — branch target
- 
+
     cpu.step(&mut mem); // LDA #$80 → N=1
     cpu.step(&mut mem); // BMI — taken
     assert_eq!(cpu.regs.pc, 0x0206);
 }
- 
+
 #[test]
 fn test_bmi_not_taken_after_positive_load() {
     // LDA #$01 sets N=0 → BMI must not branch
@@ -546,7 +545,7 @@ fn test_bmi_not_taken_after_positive_load() {
     mem.write8(0x0201, 0x01);
     mem.write8(0x0202, 0x30); // BMI +2
     mem.write8(0x0203, 0x02);
- 
+
     cpu.step(&mut mem); // LDA #$01 → N=0
     cpu.step(&mut mem); // BMI — not taken
     assert_eq!(cpu.regs.pc, 0x0204);
@@ -555,7 +554,7 @@ fn test_bmi_not_taken_after_positive_load() {
 // ============================================================
 // BVC ($50) — branch if Overflow clear
 // ============================================================
- 
+
 #[test]
 fn test_bvc_taken_when_v_clear() {
     let (mut cpu, mut mem) = make();
@@ -565,7 +564,7 @@ fn test_bvc_taken_when_v_clear() {
     cpu.step(&mut mem);
     assert_eq!(cpu.regs.pc, 0x0206);
 }
- 
+
 #[test]
 fn test_bvc_taken_costs_4_cycles() {
     let (mut cpu, mut mem) = make();
@@ -575,7 +574,7 @@ fn test_bvc_taken_costs_4_cycles() {
     cpu.step(&mut mem);
     assert_eq!(cpu.cycles, 4);
 }
- 
+
 #[test]
 fn test_bvc_not_taken_when_v_set() {
     let (mut cpu, mut mem) = make();
@@ -585,7 +584,7 @@ fn test_bvc_not_taken_when_v_set() {
     cpu.step(&mut mem);
     assert_eq!(cpu.regs.pc, 0x0202);
 }
- 
+
 #[test]
 fn test_bvc_not_taken_costs_2_cycles() {
     let (mut cpu, mut mem) = make();
@@ -595,7 +594,7 @@ fn test_bvc_not_taken_costs_2_cycles() {
     cpu.step(&mut mem);
     assert_eq!(cpu.cycles, 2);
 }
- 
+
 #[test]
 fn test_bvc_taken_when_n_and_z_set_but_v_clear() {
     let (mut cpu, mut mem) = make();
@@ -605,7 +604,7 @@ fn test_bvc_taken_when_n_and_z_set_but_v_clear() {
     cpu.step(&mut mem);
     assert_eq!(cpu.regs.pc, 0x0206);
 }
- 
+
 #[test]
 fn test_bvc_not_taken_when_v_and_n_set() {
     let (mut cpu, mut mem) = make();
@@ -615,7 +614,7 @@ fn test_bvc_not_taken_when_v_and_n_set() {
     cpu.step(&mut mem);
     assert_eq!(cpu.regs.pc, 0x0202);
 }
- 
+
 #[test]
 fn test_bvc_does_not_modify_flags() {
     let (mut cpu, mut mem) = make();
@@ -625,7 +624,7 @@ fn test_bvc_does_not_modify_flags() {
     cpu.step(&mut mem);
     assert_eq!(cpu.regs.psw, FLAG_N | FLAG_C);
 }
- 
+
 #[test]
 fn test_bvc_taken_after_adc_no_overflow() {
     // $01 + $01 = $02 — no signed overflow, V=0 → BVC taken
@@ -638,12 +637,12 @@ fn test_bvc_taken_after_adc_no_overflow() {
     mem.write8(0x0204, 0xFF); // skipped
     mem.write8(0x0205, 0xFF); // skipped
     mem.write8(0x0206, 0x00); // NOP — branch target
- 
+
     cpu.step(&mut mem); // ADC — V=0
     cpu.step(&mut mem); // BVC — taken
     assert_eq!(cpu.regs.pc, 0x0206);
 }
- 
+
 #[test]
 fn test_bvc_not_taken_after_adc_overflow() {
     // $70 + $10 = $80 — pos+pos=neg, signed overflow, V=1 → BVC not taken
@@ -653,7 +652,7 @@ fn test_bvc_not_taken_after_adc_overflow() {
     mem.write8(0x0201, 0x10);
     mem.write8(0x0202, 0x50); // BVC +2
     mem.write8(0x0203, 0x02);
- 
+
     cpu.step(&mut mem); // ADC — V=1
     cpu.step(&mut mem); // BVC — not taken
     assert_eq!(cpu.regs.pc, 0x0204);
@@ -662,7 +661,7 @@ fn test_bvc_not_taken_after_adc_overflow() {
 // ============================================================
 // BVS ($70) — branch if Overflow set
 // ============================================================
- 
+
 #[test]
 fn test_bvs_taken_when_v_set() {
     let (mut cpu, mut mem) = make();
@@ -672,7 +671,7 @@ fn test_bvs_taken_when_v_set() {
     cpu.step(&mut mem);
     assert_eq!(cpu.regs.pc, 0x0206);
 }
- 
+
 #[test]
 fn test_bvs_taken_costs_4_cycles() {
     let (mut cpu, mut mem) = make();
@@ -682,7 +681,7 @@ fn test_bvs_taken_costs_4_cycles() {
     cpu.step(&mut mem);
     assert_eq!(cpu.cycles, 4);
 }
- 
+
 #[test]
 fn test_bvs_not_taken_when_v_clear() {
     let (mut cpu, mut mem) = make();
@@ -692,7 +691,7 @@ fn test_bvs_not_taken_when_v_clear() {
     cpu.step(&mut mem);
     assert_eq!(cpu.regs.pc, 0x0202);
 }
- 
+
 #[test]
 fn test_bvs_not_taken_costs_2_cycles() {
     let (mut cpu, mut mem) = make();
@@ -702,7 +701,7 @@ fn test_bvs_not_taken_costs_2_cycles() {
     cpu.step(&mut mem);
     assert_eq!(cpu.cycles, 2);
 }
- 
+
 #[test]
 fn test_bvs_taken_with_other_flags_also_set() {
     let (mut cpu, mut mem) = make();
@@ -712,7 +711,7 @@ fn test_bvs_taken_with_other_flags_also_set() {
     cpu.step(&mut mem);
     assert_eq!(cpu.regs.pc, 0x0206);
 }
- 
+
 #[test]
 fn test_bvs_not_taken_when_only_n_set() {
     let (mut cpu, mut mem) = make();
@@ -722,7 +721,7 @@ fn test_bvs_not_taken_when_only_n_set() {
     cpu.step(&mut mem);
     assert_eq!(cpu.regs.pc, 0x0202);
 }
- 
+
 #[test]
 fn test_bvs_does_not_modify_flags() {
     let (mut cpu, mut mem) = make();
@@ -732,7 +731,7 @@ fn test_bvs_does_not_modify_flags() {
     cpu.step(&mut mem);
     assert_eq!(cpu.regs.psw, FLAG_V | FLAG_C);
 }
- 
+
 #[test]
 fn test_bvs_taken_after_adc_overflow() {
     // $70 + $10 = $80 — pos+pos=neg, V=1 → BVS taken
@@ -745,12 +744,12 @@ fn test_bvs_taken_after_adc_overflow() {
     mem.write8(0x0204, 0xFF); // skipped
     mem.write8(0x0205, 0xFF); // skipped
     mem.write8(0x0206, 0x00); // NOP — branch target
- 
+
     cpu.step(&mut mem); // ADC — V=1
     cpu.step(&mut mem); // BVS — taken
     assert_eq!(cpu.regs.pc, 0x0206);
 }
- 
+
 #[test]
 fn test_bvs_not_taken_after_adc_no_overflow() {
     // $01 + $01 = $02 — no overflow, V=0 → BVS not taken
@@ -760,7 +759,7 @@ fn test_bvs_not_taken_after_adc_no_overflow() {
     mem.write8(0x0201, 0x01);
     mem.write8(0x0202, 0x70); // BVS +2
     mem.write8(0x0203, 0x02);
- 
+
     cpu.step(&mut mem); // ADC — V=0
     cpu.step(&mut mem); // BVS — not taken
     assert_eq!(cpu.regs.pc, 0x0204);
@@ -769,7 +768,7 @@ fn test_bvs_not_taken_after_adc_no_overflow() {
 // ============================================================
 // BCC ($90) — branch if Carry clear
 // ============================================================
- 
+
 #[test]
 fn test_bcc_taken_when_c_clear() {
     let (mut cpu, mut mem) = make();
@@ -779,7 +778,7 @@ fn test_bcc_taken_when_c_clear() {
     cpu.step(&mut mem);
     assert_eq!(cpu.regs.pc, 0x0206);
 }
- 
+
 #[test]
 fn test_bcc_taken_costs_4_cycles() {
     let (mut cpu, mut mem) = make();
@@ -789,7 +788,7 @@ fn test_bcc_taken_costs_4_cycles() {
     cpu.step(&mut mem);
     assert_eq!(cpu.cycles, 4);
 }
- 
+
 #[test]
 fn test_bcc_not_taken_when_c_set() {
     let (mut cpu, mut mem) = make();
@@ -799,7 +798,7 @@ fn test_bcc_not_taken_when_c_set() {
     cpu.step(&mut mem);
     assert_eq!(cpu.regs.pc, 0x0202);
 }
- 
+
 #[test]
 fn test_bcc_not_taken_costs_2_cycles() {
     let (mut cpu, mut mem) = make();
@@ -809,7 +808,7 @@ fn test_bcc_not_taken_costs_2_cycles() {
     cpu.step(&mut mem);
     assert_eq!(cpu.cycles, 2);
 }
- 
+
 #[test]
 fn test_bcc_taken_when_n_set_but_c_clear() {
     let (mut cpu, mut mem) = make();
@@ -819,7 +818,7 @@ fn test_bcc_taken_when_n_set_but_c_clear() {
     cpu.step(&mut mem);
     assert_eq!(cpu.regs.pc, 0x0206);
 }
- 
+
 #[test]
 fn test_bcc_not_taken_when_c_and_n_set() {
     let (mut cpu, mut mem) = make();
@@ -829,7 +828,7 @@ fn test_bcc_not_taken_when_c_and_n_set() {
     cpu.step(&mut mem);
     assert_eq!(cpu.regs.pc, 0x0202);
 }
- 
+
 #[test]
 fn test_bcc_does_not_modify_flags() {
     let (mut cpu, mut mem) = make();
@@ -839,7 +838,7 @@ fn test_bcc_does_not_modify_flags() {
     cpu.step(&mut mem);
     assert_eq!(cpu.regs.psw, FLAG_N | FLAG_Z);
 }
- 
+
 #[test]
 fn test_bcc_taken_after_adc_no_carry() {
     // $01 + $01 = $02 — no carry out, C=0 → BCC taken
@@ -852,12 +851,12 @@ fn test_bcc_taken_after_adc_no_carry() {
     mem.write8(0x0204, 0xFF); // skipped
     mem.write8(0x0205, 0xFF); // skipped
     mem.write8(0x0206, 0x00); // NOP — branch target
- 
+
     cpu.step(&mut mem); // ADC — C=0
     cpu.step(&mut mem); // BCC — taken
     assert_eq!(cpu.regs.pc, 0x0206);
 }
- 
+
 #[test]
 fn test_bcc_not_taken_after_adc_carry() {
     // $FF + $01 = $00 with carry out, C=1 → BCC not taken
@@ -867,7 +866,7 @@ fn test_bcc_not_taken_after_adc_carry() {
     mem.write8(0x0201, 0x01);
     mem.write8(0x0202, 0x90); // BCC +2
     mem.write8(0x0203, 0x02);
- 
+
     cpu.step(&mut mem); // ADC — C=1
     cpu.step(&mut mem); // BCC — not taken
     assert_eq!(cpu.regs.pc, 0x0204);
@@ -876,7 +875,7 @@ fn test_bcc_not_taken_after_adc_carry() {
 // ============================================================
 // BCS ($B0) — branch if Carry set
 // ============================================================
- 
+
 #[test]
 fn test_bcs_taken_when_c_set() {
     let (mut cpu, mut mem) = make();
@@ -886,7 +885,7 @@ fn test_bcs_taken_when_c_set() {
     cpu.step(&mut mem);
     assert_eq!(cpu.regs.pc, 0x0206);
 }
- 
+
 #[test]
 fn test_bcs_taken_costs_4_cycles() {
     let (mut cpu, mut mem) = make();
@@ -896,7 +895,7 @@ fn test_bcs_taken_costs_4_cycles() {
     cpu.step(&mut mem);
     assert_eq!(cpu.cycles, 4);
 }
- 
+
 #[test]
 fn test_bcs_not_taken_when_c_clear() {
     let (mut cpu, mut mem) = make();
@@ -906,7 +905,7 @@ fn test_bcs_not_taken_when_c_clear() {
     cpu.step(&mut mem);
     assert_eq!(cpu.regs.pc, 0x0202);
 }
- 
+
 #[test]
 fn test_bcs_not_taken_costs_2_cycles() {
     let (mut cpu, mut mem) = make();
@@ -916,7 +915,7 @@ fn test_bcs_not_taken_costs_2_cycles() {
     cpu.step(&mut mem);
     assert_eq!(cpu.cycles, 2);
 }
- 
+
 #[test]
 fn test_bcs_taken_with_other_flags_also_set() {
     let (mut cpu, mut mem) = make();
@@ -926,7 +925,7 @@ fn test_bcs_taken_with_other_flags_also_set() {
     cpu.step(&mut mem);
     assert_eq!(cpu.regs.pc, 0x0206);
 }
- 
+
 #[test]
 fn test_bcs_not_taken_when_only_n_set() {
     let (mut cpu, mut mem) = make();
@@ -936,7 +935,7 @@ fn test_bcs_not_taken_when_only_n_set() {
     cpu.step(&mut mem);
     assert_eq!(cpu.regs.pc, 0x0202);
 }
- 
+
 #[test]
 fn test_bcs_does_not_modify_flags() {
     let (mut cpu, mut mem) = make();
@@ -946,7 +945,7 @@ fn test_bcs_does_not_modify_flags() {
     cpu.step(&mut mem);
     assert_eq!(cpu.regs.psw, FLAG_C | FLAG_N);
 }
- 
+
 #[test]
 fn test_bcs_taken_after_adc_carry() {
     // $FF + $01 = $00 with carry out, C=1 → BCS taken
@@ -959,12 +958,12 @@ fn test_bcs_taken_after_adc_carry() {
     mem.write8(0x0204, 0xFF); // skipped
     mem.write8(0x0205, 0xFF); // skipped
     mem.write8(0x0206, 0x00); // NOP — branch target
- 
+
     cpu.step(&mut mem); // ADC — C=1
     cpu.step(&mut mem); // BCS — taken
     assert_eq!(cpu.regs.pc, 0x0206);
 }
- 
+
 #[test]
 fn test_bcs_not_taken_after_adc_no_carry() {
     // $01 + $01 = $02 — no carry, C=0 → BCS not taken
@@ -974,7 +973,7 @@ fn test_bcs_not_taken_after_adc_no_carry() {
     mem.write8(0x0201, 0x01);
     mem.write8(0x0202, 0xB0); // BCS +2
     mem.write8(0x0203, 0x02);
- 
+
     cpu.step(&mut mem); // ADC — C=0
     cpu.step(&mut mem); // BCS — not taken
     assert_eq!(cpu.regs.pc, 0x0204);
@@ -987,7 +986,7 @@ fn test_bcs_not_taken_after_adc_no_carry() {
 // Covers: correct stack page ($0100-$01FF), SP decrement/increment,
 // SP wrap at $00→$FF and $FF→$00, and LIFO ordering.
 // ============================================================
- 
+
 #[test]
 fn test_stack_push_writes_to_stack_page() {
     // CALL writes to $0100|SP — verify the byte lands in the stack page
@@ -1003,7 +1002,7 @@ fn test_stack_push_writes_to_stack_page() {
     assert_eq!(mem.read8(0x01FD), 0x03, "lo byte at $01FD");
     assert_eq!(cpu.regs.sp, 0xFC);
 }
- 
+
 #[test]
 fn test_stack_pop_reads_from_stack_page() {
     // RET reads from $0100|SP after increment
@@ -1018,7 +1017,7 @@ fn test_stack_pop_reads_from_stack_page() {
     // RET incremented SP twice and read from the stack page
     assert_eq!(cpu.regs.sp, sp_after_call.wrapping_add(2));
 }
- 
+
 #[test]
 fn test_stack_sp_wraps_from_00_to_ff_on_push() {
     // SP at $01 — after two pushes (CALL) SP wraps to $FF
@@ -1030,7 +1029,7 @@ fn test_stack_sp_wraps_from_00_to_ff_on_push() {
     cpu.step(&mut mem); // CALL pushes 2 bytes: $01 → $00 → $FF
     assert_eq!(cpu.regs.sp, 0xFF);
 }
- 
+
 #[test]
 fn test_stack_sp_wraps_from_ff_to_00_on_pop() {
     // Prime the stack manually, set SP to $FD so RET increments to $FF then $00
@@ -1048,14 +1047,14 @@ fn test_stack_sp_wraps_from_ff_to_00_on_pop() {
     assert_eq!(cpu.regs.sp, 0xFF);
     assert_eq!(cpu.regs.pc, 0x0003);
 }
- 
+
 #[test]
 fn test_stack_lifo_ordering() {
     // Push A three times via CALL (we use the return address bytes),
     // then pop via RET — must come back in reverse order.
     // Simpler: use three nested CALLs and verify RET unwinds correctly.
     let (mut cpu, mut mem) = make();
- 
+
     // Outer: CALL $0400 at $0200 → return = $0203
     mem.write8(0x0200, 0x3F);
     mem.write8(0x0201, 0x00);
@@ -1068,19 +1067,22 @@ fn test_stack_lifo_ordering() {
     mem.write8(0x0600, 0x6F);
     // Back: RET at $0403 → $0203
     mem.write8(0x0403, 0x6F);
- 
+
     cpu.step(&mut mem); // CALL $0400
     cpu.step(&mut mem); // CALL $0600
     cpu.step(&mut mem); // RET → $0403
     assert_eq!(cpu.regs.pc, 0x0403, "first RET must return to inner caller");
     cpu.step(&mut mem); // RET → $0203
-    assert_eq!(cpu.regs.pc, 0x0203, "second RET must return to outer caller");
+    assert_eq!(
+        cpu.regs.pc, 0x0203,
+        "second RET must return to outer caller"
+    );
 }
 
 // ============================================================
 // CALL ($3F) — push return address, jump to absolute target
 // ============================================================
- 
+
 #[test]
 fn test_call_jumps_to_target() {
     let (mut cpu, mut mem) = make();
@@ -1090,7 +1092,7 @@ fn test_call_jumps_to_target() {
     cpu.step(&mut mem);
     assert_eq!(cpu.regs.pc, 0x0500);
 }
- 
+
 #[test]
 fn test_call_pushes_return_address() {
     // CALL at $0200 is 3 bytes → return address = $0203
@@ -1105,7 +1107,7 @@ fn test_call_pushes_return_address() {
     let ret = ((hi as u16) << 8) | lo as u16;
     assert_eq!(ret, 0x0203, "return address must be instruction after CALL");
 }
- 
+
 #[test]
 fn test_call_decrements_sp_by_2() {
     let (mut cpu, mut mem) = make();
@@ -1116,7 +1118,7 @@ fn test_call_decrements_sp_by_2() {
     cpu.step(&mut mem);
     assert_eq!(cpu.regs.sp, sp_before.wrapping_sub(2));
 }
- 
+
 #[test]
 fn test_call_costs_8_cycles() {
     let (mut cpu, mut mem) = make();
@@ -1126,7 +1128,7 @@ fn test_call_costs_8_cycles() {
     cpu.step(&mut mem);
     assert_eq!(cpu.cycles, 8);
 }
- 
+
 #[test]
 fn test_call_does_not_modify_flags() {
     let (mut cpu, mut mem) = make();
@@ -1137,7 +1139,7 @@ fn test_call_does_not_modify_flags() {
     cpu.step(&mut mem);
     assert_eq!(cpu.regs.psw, FLAG_C | FLAG_N);
 }
- 
+
 #[test]
 fn test_call_sp_wraps_at_00() {
     // SP at $01 — after pushing 2 bytes SP wraps to $FF
@@ -1153,7 +1155,7 @@ fn test_call_sp_wraps_at_00() {
 // ============================================================
 // RET ($6F) — pop return address and jump
 // ============================================================
- 
+
 #[test]
 fn test_ret_jumps_to_return_address() {
     // CALL pushes $0203, RET must restore PC to $0203
@@ -1166,7 +1168,7 @@ fn test_ret_jumps_to_return_address() {
     cpu.step(&mut mem); // RET
     assert_eq!(cpu.regs.pc, 0x0203);
 }
- 
+
 #[test]
 fn test_ret_restores_sp() {
     let (mut cpu, mut mem) = make();
@@ -1179,7 +1181,7 @@ fn test_ret_restores_sp() {
     cpu.step(&mut mem); // RET  — SP += 2
     assert_eq!(cpu.regs.sp, sp_before, "SP must be restored after CALL+RET");
 }
- 
+
 #[test]
 fn test_ret_costs_5_cycles() {
     let (mut cpu, mut mem) = make();
@@ -1192,7 +1194,7 @@ fn test_ret_costs_5_cycles() {
     cpu.step(&mut mem); // RET
     assert_eq!(cpu.cycles - cycles_before, 5);
 }
- 
+
 #[test]
 fn test_ret_does_not_modify_flags() {
     let (mut cpu, mut mem) = make();
@@ -1205,13 +1207,13 @@ fn test_ret_does_not_modify_flags() {
     cpu.step(&mut mem);
     assert_eq!(cpu.regs.psw, FLAG_C | FLAG_N);
 }
- 
+
 #[test]
 fn test_call_ret_round_trip_multiple_times() {
     // Call and return three times — SP must be the same each time
     let (mut cpu, mut mem) = make();
     let sp_start = cpu.regs.sp;
- 
+
     for _ in 0..3 {
         mem.write8(0x0200, 0x3F); // CALL $0500
         mem.write8(0x0201, 0x00);
@@ -1220,11 +1222,14 @@ fn test_call_ret_round_trip_multiple_times() {
         cpu.regs.pc = 0x0200;
         cpu.step(&mut mem);
         cpu.step(&mut mem);
-        assert_eq!(cpu.regs.sp, sp_start, "SP must be restored after each CALL+RET");
+        assert_eq!(
+            cpu.regs.sp, sp_start,
+            "SP must be restored after each CALL+RET"
+        );
         assert_eq!(cpu.regs.pc, 0x0203);
     }
 }
- 
+
 #[test]
 fn test_nested_call_ret() {
     // Outer call → inner call → inner ret → outer ret
@@ -1237,7 +1242,7 @@ fn test_nested_call_ret() {
     mem.write8(0x0402, 0x06);
     mem.write8(0x0600, 0x6F); // RET → back to $0403
     mem.write8(0x0403, 0x6F); // RET → back to $0203
- 
+
     cpu.step(&mut mem); // outer CALL → $0400
     cpu.step(&mut mem); // inner CALL → $0600
     cpu.step(&mut mem); // inner RET  → $0403
@@ -1249,7 +1254,7 @@ fn test_nested_call_ret() {
 // ============================================================
 // PCALL ($4F) — push return address, jump to $FF00 + u
 // ============================================================
- 
+
 #[test]
 fn test_pcall_jumps_to_ff00_plus_u() {
     let (mut cpu, mut mem) = make();
@@ -1258,7 +1263,7 @@ fn test_pcall_jumps_to_ff00_plus_u() {
     cpu.step(&mut mem);
     assert_eq!(cpu.regs.pc, 0xFF20);
 }
- 
+
 #[test]
 fn test_pcall_u_zero_jumps_to_ff00() {
     let (mut cpu, mut mem) = make();
@@ -1267,7 +1272,7 @@ fn test_pcall_u_zero_jumps_to_ff00() {
     cpu.step(&mut mem);
     assert_eq!(cpu.regs.pc, 0xFF00);
 }
- 
+
 #[test]
 fn test_pcall_u_ff_jumps_to_ffff() {
     let (mut cpu, mut mem) = make();
@@ -1276,7 +1281,7 @@ fn test_pcall_u_ff_jumps_to_ffff() {
     cpu.step(&mut mem);
     assert_eq!(cpu.regs.pc, 0xFFFF);
 }
- 
+
 #[test]
 fn test_pcall_pushes_return_address() {
     // PCALL is 2 bytes → return address = $0202
@@ -1290,7 +1295,7 @@ fn test_pcall_pushes_return_address() {
     let ret = ((hi as u16) << 8) | lo as u16;
     assert_eq!(ret, 0x0202);
 }
- 
+
 #[test]
 fn test_pcall_decrements_sp_by_2() {
     let (mut cpu, mut mem) = make();
@@ -1300,7 +1305,7 @@ fn test_pcall_decrements_sp_by_2() {
     cpu.step(&mut mem);
     assert_eq!(cpu.regs.sp, sp_before.wrapping_sub(2));
 }
- 
+
 #[test]
 fn test_pcall_costs_6_cycles() {
     let (mut cpu, mut mem) = make();
@@ -1309,7 +1314,7 @@ fn test_pcall_costs_6_cycles() {
     cpu.step(&mut mem);
     assert_eq!(cpu.cycles, 6);
 }
- 
+
 #[test]
 fn test_pcall_does_not_modify_flags() {
     let (mut cpu, mut mem) = make();
@@ -1319,7 +1324,7 @@ fn test_pcall_does_not_modify_flags() {
     cpu.step(&mut mem);
     assert_eq!(cpu.regs.psw, FLAG_C | FLAG_Z);
 }
- 
+
 #[test]
 fn test_pcall_ret_round_trip() {
     // PCALL to $FF20, RET returns to $0202
@@ -1337,7 +1342,7 @@ fn test_pcall_ret_round_trip() {
 // ============================================================
 // TCALL ($01/$11/.../$F1) — call via vector table at $FFDE-(n*2)
 // ============================================================
- 
+
 #[test]
 fn test_tcall_0_reads_vector_at_ffde() {
     // n=0: vector at $FFDE/$FFDF
@@ -1348,7 +1353,7 @@ fn test_tcall_0_reads_vector_at_ffde() {
     cpu.step(&mut mem);
     assert_eq!(cpu.regs.pc, 0x0800);
 }
- 
+
 #[test]
 fn test_tcall_1_reads_vector_at_ffdc() {
     // n=1: vector at $FFDE - 2 = $FFDC/$FFDD
@@ -1359,7 +1364,7 @@ fn test_tcall_1_reads_vector_at_ffdc() {
     cpu.step(&mut mem);
     assert_eq!(cpu.regs.pc, 0x0900);
 }
- 
+
 #[test]
 fn test_tcall_15_reads_vector_at_ffc0() {
     // n=15: vector at $FFDE - 30 = $FFC0/$FFC1
@@ -1370,7 +1375,7 @@ fn test_tcall_15_reads_vector_at_ffc0() {
     cpu.step(&mut mem);
     assert_eq!(cpu.regs.pc, 0x0A00);
 }
- 
+
 #[test]
 fn test_tcall_pushes_return_address() {
     // TCALL is 1 byte → return address = $0201
@@ -1385,7 +1390,7 @@ fn test_tcall_pushes_return_address() {
     let ret = ((hi as u16) << 8) | lo as u16;
     assert_eq!(ret, 0x0201);
 }
- 
+
 #[test]
 fn test_tcall_decrements_sp_by_2() {
     let (mut cpu, mut mem) = make();
@@ -1396,7 +1401,7 @@ fn test_tcall_decrements_sp_by_2() {
     cpu.step(&mut mem);
     assert_eq!(cpu.regs.sp, sp_before.wrapping_sub(2));
 }
- 
+
 #[test]
 fn test_tcall_costs_8_cycles() {
     let (mut cpu, mut mem) = make();
@@ -1406,7 +1411,7 @@ fn test_tcall_costs_8_cycles() {
     cpu.step(&mut mem);
     assert_eq!(cpu.cycles, 8);
 }
- 
+
 #[test]
 fn test_tcall_does_not_modify_flags() {
     let (mut cpu, mut mem) = make();
@@ -1417,7 +1422,7 @@ fn test_tcall_does_not_modify_flags() {
     cpu.step(&mut mem);
     assert_eq!(cpu.regs.psw, FLAG_C | FLAG_Z);
 }
- 
+
 #[test]
 fn test_tcall_vector_is_little_endian() {
     // Low byte at vector_addr, high byte at vector_addr+1
@@ -1428,7 +1433,7 @@ fn test_tcall_vector_is_little_endian() {
     cpu.step(&mut mem);
     assert_eq!(cpu.regs.pc, 0x1234);
 }
- 
+
 #[test]
 fn test_tcall_ret_round_trip() {
     let (mut cpu, mut mem) = make();
@@ -1442,42 +1447,56 @@ fn test_tcall_ret_round_trip() {
     assert_eq!(cpu.regs.pc, 0x0201);
     assert_eq!(cpu.regs.sp, sp_before);
 }
- 
+
 #[test]
 fn test_tcall_all_16_vector_addresses() {
     // Verify each n maps to the correct vector address
     let expected: [(u8, u16); 16] = [
-        (0x01, 0xFFDE), (0x11, 0xFFDC), (0x21, 0xFFDA), (0x31, 0xFFD8),
-        (0x41, 0xFFD6), (0x51, 0xFFD4), (0x61, 0xFFD2), (0x71, 0xFFD0),
-        (0x81, 0xFFCE), (0x91, 0xFFCC), (0xA1, 0xFFCA), (0xB1, 0xFFC8),
-        (0xC1, 0xFFC6), (0xD1, 0xFFC4), (0xE1, 0xFFC2), (0xF1, 0xFFC0),
+        (0x01, 0xFFDE),
+        (0x11, 0xFFDC),
+        (0x21, 0xFFDA),
+        (0x31, 0xFFD8),
+        (0x41, 0xFFD6),
+        (0x51, 0xFFD4),
+        (0x61, 0xFFD2),
+        (0x71, 0xFFD0),
+        (0x81, 0xFFCE),
+        (0x91, 0xFFCC),
+        (0xA1, 0xFFCA),
+        (0xB1, 0xFFC8),
+        (0xC1, 0xFFC6),
+        (0xD1, 0xFFC4),
+        (0xE1, 0xFFC2),
+        (0xF1, 0xFFC0),
     ];
- 
+
     for (opcode, vector_addr) in expected {
         let (mut cpu, mut mem) = make();
-        mem.write8(vector_addr,     0x34);
+        mem.write8(vector_addr, 0x34);
         mem.write8(vector_addr + 1, 0x12); // target = $1234 for each
         mem.write8(0x0200, opcode);
         cpu.step(&mut mem);
-        assert_eq!(cpu.regs.pc, 0x1234,
-            "opcode {opcode:#04X} must read vector at {vector_addr:#06X}");
+        assert_eq!(
+            cpu.regs.pc, 0x1234,
+            "opcode {opcode:#04X} must read vector at {vector_addr:#06X}"
+        );
     }
 }
 
 // ============================================================
 // PUSH A ($2D) — push accumulator onto stack
 // ============================================================
- 
+
 #[test]
 fn test_push_a_writes_a_to_stack() {
     let (mut cpu, mut mem) = make();
-    cpu.regs.a  = 0xAB;
+    cpu.regs.a = 0xAB;
     cpu.regs.sp = 0xFE;
     mem.write8(0x0200, 0x2D);
     cpu.step(&mut mem);
     assert_eq!(mem.read8(0x01FE), 0xAB, "A must be written to $01FE");
 }
- 
+
 #[test]
 fn test_push_a_decrements_sp() {
     let (mut cpu, mut mem) = make();
@@ -1486,7 +1505,7 @@ fn test_push_a_decrements_sp() {
     cpu.step(&mut mem);
     assert_eq!(cpu.regs.sp, sp.wrapping_sub(1));
 }
- 
+
 #[test]
 fn test_push_a_costs_4_cycles() {
     let (mut cpu, mut mem) = make();
@@ -1494,7 +1513,7 @@ fn test_push_a_costs_4_cycles() {
     cpu.step(&mut mem);
     assert_eq!(cpu.cycles, 4);
 }
- 
+
 #[test]
 fn test_push_a_does_not_modify_a() {
     let (mut cpu, mut mem) = make();
@@ -1503,7 +1522,7 @@ fn test_push_a_does_not_modify_a() {
     cpu.step(&mut mem);
     assert_eq!(cpu.regs.a, 0x55, "PUSH must not modify A");
 }
- 
+
 #[test]
 fn test_push_a_does_not_modify_flags() {
     let (mut cpu, mut mem) = make();
@@ -1512,7 +1531,7 @@ fn test_push_a_does_not_modify_flags() {
     cpu.step(&mut mem);
     assert_eq!(cpu.regs.psw, FLAG_C | FLAG_N);
 }
- 
+
 #[test]
 fn test_push_a_sp_wraps_from_00_to_ff() {
     let (mut cpu, mut mem) = make();
@@ -1579,9 +1598,9 @@ fn test_push_a_pop_a_round_trip() {
     cpu.regs.a = 0xCD;
     mem.write8(0x0200, 0x2D); // PUSH A
     mem.write8(0x0201, 0xAE); // POP A
-    cpu.step(&mut mem);       // PUSH — A=0xCD pushed
-    cpu.regs.a = 0x00;        // clobber after push
-    cpu.step(&mut mem);       // POP — restores 0xCD
+    cpu.step(&mut mem); // PUSH — A=0xCD pushed
+    cpu.regs.a = 0x00; // clobber after push
+    cpu.step(&mut mem); // POP — restores 0xCD
     assert_eq!(cpu.regs.a, 0xCD);
 }
 
@@ -1592,7 +1611,7 @@ fn test_push_a_pop_a_round_trip() {
 #[test]
 fn test_push_x_writes_x_to_stack() {
     let (mut cpu, mut mem) = make();
-    cpu.regs.x  = 0x12;
+    cpu.regs.x = 0x12;
     cpu.regs.sp = 0xFE;
     mem.write8(0x0200, 0x4D);
     cpu.step(&mut mem);
@@ -1671,9 +1690,9 @@ fn test_push_x_pop_x_round_trip() {
     cpu.regs.x = 0xEF;
     mem.write8(0x0200, 0x4D); // PUSH X
     mem.write8(0x0201, 0xCE); // POP X
-    cpu.step(&mut mem);       // PUSH
-    cpu.regs.x = 0x00;        // clobber after push
-    cpu.step(&mut mem);       // POP
+    cpu.step(&mut mem); // PUSH
+    cpu.regs.x = 0x00; // clobber after push
+    cpu.step(&mut mem); // POP
     assert_eq!(cpu.regs.x, 0xEF);
 }
 
@@ -1684,7 +1703,7 @@ fn test_push_x_pop_x_round_trip() {
 #[test]
 fn test_push_y_writes_y_to_stack() {
     let (mut cpu, mut mem) = make();
-    cpu.regs.y  = 0x56;
+    cpu.regs.y = 0x56;
     cpu.regs.sp = 0xFE;
     mem.write8(0x0200, 0x6D);
     cpu.step(&mut mem);
@@ -1763,9 +1782,9 @@ fn test_push_y_pop_y_round_trip() {
     cpu.regs.y = 0x9A;
     mem.write8(0x0200, 0x6D); // PUSH Y
     mem.write8(0x0201, 0xEE); // POP Y
-    cpu.step(&mut mem);       // PUSH
-    cpu.regs.y = 0x00;        // clobber after push
-    cpu.step(&mut mem);       // POP
+    cpu.step(&mut mem); // PUSH
+    cpu.regs.y = 0x00; // clobber after push
+    cpu.step(&mut mem); // POP
     assert_eq!(cpu.regs.y, 0x9A);
 }
 
@@ -1777,7 +1796,7 @@ fn test_push_y_pop_y_round_trip() {
 fn test_push_psw_writes_psw_to_stack() {
     let (mut cpu, mut mem) = make();
     cpu.regs.psw = FLAG_C | FLAG_N | FLAG_Z;
-    cpu.regs.sp  = 0xFE;
+    cpu.regs.sp = 0xFE;
     mem.write8(0x0200, 0x0D);
     cpu.step(&mut mem);
     assert_eq!(mem.read8(0x01FE), FLAG_C | FLAG_N | FLAG_Z);
@@ -1816,7 +1835,7 @@ fn test_push_psw_preserves_psw() {
 #[test]
 fn test_pop_psw_restores_all_flags() {
     let (mut cpu, mut mem) = make();
-    cpu.regs.sp  = 0xFE;
+    cpu.regs.sp = 0xFE;
     mem.write8(0x01FF, 0xFF); // all flags set
     mem.write8(0x0200, 0x8E);
     cpu.step(&mut mem);
@@ -1845,7 +1864,7 @@ fn test_pop_psw_clears_all_flags() {
     // POP PSW of $00 must clear every flag
     let (mut cpu, mut mem) = make();
     cpu.regs.psw = 0xFF;
-    cpu.regs.sp  = 0xFE;
+    cpu.regs.sp = 0xFE;
     mem.write8(0x01FF, 0x00);
     mem.write8(0x0200, 0x8E);
     cpu.step(&mut mem);
@@ -1858,18 +1877,18 @@ fn test_push_psw_pop_psw_round_trip() {
     cpu.regs.psw = FLAG_C | FLAG_V | FLAG_N;
     mem.write8(0x0200, 0x0D); // PUSH PSW
     mem.write8(0x0201, 0x8E); // POP PSW
-    cpu.step(&mut mem);       // PUSH
-    cpu.regs.psw = 0x00;      // clobber after push
-    cpu.step(&mut mem);       // POP
+    cpu.step(&mut mem); // PUSH
+    cpu.regs.psw = 0x00; // clobber after push
+    cpu.step(&mut mem); // POP
     assert_eq!(cpu.regs.psw, FLAG_C | FLAG_V | FLAG_N);
 }
 
 #[test]
 fn test_all_registers_push_pop_independent() {
     let (mut cpu, mut mem) = make();
-    cpu.regs.a   = 0x11;
-    cpu.regs.x   = 0x22;
-    cpu.regs.y   = 0x33;
+    cpu.regs.a = 0x11;
+    cpu.regs.x = 0x22;
+    cpu.regs.y = 0x33;
     cpu.regs.psw = FLAG_C;
     mem.write8(0x0200, 0x2D); // PUSH A
     mem.write8(0x0201, 0x4D); // PUSH X
@@ -1881,21 +1900,25 @@ fn test_all_registers_push_pop_independent() {
     mem.write8(0x0207, 0xAE); // POP A
 
     // push all four
-    for _ in 0..4 { cpu.step(&mut mem); }
+    for _ in 0..4 {
+        cpu.step(&mut mem);
+    }
 
     // clobber after all pushes are done
-    cpu.regs.a   = 0x00;
-    cpu.regs.x   = 0x00;
-    cpu.regs.y   = 0x00;
+    cpu.regs.a = 0x00;
+    cpu.regs.x = 0x00;
+    cpu.regs.y = 0x00;
     cpu.regs.psw = 0x00;
 
     // pop all four
-    for _ in 0..4 { cpu.step(&mut mem); }
+    for _ in 0..4 {
+        cpu.step(&mut mem);
+    }
 
     assert_eq!(cpu.regs.psw, FLAG_C, "PSW must be restored");
-    assert_eq!(cpu.regs.y,   0x33,   "Y must be restored");
-    assert_eq!(cpu.regs.x,   0x22,   "X must be restored");
-    assert_eq!(cpu.regs.a,   0x11,   "A must be restored");
+    assert_eq!(cpu.regs.y, 0x33, "Y must be restored");
+    assert_eq!(cpu.regs.x, 0x22, "X must be restored");
+    assert_eq!(cpu.regs.a, 0x11, "A must be restored");
 }
 
 // ============================================================

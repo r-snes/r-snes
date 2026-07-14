@@ -1,11 +1,10 @@
+use apu::Memory;
 /// SPC700 CPU tests
 ///
 /// Covers every implemented instruction, all flag outcomes, both
 /// dp_base() states (FLAG_P set/clear), cycle counts, PC advancement,
 /// reset(), set_flag/get_flag, and the step() dispatch table.
-
-use apu::cpu::{Spc700, FLAG_C, FLAG_N, FLAG_V, FLAG_Z, FLAG_P, FLAG_H, FLAG_I, FLAG_B};
-use apu::Memory;
+use apu::cpu::{FLAG_B, FLAG_C, FLAG_H, FLAG_I, FLAG_N, FLAG_P, FLAG_V, FLAG_Z, Spc700};
 
 // ============================================================
 // Helpers
@@ -119,7 +118,9 @@ fn test_get_flag_false() {
 #[test]
 fn test_all_flags_independent() {
     let (mut cpu, _) = make_cpu_mem();
-    for flag in [FLAG_C, FLAG_Z, FLAG_I, FLAG_H, FLAG_B, FLAG_P, FLAG_V, FLAG_N] {
+    for flag in [
+        FLAG_C, FLAG_Z, FLAG_I, FLAG_H, FLAG_B, FLAG_P, FLAG_V, FLAG_N,
+    ] {
         cpu.regs.psw = 0x00;
         cpu.set_flag(flag, true);
         assert!(cpu.get_flag(flag), "flag {flag:#04X} must be set");
@@ -151,7 +152,9 @@ fn test_nop_adds_2_cycles() {
 #[test]
 fn test_nop_does_not_change_registers() {
     let (mut cpu, mut mem) = make_cpu_mem();
-    cpu.regs.a = 0x11; cpu.regs.x = 0x22; cpu.regs.y = 0x33;
+    cpu.regs.a = 0x11;
+    cpu.regs.x = 0x22;
+    cpu.regs.y = 0x33;
     emit(&mut mem, cpu.regs.pc, 0x00);
     cpu.step(&mut mem);
     assert_eq!(cpu.regs.a, 0x11);
@@ -483,7 +486,7 @@ fn test_sty_abs_writes_y_to_address() {
 #[test]
 fn test_sta_dp_writes_a_to_page_zero() {
     let (mut cpu, mut mem) = make_cpu_mem();
-    cpu.regs.a   = 0xBB;
+    cpu.regs.a = 0xBB;
     cpu.regs.psw = 0; // FLAG_P clear → page 0
     emit_seq(&mut mem, cpu.regs.pc, &[0xC4, 0x50]); // STA $50
     cpu.step(&mut mem);
@@ -493,7 +496,7 @@ fn test_sta_dp_writes_a_to_page_zero() {
 #[test]
 fn test_sta_dp_writes_to_page_one_when_p_set() {
     let (mut cpu, mut mem) = make_cpu_mem();
-    cpu.regs.a   = 0xCC;
+    cpu.regs.a = 0xCC;
     cpu.regs.psw = FLAG_P; // dp_base = $0100
     emit_seq(&mut mem, cpu.regs.pc, &[0xC4, 0x50]); // STA $50 in page 1
     cpu.step(&mut mem);
@@ -524,7 +527,7 @@ fn test_adc_imm_basic_addition() {
 #[test]
 fn test_adc_imm_adds_carry_in() {
     let (mut cpu, mut mem) = make_cpu_mem();
-    cpu.regs.a   = 0x10;
+    cpu.regs.a = 0x10;
     cpu.regs.psw = FLAG_C; // carry set
     emit_seq(&mut mem, cpu.regs.pc, &[0x88, 0x20]); // ADC #$20
     cpu.step(&mut mem);
@@ -545,7 +548,7 @@ fn test_adc_imm_sets_carry_on_overflow() {
 #[test]
 fn test_adc_imm_clears_carry_when_no_overflow() {
     let (mut cpu, mut mem) = make_cpu_mem();
-    cpu.regs.a   = 0x01;
+    cpu.regs.a = 0x01;
     cpu.regs.psw = FLAG_C;
     emit_seq(&mut mem, cpu.regs.pc, &[0x88, 0x01]);
     cpu.step(&mut mem);
@@ -586,7 +589,7 @@ fn test_adc_imm_sets_overflow_neg_plus_neg_equals_pos() {
 #[test]
 fn test_adc_imm_clears_overflow_when_no_signed_overflow() {
     let (mut cpu, mut mem) = make_cpu_mem();
-    cpu.regs.a   = 0x01;
+    cpu.regs.a = 0x01;
     cpu.regs.psw = FLAG_V; // pre-set
     emit_seq(&mut mem, cpu.regs.pc, &[0x88, 0x01]);
     cpu.step(&mut mem);
@@ -641,7 +644,7 @@ fn test_adc_imm_half_carry_includes_carry_in() {
 fn test_sbc_imm_basic_subtraction() {
     // SPC700: borrow = !carry. With carry set (no borrow): $30 - $10 = $20
     let (mut cpu, mut mem) = make_cpu_mem();
-    cpu.regs.a   = 0x30;
+    cpu.regs.a = 0x30;
     cpu.regs.psw = FLAG_C; // carry set = no borrow
     emit_seq(&mut mem, cpu.regs.pc, &[0xA8, 0x10]); // SBC #$10
     cpu.step(&mut mem);
@@ -652,7 +655,7 @@ fn test_sbc_imm_basic_subtraction() {
 fn test_sbc_imm_subtracts_borrow() {
     // carry clear = borrow: $30 - $10 - 1 = $1F
     let (mut cpu, mut mem) = make_cpu_mem();
-    cpu.regs.a   = 0x30;
+    cpu.regs.a = 0x30;
     cpu.regs.psw = 0; // carry clear = borrow
     emit_seq(&mut mem, cpu.regs.pc, &[0xA8, 0x10]);
     cpu.step(&mut mem);
@@ -663,7 +666,7 @@ fn test_sbc_imm_subtracts_borrow() {
 fn test_sbc_imm_sets_carry_when_no_borrow() {
     // $30 - $10 = $20, no borrow → carry set
     let (mut cpu, mut mem) = make_cpu_mem();
-    cpu.regs.a   = 0x30;
+    cpu.regs.a = 0x30;
     cpu.regs.psw = FLAG_C;
     emit_seq(&mut mem, cpu.regs.pc, &[0xA8, 0x10]);
     cpu.step(&mut mem);
@@ -674,7 +677,7 @@ fn test_sbc_imm_sets_carry_when_no_borrow() {
 fn test_sbc_imm_clears_carry_when_borrow() {
     // $10 - $30 = underflow → borrow → carry clear
     let (mut cpu, mut mem) = make_cpu_mem();
-    cpu.regs.a   = 0x10;
+    cpu.regs.a = 0x10;
     cpu.regs.psw = FLAG_C;
     emit_seq(&mut mem, cpu.regs.pc, &[0xA8, 0x30]);
     cpu.step(&mut mem);
@@ -684,7 +687,7 @@ fn test_sbc_imm_clears_carry_when_borrow() {
 #[test]
 fn test_sbc_imm_sets_zero_flag() {
     let (mut cpu, mut mem) = make_cpu_mem();
-    cpu.regs.a   = 0x10;
+    cpu.regs.a = 0x10;
     cpu.regs.psw = FLAG_C;
     emit_seq(&mut mem, cpu.regs.pc, &[0xA8, 0x10]); // $10 - $10 = 0
     cpu.step(&mut mem);
@@ -694,7 +697,7 @@ fn test_sbc_imm_sets_zero_flag() {
 #[test]
 fn test_sbc_imm_sets_negative_flag() {
     let (mut cpu, mut mem) = make_cpu_mem();
-    cpu.regs.a   = 0x00;
+    cpu.regs.a = 0x00;
     cpu.regs.psw = FLAG_C;
     emit_seq(&mut mem, cpu.regs.pc, &[0xA8, 0x01]); // $00 - $01 = $FF
     cpu.step(&mut mem);
@@ -705,7 +708,7 @@ fn test_sbc_imm_sets_negative_flag() {
 fn test_sbc_imm_sets_overflow_neg_minus_pos_equals_pos() {
     // $80 - $01 = $7F — neg minus pos = pos → overflow
     let (mut cpu, mut mem) = make_cpu_mem();
-    cpu.regs.a   = 0x80;
+    cpu.regs.a = 0x80;
     cpu.regs.psw = FLAG_C;
     emit_seq(&mut mem, cpu.regs.pc, &[0xA8, 0x01]);
     cpu.step(&mut mem);
@@ -726,7 +729,7 @@ fn test_sbc_imm_clears_half_borrow_on_nibble_underflow() {
     // $10 - $01: low nibble $0 - $1 underflows -> half-borrow occurred -> H clear
     let (mut cpu, mut mem) = make_cpu_mem();
     cpu.regs.psw = FLAG_C;
-    cpu.regs.a   = 0x10;
+    cpu.regs.a = 0x10;
     emit_seq(&mut mem, cpu.regs.pc, &[0xA8, 0x01]);
     cpu.step(&mut mem);
     assert!(!cpu.get_flag(FLAG_H));
@@ -737,7 +740,7 @@ fn test_sbc_imm_sets_half_borrow_without_nibble_underflow() {
     // $15 - $05: low nibble $5 - $5 = 0, no underflow -> H set
     let (mut cpu, mut mem) = make_cpu_mem();
     cpu.regs.psw = FLAG_C;
-    cpu.regs.a   = 0x15;
+    cpu.regs.a = 0x15;
     emit_seq(&mut mem, cpu.regs.pc, &[0xA8, 0x05]);
     cpu.step(&mut mem);
     assert!(cpu.get_flag(FLAG_H));
@@ -749,7 +752,7 @@ fn test_sbc_imm_half_borrow_accounts_for_borrow_in() {
     // low nibble: $0 - $0 - 1 underflows -> H clear
     let (mut cpu, mut mem) = make_cpu_mem();
     cpu.regs.psw = 0; // carry clear = borrow-in present
-    cpu.regs.a   = 0x10;
+    cpu.regs.a = 0x10;
     emit_seq(&mut mem, cpu.regs.pc, &[0xA8, 0x00]);
     cpu.step(&mut mem);
     assert!(!cpu.get_flag(FLAG_H));
@@ -939,7 +942,7 @@ fn test_dp_base_clear_uses_page_zero() {
     // Covered by test_lda_dp_loads_from_page_zero above,
     // but verified explicitly here via STX dp.
     let (mut cpu, mut mem) = make_cpu_mem();
-    cpu.regs.x   = 0xAA;
+    cpu.regs.x = 0xAA;
     cpu.regs.psw = 0; // FLAG_P clear
     // STX dp not yet in dispatch — use LDA dp to verify page 0 addressing
     mem.write8(0x0030, 0xAA);
@@ -967,11 +970,15 @@ fn test_cycles_accumulate_across_multiple_steps() {
     let (mut cpu, mut mem) = make_cpu_mem();
     let pc = cpu.regs.pc;
     // NOP(2) + LDA #imm(2) + STA !a(4) = 8 cycles
-    emit_seq(&mut mem, pc, &[
-        0x00,               // NOP
-        0xE8, 0x42,         // LDA #$42
-        0xC5, 0x00, 0x05,   // STA !$0500
-    ]);
+    emit_seq(
+        &mut mem,
+        pc,
+        &[
+            0x00, // NOP
+            0xE8, 0x42, // LDA #$42
+            0xC5, 0x00, 0x05, // STA !$0500
+        ],
+    );
     cpu.step(&mut mem); // NOP
     cpu.step(&mut mem); // LDA
     cpu.step(&mut mem); // STA
