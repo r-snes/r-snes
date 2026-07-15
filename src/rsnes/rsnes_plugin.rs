@@ -788,7 +788,7 @@ mod test {
         });
 
         core.borrow_mut().ppu.cgram.memory = [4242; _];
-        let mut exp_cgram = core.borrow().ppu.cgram.memory.clone();
+        let mut exp_cgram = core.borrow().ppu.cgram.memory;
         assert_eq!(core.borrow().ppu.cgram.memory, exp_cgram);
 
         plugin.run_default().unwrap();
