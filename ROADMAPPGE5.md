@@ -2,10 +2,9 @@
 
 ## Overview
 
-With a team of 4 and a mostly complete core, all five workstreams kick off in
-parallel on day one and complete on a staggered schedule. Game compatibility and
-the plug-in system form the protected core of the project; the other workstreams
-act as adjustment variables if delays occur. Integration and polish run
+With a team of 4 and a mostly complete core. Game compatibility and
+the plug-in system form the core of the project; the other features
+act as secondary features if delays occur. Polish run
 continuously from kickoff to final delivery.
 
 ---
