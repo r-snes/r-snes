@@ -18,7 +18,7 @@ fn run(timers: &mut Timers, mem: &mut Memory, cycles: u32) {
 fn test_timer0_counts_at_8khz_with_divisor() {
     let mut mem = Memory::new();
     let mut timers = Timers::new();
-    mem.write8(0x00FA, 2);    // divisor 2
+    mem.write8(0x00FA, 2); // divisor 2
     mem.write8(0x00F1, 0x81); // keep IPL ROM bit, enable timer 0
 
     // Two 8 kHz ticks needed per output increment.
@@ -32,7 +32,7 @@ fn test_timer0_counts_at_8khz_with_divisor() {
 fn test_timer2_runs_at_64khz() {
     let mut mem = Memory::new();
     let mut timers = Timers::new();
-    mem.write8(0x00FC, 1);    // divisor 1: output increments every base tick
+    mem.write8(0x00FC, 1); // divisor 1: output increments every base tick
     mem.write8(0x00F1, 0x84); // enable timer 2
 
     run(&mut timers, &mut mem, T2_PERIOD * 5);
@@ -43,7 +43,7 @@ fn test_timer2_runs_at_64khz() {
 fn test_divisor_zero_means_256() {
     let mut mem = Memory::new();
     let mut timers = Timers::new();
-    mem.write8(0x00FA, 0);    // divisor 0 -> 256
+    mem.write8(0x00FA, 0); // divisor 0 -> 256
     mem.write8(0x00F1, 0x81);
 
     run(&mut timers, &mut mem, T01_PERIOD * 255);

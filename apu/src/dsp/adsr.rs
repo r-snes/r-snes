@@ -172,7 +172,7 @@ impl Adsr {
     ///   mode 2 (10): linear increase,      +32 per step
     ///   mode 3 (11): bent increase,        +32 below 0x600, +8 above
     ///
-    /// GAIN has no phase transitions: a ramp that reaches 0 leaves the 
+    /// GAIN has no phase transitions: a ramp that reaches 0 leaves the
     /// voice keyed on, and one that reaches 0x7FF simply holds there.
     fn update_gain(&mut self) {
         let g = self.gain_param;

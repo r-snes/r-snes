@@ -73,34 +73,27 @@ const VIBTAB: [u8; 16] = [12, 17, 21, 23, 24, 23, 21, 17, 12, 7, 3, 1, 0, 1, 3, 
 
 /// Bright saw-ish lead: harmonics 1-5 at 1/n.
 pub const WAVE_LEAD: [i16; 64] = [
-    0, 3976, 7542, 10354, 12194, 13000, 12864, 12008,
-    10730, 9346, 8126, 7251, 6788, 6694, 6838, 7045,
-    7146, 7014, 6597, 5922, 5081, 4204, 3423, 2837,
-    2485, 2344, 2332, 2336, 2242, 1964, 1471, 790,
-    0, -790, -1471, -1964, -2242, -2336, -2332, -2344,
-    -2485, -2837, -3423, -4204, -5081, -5922, -6597, -7014,
-    -7146, -7045, -6838, -6694, -6788, -7251, -8126, -9346,
-    -10730, -12008, -12864, -13000, -12194, -10354, -7542, -3976,
+    0, 3976, 7542, 10354, 12194, 13000, 12864, 12008, 10730, 9346, 8126, 7251, 6788, 6694, 6838,
+    7045, 7146, 7014, 6597, 5922, 5081, 4204, 3423, 2837, 2485, 2344, 2332, 2336, 2242, 1964, 1471,
+    790, 0, -790, -1471, -1964, -2242, -2336, -2332, -2344, -2485, -2837, -3423, -4204, -5081,
+    -5922, -6597, -7014, -7146, -7045, -6838, -6694, -6788, -7251, -8126, -9346, -10730, -12008,
+    -12864, -13000, -12194, -10354, -7542, -3976,
 ];
 
 /// Warm triangle bass: odd harmonics at 1/n^2 with alternating sign.
 pub const WAVE_BASS: [i16; 64] = [
-    0, 956, 1882, 2758, 3580, 4361, 5132, 5927,
-    6779, 7706, 8702, 9734, 10741, 11647, 12371, 12838,
-    13000, 12838, 12371, 11647, 10741, 9734, 8702, 7706,
-    6779, 5927, 5132, 4361, 3580, 2758, 1882, 956,
-    0, -956, -1882, -2758, -3580, -4361, -5132, -5927,
-    -6779, -7706, -8702, -9734, -10741, -11647, -12371, -12838,
-    -13000, -12838, -12371, -11647, -10741, -9734, -8702, -7706,
-    -6779, -5927, -5132, -4361, -3580, -2758, -1882, -956,
+    0, 956, 1882, 2758, 3580, 4361, 5132, 5927, 6779, 7706, 8702, 9734, 10741, 11647, 12371, 12838,
+    13000, 12838, 12371, 11647, 10741, 9734, 8702, 7706, 6779, 5927, 5132, 4361, 3580, 2758, 1882,
+    956, 0, -956, -1882, -2758, -3580, -4361, -5132, -5927, -6779, -7706, -8702, -9734, -10741,
+    -11647, -12371, -12838, -13000, -12838, -12371, -11647, -10741, -9734, -8702, -7706, -6779,
+    -5927, -5132, -4361, -3580, -2758, -1882, -956,
 ];
 
 /// Hollow square-ish arpeggio: odd harmonics 1,3,5,7 at 1/n.
 pub const WAVE_ARP: [i16; 32] = [
-    0, 8860, 12000, 10357, 9036, 10060, 10989, 10152,
-    9339, 10152, 10989, 10060, 9036, 10357, 12000, 8860,
-    0, -8860, -12000, -10357, -9036, -10060, -10989, -10152,
-    -9339, -10152, -10989, -10060, -9036, -10357, -12000, -8860,
+    0, 8860, 12000, 10357, 9036, 10060, 10989, 10152, 9339, 10152, 10989, 10060, 9036, 10357,
+    12000, 8860, 0, -8860, -12000, -10357, -9036, -10060, -10989, -10152, -9339, -10152, -10989,
+    -10060, -9036, -10357, -12000, -8860,
 ];
 
 // -------------------------------------------------------------------------
@@ -120,53 +113,53 @@ pub const TRACK_LEAD: &[(u16, u8)] = &[
     (0x0e14, 32), // A4
     (0x10be, 32), // C5
     (REST, 32),
-    (0x1519, 32), // E5
-    (0x1916, 16), // G5
-    (0x1519, 16), // E5
-    (0x10be, 64), // C5
-    (0x12cb, 16), // D5
-    (0x1519, 16), // E5
-    (0x12cb, 16), // D5
-    (0x0fce, 16), // B4
-    (0x0c8b, 64), // G4
-    (0x1c29, 48), // A5
-    (0x1916, 16), // G5
-    (0x1519, 32), // E5
-    (0x10be, 32), // C5
-    (0x165a, 32), // F5
-    (0x1519, 16), // E5
-    (0x12cb, 16), // D5
-    (0x10be, 32), // C5
-    (0x0e14, 32), // A4
-    (0x12cb, 32), // D5
-    (0x165a, 32), // F5
-    (0x1519, 48), // E5
-    (0x0fce, 16), // B4
+    (0x1519, 32),  // E5
+    (0x1916, 16),  // G5
+    (0x1519, 16),  // E5
+    (0x10be, 64),  // C5
+    (0x12cb, 16),  // D5
+    (0x1519, 16),  // E5
+    (0x12cb, 16),  // D5
+    (0x0fce, 16),  // B4
+    (0x0c8b, 64),  // G4
+    (0x1c29, 48),  // A5
+    (0x1916, 16),  // G5
+    (0x1519, 32),  // E5
+    (0x10be, 32),  // C5
+    (0x165a, 32),  // F5
+    (0x1519, 16),  // E5
+    (0x12cb, 16),  // D5
+    (0x10be, 32),  // C5
+    (0x0e14, 32),  // A4
+    (0x12cb, 32),  // D5
+    (0x165a, 32),  // F5
+    (0x1519, 48),  // E5
+    (0x0fce, 16),  // B4
     (0x0e14, 112), // A4
     (REST, 16),
 ];
 
 pub const TRACK_BASS: &[(u16, u8)] = &[
-    (0x0385, 32), // A2
-    (0x0385, 32), // A2
-    (0x0546, 64), // E3
-    (0x02cb, 32), // F2
-    (0x02cb, 32), // F2
-    (0x0430, 64), // C3
-    (0x0430, 32), // C3
-    (0x0430, 32), // C3
-    (0x0323, 64), // G2
-    (0x0323, 32), // G2
-    (0x0323, 32), // G2
-    (0x04b3, 64), // D3
-    (0x0385, 32), // A2
-    (0x0385, 32), // A2
-    (0x0546, 64), // E3
-    (0x02cb, 32), // F2
-    (0x02cb, 32), // F2
-    (0x0430, 64), // C3
-    (0x04b3, 64), // D3
-    (0x02a3, 64), // E2
+    (0x0385, 32),  // A2
+    (0x0385, 32),  // A2
+    (0x0546, 64),  // E3
+    (0x02cb, 32),  // F2
+    (0x02cb, 32),  // F2
+    (0x0430, 64),  // C3
+    (0x0430, 32),  // C3
+    (0x0430, 32),  // C3
+    (0x0323, 64),  // G2
+    (0x0323, 32),  // G2
+    (0x0323, 32),  // G2
+    (0x04b3, 64),  // D3
+    (0x0385, 32),  // A2
+    (0x0385, 32),  // A2
+    (0x0546, 64),  // E3
+    (0x02cb, 32),  // F2
+    (0x02cb, 32),  // F2
+    (0x0430, 64),  // C3
+    (0x04b3, 64),  // D3
+    (0x02a3, 64),  // E2
     (0x0385, 128), // A2
 ];
 
@@ -240,13 +233,16 @@ pub const TRACK_ARP: &[(u16, u8)] = &[
 // -------------------------------------------------------------------------
 
 struct Asm {
-    org:  u16,
+    org: u16,
     code: Vec<u8>,
 }
 
 impl Asm {
     fn new(org: u16) -> Self {
-        Self { org, code: Vec::new() }
+        Self {
+            org,
+            code: Vec::new(),
+        }
     }
 
     /// Address of the next byte to be emitted.
@@ -259,7 +255,9 @@ impl Asm {
     }
 
     /// MOV dp, #imm — note the operand order: opcode, imm, dp.
-    fn mov_dp_imm(&mut self, dp: u8, imm: u8) { self.db(&[0x8F, imm, dp]); }
+    fn mov_dp_imm(&mut self, dp: u8, imm: u8) {
+        self.db(&[0x8F, imm, dp]);
+    }
 
     /// Write a DSP register through the $F2/$F3 address latch.
     fn dsp_write(&mut self, reg: u8, val: u8) {
@@ -267,20 +265,48 @@ impl Asm {
         self.mov_dp_imm(0xF3, val);
     }
 
-    fn mov_a_abs_x(&mut self, addr: u16) { self.db(&[0xF5, addr as u8, (addr >> 8) as u8]); }
-    fn mov_a_dp(&mut self, dp: u8)       { self.db(&[0xE4, dp]); }
-    fn mov_dp_a(&mut self, dp: u8)       { self.db(&[0xC4, dp]); }
-    fn mov_x_dp(&mut self, dp: u8)       { self.db(&[0xF8, dp]); }
-    fn mov_dp_x(&mut self, dp: u8)       { self.db(&[0xD8, dp]); }
-    fn mov_x_a(&mut self)                { self.db(&[0x5D]); }
-    fn inc_x(&mut self)                  { self.db(&[0x3D]); }
-    fn dec_dp(&mut self, dp: u8)         { self.db(&[0x8B, dp]); }
-    fn cmp_a_imm(&mut self, imm: u8)     { self.db(&[0x68, imm]); }
-    fn adc_a_imm(&mut self, imm: u8)     { self.db(&[0x88, imm]); }
-    fn adc_a_dp(&mut self, dp: u8)       { self.db(&[0x84, dp]); }
-    fn and_a_imm(&mut self, imm: u8)     { self.db(&[0x28, imm]); }
-    fn clrc(&mut self)                   { self.db(&[0x60]); }
-    fn jmp_abs(&mut self, addr: u16)     { self.db(&[0x5F, addr as u8, (addr >> 8) as u8]); }
+    fn mov_a_abs_x(&mut self, addr: u16) {
+        self.db(&[0xF5, addr as u8, (addr >> 8) as u8]);
+    }
+    fn mov_a_dp(&mut self, dp: u8) {
+        self.db(&[0xE4, dp]);
+    }
+    fn mov_dp_a(&mut self, dp: u8) {
+        self.db(&[0xC4, dp]);
+    }
+    fn mov_x_dp(&mut self, dp: u8) {
+        self.db(&[0xF8, dp]);
+    }
+    fn mov_dp_x(&mut self, dp: u8) {
+        self.db(&[0xD8, dp]);
+    }
+    fn mov_x_a(&mut self) {
+        self.db(&[0x5D]);
+    }
+    fn inc_x(&mut self) {
+        self.db(&[0x3D]);
+    }
+    fn dec_dp(&mut self, dp: u8) {
+        self.db(&[0x8B, dp]);
+    }
+    fn cmp_a_imm(&mut self, imm: u8) {
+        self.db(&[0x68, imm]);
+    }
+    fn adc_a_imm(&mut self, imm: u8) {
+        self.db(&[0x88, imm]);
+    }
+    fn adc_a_dp(&mut self, dp: u8) {
+        self.db(&[0x84, dp]);
+    }
+    fn and_a_imm(&mut self, imm: u8) {
+        self.db(&[0x28, imm]);
+    }
+    fn clrc(&mut self) {
+        self.db(&[0x60]);
+    }
+    fn jmp_abs(&mut self, addr: u16) {
+        self.db(&[0x5F, addr as u8, (addr >> 8) as u8]);
+    }
 
     /// Emit a branch to an already-known (backward) target.
     fn branch_to(&mut self, opcode: u8, target: u16) {
@@ -289,7 +315,9 @@ impl Asm {
         self.db(&[opcode, rel as i8 as u8]);
     }
 
-    fn beq_to(&mut self, target: u16) { self.branch_to(0xF0, target); }
+    fn beq_to(&mut self, target: u16) {
+        self.branch_to(0xF0, target);
+    }
 
     /// Emit a branch with a forward target to be patched; returns the
     /// position of the displacement byte.
@@ -300,7 +328,10 @@ impl Asm {
 
     fn patch(&mut self, pos: usize, target: u16) {
         let rel = target as i32 - (self.org as i32 + pos as i32 + 1);
-        assert!((-128..=127).contains(&rel), "patched branch out of range: {rel}");
+        assert!(
+            (-128..=127).contains(&rel),
+            "patched branch out of range: {rel}"
+        );
         self.code[pos] = rel as i8 as u8;
     }
 }
@@ -329,56 +360,67 @@ pub fn build_driver() -> Vec<u8> {
     let mut a = Asm::new(LOAD_ADDR);
 
     // --- one-time DSP / timer / variable setup ---
-    a.dsp_write(0x6C, 0x20);                    // FLG: unmuted, echo writes off
+    a.dsp_write(0x6C, 0x20); // FLG: unmuted, echo writes off
     // Master volume handled here
-    a.dsp_write(0x0C, 0x10);                    // MVOLL (3 voices: headroom)
-    a.dsp_write(0x1C, 0x10);                    // MVOLR
-    a.dsp_write(0x5D, (DIR_ADDR >> 8) as u8);   // DIR page
+    a.dsp_write(0x0C, 0x10); // MVOLL (3 voices: headroom)
+    a.dsp_write(0x1C, 0x10); // MVOLR
+    a.dsp_write(0x5D, (DIR_ADDR >> 8) as u8); // DIR page
     let vols: [u8; 3] = [0x38, 0x46, 0x24];
     for v in 0..3u8 {
         a.dsp_write(v << 4, vols[v as usize]); // VOLL ($x0)
         a.dsp_write((v << 4) | 0x1, vols[v as usize]); // VOLR ($x1)
-        a.dsp_write((v << 4) | 0x4, v);                // SRCN = instrument v
+        a.dsp_write((v << 4) | 0x4, v); // SRCN = instrument v
     }
-    a.dsp_write(0x05, 0xAD);                    // V0 ADSR1: attack 13, decay 2
-    a.dsp_write(0x06, 0xAE);                    // V0 ADSR2: sustain 5, rate 14
-    a.dsp_write(0x15, 0xBF);                    // V1 ADSR1: attack 15, decay 3
-    a.dsp_write(0x16, 0x72);                    // V1 ADSR2: sustain 3, rate 18
-    a.dsp_write(0x25, 0x00);                    // V2 ADSR1 bit7 clear: GAIN mode
-    a.dsp_write(0x27, 0x48);                    // V2 GAIN: direct, level 0x480
+    a.dsp_write(0x05, 0xAD); // V0 ADSR1: attack 13, decay 2
+    a.dsp_write(0x06, 0xAE); // V0 ADSR2: sustain 5, rate 14
+    a.dsp_write(0x15, 0xBF); // V1 ADSR1: attack 15, decay 3
+    a.dsp_write(0x16, 0x72); // V1 ADSR2: sustain 3, rate 18
+    a.dsp_write(0x25, 0x00); // V2 ADSR1 bit7 clear: GAIN mode
+    a.dsp_write(0x27, 0x48); // V2 GAIN: direct, level 0x480
     for v in 0..3 {
-        a.mov_dp_imm(IDX[v], 0);                // track index = 0
-        a.mov_dp_imm(TCK[v], 1);                // 1 tick left -> fetch on tick 1
+        a.mov_dp_imm(IDX[v], 0); // track index = 0
+        a.mov_dp_imm(TCK[v], 1); // 1 tick left -> fetch on tick 1
     }
     a.mov_dp_imm(VPH, 0);
     a.mov_dp_imm(BLO, 0);
     a.mov_dp_imm(BHI, 0);
-    a.mov_dp_imm(0xFA, 125);                    // timer 0: 8000 / 125 = 64 Hz
-    a.mov_dp_imm(0xF1, 0x01);                   // CONTROL: enable timer 0
+    a.mov_dp_imm(0xFA, 125); // timer 0: 8000 / 125 = 64 Hz
+    a.mov_dp_imm(0xF1, 0x01); // CONTROL: enable timer 0
 
     // --- main tick loop ---
     let wait = a.here();
-    a.mov_a_dp(0xFD);                           // $FD is clear-on-read
+    a.mov_a_dp(0xFD); // $FD is clear-on-read
     a.beq_to(wait);
 
     // Vibrato: voice 0 pitch = base + VIBTAB[phase], every tick.
-    a.mov_a_dp(VPH); a.clrc(); a.adc_a_imm(1); a.and_a_imm(0x0F); a.mov_dp_a(VPH);
-    a.mov_x_a(); a.mov_a_abs_x(VIB_ADDR); a.mov_dp_a(VOFF);
-    a.mov_a_dp(BLO); a.clrc(); a.adc_a_dp(VOFF);
-    a.mov_dp_imm(0xF2, 0x02); a.mov_dp_a(0xF3); // PITCHL (MOVs preserve carry)
-    a.mov_a_dp(BHI); a.adc_a_imm(0);
-    a.mov_dp_imm(0xF2, 0x03); a.mov_dp_a(0xF3); // PITCHH
+    a.mov_a_dp(VPH);
+    a.clrc();
+    a.adc_a_imm(1);
+    a.and_a_imm(0x0F);
+    a.mov_dp_a(VPH);
+    a.mov_x_a();
+    a.mov_a_abs_x(VIB_ADDR);
+    a.mov_dp_a(VOFF);
+    a.mov_a_dp(BLO);
+    a.clrc();
+    a.adc_a_dp(VOFF);
+    a.mov_dp_imm(0xF2, 0x02);
+    a.mov_dp_a(0xF3); // PITCHL (MOVs preserve carry)
+    a.mov_a_dp(BHI);
+    a.adc_a_imm(0);
+    a.mov_dp_imm(0xF2, 0x03);
+    a.mov_dp_a(0xF3); // PITCHH
 
     // Per-voice sequencers, unrolled.
     for v in 0..3usize {
         a.dec_dp(TCK[v]);
-        let to_skip = a.placeholder(0xD0);      // bne skip: note still sounding
+        let to_skip = a.placeholder(0xD0); // bne skip: note still sounding
         let fetch = a.here();
         a.mov_x_dp(IDX[v]);
         a.mov_a_abs_x(TRACK_ADDR[v]);
         a.cmp_a_imm(0xFF);
         let to_notloop = a.placeholder(0xD0);
-        a.mov_dp_imm(IDX[v], 0);                // $FF: loop track from the top
+        a.mov_dp_imm(IDX[v], 0); // $FF: loop track from the top
         a.branch_to(0x2F, fetch);
         let notloop = a.here();
         a.patch(to_notloop, notloop);
@@ -386,23 +428,34 @@ pub fn build_driver() -> Vec<u8> {
         let to_rest = a.placeholder(0xF0);
         // Note event: A = pitch hi. KON alone retriggers (it resets the
         // envelope), so no KOFF is needed on a note change.
-        if v == 0 { a.mov_dp_a(BHI); }
-        a.mov_dp_imm(0xF2, ((v as u8) << 4) | 0x03); a.mov_dp_a(0xF3);
-        a.inc_x(); a.mov_a_abs_x(TRACK_ADDR[v]);
-        if v == 0 { a.mov_dp_a(BLO); }
-        a.mov_dp_imm(0xF2, ((v as u8) << 4) | 0x02); a.mov_dp_a(0xF3);
-        a.inc_x(); a.mov_a_abs_x(TRACK_ADDR[v]);
+        if v == 0 {
+            a.mov_dp_a(BHI);
+        }
+        a.mov_dp_imm(0xF2, ((v as u8) << 4) | 0x03);
+        a.mov_dp_a(0xF3);
+        a.inc_x();
+        a.mov_a_abs_x(TRACK_ADDR[v]);
+        if v == 0 {
+            a.mov_dp_a(BLO);
+        }
+        a.mov_dp_imm(0xF2, ((v as u8) << 4) | 0x02);
+        a.mov_dp_a(0xF3);
+        a.inc_x();
+        a.mov_a_abs_x(TRACK_ADDR[v]);
         a.mov_dp_a(TCK[v]);
-        a.inc_x(); a.mov_dp_x(IDX[v]);
-        a.dsp_write(0x4C, KBIT[v]);             // KON
+        a.inc_x();
+        a.mov_dp_x(IDX[v]);
+        a.dsp_write(0x4C, KBIT[v]); // KON
         let to_skip2 = a.placeholder(0x2F);
         // Rest event: key off, load duration.
         let rest = a.here();
         a.patch(to_rest, rest);
-        a.dsp_write(0x5C, KBIT[v]);             // KOFF -> release fade
-        a.inc_x(); a.mov_a_abs_x(TRACK_ADDR[v]);
+        a.dsp_write(0x5C, KBIT[v]); // KOFF -> release fade
+        a.inc_x();
+        a.mov_a_abs_x(TRACK_ADDR[v]);
         a.mov_dp_a(TCK[v]);
-        a.inc_x(); a.mov_dp_x(IDX[v]);
+        a.inc_x();
+        a.mov_dp_x(IDX[v]);
         let skip = a.here();
         a.patch(to_skip, skip);
         a.patch(to_skip2, skip);
@@ -494,7 +547,11 @@ pub fn build_track(track: &[(u16, u8)]) -> Vec<u8> {
         }
     }
     out.push(0xFF);
-    assert!(out.len() <= 256, "track too long for 8-bit indexing: {}", out.len());
+    assert!(
+        out.len() <= 256,
+        "track too long for 8-bit indexing: {}",
+        out.len()
+    );
     out
 }
 
@@ -508,7 +565,11 @@ pub fn build_aram_image() -> Vec<u8> {
         driver.len()
     );
 
-    let tracks = [build_track(TRACK_LEAD), build_track(TRACK_BASS), build_track(TRACK_ARP)];
+    let tracks = [
+        build_track(TRACK_LEAD),
+        build_track(TRACK_BASS),
+        build_track(TRACK_ARP),
+    ];
     let instruments = [
         encode_brr(&WAVE_LEAD),
         encode_brr(&WAVE_BASS),
@@ -523,8 +584,7 @@ pub fn build_aram_image() -> Vec<u8> {
     img[..driver.len()].copy_from_slice(&driver);
     img[off(VIB_ADDR)..off(VIB_ADDR) + 16].copy_from_slice(&VIBTAB);
     for v in 0..3 {
-        img[off(TRACK_ADDR[v])..off(TRACK_ADDR[v]) + tracks[v].len()]
-            .copy_from_slice(&tracks[v]);
+        img[off(TRACK_ADDR[v])..off(TRACK_ADDR[v]) + tracks[v].len()].copy_from_slice(&tracks[v]);
     }
 
     // DIR: 3 entries of [start_lo, start_hi, loop_lo, loop_hi]; each
@@ -532,8 +592,7 @@ pub fn build_aram_image() -> Vec<u8> {
     let mut brr_addr = BRR_ADDR;
     for (i, brr) in instruments.iter().enumerate() {
         let [lo, hi] = brr_addr.to_le_bytes();
-        img[off(DIR_ADDR) + i * 4..off(DIR_ADDR) + i * 4 + 4]
-            .copy_from_slice(&[lo, hi, lo, hi]);
+        img[off(DIR_ADDR) + i * 4..off(DIR_ADDR) + i * 4 + 4].copy_from_slice(&[lo, hi, lo, hi]);
         img[off(brr_addr)..off(brr_addr) + brr.len()].copy_from_slice(brr);
         brr_addr += brr.len() as u16;
     }
@@ -556,7 +615,9 @@ fn wait_port0(apu: &mut Apu, want: u8, what: &str) -> Result<(), String> {
         }
         apu.step(1);
     }
-    Err(format!("IPL timeout waiting for {want:#04x} on port 0 ({what})"))
+    Err(format!(
+        "IPL timeout waiting for {want:#04x} on port 0 ({what})"
+    ))
 }
 
 /// Upload `image` to `load_addr` over the IPL boot protocol and start

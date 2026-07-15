@@ -41,8 +41,8 @@ impl Default for Timers {
 impl Timers {
     pub fn new() -> Self {
         Self {
-            cycle:       0,
-            stage:       [0; 3],
+            cycle: 0,
+            stage: [0; 3],
             prev_enable: 0,
         }
     }

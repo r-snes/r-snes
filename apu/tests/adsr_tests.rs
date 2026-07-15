@@ -426,7 +426,7 @@ fn test_direct_gain_sets_level_immediately() {
     let mut a = gain_adsr(0x40); // direct, value 0x40
     a.update_envelope();
     assert_eq!(a.envelope_level, 0x400, "direct gain = value * 16");
- 
+
     a.gain_param = 0x00;
     a.update_envelope();
     assert_eq!(a.envelope_level, 0, "direct gain 0 silences instantly");
@@ -436,7 +436,7 @@ fn test_direct_gain_sets_level_immediately() {
         "GAIN reaching 0 must NOT key the voice off"
     );
 }
- 
+
 #[test]
 fn test_gain_linear_increase_reaches_and_holds_max() {
     let mut a = gain_adsr(0xDF); // 1_10_11111: linear increase, rate 31
@@ -447,7 +447,7 @@ fn test_gain_linear_increase_reaches_and_holds_max() {
     a.update_envelope();
     assert_eq!(a.envelope_level, 0x7FF, "and hold there");
 }
- 
+
 #[test]
 fn test_gain_bent_increase_slows_past_0x600() {
     let mut a = gain_adsr(0xFF); // 1_11_11111: bent increase, rate 31
@@ -458,7 +458,7 @@ fn test_gain_bent_increase_slows_past_0x600() {
     a.update_envelope();
     assert_eq!(a.envelope_level, at_bend + 8, "+8 per step above 0x600");
 }
- 
+
 #[test]
 fn test_gain_linear_decrease_stops_at_zero_without_key_off() {
     let mut a = gain_adsr(0x9F); // 1_00_11111: linear decrease, rate 31
@@ -469,7 +469,7 @@ fn test_gain_linear_decrease_stops_at_zero_without_key_off() {
     assert_eq!(a.envelope_level, 0);
     assert_ne!(a.envelope_phase, EnvelopePhase::Off);
 }
- 
+
 #[test]
 fn test_gain_exponential_decrease_step_tracks_level() {
     let mut a = gain_adsr(0xBF); // 1_01_11111: exp decrease, rate 31
@@ -477,7 +477,7 @@ fn test_gain_exponential_decrease_step_tracks_level() {
     a.update_envelope();
     assert_eq!(a.envelope_level, 0x7FF - ((0x7FF >> 8) + 1));
 }
- 
+
 #[test]
 fn test_gain_ramp_respects_rate_table() {
     let mut a = gain_adsr(0xC0); // 1_10_00000: linear increase, rate 0 = never
@@ -486,7 +486,7 @@ fn test_gain_ramp_respects_rate_table() {
     }
     assert_eq!(a.envelope_level, 0, "rate 0 must hold forever");
 }
- 
+
 #[test]
 fn test_release_applies_even_in_gain_mode() {
     let mut a = gain_adsr(0xDF);
