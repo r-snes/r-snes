@@ -2,9 +2,9 @@
 
 ## Overview
 
-With a team of 4 and a mostly complete core, game compatibility and
-the plug-in system form the core of the project; the other features
-act as secondary features if delays occur. Polish run
+With a team of 4 and the start of a SNES  emulator game compatibility and
+the plug-in system form the remaining core of the project; the other features
+act as secondary objectives if delays occur. Polish run
 continuously from kickoff to final delivery.
 
 ---
