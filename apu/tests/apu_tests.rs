@@ -3,12 +3,12 @@
 /// Covers:
 ///   - Apu::new(): reset vector loaded, SP initialised, cycle counters zero
 ///   - Apu::step(): CPU ticked every cycle, DSP ticked every 32 cycles,
-///                  total cycle counter advances correctly
+///     total cycle counter advances correctly
 ///   - DSP tick rate: exactly 1 DSP tick per 32 CPU cycles
 ///   - render_audio(): correct output length, advances cycles, produces
-///                     stereo-interleaved samples, silent when no voices active
+///     stereo-interleaved samples, silent when no voices active
 ///   - Component wiring: DSP register writes via Memory reach the DSP,
-///                       render_audio reflects DSP state
+///     render_audio reflects DSP state
 use apu::Apu;
 use apu::dsp::EnvelopePhase;
 

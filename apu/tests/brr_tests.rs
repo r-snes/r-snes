@@ -1,13 +1,16 @@
+//! BRR decoder tests
+//!
+//! Covers:
+//!   - decode_brr_nibble: zero input, positive/negative nibbles, all 4 filters
+//!   - shift boundary values (0, 12, 13–15 saturation)
+//!   - filter coefficient correctness (i32 intermediate math, 15-bit clamp)
+//!   - decode_brr_block: header parsing, end/loop flags, history threading
+//!   - Brr struct defaults and field semantics
+//!   - BrrState block-advance and wrap logic
+
+#![allow(clippy::field_reassign_with_default)] // default-then-assign reads better in test setup
+
 use apu::Memory;
-/// BRR decoder tests
-///
-/// Covers:
-///   - decode_brr_nibble: zero input, positive/negative nibbles, all 4 filters
-///   - shift boundary values (0, 12, 13–15 saturation)
-///   - filter coefficient correctness (i32 intermediate math, 15-bit clamp)
-///   - decode_brr_block: header parsing, end/loop flags, history threading
-///   - Brr struct defaults and field semantics
-///   - BrrState block-advance and wrap logic
 use apu::dsp::{Brr, decode_brr_block, decode_brr_nibble};
 
 // ============================================================

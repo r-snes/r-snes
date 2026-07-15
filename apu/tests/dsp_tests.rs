@@ -1,13 +1,14 @@
+//! DSP core tests
+//!
+//! Covers Dsp::new, read_reg/write_reg, global registers (KON/KOFF/DIR),
+//! step() BRR playback and looping, render_audio_single mixing/clamping,
+//! ENVX/OUTX/ENDX register updates, and master volume.
+//!
+//! ADSR phase tests → adsr_tests.rs
+//! Voice/register mapping tests → voice_tests.rs
+//! BRR decode tests → brr_tests.rs
+
 use apu::Memory;
-/// DSP core tests
-///
-/// Covers Dsp::new, read_reg/write_reg, global registers (KON/KOFF/DIR),
-/// step() BRR playback and looping, render_audio_single mixing/clamping,
-/// ENVX/OUTX/ENDX register updates, and master volume.
-///
-/// ADSR phase tests → adsr_tests.rs
-/// Voice/register mapping tests → voice_tests.rs
-/// BRR decode tests → brr_tests.rs
 use apu::dsp::{Dsp, EnvelopePhase};
 
 // ============================================================
@@ -24,11 +25,6 @@ fn dsp_vw(mem: &mut Memory, voice: u8, reg: u8, val: u8) {
 /// Write a global DSP register through the Memory bus.
 fn dsp_gw(mem: &mut Memory, reg: u8, val: u8) {
     mem.write8(DSP_BASE + reg as u16, val);
-}
-
-/// Read a DSP register by its 7-bit index directly.
-fn dsp_r(mem: &Memory, idx: u8) -> u8 {
-    mem.dsp.read_reg(idx)
 }
 
 /// Build a minimal valid 9-byte BRR block in APU RAM.
