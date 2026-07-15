@@ -1,5 +1,6 @@
 use super::RSnesCore;
 
+use common::snes_address::SnesAddress;
 use cpu::cpu::CPU;
 use piccolo::Callback;
 use piccolo::CallbackReturn;
@@ -8,6 +9,7 @@ use piccolo::IntoValue;
 use piccolo::Table;
 use piccolo::Value;
 use piccolo::error::LuaError;
+use plugins::perm_tree::BusPermissions;
 use plugins::perm_tree::FileSystemPermissions;
 use plugins::perm_tree::FileWritePermissions;
 use plugins::perm_tree::filesystem::FileWriteOptions;
@@ -20,6 +22,7 @@ use std::fs::OpenOptions;
 use std::io::Seek;
 use std::io::SeekFrom;
 use std::io::Write;
+use std::ops::DerefMut;
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -38,6 +41,13 @@ impl RSnesCore {
             }
             if plugin.table.perms.internal.input {
                 rsnes.set_field(ctx, "input", Self::create_input_table(ctx, emu));
+            }
+            if !plugin.table.perms.internal.bus.is_none() {
+                rsnes.set_field(
+                    ctx,
+                    "bus",
+                    Self::create_bus_table(ctx, emu, &plugin.table.perms.internal.bus),
+                );
             }
             if !plugin.table.perms.external.filesystem.is_none() {
                 rsnes.set_field(
@@ -137,6 +147,69 @@ impl RSnesCore {
                 Ok(piccolo::CallbackReturn::Return)
             }),
         );
+
+        ret
+    }
+
+    fn create_bus_table<'gc>(
+        ctx: Context<'gc>,
+        emu: &Rc<RefCell<Self>>,
+        bus_perms: &BusPermissions,
+    ) -> Table<'gc> {
+        let ret = Table::new(ctx.mutation());
+        if bus_perms.read {
+            let clone = emu.clone();
+            ret.set_field(
+                ctx,
+                "read",
+                Callback::from_fn(ctx.mutation(), move |ctx, _, mut stack| {
+                    let Some(Value::Integer(addr)) = stack.pop_front() else {
+                        return Ok(CallbackReturn::Return)
+                    };
+                    let addr = SnesAddress::from(addr as usize);
+                    let byte = {
+                        let mut emu_mut = clone.borrow_mut();
+                        let RSnesCore {
+                            bus,
+                            ppu,
+                            apu,
+                            ..
+                        } = emu_mut.deref_mut();
+                        bus.read(addr, ppu, apu)
+                    };
+                    stack.replace(ctx, Value::Integer(byte as i64));
+                    Ok(CallbackReturn::Return)
+                }),
+            );
+        }
+        if bus_perms.write {
+            let clone = emu.clone();
+            ret.set_field(
+                ctx,
+                "write",
+                Callback::from_fn(ctx.mutation(), move |ctx, _, mut stack| {
+                    let Some(Value::Integer(addr)) = stack.pop_front() else {
+                        stack.replace(ctx, Value::Nil);
+                        return Ok(CallbackReturn::Return)
+                    };
+                    let addr = SnesAddress::from(addr as usize);
+                    let byte = match stack.pop_front() {
+                        Some(Value::Integer(i)) => i as u8,
+                        _ => 0,
+                    };
+                    let mut emu_mut = clone.borrow_mut();
+                    let RSnesCore {
+                        bus,
+                        ppu,
+                        apu,
+                        ..
+                    } = emu_mut.deref_mut();
+                    bus.write(addr, byte, ppu, apu);
+
+                    Ok(CallbackReturn::Return)
+                }),
+            );
+        }
 
         ret
     }
