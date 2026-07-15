@@ -1,5 +1,7 @@
+use std::error::Error;
+
 use bus::rom::header::RomHeader;
-use egui_sdl2::egui;
+use egui_sdl2::egui::{self, RichText};
 
 use crate::rsnes::RomInfo;
 
@@ -159,4 +161,47 @@ pub fn rom_info(ctx: &egui::Context, open: &mut bool, info: Option<&RomInfo>) {
                     ui.add(egui::Label::new(path.display().to_string()).wrap());
                 });
         });
+}
+
+/// Renders a window showing any runtime error
+pub fn error_box(ctx: &egui::Context, error: &mut Option<Box<dyn Error>>) {
+    let mut open = error.is_some();
+    let window = egui::Window::new("Error")
+        .open(&mut open)
+        .resizable(true)
+        .collapsible(false)
+        .default_width(250.0)
+        .default_height(100.0)
+        .vscroll(true);
+
+    window.show(ctx, |ui| {
+        let Some(e) = error else {
+            ui.centered_and_justified(|ui| {
+                ui.label("No error");
+                ui.label("how did you even get this window to open?");
+            });
+            return;
+        };
+        ui.label(RichText::new("Encountered error:").heading());
+        ui.indent((), |ui| {
+            show_error(ui, e.as_ref());
+        });
+    });
+
+    if !open {
+        *error = None;
+    }
+}
+
+/// Recursively show errors and their sources
+fn show_error(ui: &mut egui::Ui, err: &dyn Error) {
+    ui.label(err.to_string());
+    if let Some(source) = err.source() {
+        ui.collapsing("Caused by:", |ui| {
+            show_error(ui, source);
+        });
+    }
+    ui.collapsing("Debug representation:", |ui| {
+        ui.label(format!("{err:?}"));
+    });
 }

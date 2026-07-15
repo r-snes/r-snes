@@ -1,3 +1,5 @@
+use std::error::Error;
+
 /// Which overlay windows are currently open.
 ///
 /// This lives in `Gui` and persists across frames — egui is immediate-mode,
@@ -6,6 +8,7 @@
 #[derive(Default)]
 pub struct GuiState {
     pub show_rom_info: bool,
+    pub error_popup: Option<Box<dyn Error>>,
 }
 
 impl GuiState {
@@ -15,10 +18,11 @@ impl GuiState {
     pub fn close_all(&mut self) -> bool {
         let was_open = self.any_open();
         self.show_rom_info = false;
+        self.error_popup = None;
         was_open
     }
 
     pub fn any_open(&self) -> bool {
-        self.show_rom_info
+        self.show_rom_info || self.error_popup.is_some()
     }
 }

@@ -35,7 +35,13 @@ fn gui_emu_loop(
     gui.set_rom_title(if title.is_empty() { None } else { Some(title) });
 
     let mut emu = cfg_select! {
-        feature = "plugins" => RSnesEmu::new_with_plugin(rsnes, plugin).unwrap(),
+        feature = "plugins" => match RSnesEmu::new_with_plugin(rsnes, plugin) {
+            Ok(emu) => emu,
+            Err(e) => {
+                gui.pass_error(Box::new(e));
+                return None;
+            }
+        },
         _ => RSnesEmu::new(rsnes),
     };
 
@@ -62,7 +68,7 @@ fn gui_emu_loop(
             master_cycle_accum -= RSnesCore::MASTER_CYCLE_DURATION;
 
             cfg_select! {
-                feature = "plugins" => emu.update().unwrap(),
+                feature = "plugins" => gui.unwrap_result(emu.update()),
                 _ => emu.update(),
             }
         }
@@ -112,7 +118,7 @@ fn gui_emu_loop(
                 #[cfg(feature = "plugins")]
                 RSnesEvent::RunPluginDefault => {
                     if let Some(p) = emu.plugin_mut() {
-                        p.run_default().unwrap();
+                        gui.unwrap_result(p.run_default())
                     }
                 }
 
@@ -124,7 +130,7 @@ fn gui_emu_loop(
 
     #[cfg(feature = "plugins")]
     if let Some(p) = emu.plugin_mut() {
-        p.run_exit().unwrap();
+        gui.unwrap_result(p.run_exit())
     }
 
     let time = Instant::now();
@@ -174,9 +180,13 @@ fn gui_idle_loop(
 
         for event in events {
             match event {
-                RSnesEvent::ButtonDown
-                | RSnesEvent::ButtonUp
-                | RSnesEvent::RunPluginDefault => {}
+                // Input-only events are meaningless without a game loaded.
+                RSnesEvent::ButtonDown | RSnesEvent::ButtonUp => {}
+                #[cfg(feature = "plugins")]
+                RSnesEvent::RunPluginDefault => {}
+                // Everything the outer loop cares about (Quit, Close,
+                // LoadRom, ...) ends the idle state; stop the jingle
+                // stream before handing the event back.
                 ev => {
                     gui.audio_stop();
                     return ev;
@@ -259,7 +269,7 @@ fn gui_loop(
         match ev {
             RSnesEvent::LoadRom { path } => match rsnes::RSnesCore::load_rom(&path) {
                 Ok(some_emu) => rsnes_core = Some(some_emu),
-                Err(err) => println!("Error loading ROM: {}", err),
+                Err(err) => gui.pass_error(err),
             },
             RSnesEvent::Quit | RSnesEvent::Close => break,
             _ => {}
