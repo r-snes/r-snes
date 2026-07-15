@@ -63,7 +63,7 @@ impl<'a> PluginPermRequest<'a> {
         draw_content: impl FnOnce(&mut egui::Ui, &T),
     ) {
         self.show_perm(ui, perm, |ui, perm| {
-            Self::force_show_perm_collapsible(&self, ui, perm, label, draw_content);
+            Self::force_show_perm_collapsible(self, ui, perm, label, draw_content);
         });
     }
     fn show_perm<T: Permission>(
