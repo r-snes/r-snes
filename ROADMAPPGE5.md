@@ -38,8 +38,13 @@ Introduce network capabilities for plugins, gated behind a dedicated permission,
 consistent with the rest of the permission system. The exact scope and features of
 network support are still to be determined.
 
-### Feature 2: Save States
+### Feature 2: User Experience
 
+Beyond emulation accuracy, make RSNES genuinely pleasant to play on. This feature
+groups the player-facing capabilities that turn a working emulator into a
+comfortable one.
+
+#### Save States (flagship)
 Save and restore the complete console state instantly, independently of the game's
 own save system. A save state captures the full machine state: CPU registers, RAM
 contents, PPU state, APU state, and cartridge SRAM. Restoring a state replays that
@@ -49,6 +54,27 @@ exact moment.
   reloadable identically
 - Support at least one save slot per game
 - Stretch goal: multiple named slots with metadata (timestamp, screenshot thumbnail)
+
+#### Input Configuration
+Let players play the way they want, rather than with hardcoded defaults:
+
+- Remappable keybindings for every SNES button, both for gameplay and for emulator
+  shortcuts (save/load state, pause, etc.)
+- Gamepad/controller support alongside the keyboard
+- Persist the configuration across sessions
+
+#### Quality-of-Life Candidates
+Smaller conveniences, prioritized by user feedback and implemented as time allows:
+
+- **Speed control**: fast-forward to skip through slow sections, pause/resume
+- **Display options**: fullscreen toggle and integer scaling of the video output
+- **Audio control**: volume adjustment and mute
+- **Screenshots**: capture the current frame to an image file
+- **Recent ROMs**: quickly reopen recently played games from the interface
+
+> **Committed scope:** save states and input configuration. The quality-of-life
+> candidates are a prioritized pool, not a promise — they feed the polish phase
+> and can be trimmed freely under schedule pressure.
 
 ### Feature 3: Game Compatibility
 
@@ -111,18 +137,18 @@ when game compatibility reaches its first milestone rather than at kickoff.
 |---|---------------------------|--------------------|----------------------|----------------|
 | 3 | Game Compatibility        | 31 August 2026     | end of Septembre 2026 | main team focus from day one |
 | 1 | Plug-ins (API enrichment) | 31 August 2026     | early February 2027  | continuous background effort |
-| 2 | Save States               | 1 Septembre 2026  | End of Decembre 2027     | starts once games are running |
+| 2 | User Experience           | 1 Septembre 2026  | end of Decembre 2027     | starts once games are running |
 | 4 | Embedded Components       | 1 Septembre 2026  | early February 2027  | starts once games are running |
-| 5 | Final Polish              | continuous         | 15 February 2027     | primary focus from mid-January |
+| 5 | Final Polish              | continuous         | mid-February 2027     | primary focus from early January |
 
 ### Key Dates
 
 - **31 August 2026**: PGE5 kickoff — all workstreams begin
 - **Mid-October 2026**: Plugin API enrichment complete
-- **Early November 2026**: Save states complete
+- **Early November 2026**: Core user-experience features (save states, input configuration) complete
 - **End of December 2026**: Game compatibility target reached
 - **Early February 2027**: Embedded components complete
-- **15 February 2027**: Final delivery
+- **Mid-February 2027**: Final delivery
 
 ---
 
@@ -147,14 +173,14 @@ insufficient:
 2. **Reassignment**: a second team member reinforces the blocking point, drawn
    first from a workstream that is ahead or already completed.
 3. **Scope reduction**: the feature is simplified, never removed. E.g. 2 embedded
-   components instead of 3, a single save slot instead of named slots, triggers
-   without network access for plug-ins.
+   components instead of 3, save states and input configuration without the
+   quality-of-life extras, triggers without network access for plug-ins.
 
 ### Prioritization
 
-- **Protected coreis  game compatibility and plug-ins**: our main focus; never
+- **Protected core, game compatibility and plug-ins**: our main focus; never
   descoped, and blockers on these take precedence over everything else.
-- **Adjustment variables, save states, embedded components, and final polish**:
+- **Adjustment variables, user experience, embedded components, and final polish**:
   degradable without compromising the delivery.
 - When arbitration is needed, effort flows from adjustment variables toward the
   protected core, never the reverse.
