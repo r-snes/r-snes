@@ -292,11 +292,12 @@ impl RSnesEmu {
         rsnes_mut.update();
 
         if let Some(plugin) = self.plugin.as_mut()
-            && let Some(opcode) = rsnes_mut.is_cpu_instr_start() {
-                let addr = *rsnes_mut.cpu.addr_bus();
-                drop(rsnes_mut);
-                return plugin.run_on_instr(opcode, addr);
-            }
+            && let Some(opcode) = rsnes_mut.is_cpu_instr_start()
+        {
+            let addr = *rsnes_mut.cpu.addr_bus();
+            drop(rsnes_mut);
+            return plugin.run_on_instr(opcode, addr);
+        }
 
         Ok(())
     }
