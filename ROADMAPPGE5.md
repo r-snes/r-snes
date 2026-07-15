@@ -2,7 +2,7 @@
 
 ## Overview
 
-With a team of 4 and a mostly complete core. Game compatibility and
+With a team of 4 and a mostly complete core, game compatibility and
 the plug-in system form the core of the project; the other features
 act as secondary features if delays occur. Polish run
 continuously from kickoff to final delivery.
@@ -134,10 +134,10 @@ when game compatibility reaches its first milestone rather than at kickoff.
  
 | # | Feature                   | Start              | Target End           | Effort profile |
 |---|---------------------------|--------------------|----------------------|----------------|
-| 3 | Game Compatibility        | 31 August 2026     | end of Septembre 2026 | main team focus from day one |
+| 3 | Game Compatibility        | 31 August 2026     | end of September 2026 | main team focus from day one |
 | 1 | Plug-ins (API enrichment) | 31 August 2026     | early February 2027  | continuous background effort |
-| 2 | User Experience           | 1 Octobre 2026  | end of Decembre 2027     | starts once games are running |
-| 4 | Embedded Components       | 1 Octobre 2026  | early February 2027  | starts once games are running |
+| 2 | User Experience           | 1 October 2026  | end of December 2027     | starts once games are running |
+| 4 | Embedded Components       | 1 October 2026  | early February 2027  | starts once games are running |
 | 5 | Final Polish              | continuous         | mid-February 2027     | primary focus from early January |
 
 ### Key Dates
