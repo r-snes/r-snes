@@ -55,12 +55,12 @@ impl RomHeader {
         RomHeader {
             bytes: header_bytes,
             title: String::from_utf8_lossy(&header_bytes[0..HEADER_TITLE_LEN]).to_string(),
-            rom_speed: rom_speed,
-            mapping_mode: mapping_mode,
+            rom_speed,
+            mapping_mode,
             hardware: CartridgeHardware::from_byte(header_bytes[HEADER_ROM_HARDWARE_OFFSET]),
             rom_size: header_bytes[HEADER_ROM_SIZE_OFFSET],
             ram_size: header_bytes[HEADER_RAM_SIZE_OFFSET],
-            country: country,
+            country,
             video_standard: VideoStandard::from_country(country),
             developer_id: header_bytes[HEADER_DEVELOPER_ID_OFFSET],
             rom_version: header_bytes[HEADER_ROM_VERSION_OFFSET],
@@ -95,23 +95,23 @@ impl fmt::Display for RomHeader {
     ///
     /// Prints all important metadata fields in a human-readable way.
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Title: '{}'\n", self.title)?;
-        write!(f, "Rom Speed: {}\n", self.rom_speed)?;
-        write!(f, "MappingMode: {}\n", self.mapping_mode)?;
-        write!(f, "CartridgeHardware: {}\n", self.hardware.layout)?;
+        writeln!(f, "Title: '{}'", self.title)?;
+        writeln!(f, "Rom Speed: {}", self.rom_speed)?;
+        writeln!(f, "MappingMode: {}", self.mapping_mode)?;
+        writeln!(f, "CartridgeHardware: {}", self.hardware.layout)?;
         if let Some(coproc) = &self.hardware.coprocessor {
-            write!(f, "Coprocessor: {}\n", coproc)?;
+            writeln!(f, "Coprocessor: {}", coproc)?;
         } else {
-            write!(f, "Coprocessor: None\n")?;
+            writeln!(f, "Coprocessor: None")?;
         }
-        write!(f, "Rom size: {}\n", self.rom_size)?;
-        write!(f, "Ram size: {}\n", self.ram_size)?;
-        write!(f, "Country: {}\n", self.country)?;
-        write!(f, "VideoStandard: {}\n", self.video_standard)?;
-        write!(f, "Developer ID: {}\n", self.developer_id)?;
-        write!(f, "Rom Version: {}\n", self.rom_version)?;
-        write!(f, "Checksum Complement: {}\n", self.checksum_complement)?;
-        write!(f, "Checksum: {}\n", self.checksum)
+        writeln!(f, "Rom size: {}", self.rom_size)?;
+        writeln!(f, "Ram size: {}", self.ram_size)?;
+        writeln!(f, "Country: {}", self.country)?;
+        writeln!(f, "VideoStandard: {}", self.video_standard)?;
+        writeln!(f, "Developer ID: {}", self.developer_id)?;
+        writeln!(f, "Rom Version: {}", self.rom_version)?;
+        writeln!(f, "Checksum Complement: {}", self.checksum_complement)?;
+        writeln!(f, "Checksum: {}", self.checksum)
     }
 }
 

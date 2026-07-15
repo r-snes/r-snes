@@ -7,8 +7,8 @@
 //! for example TXS means 'Transfer X to S'.
 
 use super::algorithms;
-use instr_metalang_procmacro::cpu_instr;
 use duplicate::duplicate;
+use instr_metalang_procmacro::cpu_instr;
 
 // duplicate over all transfers to S, because S becomes 8 bit
 // in emu mode
@@ -74,19 +74,23 @@ duplicate! {
 
 #[cfg(test)]
 mod tests {
+    use crate::registers::RegisterP;
+
     use super::super::test_prelude::*;
 
     // we only test txs for txs and tcs since they do the exact same
     #[test]
     fn txs_8() {
-        let mut regs = Registers::default();
-        regs.PB = 0x55;
-        regs.PC = 0x7777;
-        regs.X = 0xff44;
-        regs.S = 0x0133;
-        regs.E = true; // for 8-bit transfer
+        let regs = Registers {
+            PB: 0x55,
+            PC: 0x7777,
+            X: 0xff44,
+            S: 0x0133,
+            E: true, // for 8-bit transfer
+            ..Default::default()
+        };
 
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
 
         expect_opcode_fetch(&mut cpu, 0x9a);
@@ -100,14 +104,16 @@ mod tests {
 
     #[test]
     fn txs_16() {
-        let mut regs = Registers::default();
-        regs.PB = 0x55;
-        regs.PC = 0x7777;
-        regs.X = 0xff44;
-        regs.S = 0x0133;
-        regs.E = false; // for 16-bit transfer
+        let regs = Registers {
+            PB: 0x55,
+            PC: 0x7777,
+            X: 0xff44,
+            S: 0x0133,
+            E: false, // for 16-bit transfer
+            ..Default::default()
+        };
 
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
 
         expect_opcode_fetch(&mut cpu, 0x9a);
@@ -122,14 +128,19 @@ mod tests {
     // we only test tax for all transfers to X, Y, and A since they do the same
     #[test]
     fn tax_8() {
-        let mut regs = Registers::default();
-        regs.PB = 0x55;
-        regs.PC = 0x7777;
-        regs.A = 0xff44;
-        regs.X = 0x0033;
-        regs.P.X = true; // for 8-bit transfer
+        let regs = Registers {
+            PB: 0x55,
+            PC: 0x7777,
+            A: 0xff44,
+            X: 0x0033,
+            P: RegisterP {
+                X: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
 
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
 
         expect_opcode_fetch(&mut cpu, 0xaa);
@@ -143,15 +154,20 @@ mod tests {
 
     #[test]
     fn tax_16() {
-        let mut regs = Registers::default();
-        regs.PB = 0x55;
-        regs.PC = 0x7777;
-        regs.A = 0xff44;
-        regs.X = 0x0133;
-        regs.E = false; // for 16-bit transfer
-        regs.P.X = false; // for 16-bit transfer
+        let regs = Registers {
+            PB: 0x55,
+            PC: 0x7777,
+            A: 0xff44,
+            X: 0x0133,
+            E: false, // for 16-bit transfer
+            P: RegisterP {
+                X: false, // for 16-bit transfer
+                ..Default::default()
+            },
+            ..Default::default()
+        };
 
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
 
         expect_opcode_fetch(&mut cpu, 0xaa);
@@ -167,13 +183,15 @@ mod tests {
     // we only test tcd for tcd, tsc and tdc, since they are duplicated
     #[test]
     fn tcd() {
-        let mut regs = Registers::default();
-        regs.PB = 0x55;
-        regs.PC = 0x7777;
-        regs.A = 0xff44;
-        regs.D = 0x0133;
+        let regs = Registers {
+            PB: 0x55,
+            PC: 0x7777,
+            A: 0xff44,
+            D: 0x0133,
+            ..Default::default()
+        };
 
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
 
         expect_opcode_fetch(&mut cpu, 0x5b);

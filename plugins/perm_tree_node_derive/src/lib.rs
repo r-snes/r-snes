@@ -1,16 +1,11 @@
 use {
+    proc_macro::TokenStream,
     proc_macro2 as pm2,
-    proc_macro::{
-        TokenStream,
-    },
-    quote::{
-        ToTokens,
-        quote,
-    },
+    quote::{ToTokens, quote},
     syn::{
         ItemStruct,
         parse::{self, Parse, ParseStream},
-    }
+    },
 };
 
 #[proc_macro_derive(PermTreeNode)]
@@ -21,7 +16,7 @@ pub fn derive_perm_tree_node(input: TokenStream) -> TokenStream {
 fn derive_perm_tree_node_impl(input: pm2::TokenStream) -> pm2::TokenStream {
     let ast: PermTreeNodeDerive = match syn::parse2(input) {
         Ok(parsed) => parsed,
-        Err(e) => return e.into_compile_error()
+        Err(e) => return e.into_compile_error(),
     };
 
     let mut ts = pm2::TokenStream::new();
@@ -35,7 +30,9 @@ struct PermTreeNodeDerive {
 
 impl Parse for PermTreeNodeDerive {
     fn parse(input: ParseStream) -> parse::Result<Self> {
-        Ok(Self { item: input.call(ItemStruct::parse)? })
+        Ok(Self {
+            item: input.call(ItemStruct::parse)?,
+        })
     }
 }
 
@@ -45,7 +42,10 @@ impl ToTokens for PermTreeNodeDerive {
         let (impl_generics, ty_generics, where_clause) = self.item.generics.split_for_impl();
 
         let match_arms = self.item.fields.iter().map(|f| {
-            let ident = &f.ident.as_ref().expect("named struct field (no tuple struct)");
+            let ident = &f
+                .ident
+                .as_ref()
+                .expect("named struct field (no tuple struct)");
             let typ = &f.ty;
             let bytestring = pm2::Literal::byte_string(ident.to_string().as_bytes());
 
@@ -93,8 +93,8 @@ impl ToTokens for PermTreeNodeDerive {
 
 #[cfg(test)]
 mod tests {
-    use runtime_macros::emulate_derive_macro_expansion;
     use super::derive_perm_tree_node_impl;
+    use runtime_macros::emulate_derive_macro_expansion;
     use std::{env, fs};
 
     #[test]
@@ -105,6 +105,7 @@ mod tests {
         path.push("tests");
         path.push("lib.rs");
         let file = fs::File::open(path).unwrap();
-        emulate_derive_macro_expansion(file, &[("Permission", derive_perm_tree_node_impl)]).unwrap();
+        emulate_derive_macro_expansion(file, &[("Permission", derive_perm_tree_node_impl)])
+            .unwrap();
     }
 }

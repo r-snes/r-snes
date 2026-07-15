@@ -79,8 +79,8 @@ fn run_chunk(spc_binary: &[u8], last_test_num_seed: u16) -> ChunkResult {
         match apu.memory.port_out[0] {
             // Success: port2/3 hold the last test number reached.
             1 => {
-                let last_test_num = (apu.memory.port_out[2] as u16)
-                    | ((apu.memory.port_out[3] as u16) << 8);
+                let last_test_num =
+                    (apu.memory.port_out[2] as u16) | ((apu.memory.port_out[3] as u16) << 8);
                 return ChunkResult::Success { last_test_num };
             }
 
@@ -90,8 +90,8 @@ fn run_chunk(spc_binary: &[u8], last_test_num_seed: u16) -> ChunkResult {
             // our acknowledgement below.
             2 => {
                 let psw = apu.memory.port_out[1];
-                let test_num = (apu.memory.port_out[2] as u16)
-                    | ((apu.memory.port_out[3] as u16) << 8);
+                let test_num =
+                    (apu.memory.port_out[2] as u16) | ((apu.memory.port_out[3] as u16) << 8);
 
                 apu.memory.port_in[1] = 2; // acknowledge, per protocol
 

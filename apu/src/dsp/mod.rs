@@ -4,8 +4,7 @@ mod voice;
 
 // Re-export everything tests and external code need
 pub use adsr::{Adsr, EnvelopePhase};
-use adsr::ENVELOPE_RATE_TABLE;
-pub use brr::{Brr, decode_brr_nibble, decode_brr_block};
+pub use brr::{Brr, decode_brr_block, decode_brr_nibble};
 pub use voice::Voice;
 
 use common::u16_split::U16Split;
@@ -34,6 +33,12 @@ pub struct Dsp {
     master_vol_right: i8,
 }
 
+impl Default for Dsp {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Dsp {
     pub fn new() -> Self {
         Self {
@@ -41,7 +46,7 @@ impl Dsp {
             voices: [Voice::default(); 8],
             dir_base: 0,
             // Hardware resets master volume to 0; game code sets it during boot.
-            master_vol_left:  0,
+            master_vol_left: 0,
             master_vol_right: 0,
         }
     }
@@ -71,8 +76,8 @@ impl Dsp {
         let idx = (index & 0x7F) as usize;
         self.registers[idx] = value;
 
-        let voice_num = idx >> 4;   // high nibble = voice 0–7
-        let reg_off   = idx & 0x0F; // low nibble  = register within voice block
+        let voice_num = idx >> 4; // high nibble = voice 0–7
+        let reg_off = idx & 0x0F; // low nibble  = register within voice block
 
         // voice_num = idx >> 4, idx = index & 0x7F, so voice_num <= 7 always.
         // The `if v < 8` guards are therefore redundant and omitted.
@@ -106,9 +111,9 @@ impl Dsp {
             //   bits 3-0: attack rate index (0–15)
             (v, 0x5) => {
                 let adsr = &mut self.voices[v].adsr;
-                adsr.adsr_mode   = (value & 0x80) != 0;
-                adsr.decay_rate  = (value >> 4) & 0x07;
-                adsr.attack_rate =  value & 0x0F;
+                adsr.adsr_mode = (value & 0x80) != 0;
+                adsr.decay_rate = (value >> 4) & 0x07;
+                adsr.attack_rate = value & 0x0F;
             }
 
             // +6: ADSR2 = SSSRRRRR
@@ -117,7 +122,7 @@ impl Dsp {
             (v, 0x6) => {
                 let adsr = &mut self.voices[v].adsr;
                 adsr.sustain_level = (value >> 5) & 0x07;
-                adsr.sustain_rate  =  value & 0x1F;
+                adsr.sustain_rate = value & 0x1F;
             }
 
             // +7: GAIN — TODO: implement GAIN mode
@@ -145,7 +150,7 @@ impl Dsp {
                 }
 
                 // $0C: MVOLL — master left  volume (signed)
-                0x0C => self.master_vol_left  = value as i8,
+                0x0C => self.master_vol_left = value as i8,
 
                 // $1C: MVOLR — master right volume (signed)
                 0x1C => self.master_vol_right = value as i8,
@@ -155,7 +160,7 @@ impl Dsp {
 
                 // All other registers (echo, FIR, noise, etc.) not yet implemented
                 _ => {}
-            }
+            },
         }
     }
 
@@ -177,11 +182,11 @@ impl Dsp {
         voice.brr.addr = dir_entry; // sentinel: will be resolved in step()
 
         // Reset BRR state
-        voice.brr.nibble_idx  = 0;
-        voice.brr.prev1       = 0;
-        voice.brr.prev2       = 0;
+        voice.brr.nibble_idx = 0;
+        voice.brr.prev1 = 0;
+        voice.brr.prev2 = 0;
         voice.brr.buffer_fill = 0;
-        voice.brr.loop_addr   = 0;
+        voice.brr.loop_addr = 0;
 
         // Reset pitch counter
         voice.pitch_counter = 0;
@@ -189,7 +194,7 @@ impl Dsp {
         // Reset envelope to start of attack
         voice.adsr.envelope_phase = EnvelopePhase::Attack;
         voice.adsr.envelope_level = 0;
-        voice.adsr.tick_counter   = 0;
+        voice.adsr.tick_counter = 0;
 
         voice.current_sample = 0;
 
@@ -223,7 +228,7 @@ impl Dsp {
     /// Volumes are signed i8; samples and envelope are 16-bit.
     /// The accumulator is i32 to prevent overflow during summation.
     pub fn render_audio_single(&self) -> (i16, i16) {
-        let mut left:  i32 = 0;
+        let mut left: i32 = 0;
         let mut right: i32 = 0;
 
         for voice in self.voices.iter() {
@@ -232,12 +237,12 @@ impl Dsp {
             }
 
             // Scale sample by 11-bit envelope (0–0x7FF) → back to ~16-bit range
-            let env    = voice.adsr.envelope_level as i32; // 0–0x7FF
-            let sample = voice.current_sample as i32;      // -32768..+32767
-            let scaled = (sample * env) >> 11;             // ~16-bit result
+            let env = voice.adsr.envelope_level as i32; // 0–0x7FF
+            let sample = voice.current_sample as i32; // -32768..+32767
+            let scaled = (sample * env) >> 11; // ~16-bit result
 
             // Apply signed per-voice volumes (i8, -128..+127), shift by 7
-            left  += (scaled * voice.left_vol  as i32) >> 7;
+            left += (scaled * voice.left_vol as i32) >> 7;
             right += (scaled * voice.right_vol as i32) >> 7;
         }
 
@@ -245,11 +250,11 @@ impl Dsp {
         // Same signed i8 × i32 → >> 7 pattern as per-voice volume.
         // A second clamp is required because master vol can amplify the
         // already-summed mix past i16 range again.
-        left  = (left  * self.master_vol_left  as i32) >> 7;
+        left = (left * self.master_vol_left as i32) >> 7;
         right = (right * self.master_vol_right as i32) >> 7;
 
         (
-            left .clamp(i16::MIN as i32, i16::MAX as i32) as i16,
+            left.clamp(i16::MIN as i32, i16::MAX as i32) as i16,
             right.clamp(i16::MIN as i32, i16::MAX as i32) as i16,
         )
     }

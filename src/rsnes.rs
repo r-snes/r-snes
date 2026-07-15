@@ -138,7 +138,7 @@ impl RSnesCore {
             let b_offset = b_offsets[pattern_idx as usize % b_offsets.len()];
             let b_addr = SnesAddress {
                 bank: 0x00,
-                addr: 0x2100 | ch_b_addr as u16 + b_offset as u16,
+                addr: 0x2100 | (ch_b_addr as u16 + b_offset as u16),
             };
 
             let (src, dest) = if direction == 0 {
@@ -239,6 +239,10 @@ impl RSnesCore {
 }
 
 impl RSnesEmu {
+    #[cfg_attr(
+        feature = "plugins",
+        expect(unused, reason = "unused for now, but makes sense to have")
+    )]
     pub fn new(core: RSnesCore) -> Self {
         cfg_select! {
             feature = "plugins" => Self {
@@ -287,12 +291,12 @@ impl RSnesEmu {
 
         rsnes_mut.update();
 
-        if let Some(plugin) = self.plugin.as_mut() {
-            if let Some(opcode) = rsnes_mut.is_cpu_instr_start() {
-                let addr = *rsnes_mut.cpu.addr_bus();
-                drop(rsnes_mut);
-                return plugin.run_on_instr(opcode, addr);
-            }
+        if let Some(plugin) = self.plugin.as_mut()
+            && let Some(opcode) = rsnes_mut.is_cpu_instr_start()
+        {
+            let addr = *rsnes_mut.cpu.addr_bus();
+            drop(rsnes_mut);
+            return plugin.run_on_instr(opcode, addr);
         }
 
         Ok(())

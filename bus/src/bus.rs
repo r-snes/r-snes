@@ -18,7 +18,7 @@ impl Bus {
     pub fn new<P: AsRef<Path>>(rom_path: P) -> Result<Self, Box<dyn Error>> {
         Ok(Self {
             rom: Rom::load_from_file(rom_path)?,
-            wram: Wram::new(),
+            wram: Wram::default(),
             io: Io::default(),
         })
     }
@@ -159,7 +159,10 @@ mod tests {
 
         let addr = snes_addr!(0:0x2140);
         bus.write(addr, 0xCD, &mut ppu, &mut apu);
-        assert_eq!(apu.memory.port_in[0], 0xCD, "SPC700 reads this via its own $F4");
+        assert_eq!(
+            apu.memory.port_in[0], 0xCD,
+            "SPC700 reads this via its own $F4"
+        );
     }
 
     #[test]
@@ -192,7 +195,10 @@ mod tests {
         bus.write(io_addr, 0x55, &mut ppu, &mut apu);
 
         assert_eq!(bus.read(io_addr, &mut ppu, &mut apu), 0x55);
-        assert_eq!(bus.io.dma_channels[0].dmap, 0x55, "write went to the DMA register");
+        assert_eq!(
+            bus.io.dma_channels[0].dmap, 0x55,
+            "write went to the DMA register"
+        );
         assert_eq!(apu.memory.port_in[0], 0x99, "port write stayed in the APU");
     }
 }

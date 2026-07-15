@@ -9,6 +9,12 @@ use crate::memory::Memory;
 /// a prerequisite for music playback.
 pub struct Timers;
 
+impl Default for Timers {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Timers {
     pub fn new() -> Self {
         Self

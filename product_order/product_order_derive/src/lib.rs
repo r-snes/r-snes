@@ -22,18 +22,18 @@ use {
 ///
 /// Base principles:
 /// - All fields will be compared with their counterpart, relying on the
-/// [`PartialOrd`] implementation of the field.
+///   [`PartialOrd`] implementation of the field.
 /// - All orderings will be taken into account to determine the resulting ordering.
 ///
 /// Actual logic:
 /// - If any of the fields cannot be ordered (e.g. [`partial_cmp`] returned [`None`]
-/// at least once), then [`None`] will be returned.
+///   at least once), then [`None`] will be returned.
 /// - If a struct is greater than the other in all of its fields,
-/// it will evaluate greater overall. The same applies the other way around.
+///   it will evaluate greater overall. The same applies the other way around.
 /// - If some fields are equal, and at least one is greater, the struct will
-/// evaluate greater overall. The same applies the other way around.
+///   evaluate greater overall. The same applies the other way around.
 /// - If there is any contradiction (at least one greater **and** one lesser), the two
-/// structs cannot be ordered; [`None`] will be returned.
+///   structs cannot be ordered; [`None`] will be returned.
 /// - Only in the occassion all fields evaluate equal will the structs be recognised equal.
 #[proc_macro_derive(PartialOrd)]
 pub fn strict_partial_ord(input: TokenStream) -> TokenStream {

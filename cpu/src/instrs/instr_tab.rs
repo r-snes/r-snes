@@ -2,16 +2,8 @@ use crate::cpu::{CPU, CycleResult};
 use common::snes_address::SnesAddress;
 
 use crate::instrs::{
-    arithmetic::*,
-    branches::*,
-    flags::*,
-    interrupts::*,
-    jumps::*,
-    loads::*,
-    stack::*,
-    stores::*,
-    transfers::*,
-    uncategorised::*,
+    arithmetic::*, branches::*, flags::*, interrupts::*, jumps::*, loads::*, stack::*, stores::*,
+    transfers::*, uncategorised::*,
 };
 
 pub(crate) struct InstrCycle(pub fn(&mut CPU) -> (CycleResult, InstrCycle));
@@ -28,10 +20,7 @@ pub(crate) fn opcode_fetch(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
         addr: cpu.registers.PC,
     };
 
-    (
-        CycleResult::Read,
-        InstrCycle(opcode_dispatch),
-    )
+    (CycleResult::Read, InstrCycle(opcode_dispatch))
 }
 
 pub(crate) fn opcode_dispatch(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
@@ -43,7 +32,7 @@ macro_rules! todo_opcode {
         |_| {
             todo!("opcode {:#2x} not yet implemented!", $oc);
         }
-    }
+    };
 }
 
 const INSTR_CYC1: [InstrCycle; 256] = [

@@ -30,14 +30,14 @@ fn main() {
             let p0_low: u8 = if tile & 1 != 0 { 0xFF } else { 0x00 };
             let p0_high: u8 = if tile & 2 != 0 { 0xFF } else { 0x00 };
 
-            ppu.write(0x2118, p0_low);  // VMDATAL
+            ppu.write(0x2118, p0_low); // VMDATAL
             ppu.write(0x2119, p0_high); // VMDATAH
         }
 
         // Plane 1: offset +8 words
         for row in 0u16..8 {
             let word_addr = tile_word_base + 8 + row;
-            ppu.write(0x2116,  (word_addr & 0xFF) as u8);
+            ppu.write(0x2116, (word_addr & 0xFF) as u8);
             ppu.write(0x2117, (word_addr >> 8) as u8);
 
             let p1_low: u8 = if tile & 4 != 0 { 0xFF } else { 0x00 };
@@ -59,7 +59,7 @@ fn main() {
             // 2 tile columns per color band, 16 bands total
             let tile_index: u16 = (col / 2) % 16;
 
-            let entry_low  = (tile_index & 0xFF) as u8;
+            let entry_low = (tile_index & 0xFF) as u8;
             let entry_high = ((tile_index >> 8) & 0x03) as u8;
 
             ppu.write(0x2118, entry_low);
@@ -87,7 +87,11 @@ fn main() {
     let texture_creator = canvas.texture_creator();
 
     let mut texture = texture_creator
-        .create_texture_streaming(PixelFormatEnum::RGB24, SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32)
+        .create_texture_streaming(
+            PixelFormatEnum::RGB24,
+            SCREEN_WIDTH as u32,
+            SCREEN_HEIGHT as u32,
+        )
         .unwrap();
 
     let mut event_pump = sdl_context.event_pump().unwrap();
@@ -105,7 +109,9 @@ fn main() {
         }
 
         if ppu.frame_ready {
-            texture.update(None, &renderer.framebuffer[..], SCREEN_WIDTH * 3).unwrap();
+            texture
+                .update(None, &renderer.framebuffer[..], SCREEN_WIDTH * 3)
+                .unwrap();
             canvas.copy(&texture, None, None).unwrap();
             canvas.present();
         }

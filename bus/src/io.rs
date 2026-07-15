@@ -335,7 +335,7 @@ impl Io {
             // TODO : Implement open bus on unused bits
             0x4210 => {
                 let value = self.rdnmi;
-                self.rdnmi = self.rdnmi & 0x7F; // Reset V-Blank flag
+                self.rdnmi &= 0x7F; // Reset V-Blank flag
                 value
             }
 
@@ -343,7 +343,7 @@ impl Io {
             // TODO : Implement open bus on unused bits
             0x4211 => {
                 let value = self.timeup;
-                self.timeup = self.timeup & 0x7F; // Reset Timer flag
+                self.timeup &= 0x7F; // Reset Timer flag
                 value
             }
 
@@ -567,7 +567,10 @@ mod tests {
 
         let addr = snes_addr!(0:0x2143);
         io.write(addr, 0xCD, &mut ppu, &mut apu);
-        assert_eq!(apu.memory.port_in[3], 0xCD, "SPC700 reads this via its own $F7");
+        assert_eq!(
+            apu.memory.port_in[3], 0xCD,
+            "SPC700 reads this via its own $F7"
+        );
     }
 
     #[test]

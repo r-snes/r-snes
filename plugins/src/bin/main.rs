@@ -1,9 +1,6 @@
-use egui::ScrollArea;
-use plugins::plugin::{
-    Plugin,
-    gui::PluginPermRequest,
-};
 use eframe::egui;
+use egui::ScrollArea;
+use plugins::plugin::{Plugin, gui::PluginPermRequest};
 
 struct PermRequestApp<'app, 'req> {
     title: String,
@@ -40,7 +37,7 @@ fn main() -> eframe::Result {
             dbg!(e);
             std::process::exit(1);
         }
-        Ok(p) => p
+        Ok(p) => p,
     };
 
     env_logger::init();

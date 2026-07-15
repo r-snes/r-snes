@@ -5,8 +5,14 @@ use common::u16_split::U16Split;
 
 pub struct CGRAM {
     pub memory: [u16; CGRAM_SIZE / 2], // CGRAM stored as u16 words
-    word_addr: u8, // Internal 8-bit word address (0–255)
-    pub ppu_open_bus: u8, // bit 7 used during high-byte read
+    word_addr: u8,                     // Internal 8-bit word address (0–255)
+    pub ppu_open_bus: u8,              // bit 7 used during high-byte read
+}
+
+impl Default for CGRAM {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl CGRAM {
@@ -48,7 +54,7 @@ impl CGRAM {
     pub fn read_data(&mut self, PPURegisters { cgram_latch, .. }: &mut PPURegisters) -> u8 {
         let word = self.memory[self.word_addr as usize];
         let value = match cgram_latch.phase {
-            BytePhase::Low  => *word.lo(),
+            BytePhase::Low => *word.lo(),
             BytePhase::High => *word.hi() | (self.ppu_open_bus & 0x80),
         };
 
