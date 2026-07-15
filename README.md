@@ -3,7 +3,7 @@
 R-SNES aims to be a decently fast and very accurate SNES emulator, while staying easy to understand as per modern coding standards.
 
 > [!NOTE]
-> For now, this is still a work in progress. We successfully run and pass the full [test ROM](https://github.com/gilyon/snes-tests) suite on our latest development branches, but we're still some way from running actual commercial games.
+> For now, this is still a work in progress. We successfully run and pass the full [test ROM](https://github.com/gilyon/snes-tests) suite, but we're still some way from running actual commercial games.
 The [plugin system](#plugins) is functional, with several modules already implemented: RAM manipulation, CPU, PPU, display, and file read/write.
 >
 > For the sake of brevity (and optimism!), some parts of this README describe features of the emulator as if they were already complete, which may not yet be the case.
