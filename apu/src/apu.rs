@@ -83,10 +83,25 @@ pub struct Apu {
     /// Resets to 0 every DSP_CYCLES_PER_SAMPLE cycles.
     dsp_cycles: u32,
 
+    /// Stereo frames `[left, right]` produced by the DSP, one per DSP
+    /// tick, accumulated by `step`. Frames are arrays rather than tuples
+    /// because array layout is guaranteed: `Vec<[i16; 2]>` is bit-identical
+    /// to interleaved `Vec<i16>`, so `drain_samples` can hand the buffer
+    /// to the host audio backend zero-copy via `into_flattened`. Capped
+    /// (see step) so it can't grow unbounded when nothing drains it.
+    sample_buf: Vec<[i16; 2]>,
+
     /// HLE IPL boot state. `None` once the upload has
     /// finished and the SPC700 core is executing uploaded code.
     ipl: Option<IplHle>,
 }
+
+/// Upper bound on buffered stereo frames before `step` starts discarding:
+/// 1 second of 32 kHz audio. Hitting this means no one is consuming
+/// audio, so dropping the stale second is the right call — it beats
+/// both unbounded growth and playing seconds-old sound once a consumer
+/// does show up.
+const MAX_BUFFERED_FRAMES: usize = 32_000;
 
 impl Default for Apu {
     fn default() -> Self {
@@ -109,6 +124,7 @@ impl Apu {
             timers: Timers::new(),
             cycles: 0,
             dsp_cycles: 0,
+            sample_buf: Vec::new(),
             ipl: Some(IplHle::BootDelay {
                 cycles_left: IPL_BOOT_CYCLES,
             }),
@@ -326,28 +342,43 @@ impl Apu {
             if self.dsp_cycles >= DSP_CYCLES_PER_SAMPLE {
                 self.dsp_cycles = 0;
                 self.memory.dsp.step(&self.memory.ram);
+
+                // One output sample per DSP tick, straight into the
+                // buffer the host drains. Discard everything if nothing
+                // has drained for a full second (see MAX_BUFFERED_FRAMES).
+                if self.sample_buf.len() >= MAX_BUFFERED_FRAMES {
+                    self.sample_buf.clear();
+                }
+                let (l, r) = self.memory.dsp.render_audio_single();
+                self.sample_buf.push([l, r]);
             }
 
             self.cycles += 1;
         }
     }
 
+    /// Take all stereo frames produced since the last drain, as interleaved
+    /// samples (L, R, L, R, ...) at the DSP's native 32 kHz — the format
+    /// SDL's audio queue consumes. The internal buffer is left empty.
+    ///
+    /// Zero-copy: `[i16; 2]` has guaranteed layout, so `into_flattened`
+    /// reinterprets the frame buffer's allocation as `Vec<i16>` in O(1).
+    pub fn drain_samples(&mut self) -> Vec<i16> {
+        std::mem::take(&mut self.sample_buf).into_flattened()
+    }
+
     /// Generate `num_samples` stereo output samples.
     ///
     /// Steps the APU internally for each sample so that CPU, timers, and DSP
-    /// all advance in lock-step.  Returns a `Vec` of `(left, right)` pairs.
-    pub fn render_audio(&mut self, num_samples: usize) -> Vec<(i16, i16)> {
-        let mut buf = Vec::with_capacity(num_samples);
-
-        for _ in 0..num_samples {
-            // Advance the full APU by one DSP period (32 CPU cycles = 1 sample).
-            self.step(DSP_CYCLES_PER_SAMPLE);
-
-            // Collect the stereo output from the DSP as an explicit (L, R) pair.
-            buf.push(self.memory.dsp.render_audio_single());
-        }
-
-        buf
+    /// all advance in lock-step.  Returns a `Vec` of `[left, right]` frames.
+    ///
+    /// Any samples already buffered from previous stepping are discarded so
+    /// the returned audio corresponds exactly to the stepping done here.
+    pub fn render_audio(&mut self, num_samples: usize) -> Vec<[i16; 2]> {
+        self.sample_buf.clear();
+        // dsp_cycles residue is < 32, so exactly num_samples DSP ticks occur.
+        self.step(num_samples as u32 * DSP_CYCLES_PER_SAMPLE);
+        std::mem::take(&mut self.sample_buf)
     }
 }
 

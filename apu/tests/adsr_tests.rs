@@ -9,12 +9,36 @@
 use apu::dsp::{Adsr, EnvelopePhase};
 
 // ============================================================
+// GAIN helper
+// ============================================================
+
+fn gain_adsr(gain_param: u8) -> Adsr {
+    Adsr {
+        adsr_mode: false,
+        gain_param,
+        envelope_phase: EnvelopePhase::Attack, // "keyed on" marker
+        ..Default::default()
+    }
+}
+
+/// ADSR-mode envelope. `Adsr::default()` has `adsr_mode == false`, which
+/// (correctly, matching hardware reset) means GAIN mode — where a
+/// gain_param of 0 pins the level to 0 via direct gain. Tests exercising
+/// the ADSR state machine must therefore opt in explicitly.
+fn adsr() -> Adsr {
+    Adsr {
+        adsr_mode: true,
+        ..Default::default()
+    }
+}
+
+// ============================================================
 // ADSR — EnvelopePhase::Off
 // ============================================================
 
 #[test]
 fn test_adsr_off_does_nothing() {
-    let mut adsr = Adsr::default();
+    let mut adsr = adsr();
     // Default phase is Off; envelope_level must stay 0 forever.
     for _ in 0..1000 {
         adsr.update_envelope();
@@ -29,7 +53,7 @@ fn test_adsr_off_does_nothing() {
 
 #[test]
 fn test_adsr_attack_rate15_jumps_1024_per_tick() {
-    let mut adsr = Adsr::default();
+    let mut adsr = adsr();
     adsr.envelope_phase = EnvelopePhase::Attack;
     adsr.attack_rate = 15; // fast-path: no rate gating
 
@@ -40,7 +64,7 @@ fn test_adsr_attack_rate15_jumps_1024_per_tick() {
 
 #[test]
 fn test_adsr_attack_rate15_reaches_max_within_2_ticks() {
-    let mut adsr = Adsr::default();
+    let mut adsr = adsr();
     adsr.envelope_phase = EnvelopePhase::Attack;
     adsr.attack_rate = 15;
     adsr.update_envelope(); // +1024 → 1024
@@ -58,7 +82,7 @@ fn test_adsr_attack_rate15_reaches_max_within_2_ticks() {
 fn test_adsr_attack_normal_rate_gated() {
     // attack_rate=0 → rate_idx=1 → period=2048 ticks between steps.
     // After 1 tick nothing should have changed.
-    let mut adsr = Adsr::default();
+    let mut adsr = adsr();
     adsr.envelope_phase = EnvelopePhase::Attack;
     adsr.attack_rate = 0;
 
@@ -70,7 +94,7 @@ fn test_adsr_attack_normal_rate_gated() {
 #[test]
 fn test_adsr_attack_transitions_to_decay_at_max() {
     // Use rate=15 to reach max quickly.
-    let mut adsr = Adsr::default();
+    let mut adsr = adsr();
     adsr.envelope_phase = EnvelopePhase::Attack;
     adsr.attack_rate = 15;
 
@@ -94,7 +118,7 @@ fn test_adsr_attack_transitions_to_decay_at_max() {
 
 #[test]
 fn test_adsr_attack_level_never_exceeds_max() {
-    let mut adsr = Adsr::default();
+    let mut adsr = adsr();
     adsr.envelope_phase = EnvelopePhase::Attack;
     adsr.attack_rate = 15;
     for _ in 0..20 {
@@ -114,7 +138,7 @@ fn test_adsr_attack_level_never_exceeds_max() {
 #[test]
 fn test_adsr_decay_falls_toward_sustain_target() {
     // decay_rate=7 → rate_idx = 7*2+16 = 30 → period=2 (very fast)
-    let mut adsr = Adsr::default();
+    let mut adsr = adsr();
     adsr.envelope_phase = EnvelopePhase::Decay;
     adsr.decay_rate = 7;
     adsr.sustain_level = 3; // target = (3+1)*0x100 = 0x400
@@ -141,7 +165,7 @@ fn test_adsr_decay_step_is_exponential() {
     // At high levels the step is larger than at low levels.
     // decay_rate=7 (period=2), run two steps from two different starting points.
     let step_at = |start: u16| -> u16 {
-        let mut adsr = Adsr::default();
+        let mut adsr = adsr();
         adsr.envelope_phase = EnvelopePhase::Decay;
         adsr.decay_rate = 7;
         adsr.sustain_level = 0; // target = 0x100
@@ -169,7 +193,7 @@ fn test_adsr_decay_step_is_exponential() {
 #[test]
 fn test_adsr_decay_rate0_is_slow() {
     // decay_rate=0 → rate_idx=16 → period=64: after 10 ticks, no step.
-    let mut adsr = Adsr::default();
+    let mut adsr = adsr();
     adsr.envelope_phase = EnvelopePhase::Decay;
     adsr.decay_rate = 0;
     adsr.sustain_level = 0;
@@ -191,7 +215,7 @@ fn test_adsr_decay_rate0_is_slow() {
 #[test]
 fn test_adsr_sustain_rate0_holds_forever() {
     // sustain_rate=0 → period=0 → tick_due always returns false → level never changes.
-    let mut adsr = Adsr::default();
+    let mut adsr = adsr();
     adsr.envelope_phase = EnvelopePhase::Sustain;
     adsr.sustain_rate = 0;
     adsr.envelope_level = 0x400;
@@ -209,7 +233,7 @@ fn test_adsr_sustain_rate0_holds_forever() {
 #[test]
 fn test_adsr_sustain_decreases_with_nonzero_rate() {
     // sustain_rate=31 → period=1 (every tick)
-    let mut adsr = Adsr::default();
+    let mut adsr = adsr();
     adsr.envelope_phase = EnvelopePhase::Sustain;
     adsr.sustain_rate = 31;
     adsr.envelope_level = 0x400;
@@ -224,7 +248,7 @@ fn test_adsr_sustain_decreases_with_nonzero_rate() {
 
 #[test]
 fn test_adsr_sustain_reaches_off_at_zero() {
-    let mut adsr = Adsr::default();
+    let mut adsr = adsr();
     adsr.envelope_phase = EnvelopePhase::Sustain;
     adsr.sustain_rate = 31;
     adsr.envelope_level = 1; // one step away from 0
@@ -239,7 +263,7 @@ fn test_adsr_sustain_reaches_off_at_zero() {
 fn test_adsr_sustain_step_is_exponential() {
     // Higher level → bigger step, like Decay.
     let step_at = |start: u16| -> u16 {
-        let mut adsr = Adsr::default();
+        let mut adsr = adsr();
         adsr.envelope_phase = EnvelopePhase::Sustain;
         adsr.sustain_rate = 31;
         adsr.envelope_level = start;
@@ -259,7 +283,7 @@ fn test_adsr_sustain_step_is_exponential() {
 fn test_tick_due_period_zero_never_fires() {
     // period=0 (sustain_rate=0) must never step the envelope — covers the
     // early-return guard inside tick_due.
-    let mut adsr = Adsr::default();
+    let mut adsr = adsr();
     adsr.envelope_phase = EnvelopePhase::Sustain;
     adsr.sustain_rate = 0; // ENVELOPE_RATE_TABLE[0] = 0
     adsr.envelope_level = 0x400;
@@ -274,7 +298,7 @@ fn test_tick_due_period_zero_never_fires() {
 fn test_tick_due_fires_exactly_at_period() {
     // decay_rate=7 → period = ENVELOPE_RATE_TABLE[30] = 2.
     // Must not step on tick 1, must step on tick 2.
-    let mut adsr = Adsr::default();
+    let mut adsr = adsr();
     adsr.envelope_phase = EnvelopePhase::Decay;
     adsr.decay_rate = 7;
     adsr.sustain_level = 0;
@@ -296,7 +320,7 @@ fn test_tick_due_fires_exactly_at_period() {
 
 #[test]
 fn test_adsr_release_decreases_by_8_per_tick() {
-    let mut adsr = Adsr::default();
+    let mut adsr = adsr();
     adsr.envelope_phase = EnvelopePhase::Release;
     adsr.envelope_level = 100;
 
@@ -306,7 +330,7 @@ fn test_adsr_release_decreases_by_8_per_tick() {
 
 #[test]
 fn test_adsr_release_reaches_off() {
-    let mut adsr = Adsr::default();
+    let mut adsr = adsr();
     adsr.envelope_phase = EnvelopePhase::Release;
     adsr.envelope_level = 0x7FF;
 
@@ -322,7 +346,7 @@ fn test_adsr_release_reaches_off() {
 
 #[test]
 fn test_adsr_release_clamps_at_zero_not_underflow() {
-    let mut adsr = Adsr::default();
+    let mut adsr = adsr();
     adsr.envelope_phase = EnvelopePhase::Release;
     adsr.envelope_level = 4; // 4 - 8 would underflow without saturating_sub
 
@@ -337,15 +361,18 @@ fn test_adsr_release_clamps_at_zero_not_underflow() {
 
 #[test]
 fn test_adsr_full_cycle() {
-    let mut adsr = Adsr::default();
+    let mut adsr = adsr();
     adsr.attack_rate = 15; // instant
     adsr.decay_rate = 7; // fast
     adsr.sustain_level = 2; // target = 0x300
     adsr.sustain_rate = 31; // fast sustain drain
     adsr.envelope_phase = EnvelopePhase::Attack;
 
-    // Attack → Decay
-    while adsr.envelope_phase == EnvelopePhase::Attack {
+    // Attack → Decay (bounded: a regression here must fail, not hang)
+    for _ in 0..10 {
+        if adsr.envelope_phase != EnvelopePhase::Attack {
+            break;
+        }
         adsr.update_envelope();
     }
     assert_eq!(adsr.envelope_phase, EnvelopePhase::Decay);
@@ -375,7 +402,7 @@ fn test_adsr_full_cycle() {
 #[test]
 fn test_adsr_key_off_mid_attack_enters_release() {
     // Even if still in Attack, switching phase to Release should work normally.
-    let mut adsr = Adsr::default();
+    let mut adsr = adsr();
     adsr.envelope_phase = EnvelopePhase::Attack;
     adsr.attack_rate = 0; // slow
     adsr.envelope_level = 500;
@@ -388,4 +415,85 @@ fn test_adsr_key_off_mid_attack_enters_release() {
         adsr.envelope_level, 492,
         "release from mid-attack: 500 - 8 = 492"
     );
+}
+
+// ============================================================
+// Gain mode
+// ============================================================
+
+#[test]
+fn test_direct_gain_sets_level_immediately() {
+    let mut a = gain_adsr(0x40); // direct, value 0x40
+    a.update_envelope();
+    assert_eq!(a.envelope_level, 0x400, "direct gain = value * 16");
+
+    a.gain_param = 0x00;
+    a.update_envelope();
+    assert_eq!(a.envelope_level, 0, "direct gain 0 silences instantly");
+    assert_ne!(
+        a.envelope_phase,
+        EnvelopePhase::Off,
+        "GAIN reaching 0 must NOT key the voice off"
+    );
+}
+
+#[test]
+fn test_gain_linear_increase_reaches_and_holds_max() {
+    let mut a = gain_adsr(0xDF); // 1_10_11111: linear increase, rate 31
+    for _ in 0..64 {
+        a.update_envelope();
+    }
+    assert_eq!(a.envelope_level, 0x7FF, "64 steps of +32 saturate at 0x7FF");
+    a.update_envelope();
+    assert_eq!(a.envelope_level, 0x7FF, "and hold there");
+}
+
+#[test]
+fn test_gain_bent_increase_slows_past_0x600() {
+    let mut a = gain_adsr(0xFF); // 1_11_11111: bent increase, rate 31
+    while a.envelope_level < 0x600 {
+        a.update_envelope();
+    }
+    let at_bend = a.envelope_level;
+    a.update_envelope();
+    assert_eq!(a.envelope_level, at_bend + 8, "+8 per step above 0x600");
+}
+
+#[test]
+fn test_gain_linear_decrease_stops_at_zero_without_key_off() {
+    let mut a = gain_adsr(0x9F); // 1_00_11111: linear decrease, rate 31
+    a.envelope_level = 0x50;
+    for _ in 0..8 {
+        a.update_envelope();
+    }
+    assert_eq!(a.envelope_level, 0);
+    assert_ne!(a.envelope_phase, EnvelopePhase::Off);
+}
+
+#[test]
+fn test_gain_exponential_decrease_step_tracks_level() {
+    let mut a = gain_adsr(0xBF); // 1_01_11111: exp decrease, rate 31
+    a.envelope_level = 0x7FF;
+    a.update_envelope();
+    assert_eq!(a.envelope_level, 0x7FF - ((0x7FF >> 8) + 1));
+}
+
+#[test]
+fn test_gain_ramp_respects_rate_table() {
+    let mut a = gain_adsr(0xC0); // 1_10_00000: linear increase, rate 0 = never
+    for _ in 0..10_000 {
+        a.update_envelope();
+    }
+    assert_eq!(a.envelope_level, 0, "rate 0 must hold forever");
+}
+
+#[test]
+fn test_release_applies_even_in_gain_mode() {
+    let mut a = gain_adsr(0xDF);
+    a.envelope_level = 16;
+    a.envelope_phase = EnvelopePhase::Release;
+    a.update_envelope();
+    a.update_envelope();
+    assert_eq!(a.envelope_level, 0, "KOFF release (-8/tick) overrides GAIN");
+    assert_eq!(a.envelope_phase, EnvelopePhase::Off);
 }

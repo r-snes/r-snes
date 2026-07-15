@@ -111,16 +111,6 @@ fn test_write_reg_unrecognised_global_registers_stored() {
     }
 }
 
-#[test]
-#[should_panic(expected = "GAIN mode")]
-fn test_write_reg_gain_panics_with_todo() {
-    // GAIN mode ($X7) is not yet implemented — writing it must panic
-    // with the todo!() message so callers get a clear signal rather
-    // than silent wrong behaviour.
-    let mut mem = Memory::new();
-    dsp_vw(&mut mem, 0, 0x7, 0x7F);
-}
-
 // ============================================================
 // Dsp — global register mapping
 // ============================================================

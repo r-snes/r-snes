@@ -6,6 +6,7 @@ use std::path::PathBuf;
 
 use egui_sdl2::canvas::EguiCanvas;
 use egui_sdl2::{egui, sdl2};
+use sdl2::audio::{AudioQueue, AudioSpecDesired};
 use sdl2::event::Event as SdlEvent;
 use sdl2::keyboard::Keycode;
 use sdl2::render::Texture;
@@ -19,6 +20,13 @@ pub struct Gui {
     _sdl_ctx: sdl2::Sdl,
     egui_canvas: EguiCanvas,
     event_pump: sdl2::EventPump,
+
+    /// Host audio output. A push-model queue fed with interleaved stereo
+    /// i16 at the DSP's native 32 kHz (`Apu::drain_samples` format), so no
+    /// resampling or format conversion happens anywhere in between.
+    /// Opened paused; call `audio_play` to start output.
+    audio_queue: AudioQueue<i16>,
+
     framebuffer_texture: Option<Texture>,
     /// Persistent overlay state — survives across frames.
     state: GuiState,
@@ -80,10 +88,22 @@ impl Gui {
         let egui_canvas = EguiCanvas::new(window);
         let event_pump = sdl_ctx.event_pump()?;
 
+        let audio_subsystem = sdl_ctx.audio()?;
+        let desired = AudioSpecDesired {
+            freq: Some(32_000), // native S-DSP output rate
+            channels: Some(2),  // stereo, interleaved L R
+            samples: Some(512), // device buffer: 16 ms — latency vs. underrun
+        };
+        // `None` = default output device. SDL may hand back a different
+        // spec than desired; AudioQueue<i16> converts as needed, so the
+        // queue always accepts our 32 kHz stereo i16 regardless.
+        let audio_queue = audio_subsystem.open_queue::<i16, _>(None, &desired)?;
+
         Ok(Gui {
             _sdl_ctx: sdl_ctx,
             egui_canvas,
             event_pump,
+            audio_queue,
             framebuffer_texture: None,
             state: GuiState::default(),
         })
@@ -178,6 +198,31 @@ impl Gui {
 
             _ => None,
         }
+    }
+
+    /// Start (or resume) audio playback. Queued samples begin draining
+    /// to the device.
+    pub fn audio_play(&self) {
+        self.audio_queue.resume();
+    }
+
+    /// Stop audio playback and discard anything still queued, so the next
+    /// `audio_play` starts silent instead of replaying stale sound.
+    pub fn audio_stop(&self) {
+        self.audio_queue.pause();
+        self.audio_queue.clear();
+    }
+
+    /// Queue interleaved stereo i16 samples (L, R, L, R, ...) at 32 kHz —
+    /// exactly what `Apu::drain_samples` produces.
+    pub fn audio_queue_samples(&self, samples: &[i16]) -> Result<(), String> {
+        self.audio_queue.queue_audio(samples)
+    }
+
+    /// Number of stereo frames currently queued and not yet played.
+    /// (`size` is in bytes; 1 frame = 2 channels × 2 bytes.)
+    pub fn audio_buffered_frames(&self) -> u32 {
+        self.audio_queue.size() / 4
     }
 
     /// Polls SDL, feeds everything to egui, then routes what egui didn't

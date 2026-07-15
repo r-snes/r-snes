@@ -399,7 +399,7 @@ fn test_render_audio_interleaved_stereo() {
     assert_eq!(out.len(), 8);
 
     // All right-channel samples must be 0 (hard-left pan: right_vol=0)
-    for (i, &(_l, r)) in out.iter().enumerate() {
+    for (i, &[_l, r]) in out.iter().enumerate() {
         assert_eq!(r, 0, "right channel of pair {i} must be 0 (hard-left pan)");
     }
 }
@@ -412,7 +412,7 @@ fn test_render_audio_silent_when_no_voices_active() {
 
     let out = apu.render_audio(16);
     assert!(
-        out.iter().all(|&(l, r)| l == 0 && r == 0),
+        out.iter().all(|&[l, r]| l == 0 && r == 0),
         "all samples must be 0 when no voices are active"
     );
 }
@@ -430,7 +430,7 @@ fn test_render_audio_produces_nonzero_with_active_voice() {
     // 100 samples * 32 cycles = 3200 CPU cycles = 100 DSP ticks.
     let out = apu.render_audio(100);
     assert!(
-        out.iter().any(|&(l, r)| l != 0 || r != 0),
+        out.iter().any(|&[l, r]| l != 0 || r != 0),
         "at least one non-zero sample expected with an active voice"
     );
 }
@@ -478,11 +478,11 @@ fn test_render_audio_reflects_master_volume() {
     let loud_out = apu_loud.render_audio(64);
 
     assert!(
-        silent_out.iter().all(|&(l, r)| l == 0 && r == 0),
+        silent_out.iter().all(|&[l, r]| l == 0 && r == 0),
         "zero master volume must produce silence"
     );
     assert!(
-        loud_out.iter().any(|&(l, r)| l != 0 || r != 0),
+        loud_out.iter().any(|&[l, r]| l != 0 || r != 0),
         "non-zero master volume with active voice must produce output"
     );
 }
