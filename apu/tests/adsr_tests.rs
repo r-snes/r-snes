@@ -138,7 +138,7 @@ fn test_adsr_attack_level_never_exceeds_max() {
 #[test]
 fn test_adsr_decay_falls_toward_sustain_target() {
     // decay_rate=7 → rate_idx = 7*2+16 = 30 → period=2 (very fast)
-    let mut adsr = Adsr::default();
+    let mut adsr = adsr();
     adsr.envelope_phase = EnvelopePhase::Decay;
     adsr.decay_rate = 7;
     adsr.sustain_level = 3; // target = (3+1)*0x100 = 0x400
@@ -215,7 +215,7 @@ fn test_adsr_decay_rate0_is_slow() {
 #[test]
 fn test_adsr_sustain_rate0_holds_forever() {
     // sustain_rate=0 → period=0 → tick_due always returns false → level never changes.
-    let mut adsr = Adsr::default();
+    let mut adsr = adsr();
     adsr.envelope_phase = EnvelopePhase::Sustain;
     adsr.sustain_rate = 0;
     adsr.envelope_level = 0x400;
@@ -283,7 +283,7 @@ fn test_adsr_sustain_step_is_exponential() {
 fn test_tick_due_period_zero_never_fires() {
     // period=0 (sustain_rate=0) must never step the envelope — covers the
     // early-return guard inside tick_due.
-    let mut adsr = Adsr::default();
+    let mut adsr = adsr();
     adsr.envelope_phase = EnvelopePhase::Sustain;
     adsr.sustain_rate = 0; // ENVELOPE_RATE_TABLE[0] = 0
     adsr.envelope_level = 0x400;
@@ -361,15 +361,18 @@ fn test_adsr_release_clamps_at_zero_not_underflow() {
 
 #[test]
 fn test_adsr_full_cycle() {
-    let mut adsr = Adsr::default();
+    let mut adsr = adsr();
     adsr.attack_rate = 15; // instant
     adsr.decay_rate = 7; // fast
     adsr.sustain_level = 2; // target = 0x300
     adsr.sustain_rate = 31; // fast sustain drain
     adsr.envelope_phase = EnvelopePhase::Attack;
 
-    // Attack → Decay
-    while adsr.envelope_phase == EnvelopePhase::Attack {
+    // Attack → Decay (bounded: a regression here must fail, not hang)
+    for _ in 0..10 {
+        if adsr.envelope_phase != EnvelopePhase::Attack {
+            break;
+        }
         adsr.update_envelope();
     }
     assert_eq!(adsr.envelope_phase, EnvelopePhase::Decay);
