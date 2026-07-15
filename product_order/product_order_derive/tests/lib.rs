@@ -1,7 +1,6 @@
 #[cfg(test)]
 use std::cmp::Ordering;
 use std::cmp::Ordering::*;
-use std::f32::NAN;
 
 #[derive(Debug, PartialEq, product_order_derive::PartialOrd)]
 struct Point3 {
@@ -42,7 +41,7 @@ fn greater() {
 fn not_comparable() {
     p3_pcmp_test((0., 0., 0.), (-1., 0., 1.), None);
     p3_pcmp_test((-1., 0., 1.), (0., 0., 0.), None);
-    p3_pcmp_test((0., 0., 0.), (0., NAN, 0.), None);
+    p3_pcmp_test((0., 0., 0.), (0., f32::NAN, 0.), None);
 }
 
 #[test]

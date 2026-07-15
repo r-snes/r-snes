@@ -1,15 +1,15 @@
-/// DSP core tests
-///
-/// Covers Dsp::new, read_reg/write_reg, global registers (KON/KOFF/DIR),
-/// step() BRR playback and looping, render_audio_single mixing/clamping,
-/// ENVX/OUTX/ENDX register updates, and master volume.
-///
-/// ADSR phase tests → adsr_tests.rs
-/// Voice/register mapping tests → voice_tests.rs
-/// BRR decode tests → brr_tests.rs
+//! DSP core tests
+//!
+//! Covers Dsp::new, read_reg/write_reg, global registers (KON/KOFF/DIR),
+//! step() BRR playback and looping, render_audio_single mixing/clamping,
+//! ENVX/OUTX/ENDX register updates, and master volume.
+//!
+//! ADSR phase tests → adsr_tests.rs
+//! Voice/register mapping tests → voice_tests.rs
+//! BRR decode tests → brr_tests.rs
 
-use apu::dsp::{Adsr, Brr, Dsp, EnvelopePhase, Voice};
 use apu::Memory;
+use apu::dsp::{Dsp, EnvelopePhase};
 
 // ============================================================
 // Helpers
@@ -27,17 +27,16 @@ fn dsp_gw(mem: &mut Memory, reg: u8, val: u8) {
     mem.write8(DSP_BASE + reg as u16, val);
 }
 
-/// Read a DSP register by its 7-bit index directly.
-fn dsp_r(mem: &Memory, idx: u8) -> u8 {
-    mem.dsp.read_reg(idx)
-}
-
 /// Build a minimal valid 9-byte BRR block in APU RAM.
 /// shift=4, filter=0, end=end_flag, loop=loop_flag, all nibbles=0.
 fn write_silent_brr_block(mem: &mut Memory, addr: u16, end: bool, do_loop: bool) {
     let mut header: u8 = 0x40; // shift=4, filter=0
-    if end     { header |= 0x01; }
-    if do_loop { header |= 0x02; }
+    if end {
+        header |= 0x01;
+    }
+    if do_loop {
+        header |= 0x02;
+    }
     mem.write8(addr, header);
     for i in 1..9u16 {
         mem.write8(addr + i, 0x00);
@@ -48,10 +47,10 @@ fn write_silent_brr_block(mem: &mut Memory, addr: u16, end: bool, do_loop: bool)
 fn write_dir_entry(mem: &mut Memory, dir_page: u8, srcn: u8, start: u16, loop_addr: u16) {
     let base = (dir_page as u16) << 8;
     let entry = base + (srcn as u16) * 4;
-    mem.write8(entry,     (start     & 0xFF) as u8);
-    mem.write8(entry + 1, (start     >> 8)   as u8);
+    mem.write8(entry, (start & 0xFF) as u8);
+    mem.write8(entry + 1, (start >> 8) as u8);
     mem.write8(entry + 2, (loop_addr & 0xFF) as u8);
-    mem.write8(entry + 3, (loop_addr >> 8)   as u8);
+    mem.write8(entry + 3, (loop_addr >> 8) as u8);
 }
 
 // ============================================================
@@ -76,7 +75,7 @@ fn test_read_reg_write_reg_roundtrip() {
     let safe_regs: Vec<u8> = (0u8..=127)
         .filter(|&i| {
             i != 0x4C && i != 0x5C          // KON / KOFF
-            && (i & 0x0F) != 0x07           // GAIN registers ($X7)
+            && (i & 0x0F) != 0x07 // GAIN registers ($X7)
         })
         .collect();
 
@@ -104,8 +103,11 @@ fn test_write_reg_unrecognised_global_registers_stored() {
     let mut mem = Memory::new();
     for &reg in &[0x2Cu8, 0x3C, 0x6C, 0x7D, 0x0D, 0x2D, 0x3D, 0x4D, 0x6D] {
         mem.dsp.write_reg(reg, 0xAB);
-        assert_eq!(mem.dsp.read_reg(reg), 0xAB,
-            "unimplemented reg {reg:#04X} must store raw byte");
+        assert_eq!(
+            mem.dsp.read_reg(reg),
+            0xAB,
+            "unimplemented reg {reg:#04X} must store raw byte"
+        );
     }
 }
 
@@ -135,9 +137,9 @@ fn test_kon_register_keys_on_specified_voices() {
 
     for srcn in [0u8, 2u8] {
         write_dir_entry(&mut mem, dir_page, srcn, brr_addr, brr_addr);
-        dsp_vw(&mut mem, srcn, 0x4, srcn);        // SRCN
-        dsp_vw(&mut mem, srcn, 0x5, 0x8F);        // ADSR1
-        dsp_vw(&mut mem, srcn, 0x6, 0xE0);        // ADSR2
+        dsp_vw(&mut mem, srcn, 0x4, srcn); // SRCN
+        dsp_vw(&mut mem, srcn, 0x5, 0x8F); // ADSR1
+        dsp_vw(&mut mem, srcn, 0x6, 0xE0); // ADSR2
     }
 
     dsp_gw(&mut mem, 0x4C, 0b00000101); // KON: voices 0 and 2
@@ -168,21 +170,27 @@ fn test_koff_register_enters_release_phase() {
 fn test_kon_resets_brr_state() {
     // KON must zero all BRR playback state so the new sample starts clean.
     let mut mem = Memory::new();
-    mem.dsp.voices[0].brr.nibble_idx  = 12;
-    mem.dsp.voices[0].brr.prev1       = 999;
-    mem.dsp.voices[0].brr.prev2       = 888;
+    mem.dsp.voices[0].brr.nibble_idx = 12;
+    mem.dsp.voices[0].brr.prev1 = 999;
+    mem.dsp.voices[0].brr.prev2 = 888;
     mem.dsp.voices[0].brr.buffer_fill = 16;
-    mem.dsp.voices[0].brr.loop_addr   = 0xDEAD;
-    mem.dsp.voices[0].pitch_counter   = 0x0FFF;
+    mem.dsp.voices[0].brr.loop_addr = 0xDEAD;
+    mem.dsp.voices[0].pitch_counter = 0x0FFF;
 
     dsp_gw(&mut mem, 0x4C, 0x01);
 
-    assert_eq!(mem.dsp.voices[0].brr.nibble_idx,  0, "nibble_idx must reset");
-    assert_eq!(mem.dsp.voices[0].brr.prev1,       0, "prev1 must reset");
-    assert_eq!(mem.dsp.voices[0].brr.prev2,       0, "prev2 must reset");
-    assert_eq!(mem.dsp.voices[0].brr.buffer_fill, 0, "buffer_fill must reset");
-    assert_eq!(mem.dsp.voices[0].brr.loop_addr,   0, "loop_addr must reset");
-    assert_eq!(mem.dsp.voices[0].pitch_counter,   0, "pitch_counter must reset");
+    assert_eq!(mem.dsp.voices[0].brr.nibble_idx, 0, "nibble_idx must reset");
+    assert_eq!(mem.dsp.voices[0].brr.prev1, 0, "prev1 must reset");
+    assert_eq!(mem.dsp.voices[0].brr.prev2, 0, "prev2 must reset");
+    assert_eq!(
+        mem.dsp.voices[0].brr.buffer_fill, 0,
+        "buffer_fill must reset"
+    );
+    assert_eq!(mem.dsp.voices[0].brr.loop_addr, 0, "loop_addr must reset");
+    assert_eq!(
+        mem.dsp.voices[0].pitch_counter, 0,
+        "pitch_counter must reset"
+    );
 }
 
 #[test]
@@ -190,7 +198,10 @@ fn test_kon_resets_current_sample() {
     let mut mem = Memory::new();
     mem.dsp.voices[0].current_sample = 0x7FFF;
     dsp_gw(&mut mem, 0x4C, 0x01);
-    assert_eq!(mem.dsp.voices[0].current_sample, 0, "current_sample must reset on KON");
+    assert_eq!(
+        mem.dsp.voices[0].current_sample, 0,
+        "current_sample must reset on KON"
+    );
 }
 
 #[test]
@@ -198,14 +209,17 @@ fn test_kon_zero_value_keys_on_no_voices() {
     let mut mem = Memory::new();
     dsp_gw(&mut mem, 0x4C, 0x00);
     for v in 0..8 {
-        assert!(!mem.dsp.voices[v].key_on, "no voice should be keyed on when KON=0");
+        assert!(
+            !mem.dsp.voices[v].key_on,
+            "no voice should be keyed on when KON=0"
+        );
     }
 }
 
 #[test]
 fn test_kon_all_8_voices_simultaneously() {
     let mut mem = Memory::new();
-    let dir_page: u8  = 0x01;
+    let dir_page: u8 = 0x01;
     let brr_addr: u16 = 0x0200;
     write_silent_brr_block(&mut mem, brr_addr, true, false);
     for v in 0..8u8 {
@@ -216,10 +230,15 @@ fn test_kon_all_8_voices_simultaneously() {
     dsp_gw(&mut mem, 0x4C, 0xFF);
 
     for v in 0..8 {
-        assert!(mem.dsp.voices[v].key_on,
-            "voice {v} must be keyed on when KON=0xFF");
-        assert_eq!(mem.dsp.voices[v].adsr.envelope_phase, EnvelopePhase::Attack,
-            "voice {v} must be in Attack after KON");
+        assert!(
+            mem.dsp.voices[v].key_on,
+            "voice {v} must be keyed on when KON=0xFF"
+        );
+        assert_eq!(
+            mem.dsp.voices[v].adsr.envelope_phase,
+            EnvelopePhase::Attack,
+            "voice {v} must be in Attack after KON"
+        );
     }
 }
 
@@ -231,8 +250,11 @@ fn test_koff_zero_value_releases_no_voices() {
     }
     dsp_gw(&mut mem, 0x5C, 0x00);
     for v in 0..8 {
-        assert_eq!(mem.dsp.voices[v].adsr.envelope_phase, EnvelopePhase::Sustain,
-            "KOFF=0 must not release any voice");
+        assert_eq!(
+            mem.dsp.voices[v].adsr.envelope_phase,
+            EnvelopePhase::Sustain,
+            "KOFF=0 must not release any voice"
+        );
     }
 }
 
@@ -258,9 +280,9 @@ fn setup_single_voice_end_block(mem: &mut Memory) {
     write_dir_entry(mem, dir_page, 0, brr_addr, brr_addr);
 
     dsp_gw(mem, 0x5D, dir_page);
-    dsp_vw(mem, 0, 0x4, 0);             // SRCN 0
-    dsp_vw(mem, 0, 0x0, 100i8 as u8);   // VOL L
-    dsp_vw(mem, 0, 0x1, 100i8 as u8);   // VOL R
+    dsp_vw(mem, 0, 0x4, 0); // SRCN 0
+    dsp_vw(mem, 0, 0x0, 100i8 as u8); // VOL L
+    dsp_vw(mem, 0, 0x1, 100i8 as u8); // VOL R
     // pitch=0x1000 → native rate
     dsp_vw(mem, 0, 0x2, 0x00);
     dsp_vw(mem, 0, 0x3, 0x10);
@@ -299,8 +321,8 @@ fn test_step_looping_voice_stays_active() {
     let brr_addr: u16 = 0x0200;
 
     // Two blocks: block 0 normal, block 1 end+loop back to block 0.
-    write_silent_brr_block(&mut mem, brr_addr,     false, false);
-    write_silent_brr_block(&mut mem, brr_addr + 9, true,  true); // end+loop
+    write_silent_brr_block(&mut mem, brr_addr, false, false);
+    write_silent_brr_block(&mut mem, brr_addr + 9, true, true); // end+loop
     write_dir_entry(&mut mem, dir_page, 0, brr_addr, brr_addr);
 
     dsp_gw(&mut mem, 0x5D, dir_page);
@@ -315,7 +337,8 @@ fn test_step_looping_voice_stays_active() {
     for i in 0..500 {
         mem.dsp.step(&mem.ram);
         assert_ne!(
-            mem.dsp.voices[0].adsr.envelope_phase, EnvelopePhase::Off,
+            mem.dsp.voices[0].adsr.envelope_phase,
+            EnvelopePhase::Off,
             "looping voice went silent at tick {i}"
         );
     }
@@ -326,19 +349,21 @@ fn test_step_pitch_counter_advances() {
     let mut mem = Memory::new();
     setup_single_voice_end_block(&mut mem);
 
-    let counter_before = mem.dsp.voices[0].pitch_counter;
+    let _counter_before = mem.dsp.voices[0].pitch_counter;
     mem.dsp.step(&mem.ram);
     // pitch=0x1000 is added each tick; counter wraps at 0x1000 so
     // after one tick from zero the high nibble has consumed one sample
     // and the counter resets to 0. What matters: key_on went true.
-    assert!(mem.dsp.voices[0].key_on || mem.dsp.voices[0].adsr.envelope_phase != EnvelopePhase::Off);
+    assert!(
+        mem.dsp.voices[0].key_on || mem.dsp.voices[0].adsr.envelope_phase != EnvelopePhase::Off
+    );
 }
 
 #[test]
 fn test_step_advances_envelope_over_multiple_ticks() {
     // Verify step(&RawARAM) correctly advances the envelope over 10 ticks,
     // covering decode_next_block and ram_read8.
-    let dir_page: u8  = 0x01;
+    let dir_page: u8 = 0x01;
     let brr_addr: u16 = 0x0200;
 
     let mut mem = Memory::new();
@@ -393,17 +418,17 @@ fn test_render_single_voice_envelope_scaling() {
     let mut dsp = Dsp::new();
     // Set master volume to 127 so it acts as a near-transparent pass-through.
     dsp.write_reg(0x0C, 127u8); // MVOLL
-    dsp.write_reg(0x1C, 0u8);   // MVOLR — right not tested here
+    dsp.write_reg(0x1C, 0u8); // MVOLR — right not tested here
     dsp.voices[0].adsr.envelope_phase = EnvelopePhase::Sustain;
     dsp.voices[0].adsr.envelope_level = 0x7FF; // max
-    dsp.voices[0].current_sample      = 0x4000; // large positive
-    dsp.voices[0].left_vol            = 64;
-    dsp.voices[0].right_vol           = 0;
+    dsp.voices[0].current_sample = 0x4000; // large positive
+    dsp.voices[0].left_vol = 64;
+    dsp.voices[0].right_vol = 0;
 
     let (l, _r) = dsp.render_audio_single();
 
     let env_sample = (0x4000_i32 * 0x7FF_i32) >> 11;
-    let voiced     = (env_sample * 64) >> 7;
+    let voiced = (env_sample * 64) >> 7;
     let expected_l = ((voiced * 127) >> 7).clamp(i16::MIN as i32, i16::MAX as i32) as i16;
     assert_eq!(l, expected_l, "left channel scaling mismatch");
 }
@@ -415,12 +440,15 @@ fn test_render_right_channel_zero_when_right_vol_zero() {
     dsp.write_reg(0x1C, 127u8); // MVOLR — non-zero, so silence must come from right_vol=0
     dsp.voices[0].adsr.envelope_phase = EnvelopePhase::Sustain;
     dsp.voices[0].adsr.envelope_level = 0x7FF;
-    dsp.voices[0].current_sample      = 1000;
-    dsp.voices[0].left_vol            = 100;
-    dsp.voices[0].right_vol           = 0;   // muted right
+    dsp.voices[0].current_sample = 1000;
+    dsp.voices[0].left_vol = 100;
+    dsp.voices[0].right_vol = 0; // muted right
 
     let (_l, r) = dsp.render_audio_single();
-    assert_eq!(r, 0, "right channel must be silent when right_vol=0 regardless of MVOLR");
+    assert_eq!(
+        r, 0,
+        "right channel must be silent when right_vol=0 regardless of MVOLR"
+    );
 }
 
 #[test]
@@ -430,9 +458,9 @@ fn test_render_negative_volume_inverts_signal() {
     dsp.write_reg(0x1C, 127u8); // MVOLR
     dsp.voices[0].adsr.envelope_phase = EnvelopePhase::Sustain;
     dsp.voices[0].adsr.envelope_level = 0x7FF;
-    dsp.voices[0].current_sample      = 1000;
-    dsp.voices[0].left_vol            = 64;
-    dsp.voices[0].right_vol           = -64; // negative → inverted
+    dsp.voices[0].current_sample = 1000;
+    dsp.voices[0].left_vol = 64;
+    dsp.voices[0].right_vol = -64; // negative → inverted
 
     let (l, r) = dsp.render_audio_single();
     assert!(l > 0, "positive vol → positive output");
@@ -443,7 +471,8 @@ fn test_render_negative_volume_inverts_signal() {
     // the worst-case accumulated difference is ±2.
     assert!(
         (l + r).abs() <= 2,
-        "magnitudes should match within ±2 (got l={l}, r={r}, diff={})", l + r
+        "magnitudes should match within ±2 (got l={l}, r={r}, diff={})",
+        l + r
     );
 }
 
@@ -454,12 +483,12 @@ fn test_render_voice_off_contributes_nothing() {
     // Voice 0 on, voice 1 off but with a large sample that would dominate if mixed.
     dsp.voices[0].adsr.envelope_phase = EnvelopePhase::Sustain;
     dsp.voices[0].adsr.envelope_level = 0x7FF;
-    dsp.voices[0].current_sample      = 100;
-    dsp.voices[0].left_vol            = 64;
+    dsp.voices[0].current_sample = 100;
+    dsp.voices[0].left_vol = 64;
 
     dsp.voices[1].adsr.envelope_phase = EnvelopePhase::Off; // should be skipped
-    dsp.voices[1].current_sample      = 0x7FFF;
-    dsp.voices[1].left_vol            = 127;
+    dsp.voices[1].current_sample = 0x7FFF;
+    dsp.voices[1].left_vol = 127;
 
     let (l_with, _) = dsp.render_audio_single();
 
@@ -471,7 +500,7 @@ fn test_render_voice_off_contributes_nothing() {
     dsp2.voices[0] = dsp.voices[0];
     let (l_without, _) = dsp2.render_audio_single();
 
-    assert!(l_with > 0,    "active voice must produce non-zero output");
+    assert!(l_with > 0, "active voice must produce non-zero output");
     assert_eq!(l_with, l_without, "Off voice must not contribute to mix");
 }
 
@@ -483,9 +512,9 @@ fn test_render_two_voices_summed() {
     for v in 0..2 {
         dsp.voices[v].adsr.envelope_phase = EnvelopePhase::Sustain;
         dsp.voices[v].adsr.envelope_level = 0x7FF;
-        dsp.voices[v].current_sample      = 1000;
-        dsp.voices[v].left_vol            = 32;
-        dsp.voices[v].right_vol           = 32;
+        dsp.voices[v].current_sample = 1000;
+        dsp.voices[v].left_vol = 32;
+        dsp.voices[v].right_vol = 32;
     }
     let (l2, _) = dsp.render_audio_single();
 
@@ -494,8 +523,8 @@ fn test_render_two_voices_summed() {
     dsp1.write_reg(0x0C, 127u8); // MVOLL
     dsp1.voices[0].adsr.envelope_phase = EnvelopePhase::Sustain;
     dsp1.voices[0].adsr.envelope_level = 0x7FF;
-    dsp1.voices[0].current_sample      = 1000;
-    dsp1.voices[0].left_vol            = 32;
+    dsp1.voices[0].current_sample = 1000;
+    dsp1.voices[0].left_vol = 32;
     let (l1, _) = dsp1.render_audio_single();
 
     assert!(l2 > l1, "two voices must produce louder output than one");
@@ -511,9 +540,9 @@ fn test_render_all_8_voices_contribute_to_mix() {
     for v in 0..8 {
         dsp.voices[v].adsr.envelope_phase = EnvelopePhase::Sustain;
         dsp.voices[v].adsr.envelope_level = 0x7FF;
-        dsp.voices[v].current_sample      = 100;
-        dsp.voices[v].left_vol            = 16;
-        dsp.voices[v].right_vol           = 16;
+        dsp.voices[v].current_sample = 100;
+        dsp.voices[v].left_vol = 16;
+        dsp.voices[v].right_vol = 16;
     }
     let (l8, _) = dsp.render_audio_single();
 
@@ -521,8 +550,8 @@ fn test_render_all_8_voices_contribute_to_mix() {
     dsp1.write_reg(0x0C, 127u8);
     dsp1.voices[0].adsr.envelope_phase = EnvelopePhase::Sustain;
     dsp1.voices[0].adsr.envelope_level = 0x7FF;
-    dsp1.voices[0].current_sample      = 100;
-    dsp1.voices[0].left_vol            = 16;
+    dsp1.voices[0].current_sample = 100;
+    dsp1.voices[0].left_vol = 16;
     let (l1, _) = dsp1.render_audio_single();
 
     assert!(l8 > l1, "8 voices must produce more output than 1");
@@ -545,9 +574,9 @@ fn test_render_output_clamped_to_i16_range() {
     for v in 0..8 {
         dsp.voices[v].adsr.envelope_phase = EnvelopePhase::Sustain;
         dsp.voices[v].adsr.envelope_level = 0x7FF;
-        dsp.voices[v].current_sample      = i16::MAX;
-        dsp.voices[v].left_vol            = 127;
-        dsp.voices[v].right_vol           = 127;
+        dsp.voices[v].current_sample = i16::MAX;
+        dsp.voices[v].left_vol = 127;
+        dsp.voices[v].right_vol = 127;
     }
     let (l, r) = dsp.render_audio_single();
     assert_eq!(l, i16::MAX, "left must clamp to i16::MAX");
@@ -560,11 +589,14 @@ fn test_render_zero_envelope_silences_voice() {
     dsp.write_reg(0x0C, 127u8); // MVOLL non-zero — silence must come from envelope=0, not master vol
     dsp.voices[0].adsr.envelope_phase = EnvelopePhase::Sustain;
     dsp.voices[0].adsr.envelope_level = 0; // zero envelope → silent
-    dsp.voices[0].current_sample      = 0x7FFF;
-    dsp.voices[0].left_vol            = 127;
+    dsp.voices[0].current_sample = 0x7FFF;
+    dsp.voices[0].left_vol = 127;
 
     let (l, _) = dsp.render_audio_single();
-    assert_eq!(l, 0, "zero envelope must produce zero output regardless of master vol");
+    assert_eq!(
+        l, 0,
+        "zero envelope must produce zero output regardless of master vol"
+    );
 }
 
 // ============================================================
@@ -604,7 +636,7 @@ fn test_envx_updated_after_step() {
 
     let level = mem.dsp.voices[0].adsr.envelope_level;
     let expected_envx = (level >> 4) as u8;
-    let actual_envx   = mem.dsp.read_reg(0x08); // voice 0, offset +8
+    let actual_envx = mem.dsp.read_reg(0x08); // voice 0, offset +8
 
     assert_eq!(
         actual_envx, expected_envx,
@@ -621,7 +653,7 @@ fn test_envx_tracks_envelope_level_directly() {
     // Force a known envelope level.
     mem.dsp.voices[0].adsr.envelope_phase = EnvelopePhase::Sustain;
     mem.dsp.voices[0].adsr.envelope_level = 0x400;
-    mem.dsp.voices[0].adsr.sustain_rate   = 0; // hold forever
+    mem.dsp.voices[0].adsr.sustain_rate = 0; // hold forever
 
     mem.dsp.step(&mem.ram);
 
@@ -637,7 +669,7 @@ fn test_envx_max_value_is_0x7f() {
 
     mem.dsp.voices[0].adsr.envelope_phase = EnvelopePhase::Sustain;
     mem.dsp.voices[0].adsr.envelope_level = 0x7FF;
-    mem.dsp.voices[0].adsr.sustain_rate   = 0;
+    mem.dsp.voices[0].adsr.sustain_rate = 0;
 
     mem.dsp.step(&mem.ram);
 
@@ -667,15 +699,15 @@ fn test_envx_all_8_voices_independent() {
         let level = level.min(0x7FF);
         mem.dsp.voices[v as usize].adsr.envelope_phase = EnvelopePhase::Sustain;
         mem.dsp.voices[v as usize].adsr.envelope_level = level;
-        mem.dsp.voices[v as usize].adsr.sustain_rate   = 0;
-        mem.dsp.voices[v as usize].key_on              = true;
+        mem.dsp.voices[v as usize].adsr.sustain_rate = 0;
+        mem.dsp.voices[v as usize].key_on = true;
     }
 
     mem.dsp.step(&mem.ram);
 
     for v in 0usize..8 {
         let expected = (mem.dsp.voices[v].adsr.envelope_level >> 4) as u8;
-        let actual   = mem.dsp.read_reg(((v << 4) | 0x8) as u8);
+        let actual = mem.dsp.read_reg(((v << 4) | 0x8) as u8);
         assert_eq!(actual, expected, "voice {v} ENVX mismatch");
     }
 }
@@ -686,7 +718,11 @@ fn test_envx_all_8_voices_independent() {
 fn test_outx_zero_when_sample_zero() {
     let dsp = Dsp::new();
     for v in 0u8..8 {
-        assert_eq!(dsp.read_reg((v << 4) | 0x9), 0, "voice {v} OUTX should be 0");
+        assert_eq!(
+            dsp.read_reg((v << 4) | 0x9),
+            0,
+            "voice {v} OUTX should be 0"
+        );
     }
 }
 
@@ -699,16 +735,16 @@ fn test_outx_reflects_top_byte_of_current_sample() {
 
     mem.dsp.voices[0].adsr.envelope_phase = EnvelopePhase::Sustain;
     mem.dsp.voices[0].adsr.envelope_level = 0x7FF;
-    mem.dsp.voices[0].adsr.sustain_rate   = 0;
-    mem.dsp.voices[0].current_sample      = 0x1234;
+    mem.dsp.voices[0].adsr.sustain_rate = 0;
+    mem.dsp.voices[0].current_sample = 0x1234;
 
     mem.dsp.step(&mem.ram);
 
     // After step the BRR buffer will have been consumed and current_sample
     // updated from decoded data. We test the register reflects *that* value.
-    let sample   = mem.dsp.voices[0].current_sample;
+    let sample = mem.dsp.voices[0].current_sample;
     let expected = (sample >> 8) as u8;
-    let actual   = mem.dsp.read_reg(0x09); // voice 0, offset +9
+    let actual = mem.dsp.read_reg(0x09); // voice 0, offset +9
     assert_eq!(actual, expected, "OUTX must equal current_sample >> 8");
 }
 
@@ -720,12 +756,12 @@ fn test_outx_positive_and_negative_samples() {
     setup_single_voice_end_block(&mut mem);
     mem.dsp.voices[0].adsr.envelope_phase = EnvelopePhase::Sustain;
     mem.dsp.voices[0].adsr.envelope_level = 0x7FF;
-    mem.dsp.voices[0].adsr.sustain_rate   = 0;
+    mem.dsp.voices[0].adsr.sustain_rate = 0;
 
     // Force a positive sample into the buffer so step() outputs it.
     mem.dsp.voices[0].brr.sample_buffer = [0x0500i16; 16];
-    mem.dsp.voices[0].brr.buffer_fill   = 16;
-    mem.dsp.voices[0].brr.nibble_idx    = 0;
+    mem.dsp.voices[0].brr.buffer_fill = 16;
+    mem.dsp.voices[0].brr.nibble_idx = 0;
 
     mem.dsp.step(&mem.ram);
     let outx_pos = mem.dsp.read_reg(0x09) as i8;
@@ -733,8 +769,8 @@ fn test_outx_positive_and_negative_samples() {
 
     // Now force a negative sample.
     mem.dsp.voices[0].brr.sample_buffer = [(-0x0500i16); 16];
-    mem.dsp.voices[0].brr.buffer_fill   = 16;
-    mem.dsp.voices[0].brr.nibble_idx    = 0;
+    mem.dsp.voices[0].brr.buffer_fill = 16;
+    mem.dsp.voices[0].brr.nibble_idx = 0;
 
     mem.dsp.step(&mem.ram);
     let outx_neg = mem.dsp.read_reg(0x09) as i8;
@@ -765,7 +801,10 @@ fn test_endx_set_when_end_block_reached() {
             break;
         }
     }
-    assert!(endx_set, "ENDX bit 0 must be set after voice 0 hits its end block");
+    assert!(
+        endx_set,
+        "ENDX bit 0 must be set after voice 0 hits its end block"
+    );
 }
 
 #[test]
@@ -779,18 +818,22 @@ fn test_endx_set_for_correct_voice_bit() {
     write_dir_entry(&mut mem, dir_page, 0, brr_addr, brr_addr);
 
     dsp_gw(&mut mem, 0x5D, dir_page);
-    dsp_vw(&mut mem, 3, 0x4, 0);           // voice 3, SRCN 0
+    dsp_vw(&mut mem, 3, 0x4, 0); // voice 3, SRCN 0
     dsp_vw(&mut mem, 3, 0x2, 0x00);
     dsp_vw(&mut mem, 3, 0x3, 0x10);
     dsp_vw(&mut mem, 3, 0x5, 0x8F);
     dsp_vw(&mut mem, 3, 0x6, 0xE0);
-    dsp_gw(&mut mem, 0x4C, 0b00001000);    // KON voice 3 only
+    dsp_gw(&mut mem, 0x4C, 0b00001000); // KON voice 3 only
 
     for _ in 0..200 {
         mem.dsp.step(&mem.ram);
         let endx = mem.dsp.read_reg(0x7C);
         if endx != 0 {
-            assert_eq!(endx & 0b00001000, 0b00001000, "bit 3 must be set for voice 3");
+            assert_eq!(
+                endx & 0b00001000,
+                0b00001000,
+                "bit 3 must be set for voice 3"
+            );
             assert_eq!(endx & 0b11110111, 0, "no other ENDX bits should be set");
             return;
         }
@@ -811,12 +854,17 @@ fn test_endx_cleared_on_kon() {
             break;
         }
     }
-    assert_eq!(mem.dsp.read_reg(0x7C) & 0x01, 1, "precondition: ENDX bit 0 must be set");
+    assert_eq!(
+        mem.dsp.read_reg(0x7C) & 0x01,
+        1,
+        "precondition: ENDX bit 0 must be set"
+    );
 
     // Key on voice 0 again — this should clear bit 0.
     dsp_gw(&mut mem, 0x4C, 0x01);
     assert_eq!(
-        mem.dsp.read_reg(0x7C) & 0x01, 0,
+        mem.dsp.read_reg(0x7C) & 0x01,
+        0,
         "KON must clear ENDX bit for the keyed-on voice"
     );
 }
@@ -873,7 +921,7 @@ fn test_endx_multiple_voices_independent_bits() {
     dsp_gw(&mut mem, 0x5D, dir_page);
 
     for v in [0u8, 2u8] {
-        dsp_vw(&mut mem, v, 0x4, v);    // SRCN = voice index (0 or 2)
+        dsp_vw(&mut mem, v, 0x4, v); // SRCN = voice index (0 or 2)
         dsp_vw(&mut mem, v, 0x2, 0x00);
         dsp_vw(&mut mem, v, 0x3, 0x10);
         dsp_vw(&mut mem, v, 0x5, 0x8F);
@@ -887,9 +935,8 @@ fn test_endx_multiple_voices_independent_bits() {
 
     let endx = mem.dsp.read_reg(0x7C);
     assert_eq!(endx & 0b00000101, 0b00000101, "bits 0 and 2 must be set");
-    assert_eq!(endx & 0b11111010, 0,          "all other bits must be clear");
+    assert_eq!(endx & 0b11111010, 0, "all other bits must be clear");
 }
-
 
 // ============================================================
 // Master volume ($0C MVOLL / $1C MVOLR) tests
@@ -902,9 +949,9 @@ fn test_master_vol_zero_silences_output() {
     let mut dsp = Dsp::new();
     dsp.voices[0].adsr.envelope_phase = EnvelopePhase::Sustain;
     dsp.voices[0].adsr.envelope_level = 0x7FF;
-    dsp.voices[0].current_sample      = 1000;
-    dsp.voices[0].left_vol            = 127;
-    dsp.voices[0].right_vol           = 127;
+    dsp.voices[0].current_sample = 1000;
+    dsp.voices[0].left_vol = 127;
+    dsp.voices[0].right_vol = 127;
     // master_vol_left/right default to 0 — no write needed
 
     let (l, r) = dsp.render_audio_single();
@@ -917,8 +964,16 @@ fn test_master_vol_register_write_read_roundtrip() {
     let mut mem = Memory::new();
     dsp_gw(&mut mem, 0x0C, 0x7F); // MVOLL = 127
     dsp_gw(&mut mem, 0x1C, 0x40); // MVOLR = 64
-    assert_eq!(mem.dsp.read_reg(0x0C), 0x7F, "MVOLL register must store written value");
-    assert_eq!(mem.dsp.read_reg(0x1C), 0x40, "MVOLR register must store written value");
+    assert_eq!(
+        mem.dsp.read_reg(0x0C),
+        0x7F,
+        "MVOLL register must store written value"
+    );
+    assert_eq!(
+        mem.dsp.read_reg(0x1C),
+        0x40,
+        "MVOLR register must store written value"
+    );
 }
 
 #[test]
@@ -929,13 +984,19 @@ fn test_master_vol_max_passes_signal_through() {
     dsp.write_reg(0x1C, 127u8); // MVOLR = 127
     dsp.voices[0].adsr.envelope_phase = EnvelopePhase::Sustain;
     dsp.voices[0].adsr.envelope_level = 0x7FF;
-    dsp.voices[0].current_sample      = 1000;
-    dsp.voices[0].left_vol            = 64;
-    dsp.voices[0].right_vol           = 64;
+    dsp.voices[0].current_sample = 1000;
+    dsp.voices[0].left_vol = 64;
+    dsp.voices[0].right_vol = 64;
 
     let (l, r) = dsp.render_audio_single();
-    assert!(l > 0, "non-zero master vol + active voice must produce output");
-    assert!(r > 0, "non-zero master vol + active voice must produce output");
+    assert!(
+        l > 0,
+        "non-zero master vol + active voice must produce output"
+    );
+    assert!(
+        r > 0,
+        "non-zero master vol + active voice must produce output"
+    );
 }
 
 #[test]
@@ -947,17 +1008,20 @@ fn test_master_vol_scales_output_proportionally() {
         dsp.write_reg(0x1C, mvol as u8); // MVOLR
         dsp.voices[0].adsr.envelope_phase = EnvelopePhase::Sustain;
         dsp.voices[0].adsr.envelope_level = 0x7FF;
-        dsp.voices[0].current_sample      = 1000;
-        dsp.voices[0].left_vol            = 64;
-        dsp.voices[0].right_vol           = 64;
+        dsp.voices[0].current_sample = 1000;
+        dsp.voices[0].left_vol = 64;
+        dsp.voices[0].right_vol = 64;
         dsp.render_audio_single().0
     };
 
     let half = voice_sample(32) as i32;
     let full = voice_sample(64) as i32;
     // Allow ±1 for integer rounding, same reasoning as the negative-volume test.
-    assert!((full - half * 2).abs() <= 1,
-        "master vol 64 should produce ~2x output of master vol 32 (got {full} vs {half}*2={})", half * 2);
+    assert!(
+        (full - half * 2).abs() <= 1,
+        "master vol 64 should produce ~2x output of master vol 32 (got {full} vs {half}*2={})",
+        half * 2
+    );
 }
 
 #[test]
@@ -968,38 +1032,41 @@ fn test_master_vol_negative_inverts_output() {
     dsp_pos.write_reg(0x0C, 64u8); // MVOLL = +64
     dsp_pos.voices[0].adsr.envelope_phase = EnvelopePhase::Sustain;
     dsp_pos.voices[0].adsr.envelope_level = 0x7FF;
-    dsp_pos.voices[0].current_sample      = 1000;
-    dsp_pos.voices[0].left_vol            = 64;
+    dsp_pos.voices[0].current_sample = 1000;
+    dsp_pos.voices[0].left_vol = 64;
     let (l_pos, _) = dsp_pos.render_audio_single();
 
     let mut dsp_neg = Dsp::new();
     dsp_neg.write_reg(0x0C, (-64i8) as u8); // MVOLL = -64 (signed)
     dsp_neg.voices[0].adsr.envelope_phase = EnvelopePhase::Sustain;
     dsp_neg.voices[0].adsr.envelope_level = 0x7FF;
-    dsp_neg.voices[0].current_sample      = 1000;
-    dsp_neg.voices[0].left_vol            = 64;
+    dsp_neg.voices[0].current_sample = 1000;
+    dsp_neg.voices[0].left_vol = 64;
     let (l_neg, _) = dsp_neg.render_audio_single();
 
     assert!(l_pos > 0, "positive master vol should give positive output");
     assert!(l_neg < 0, "negative master vol should invert output");
-    assert!((l_pos + l_neg).abs() <= 1, "magnitudes should match within ±1 rounding");
+    assert!(
+        (l_pos + l_neg).abs() <= 1,
+        "magnitudes should match within ±1 rounding"
+    );
 }
 
 #[test]
 fn test_master_vol_left_right_independent() {
     // MVOLL only affects the left channel and MVOLR only the right.
     let mut dsp = Dsp::new();
-    dsp.write_reg(0x0C, 64u8);  // MVOLL = 64
-    dsp.write_reg(0x1C, 0u8);   // MVOLR = 0 (right silenced)
+    dsp.write_reg(0x0C, 64u8); // MVOLL = 64
+    dsp.write_reg(0x1C, 0u8); // MVOLR = 0 (right silenced)
     dsp.voices[0].adsr.envelope_phase = EnvelopePhase::Sustain;
     dsp.voices[0].adsr.envelope_level = 0x7FF;
-    dsp.voices[0].current_sample      = 1000;
-    dsp.voices[0].left_vol            = 64;
-    dsp.voices[0].right_vol           = 64;
+    dsp.voices[0].current_sample = 1000;
+    dsp.voices[0].left_vol = 64;
+    dsp.voices[0].right_vol = 64;
 
     let (l, r) = dsp.render_audio_single();
     assert!(l != 0, "left channel should carry signal");
-    assert_eq!(r, 0,  "right channel must be silent when MVOLR=0");
+    assert_eq!(r, 0, "right channel must be silent when MVOLR=0");
 }
 
 #[test]
@@ -1013,11 +1080,17 @@ fn test_master_vol_written_via_memory_bus_affects_mix() {
 
     mem.dsp.voices[0].adsr.envelope_phase = EnvelopePhase::Sustain;
     mem.dsp.voices[0].adsr.envelope_level = 0x7FF;
-    mem.dsp.voices[0].current_sample      = 1000;
-    mem.dsp.voices[0].left_vol            = 64;
-    mem.dsp.voices[0].right_vol           = 64;
+    mem.dsp.voices[0].current_sample = 1000;
+    mem.dsp.voices[0].left_vol = 64;
+    mem.dsp.voices[0].right_vol = 64;
 
     let (l, r) = mem.dsp.render_audio_single();
-    assert!(l > 0, "MVOLL written via bus must produce non-zero left output");
-    assert!(r > 0, "MVOLR written via bus must produce non-zero right output");
+    assert!(
+        l > 0,
+        "MVOLL written via bus must produce non-zero left output"
+    );
+    assert!(
+        r > 0,
+        "MVOLR written via bus must produce non-zero right output"
+    );
 }

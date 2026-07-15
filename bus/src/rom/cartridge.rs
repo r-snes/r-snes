@@ -56,7 +56,7 @@ impl Rom {
         Ok(Rom {
             data: rom_data,
             map: map_mode,
-            header: header,
+            header,
         })
     }
 
@@ -113,7 +113,7 @@ impl Rom {
                 // AND with 0x3F so that we start over from 0 every 0x40 (64) banks
                 let bank = addr.bank as usize & 0x3F;
 
-                bank as usize * BANK_SIZE + addr.addr as usize
+                bank * BANK_SIZE + addr.addr as usize
             }
             _ => Self::panic_invalid_addr(addr),
         }
@@ -144,10 +144,12 @@ impl Rom {
     pub fn read(&self, addr: SnesAddress) -> u8 {
         let offset = self.to_offset(addr);
 
-        return *self.data.get(offset).expect(&format!(
-            "ERROR: Couldn't extract value from ROM at address: {:06X}",
-            usize::from(addr)
-        ));
+        *self.data.get(offset).unwrap_or_else(|| {
+            panic!(
+                "ERROR: Couldn't extract value from ROM at address: {:06X}",
+                usize::from(addr)
+            )
+        })
     }
 
     /// Ignores writes to the ROM.

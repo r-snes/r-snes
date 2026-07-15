@@ -1,7 +1,7 @@
 use crate::constants::*;
 use crate::ppu::PPU;
-use crate::vram::RawVRAM;
 use crate::rendering::renderer::Renderer;
+use crate::vram::RawVRAM;
 
 impl Renderer {
     pub fn render_scanline_mode0(&mut self, ppu: &PPU, y: usize) {
@@ -51,7 +51,8 @@ impl Renderer {
             // Decode 2bpp pixel from CHR data
             // ============================================================
             let tile_word_base = tiledata_base as usize + tile_index as usize * 8;
-            let color_index = Self::decode_2bpp_tile_pixel_from(&ppu.vram.memory, tile_word_base, fx, fy);
+            let color_index =
+                Self::decode_2bpp_tile_pixel_from(&ppu.vram.memory, tile_word_base, fx, fy);
 
             // Transparent pixel -> do nothing
             if color_index == 0 {
@@ -66,7 +67,12 @@ impl Renderer {
         }
     }
 
-    pub fn decode_2bpp_tile_pixel_from(vram: &RawVRAM, tile_word_base: usize, x: usize, y: usize) -> u8 {
+    pub fn decode_2bpp_tile_pixel_from(
+        vram: &RawVRAM,
+        tile_word_base: usize,
+        x: usize,
+        y: usize,
+    ) -> u8 {
         // Planes 0+1: words 0-7
         let w = vram[tile_word_base + y];
         let p0 = (w & 0xFF) as u8;
@@ -80,8 +86,8 @@ impl Renderer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ppu::PPU;
     use crate::constants::{SCREEN_WIDTH, VRAM_SIZE};
+    use crate::ppu::PPU;
 
     // ============================================================
     // Helpers
@@ -133,25 +139,25 @@ mod tests {
 
         // All zero -> index 0
         for x in 0..8 {
-            assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&*vram, 0, x, 0), 0);
+            assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&vram, 0, x, 0), 0);
         }
 
         // Plane 0 only -> index 1
         vram[0] = 0x00FF;
         for x in 0..8 {
-            assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&*vram, 0, x, 0), 1);
+            assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&vram, 0, x, 0), 1);
         }
 
         // Plane 1 only -> index 2
         vram[0] = 0xFF00;
         for x in 0..8 {
-            assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&*vram, 0, x, 0), 2);
+            assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&vram, 0, x, 0), 2);
         }
 
         // Both planes -> index 3
         vram[0] = 0xFFFF;
         for x in 0..8 {
-            assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&*vram, 0, x, 0), 3);
+            assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&vram, 0, x, 0), 3);
         }
     }
 
@@ -162,14 +168,14 @@ mod tests {
 
         // Bit 7 set -> only x=0 is color 1
         vram[0] = 0x0080;
-        assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&*vram, 0, 0, 0), 1);
-        assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&*vram, 0, 1, 0), 0);
-        assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&*vram, 0, 7, 0), 0);
+        assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&vram, 0, 0, 0), 1);
+        assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&vram, 0, 1, 0), 0);
+        assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&vram, 0, 7, 0), 0);
 
         // Bit 0 set -> only x=7 is color 1
         vram[0] = 0x0001;
-        assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&*vram, 0, 7, 0), 1);
-        assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&*vram, 0, 0, 0), 0);
+        assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&vram, 0, 7, 0), 1);
+        assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&vram, 0, 0, 0), 0);
     }
 
     // y selects the row within the tile; tile_word_base offsets into VRAM.
@@ -180,16 +186,16 @@ mod tests {
         // Row offset: only row 3 has data
         vram[3] = 0x00FF;
         for x in 0..8 {
-            assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&*vram, 0, x, 3), 1);
-            assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&*vram, 0, x, 0), 0);
+            assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&vram, 0, x, 3), 1);
+            assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&vram, 0, x, 0), 0);
         }
 
         // tile_word_base offset: data at base 16
         vram[3] = 0x0000;
         vram[16] = 0x00FF;
         for x in 0..8 {
-            assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&*vram, 16, x, 0), 1);
-            assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&*vram, 0, x, 0), 0);
+            assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&vram, 16, x, 0), 1);
+            assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&vram, 0, x, 0), 0);
         }
     }
 
@@ -238,7 +244,7 @@ mod tests {
     fn test_render_mode0_palette() {
         let mut renderer = make_renderer();
         let mut ppu = make_ppu_mode0();
- 
+
         // Palette 0, color index 1 -> CGRAM[1]
         set_cgram_white(&mut ppu, 1);
         for col in 0..32 {
@@ -252,7 +258,7 @@ mod tests {
         for x in 0..SCREEN_WIDTH {
             assert_eq!(pixel(&renderer, x, 0), expected, "x={}", x);
         }
- 
+
         // Palette 1, color index 1 -> CGRAM[5] (1 * 4 + 1)
         let mut ppu2 = make_ppu_mode0();
         let test_color: u16 = 0x001F; // red in BGR555
@@ -302,8 +308,8 @@ mod tests {
             r_normal.render_scanline_mode0(&ppu_n, 0);
             r_flipped.render_scanline_mode0(&ppu_f, 0);
 
-            assert_eq!(pixel(&r_normal,  0, 0), white, "normal x=0");
-            assert_eq!(pixel(&r_normal,  7, 0), black, "normal x=7");
+            assert_eq!(pixel(&r_normal, 0, 0), white, "normal x=0");
+            assert_eq!(pixel(&r_normal, 7, 0), black, "normal x=7");
             assert_eq!(pixel(&r_flipped, 0, 0), black, "flipped x=0");
             assert_eq!(pixel(&r_flipped, 7, 0), white, "flipped x=7");
         }
@@ -326,13 +332,13 @@ mod tests {
             // Scanline 0: normal sees row 0 (full), flipped sees row 7 (empty)
             r_normal.render_scanline_mode0(&ppu_n, 0);
             r_flipped.render_scanline_mode0(&ppu_f, 0);
-            assert_eq!(pixel(&r_normal,  0, 0), white, "normal scanline 0");
+            assert_eq!(pixel(&r_normal, 0, 0), white, "normal scanline 0");
             assert_eq!(pixel(&r_flipped, 0, 0), black, "flipped scanline 0");
 
             // Scanline 7: normal sees row 7 (empty), flipped sees row 0 (full)
             r_normal.render_scanline_mode0(&ppu_n, 7);
             r_flipped.render_scanline_mode0(&ppu_f, 7);
-            assert_eq!(pixel(&r_normal,  0, 7), black, "normal scanline 7");
+            assert_eq!(pixel(&r_normal, 0, 7), black, "normal scanline 7");
             assert_eq!(pixel(&r_flipped, 0, 7), white, "flipped scanline 7");
         }
     }

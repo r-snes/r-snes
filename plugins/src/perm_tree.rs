@@ -7,6 +7,11 @@ use derive_aliases::derive;
 
 use piccolo::{Context, Value};
 
+/// Permission tree nodes can be constructed from lua values
+/// read from plugin files.
+///
+/// Full tree:
+/// ```txt
 /// + internal // access stuff within the emulator
 /// | + control // control the emulator, not the components
 /// | | + dialog // allows the plugin to show dialog windows
@@ -28,9 +33,7 @@ use piccolo::{Context, Value};
 ///   | ` write_file
 ///   |
 ///   ` http
-
-/// Permission tree nodes can be constructed from lua values
-/// read from plugin files.
+/// ```
 pub trait PermTreeNode: Sized {
     fn from_lua<'gc>(ctx: Context<'gc>, value: Value<'gc>) -> Option<Self>;
 }

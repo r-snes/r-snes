@@ -32,6 +32,12 @@ pub struct Timers {
     prev_enable: u8,
 }
 
+impl Default for Timers {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Timers {
     pub fn new() -> Self {
         Self {

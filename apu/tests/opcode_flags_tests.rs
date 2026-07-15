@@ -1,12 +1,11 @@
+use apu::Memory;
 /// Flag and miscellaneous accumulator instruction tests
 /// (feature/spc700-flags-misc)
 ///
 /// One file for the entire PR — grows as each opcode is added.
 /// Currently covers:
 ///   - CLRC ($60) / SETC ($80)
-
-use apu::cpu::{Spc700, FLAG_C, FLAG_H, FLAG_N, FLAG_P, FLAG_V, FLAG_Z, FLAG_I};
-use apu::Memory;
+use apu::cpu::{FLAG_C, FLAG_H, FLAG_I, FLAG_N, FLAG_P, FLAG_V, FLAG_Z, Spc700};
 
 // ============================================================
 // Helper

@@ -84,10 +84,7 @@ mod tests {
         assert_eq!(combine_ordering(Less, Equal), Some(Less));
 
         assert_eq!(combine_orderings([Less]), Some(Less));
-        assert_eq!(
-            combine_orderings([Less, Equal, Equal, Less]),
-            Some(Less)
-        );
+        assert_eq!(combine_orderings([Less, Equal, Equal, Less]), Some(Less));
         assert_eq!(
             combine_orderings([Less, Less, Equal, Less, Equal, Less]),
             Some(Less)

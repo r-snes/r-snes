@@ -1,3 +1,4 @@
+use apu::Memory;
 /// 16-bit opcodes tests
 /// Currently covers:
 /// - MOVW YA,dp ($BA)
@@ -7,9 +8,7 @@
 /// - CMPW YA,dp ($5A)
 /// - DECW dp ($1A)
 /// - INCW dp ($3A)
-
-use apu::cpu::{Spc700, FLAG_N, FLAG_P, FLAG_Z, FLAG_C};
-use apu::Memory;
+use apu::cpu::{FLAG_C, FLAG_N, FLAG_P, FLAG_Z, Spc700};
 
 // ============================================================
 // Helper
@@ -224,7 +223,8 @@ fn test_movw_dp_ya_advances_pc_by_2() {
 #[test]
 fn test_addw_basic_addition() {
     let (mut cpu, mut mem) = make();
-    cpu.regs.y = 0x00; cpu.regs.a = 0x10; // YA = $0010
+    cpu.regs.y = 0x00;
+    cpu.regs.a = 0x10; // YA = $0010
     mem.write8(0x0020, 0x05); // lo
     mem.write8(0x0021, 0x00); // hi → word = $0005
     mem.write8(0x0200, 0x7A);
@@ -237,7 +237,8 @@ fn test_addw_basic_addition() {
 #[test]
 fn test_addw_sets_carry_on_overflow() {
     let (mut cpu, mut mem) = make();
-    cpu.regs.y = 0xFF; cpu.regs.a = 0xFF; // YA = $FFFF
+    cpu.regs.y = 0xFF;
+    cpu.regs.a = 0xFF; // YA = $FFFF
     mem.write8(0x0020, 0x01);
     mem.write8(0x0021, 0x00); // word = $0001
     mem.write8(0x0200, 0x7A);
@@ -252,7 +253,8 @@ fn test_addw_sets_carry_on_overflow() {
 fn test_addw_clears_carry_when_no_overflow() {
     let (mut cpu, mut mem) = make();
     cpu.regs.psw = apu::cpu::FLAG_C;
-    cpu.regs.y = 0x00; cpu.regs.a = 0x01;
+    cpu.regs.y = 0x00;
+    cpu.regs.a = 0x01;
     mem.write8(0x0020, 0x01);
     mem.write8(0x0021, 0x00);
     mem.write8(0x0200, 0x7A);
@@ -264,7 +266,8 @@ fn test_addw_clears_carry_when_no_overflow() {
 #[test]
 fn test_addw_sets_zero_flag() {
     let (mut cpu, mut mem) = make();
-    cpu.regs.y = 0xFF; cpu.regs.a = 0xFF;
+    cpu.regs.y = 0xFF;
+    cpu.regs.a = 0xFF;
     mem.write8(0x0020, 0x01);
     mem.write8(0x0021, 0x00);
     mem.write8(0x0200, 0x7A);
@@ -276,7 +279,8 @@ fn test_addw_sets_zero_flag() {
 #[test]
 fn test_addw_sets_negative_flag() {
     let (mut cpu, mut mem) = make();
-    cpu.regs.y = 0x7F; cpu.regs.a = 0xFF; // YA = $7FFF
+    cpu.regs.y = 0x7F;
+    cpu.regs.a = 0xFF; // YA = $7FFF
     mem.write8(0x0020, 0x01);
     mem.write8(0x0021, 0x00); // + 1 → $8000
     mem.write8(0x0200, 0x7A);
@@ -289,7 +293,8 @@ fn test_addw_sets_negative_flag() {
 fn test_addw_sets_overflow_flag() {
     // $7FFF + $0001 = $8000 — pos+pos=neg, signed overflow
     let (mut cpu, mut mem) = make();
-    cpu.regs.y = 0x7F; cpu.regs.a = 0xFF;
+    cpu.regs.y = 0x7F;
+    cpu.regs.a = 0xFF;
     mem.write8(0x0020, 0x01);
     mem.write8(0x0021, 0x00);
     mem.write8(0x0200, 0x7A);
@@ -316,7 +321,8 @@ fn test_addw_costs_5_cycles() {
 #[test]
 fn test_subw_basic_subtraction() {
     let (mut cpu, mut mem) = make();
-    cpu.regs.y = 0x00; cpu.regs.a = 0x10; // YA = $0010
+    cpu.regs.y = 0x00;
+    cpu.regs.a = 0x10; // YA = $0010
     mem.write8(0x0020, 0x05);
     mem.write8(0x0021, 0x00); // word = $0005
     mem.write8(0x0200, 0x9A);
@@ -330,7 +336,8 @@ fn test_subw_basic_subtraction() {
 fn test_subw_sets_carry_when_no_borrow() {
     // SPC700 SBC/SUBW convention: C set means no borrow occurred
     let (mut cpu, mut mem) = make();
-    cpu.regs.y = 0x00; cpu.regs.a = 0x10;
+    cpu.regs.y = 0x00;
+    cpu.regs.a = 0x10;
     mem.write8(0x0020, 0x05);
     mem.write8(0x0021, 0x00);
     mem.write8(0x0200, 0x9A);
@@ -342,7 +349,8 @@ fn test_subw_sets_carry_when_no_borrow() {
 #[test]
 fn test_subw_clears_carry_on_borrow() {
     let (mut cpu, mut mem) = make();
-    cpu.regs.y = 0x00; cpu.regs.a = 0x00; // YA = $0000
+    cpu.regs.y = 0x00;
+    cpu.regs.a = 0x00; // YA = $0000
     mem.write8(0x0020, 0x01);
     mem.write8(0x0021, 0x00); // word = $0001
     mem.write8(0x0200, 0x9A);
@@ -356,7 +364,8 @@ fn test_subw_clears_carry_on_borrow() {
 #[test]
 fn test_subw_sets_zero_flag() {
     let (mut cpu, mut mem) = make();
-    cpu.regs.y = 0x00; cpu.regs.a = 0x05;
+    cpu.regs.y = 0x00;
+    cpu.regs.a = 0x05;
     mem.write8(0x0020, 0x05);
     mem.write8(0x0021, 0x00);
     mem.write8(0x0200, 0x9A);
@@ -368,7 +377,8 @@ fn test_subw_sets_zero_flag() {
 #[test]
 fn test_subw_sets_negative_flag() {
     let (mut cpu, mut mem) = make();
-    cpu.regs.y = 0x00; cpu.regs.a = 0x00;
+    cpu.regs.y = 0x00;
+    cpu.regs.a = 0x00;
     mem.write8(0x0020, 0x01);
     mem.write8(0x0021, 0x00);
     mem.write8(0x0200, 0x9A);
@@ -381,7 +391,8 @@ fn test_subw_sets_negative_flag() {
 fn test_subw_sets_overflow_flag() {
     // $8000 - $0001 = $7FFF — neg-pos=pos, signed overflow
     let (mut cpu, mut mem) = make();
-    cpu.regs.y = 0x80; cpu.regs.a = 0x00;
+    cpu.regs.y = 0x80;
+    cpu.regs.a = 0x00;
     mem.write8(0x0020, 0x01);
     mem.write8(0x0021, 0x00);
     mem.write8(0x0200, 0x9A);
@@ -408,7 +419,8 @@ fn test_subw_costs_5_cycles() {
 #[test]
 fn test_cmpw_does_not_modify_ya() {
     let (mut cpu, mut mem) = make();
-    cpu.regs.y = 0x12; cpu.regs.a = 0x34;
+    cpu.regs.y = 0x12;
+    cpu.regs.a = 0x34;
     mem.write8(0x0020, 0x00);
     mem.write8(0x0021, 0x00);
     mem.write8(0x0200, 0x5A);
@@ -421,7 +433,8 @@ fn test_cmpw_does_not_modify_ya() {
 #[test]
 fn test_cmpw_sets_carry_when_ya_greater_or_equal() {
     let (mut cpu, mut mem) = make();
-    cpu.regs.y = 0x00; cpu.regs.a = 0x10;
+    cpu.regs.y = 0x00;
+    cpu.regs.a = 0x10;
     mem.write8(0x0020, 0x05);
     mem.write8(0x0021, 0x00);
     mem.write8(0x0200, 0x5A);
@@ -433,7 +446,8 @@ fn test_cmpw_sets_carry_when_ya_greater_or_equal() {
 #[test]
 fn test_cmpw_clears_carry_when_ya_less() {
     let (mut cpu, mut mem) = make();
-    cpu.regs.y = 0x00; cpu.regs.a = 0x05;
+    cpu.regs.y = 0x00;
+    cpu.regs.a = 0x05;
     mem.write8(0x0020, 0x10);
     mem.write8(0x0021, 0x00);
     mem.write8(0x0200, 0x5A);
@@ -445,7 +459,8 @@ fn test_cmpw_clears_carry_when_ya_less() {
 #[test]
 fn test_cmpw_sets_zero_flag_when_equal() {
     let (mut cpu, mut mem) = make();
-    cpu.regs.y = 0x01; cpu.regs.a = 0x00; // YA = $0100
+    cpu.regs.y = 0x01;
+    cpu.regs.a = 0x00; // YA = $0100
     mem.write8(0x0020, 0x00);
     mem.write8(0x0021, 0x01); // word = $0100
     mem.write8(0x0200, 0x5A);
@@ -457,7 +472,8 @@ fn test_cmpw_sets_zero_flag_when_equal() {
 #[test]
 fn test_cmpw_sets_negative_flag() {
     let (mut cpu, mut mem) = make();
-    cpu.regs.y = 0x00; cpu.regs.a = 0x00;
+    cpu.regs.y = 0x00;
+    cpu.regs.a = 0x00;
     mem.write8(0x0020, 0x01);
     mem.write8(0x0021, 0x00);
     mem.write8(0x0200, 0x5A);

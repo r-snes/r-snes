@@ -1,8 +1,8 @@
+pub mod apu;
 pub mod cpu;
 pub mod dsp;
 pub mod memory;
 pub mod timers;
-pub mod apu;
 pub mod jingle;
 
 pub use apu::Apu;

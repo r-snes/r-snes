@@ -3,10 +3,10 @@
 //!
 //! Should be used as `use some::path::to::test_prelude::*;`
 
-pub(crate) use crate::registers::Registers;
-pub(crate) use common::snes_address::{SnesAddress,snes_addr};
-pub(crate) use common::u16_split::*;
 pub(crate) use crate::cpu::{CPU, CycleResult};
+pub(crate) use crate::registers::Registers;
+pub(crate) use common::snes_address::{SnesAddress, snes_addr};
+pub(crate) use common::u16_split::*;
 
 /// Same as [`expect_opcode_fetch`], but doesn't require providing an
 /// opcode to inject for the next cycle. This only checks that the CPU

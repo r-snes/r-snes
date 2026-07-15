@@ -128,6 +128,7 @@ pub fn trb<T: Reg>(op: &mut T, a: T, p: &mut RegisterP) {
 
 #[cfg(test)]
 mod tests {
+    #![expect(clippy::bool_assert_comparison, clippy::nonminimal_bool)]
     use crate::registers::RegisterP;
     use duplicate::duplicate_item;
 
@@ -234,10 +235,12 @@ mod tests {
     #[allow(non_snake_case)]
     #[test]
     fn DUP_name() {
-        let mut p = RegisterP::default();
+        let mut p = RegisterP {
+            C: DUP_c_in,
+            ..Default::default()
+        };
         let mut acc: u16 = DUP_a;
         let operand: u16 = DUP_op;
-        p.C = DUP_c_in;
 
         super::adc(&mut acc, operand, &mut p);
         assert_eq!(acc, DUP_res);
@@ -250,13 +253,14 @@ mod tests {
     // for sbc, we only test a basic case it calls adc internally anyways
     #[test]
     fn sbc() {
-        let mut p = RegisterP::default();
+        let mut p = RegisterP {
+            // sbc does (acc = acc - operand - 1 + carry), so we set the carry
+            // so that we can have 2 = 5 - 3
+            C: true,
+            ..Default::default()
+        };
         let mut acc: u16 = 5;
         let operand: u16 = 3;
-
-        // sbc does (acc = acc - operand - 1 + carry), so we set the carry
-        // so that we can have 2 = 5 - 3
-        p.C = true;
 
         super::sbc(&mut acc, operand, &mut p);
         assert_eq!(acc, 2);
@@ -277,11 +281,12 @@ mod tests {
     #[test]
     fn DUP_name() {
         let mut a: u8 = DUP_a;
-        let mut p = RegisterP::default();
-
-        p.C = !DUP_c;
-        p.N = !DUP_n;
-        p.Z = !DUP_z;
+        let mut p = RegisterP {
+            C: !DUP_c,
+            N: !DUP_n,
+            Z: !DUP_z,
+            ..Default::default()
+        };
 
         super::asl(&mut a, &mut p);
 
@@ -308,7 +313,7 @@ mod tests {
 
         assert_eq!(a, DUP_res);
         assert_eq!(p.C, DUP_c);
-        assert_eq!(p.N, false, "N is always false as we shift right");
+        assert!(!p.N, "N is always false as we shift right");
         assert_eq!(p.Z, DUP_z);
     }
 
@@ -331,11 +336,12 @@ mod tests {
     #[test]
     fn DUP_name() {
         let mut a: u8 = DUP_a;
-        let mut p = RegisterP::default();
-
-        p.C = DUP_c_in;
-        p.N = !DUP_n;
-        p.Z = !DUP_z;
+        let mut p = RegisterP {
+            C: DUP_c_in,
+            N: !DUP_n,
+            Z: !DUP_z,
+            ..Default::default()
+        };
 
         let b: u8 = (1 << 1) | 1;
         println!("b: {b}");
@@ -361,11 +367,12 @@ mod tests {
     #[test]
     fn DUP_name() {
         let mut a: u8 = DUP_a;
-        let mut p = RegisterP::default();
-
-        p.C = DUP_c_in;
-        p.N = !DUP_n;
-        p.Z = !DUP_z;
+        let mut p = RegisterP {
+            C: DUP_c_in,
+            N: !DUP_n,
+            Z: !DUP_z,
+            ..Default::default()
+        };
 
         let b: u8 = (1 << 1) | 1;
         println!("b: {b}");
@@ -385,30 +392,30 @@ mod tests {
 
         super::inc(&mut a, &mut p);
         assert_eq!(a, 127);
-        assert_eq!(p.Z, false);
-        assert_eq!(p.N, false);
+        assert!(!p.Z);
+        assert!(!p.N);
 
         super::inc(&mut a, &mut p);
         assert_eq!(a, 128);
-        assert_eq!(p.Z, false);
-        assert_eq!(p.N, true);
+        assert!(!p.Z);
+        assert!(p.N);
 
         super::inc(&mut a, &mut p);
         assert_eq!(a, 129);
-        assert_eq!(p.Z, false);
-        assert_eq!(p.N, true);
+        assert!(!p.Z);
+        assert!(p.N);
 
         a = 254;
 
         super::inc(&mut a, &mut p);
         assert_eq!(a, 255);
-        assert_eq!(p.Z, false);
-        assert_eq!(p.N, true);
+        assert!(!p.Z);
+        assert!(p.N);
 
         super::inc(&mut a, &mut p);
         assert_eq!(a, 0);
-        assert_eq!(p.Z, true);
-        assert_eq!(p.N, false);
+        assert!(p.Z);
+        assert!(!p.N);
     }
 
     #[test]
@@ -418,35 +425,35 @@ mod tests {
 
         super::dec(&mut a, &mut p);
         assert_eq!(a, 128);
-        assert_eq!(p.Z, false);
-        assert_eq!(p.N, true);
+        assert!(!p.Z);
+        assert!(p.N);
 
         super::dec(&mut a, &mut p);
         assert_eq!(a, 127);
-        assert_eq!(p.Z, false);
-        assert_eq!(p.N, false);
+        assert!(!p.Z);
+        assert!(!p.N);
 
         super::dec(&mut a, &mut p);
         assert_eq!(a, 126);
-        assert_eq!(p.Z, false);
-        assert_eq!(p.N, false);
+        assert!(!p.Z);
+        assert!(!p.N);
 
         a = 2;
 
         super::dec(&mut a, &mut p);
         assert_eq!(a, 1);
-        assert_eq!(p.Z, false);
-        assert_eq!(p.N, false);
+        assert!(!p.Z);
+        assert!(!p.N);
 
         super::dec(&mut a, &mut p);
         assert_eq!(a, 0);
-        assert_eq!(p.Z, true);
-        assert_eq!(p.N, false);
+        assert!(p.Z);
+        assert!(!p.N);
 
         super::dec(&mut a, &mut p);
         assert_eq!(a, 255);
-        assert_eq!(p.Z, false);
-        assert_eq!(p.N, true);
+        assert!(!p.Z);
+        assert!(p.N);
     }
 
     #[duplicate_item(

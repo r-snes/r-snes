@@ -1,5 +1,5 @@
-use instr_metalang_procmacro::cpu_instr;
 use duplicate::duplicate;
+use instr_metalang_procmacro::cpu_instr;
 
 // Push variable width registers
 duplicate! {
@@ -133,11 +133,13 @@ mod tests {
     // we only test pha for pha, phx, and phy since they are duplicated
     #[test]
     fn pha() {
-        let mut regs = Registers::default();
-        regs.A = 0x5566;
-        regs.S = 0x0477;
-        regs.PC = 0;
-        regs.PB = 0;
+        let regs = Registers {
+            A: 0x5566,
+            S: 0x0477,
+            PC: 0,
+            PB: 0,
+            ..Default::default()
+        };
         let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
 
@@ -155,10 +157,12 @@ mod tests {
     // we only test pla for pla, plx, and ply since they are duplicated
     #[test]
     fn pla() {
-        let mut regs = Registers::default();
-        regs.S = 0x0475;
-        regs.PC = 0;
-        regs.PB = 0;
+        let regs = Registers {
+            S: 0x0475,
+            PC: 0,
+            PB: 0,
+            ..Default::default()
+        };
         let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
 
@@ -177,11 +181,13 @@ mod tests {
 
     #[test]
     fn php() {
-        let mut regs = Registers::default();
-        regs.P = 0x42.into();
-        regs.S = 0x0477;
-        regs.PC = 0;
-        regs.PB = 0;
+        let regs = Registers {
+            P: 0x42.into(),
+            S: 0x0477,
+            PC: 0,
+            PB: 0,
+            ..Default::default()
+        };
         let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
 
@@ -198,11 +204,13 @@ mod tests {
     // we only test phb for phb and phk (8 bit pushes)
     #[test]
     fn phb() {
-        let mut regs = Registers::default();
-        regs.DB = 0x42;
-        regs.S = 0x0477;
-        regs.PC = 0;
-        regs.PB = 0;
+        let regs = Registers {
+            DB: 0x42,
+            S: 0x0477,
+            PC: 0,
+            PB: 0,
+            ..Default::default()
+        };
         let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
 
@@ -218,10 +226,12 @@ mod tests {
 
     #[test]
     fn plb() {
-        let mut regs = Registers::default();
-        regs.S = 0x0476;
-        regs.PC = 0;
-        regs.PB = 0;
+        let regs = Registers {
+            S: 0x0476,
+            PC: 0,
+            PB: 0,
+            ..Default::default()
+        };
         let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
 
@@ -239,10 +249,12 @@ mod tests {
 
     #[test]
     fn pld() {
-        let mut regs = Registers::default();
-        regs.S = 0x0475;
-        regs.PC = 0;
-        regs.PB = 0;
+        let regs = Registers {
+            S: 0x0475,
+            PC: 0,
+            PB: 0,
+            ..Default::default()
+        };
         let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
 
@@ -262,10 +274,12 @@ mod tests {
 
     #[test]
     fn plp() {
-        let mut regs = Registers::default();
-        regs.S = 0x0476;
-        regs.PC = 0;
-        regs.PB = 0;
+        let regs = Registers {
+            S: 0x0476,
+            PC: 0,
+            PB: 0,
+            ..Default::default()
+        };
         let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
 
@@ -283,10 +297,12 @@ mod tests {
 
     #[test]
     fn pea() {
-        let mut regs = Registers::default();
-        regs.S = 0x0866;
-        regs.PC = 0;
-        regs.PB = 0;
+        let regs = Registers {
+            S: 0x0866,
+            PC: 0,
+            PB: 0,
+            ..Default::default()
+        };
         let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
 
@@ -303,10 +319,12 @@ mod tests {
 
     #[test]
     fn per() {
-        let mut regs = Registers::default();
-        regs.S = 0x0866;
-        regs.PC = 0x100;
-        regs.PB = 0;
+        let regs = Registers {
+            S: 0x0866,
+            PC: 0x100,
+            PB: 0,
+            ..Default::default()
+        };
         let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
 
@@ -324,14 +342,16 @@ mod tests {
         expected_regs.S = 0x0864;
         assert_eq!(*cpu.regs(), expected_regs);
     }
-    
+
     #[test]
     fn pei() {
-        let mut regs = Registers::default();
-        regs.S = 0x0866;
-        regs.PC = 0x100;
-        regs.PB = 0;
-        regs.D = 0x1234;
+        let regs = Registers {
+            S: 0x0866,
+            PC: 0x100,
+            PB: 0,
+            D: 0x1234,
+            ..Default::default()
+        };
         let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
 

@@ -10,20 +10,20 @@ pub trait U16Split {
     fn split_mut<'a>(&'a mut self) -> SplitU16Mut<'a>;
 
     /// Get an immutable reference to the least significant byte of a [`u16`]
-    fn lo<'a>(&'a self) -> &'a u8 {
+    fn lo(&self) -> &u8 {
         self.split().lo
     }
     /// Get an immutable reference to the most significant byte of a [`u16`]
-    fn hi<'a>(&'a self) -> &'a u8 {
+    fn hi(&self) -> &u8 {
         self.split().hi
     }
 
     /// Get an mutable reference to the least significant byte of a [`u16`]
-    fn lo_mut<'a>(&'a mut self) -> &'a mut u8 {
+    fn lo_mut(&mut self) -> &mut u8 {
         self.split_mut().lo
     }
     /// Get an mutable reference to the most significant byte of a [`u16`]
-    fn hi_mut<'a>(&'a mut self) -> &'a mut u8 {
+    fn hi_mut(&mut self) -> &mut u8 {
         self.split_mut().hi
     }
 }

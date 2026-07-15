@@ -1,6 +1,10 @@
 use egui::{CollapsingHeader, RichText, Style, TextFormat, WidgetText, text::LayoutJob};
 
-use crate::{perm_tree::{*, filesystem::*}, permission::{Permission, helpers::AllOr}, plugin::Plugin};
+use crate::{
+    perm_tree::{filesystem::*, *},
+    permission::{Permission, helpers::AllOr},
+    plugin::Plugin,
+};
 
 pub struct PluginPermRequest<'a> {
     pub plugin: &'a Plugin,
@@ -59,7 +63,7 @@ impl<'a> PluginPermRequest<'a> {
         draw_content: impl FnOnce(&mut egui::Ui, &T),
     ) {
         self.show_perm(ui, perm, |ui, perm| {
-            Self::force_show_perm_collapsible(&self, ui, perm, label, draw_content);
+            Self::force_show_perm_collapsible(self, ui, perm, label, draw_content);
         });
     }
     fn show_perm<T: Permission>(

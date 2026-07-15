@@ -1,5 +1,5 @@
-use instr_metalang_procmacro::cpu_instr_no_inc_pc;
 use duplicate::duplicate;
+use instr_metalang_procmacro::cpu_instr_no_inc_pc;
 
 duplicate! {
     [
@@ -55,14 +55,16 @@ mod test {
 
     #[test]
     fn brk_emu() {
-        let mut regs = Registers::default();
-        regs.PB = 0x12;
-        regs.PC = 0x3456;
-        regs.S = 0x0180;
-        regs.P = 0b10101010.into();
-        regs.E = true;
+        let regs = Registers {
+            PB: 0x12,
+            PC: 0x3456,
+            S: 0x0180,
+            P: 0b10101010.into(),
+            E: true,
+            ..Default::default()
+        };
 
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
 
         let mut cpu = CPU::new(regs);
 
@@ -73,24 +75,9 @@ mod test {
             0x33,
             "signature byte (ignored)",
         );
-        expect_write_cycle(
-            &mut cpu,
-            snes_addr!(0:0x0180),
-            0x34,
-            "PCH",
-        );
-        expect_write_cycle(
-            &mut cpu,
-            snes_addr!(0:0x017f),
-            0x56 + 2, // pushes PC + 2
-            "PCL",
-        );
-        expect_write_cycle(
-            &mut cpu,
-            snes_addr!(0:0x017e),
-            0b10101010,
-            "P",
-        );
+        expect_write_cycle(&mut cpu, snes_addr!(0:0x0180), 0x34, "PCH");
+        expect_write_cycle(&mut cpu, snes_addr!(0:0x017f), 0x56 + 2, "PCL (+2)"); // pushes PC + 2
+        expect_write_cycle(&mut cpu, snes_addr!(0:0x017e), 0b10101010, "P");
 
         expect_read_cycle(
             &mut cpu,
@@ -117,14 +104,16 @@ mod test {
 
     #[test]
     fn brk_nat() {
-        let mut regs = Registers::default();
-        regs.PB = 0x12;
-        regs.PC = 0x3456;
-        regs.S = 0x0180;
-        regs.P = 0b10101010.into();
-        regs.E = false;
+        let regs = Registers {
+            PB: 0x12,
+            PC: 0x3456,
+            S: 0x0180,
+            P: 0b10101010.into(),
+            E: false,
+            ..Default::default()
+        };
 
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
 
         let mut cpu = CPU::new(regs);
 
@@ -135,30 +124,10 @@ mod test {
             0x33,
             "signature byte (ignored)",
         );
-        expect_write_cycle(
-            &mut cpu,
-            snes_addr!(0:0x0180),
-            0x12,
-            "PB",
-        );
-        expect_write_cycle(
-            &mut cpu,
-            snes_addr!(0:0x017f),
-            0x34,
-            "PCH",
-        );
-        expect_write_cycle(
-            &mut cpu,
-            snes_addr!(0:0x017e),
-            0x56 + 2, // pushes PC + 2
-            "PCL",
-        );
-        expect_write_cycle(
-            &mut cpu,
-            snes_addr!(0:0x017d),
-            0b10101010,
-            "P",
-        );
+        expect_write_cycle(&mut cpu, snes_addr!(0:0x0180), 0x12, "PB");
+        expect_write_cycle(&mut cpu, snes_addr!(0:0x017f), 0x34, "PCH");
+        expect_write_cycle(&mut cpu, snes_addr!(0:0x017e), 0x56 + 2, "PCL (+2)"); // pushes PC + 2
+        expect_write_cycle(&mut cpu, snes_addr!(0:0x017d), 0b10101010, "P");
 
         expect_read_cycle(
             &mut cpu,
@@ -185,37 +154,24 @@ mod test {
 
     #[test]
     fn rti_emu() {
-        let mut regs = Registers::default();
-        regs.PB = 0; // interrupt code will usually be in bank 0
-        regs.PC = 0x3456;
-        regs.S = 0x0180;
-        regs.E = true;
+        let regs = Registers {
+            PB: 0, // interrupt code will usually be in bank 0
+            PC: 0x3456,
+            S: 0x0180,
+            E: true,
+            ..Default::default()
+        };
 
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
 
         let mut cpu = CPU::new(regs);
 
         expect_opcode_fetch(&mut cpu, 0x40);
         expect_internal_cycle(&mut cpu, "idle 1");
         expect_internal_cycle(&mut cpu, "idle 2");
-        expect_read_cycle(
-            &mut cpu,
-            snes_addr!(0:0x0181),
-            0b11001100,
-            "pull P",
-        );
-        expect_read_cycle(
-            &mut cpu,
-            snes_addr!(0:0x0182),
-            0x77,
-            "pull PCL",
-        );
-        expect_read_cycle(
-            &mut cpu,
-            snes_addr!(0:0x0183),
-            0x88,
-            "pull PCH",
-        );
+        expect_read_cycle(&mut cpu, snes_addr!(0:0x0181), 0b11001100, "pull P");
+        expect_read_cycle(&mut cpu, snes_addr!(0:0x0182), 0x77, "pull PCL");
+        expect_read_cycle(&mut cpu, snes_addr!(0:0x0183), 0x88, "pull PCH");
 
         expect_opcode_fetch_cycle(&mut cpu);
 
@@ -227,43 +183,25 @@ mod test {
 
     #[test]
     fn rti_nat() {
-        let mut regs = Registers::default();
-        regs.PB = 0; // interrupt code will usually be in bank 0
-        regs.PC = 0x3456;
-        regs.S = 0x0180;
-        regs.E = false;
+        let regs = Registers {
+            PB: 0, // interrupt code will usually be in bank 0
+            PC: 0x3456,
+            S: 0x0180,
+            E: false,
+            ..Default::default()
+        };
 
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
 
         let mut cpu = CPU::new(regs);
 
         expect_opcode_fetch(&mut cpu, 0x40);
         expect_internal_cycle(&mut cpu, "idle 1");
         expect_internal_cycle(&mut cpu, "idle 2");
-        expect_read_cycle(
-            &mut cpu,
-            snes_addr!(0:0x0181),
-            0b11001100,
-            "pull P",
-        );
-        expect_read_cycle(
-            &mut cpu,
-            snes_addr!(0:0x0182),
-            0x77,
-            "pull PCL",
-        );
-        expect_read_cycle(
-            &mut cpu,
-            snes_addr!(0:0x0183),
-            0x88,
-            "pull PCH",
-        );
-        expect_read_cycle(
-            &mut cpu,
-            snes_addr!(0:0x0184),
-            0x99,
-            "pull PB",
-        );
+        expect_read_cycle(&mut cpu, snes_addr!(0:0x0181), 0b11001100, "pull P");
+        expect_read_cycle(&mut cpu, snes_addr!(0:0x0182), 0x77, "pull PCL");
+        expect_read_cycle(&mut cpu, snes_addr!(0:0x0183), 0x88, "pull PCH");
+        expect_read_cycle(&mut cpu, snes_addr!(0:0x0184), 0x99, "pull PB");
 
         expect_opcode_fetch_cycle(&mut cpu);
 

@@ -60,22 +60,22 @@ impl FileWriteOptions {
     /// Whether these file write options will allow
     /// seeking the opened file
     pub fn can_seek(self) -> bool {
-        match self {
+        !matches!(
+            self,
             Self::CanOverwrite {
                 mode: OverwriteMode::AppendOnly,
                 ..
-            } => false,
-            _ => true,
-        }
+            }
+        )
     }
 
     /// Whether these file write options may create
     /// new files on the user's machine
     pub fn can_create_new(self) -> bool {
-        match self {
-            Self::NewOnly => true,
-            Self::CanOverwrite { create, .. } => create,
-        }
+        matches!(
+            self,
+            Self::NewOnly | Self::CanOverwrite { create: true, .. },
+        )
     }
 
     /// Whether these file write options may touch
@@ -89,6 +89,10 @@ impl FileWriteOptions {
     pub fn can_overwrite_existing(self) -> bool {
         use OverwriteMode::*;
 
+        #[expect(
+            clippy::match_like_matches_macro,
+            reason = "matches! formats pooly here"
+        )]
         match self {
             Self::NewOnly => false,
             Self::CanOverwrite {
@@ -368,7 +372,7 @@ mod test {
         assert!(abc > ab); // abc contains more files than ab
         assert!(abc > ca); // abc contains more files than ca
 
-        assert!(!(ab >= ca) && !(ab <= ca)); // ab and ca aren't comparable
+        assert_eq!(ab.partial_cmp(&ca), None); // ab and ca aren't comparable
 
         let all = build_file_write_perms("\"all\"");
         for t in [abc, ab, ca] {

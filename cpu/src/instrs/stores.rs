@@ -1,5 +1,5 @@
-use instr_metalang_procmacro::cpu_instr;
 use duplicate::duplicate;
+use instr_metalang_procmacro::cpu_instr;
 
 duplicate! {
     [
@@ -46,6 +46,8 @@ duplicate! {
 
 #[cfg(test)]
 mod tests {
+    use crate::registers::RegisterP;
+
     use super::super::test_prelude::*;
     use duplicate::duplicate_item;
 
@@ -64,14 +66,16 @@ mod tests {
     )]
     #[test]
     fn DUP_name() {
-        let mut regs = Registers::default();
-        regs.PB = 0x12;
-        regs.PC = 0x3456;
-        regs.DUP_reg = 0x5544;
-        regs.E = true; // 8-bit mode
-        regs.DB = 0xdb;
+        let regs = Registers {
+            PB: 0x12,
+            PC: 0x3456,
+            DUP_reg: 0x5544,
+            E: true, // 8-bit mode
+            DB: 0xdb,
+            ..Default::default()
+        };
 
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
 
         expect_opcode_fetch(&mut cpu, DUP_opcode);
@@ -86,19 +90,21 @@ mod tests {
 
     #[test]
     fn stz_abs() {
-        let mut regs = Registers::default();
-        regs.PB = 0x12;
-        regs.PC = 0x3456;
-        regs.E = true; // 8-bit mode
-        regs.DB = 0xdb;
+        let regs = Registers {
+            PB: 0x12,
+            PC: 0x3456,
+            E: true, // 8-bit mode
+            DB: 0xdb,
 
-        // set all other registers which can be written, to check stz
-        // doesn't read from a register
-        regs.A = 0xabcd;
-        regs.X = 0xabcd;
-        regs.Y = 0xabcd;
+            // set all other registers which can be written, to check stz
+            // doesn't read from a register
+            A: 0xabcd,
+            X: 0xabcd,
+            Y: 0xabcd,
+            ..Default::default()
+        };
 
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
 
         expect_opcode_fetch(&mut cpu, 0x9c);
@@ -114,15 +120,20 @@ mod tests {
     // test 16-bit writes in the right order
     #[test]
     fn sta16_abs() {
-        let mut regs = Registers::default();
-        regs.PB = 0x12;
-        regs.PC = 0x3456;
-        regs.A = 0x5544;
-        regs.E = false;
-        regs.P.M = false;
-        regs.DB = 0xdb;
+        let regs = Registers {
+            PB: 0x12,
+            PC: 0x3456,
+            A: 0x5544,
+            E: false,
+            DB: 0xdb,
+            P: RegisterP {
+                M: false,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
 
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
 
         expect_opcode_fetch(&mut cpu, 0x8d);

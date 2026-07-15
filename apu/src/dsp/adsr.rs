@@ -5,14 +5,9 @@
 /// pass between each envelope step. Index 0 is a special sentinel meaning
 /// infinite hold — the envelope never steps while this rate is active.
 pub(super) const ENVELOPE_RATE_TABLE: [u16; 32] = [
-    0,    // 0: never (infinite)
-    2048, 1536, 1280, 1024, 768,
-    640,  512,  384,  320,  256,
-    192,  160,  128,  96,   80,
-    64,   48,   40,   32,   24,
-    20,   16,   12,   10,   8,
-    6,    5,    4,    3,    2,
-    1,    // 31: every tick
+    0, // 0: never (infinite)
+    2048, 1536, 1280, 1024, 768, 640, 512, 384, 320, 256, 192, 160, 128, 96, 80, 64, 48, 40, 32,
+    24, 20, 16, 12, 10, 8, 6, 5, 4, 3, 2, 1, // 31: every tick
 ];
 
 /// Current phase of the ADSR envelope state machine.

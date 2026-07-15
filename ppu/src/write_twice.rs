@@ -28,11 +28,17 @@ impl BytePhase {
     }
 }
 
+impl Default for WriteTwice {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WriteTwice {
     pub fn new() -> Self {
         Self {
             latch: 0,
-            phase: BytePhase::Low
+            phase: BytePhase::Low,
         }
     }
 

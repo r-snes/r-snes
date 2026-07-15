@@ -1,3 +1,4 @@
+use apu::Memory;
 /// SNES APU Comprehensive Test
 ///
 /// This program exercises every major part of the APU:
@@ -30,9 +31,7 @@
 /// Play back with e.g.:
 ///   ffplay -f s16le -ar 32000 -ac 1 test1_sine.raw
 ///   ffplay -f s16le -ar 32000 -ac 2 test5_stereo.raw
-
-use apu::dsp::{Dsp, EnvelopePhase};
-use apu::Memory;
+use apu::dsp::EnvelopePhase;
 use std::fs::File;
 use std::io::Write;
 
@@ -73,8 +72,12 @@ fn encode_brr_block(samples: &[i16; 16], end: bool, do_loop: bool) -> [u8; 9] {
 
     // Header byte: SSSSFFEX
     let mut header: u8 = (shift << 4) | (filter << 2);
-    if do_loop { header |= 0x02; }
-    if end     { header |= 0x01; }
+    if do_loop {
+        header |= 0x02;
+    }
+    if end {
+        header |= 0x01;
+    }
 
     let mut block = [0u8; 9];
     block[0] = header;
@@ -109,10 +112,10 @@ fn write_brr_block(mem: &mut Memory, addr: u16, block: &[u8; 9]) {
 fn write_dir_entry(mem: &mut Memory, dir_page: u8, srcn: u8, start: u16, loop_addr: u16) {
     let base = (dir_page as u16) << 8;
     let entry = base + (srcn as u16) * 4;
-    mem.write8(entry,     (start     & 0xFF) as u8);
-    mem.write8(entry + 1, (start     >> 8)   as u8);
+    mem.write8(entry, (start & 0xFF) as u8);
+    mem.write8(entry + 1, (start >> 8) as u8);
     mem.write8(entry + 2, (loop_addr & 0xFF) as u8);
-    mem.write8(entry + 3, (loop_addr >> 8)   as u8);
+    mem.write8(entry + 3, (loop_addr >> 8) as u8);
 }
 
 // ============================================================
@@ -151,7 +154,7 @@ fn set_adsr(mem: &mut Memory, voice: u8, adsr1: u8, adsr2: u8) {
 fn set_pitch(mem: &mut Memory, voice: u8, pitch: u16) {
     let pitch = pitch & 0x3FFF;
     dsp_voice_write(mem, voice, 0x2, (pitch & 0xFF) as u8);
-    dsp_voice_write(mem, voice, 0x3, (pitch >> 8)   as u8);
+    dsp_voice_write(mem, voice, 0x3, (pitch >> 8) as u8);
 }
 
 /// Key-on one or more voices (bitmask, bit 0 = voice 0).
@@ -193,12 +196,12 @@ fn write_sine_brr(mem: &mut Memory, start_addr: u16, freq_hz: f32, num_blocks: u
 /// Generate a looping square wave (two blocks: half high, half low, loop back).
 fn write_square_brr_loop(mem: &mut Memory, start_addr: u16) {
     // Block 0: first half of a square wave cycle (positive)
-    let mut pos_samples = [16383i16; 16];
+    let pos_samples = [16383i16; 16];
     let block0 = encode_brr_block(&pos_samples, false, false);
     write_brr_block(mem, start_addr, &block0);
 
     // Block 1: second half (negative), end + loop back to block 0
-    let mut neg_samples = [-16384i16; 16];
+    let neg_samples = [-16384i16; 16];
     let block1 = encode_brr_block(&neg_samples, true, true);
     write_brr_block(mem, start_addr + 9, &block1);
 }
@@ -218,7 +221,7 @@ fn test1_sine() {
     let dir_page: u8 = 0x01;
     let brr_start: u16 = 0x0200;
     let freq_hz = 440.0; // A4
-    let num_blocks = 50;  // 50 × 16 = 800 samples ≈ 25 ms
+    let num_blocks = 50; // 50 × 16 = 800 samples ≈ 25 ms
 
     // Write BRR data
     write_sine_brr(&mut mem, brr_start, freq_hz, num_blocks);
@@ -232,7 +235,7 @@ fn test1_sine() {
     dsp_global_write(&mut mem, 0x1C, 127); // MVOLR — master right volume
 
     // Voice 0: SRCN=0, pitch=0x1000 (native rate), full volume both channels
-    dsp_voice_write(&mut mem, 0, 0x4, 0);           // SRCN
+    dsp_voice_write(&mut mem, 0, 0x4, 0); // SRCN
     set_pitch(&mut mem, 0, 0x1000);
     dsp_voice_write(&mut mem, 0, 0x0, 100i8 as u8); // VOL L
     dsp_voice_write(&mut mem, 0, 0x1, 100i8 as u8); // VOL R
@@ -258,16 +261,17 @@ fn test1_sine() {
         out.push(l);
 
         // Log when the voice goes silent
-        if !env_phase_logged
-            && mem.dsp.voices[0].adsr.envelope_phase == EnvelopePhase::Off
-        {
+        if !env_phase_logged && mem.dsp.voices[0].adsr.envelope_phase == EnvelopePhase::Off {
             println!("  Voice went silent at sample {i}");
             env_phase_logged = true;
         }
     }
 
     save_mono("test1_sine.raw", &out);
-    println!("  Written test1_sine.raw ({} samples, 32 kHz mono s16le)", out.len());
+    println!(
+        "  Written test1_sine.raw ({} samples, 32 kHz mono s16le)",
+        out.len()
+    );
 }
 
 // ============================================================
@@ -309,10 +313,10 @@ fn test2_8voices() {
 
     let mut kon_mask: u8 = 0;
     for v in 0..8u8 {
-        dsp_voice_write(&mut mem, v, 0x4, 0);            // SRCN = 0
+        dsp_voice_write(&mut mem, v, 0x4, 0); // SRCN = 0
         set_pitch(&mut mem, v, pitches[v as usize]);
-        dsp_voice_write(&mut mem, v, 0x0, 60i8 as u8);   // VOL L (moderate, 8 voices summing)
-        dsp_voice_write(&mut mem, v, 0x1, 60i8 as u8);   // VOL R
+        dsp_voice_write(&mut mem, v, 0x0, 60i8 as u8); // VOL L (moderate, 8 voices summing)
+        dsp_voice_write(&mut mem, v, 0x1, 60i8 as u8); // VOL R
         // ADSR: fast attack, hold at sustain
         set_adsr(&mut mem, v, 0x8F, 0xE0);
         kon_mask |= 1 << v;
@@ -355,10 +359,10 @@ fn test3_adsr() {
     write_square_brr_loop(&mut mem, brr_start);
     write_dir_entry(&mut mem, dir_page, 0, brr_start, brr_start);
 
-    dsp_voice_write(&mut mem, 0, 0x4, 0);            // SRCN
+    dsp_voice_write(&mut mem, 0, 0x4, 0); // SRCN
     set_pitch(&mut mem, 0, 0x1000);
-    dsp_voice_write(&mut mem, 0, 0x0, 100i8 as u8);  // VOL L
-    dsp_voice_write(&mut mem, 0, 0x1, 100i8 as u8);  // VOL R
+    dsp_voice_write(&mut mem, 0, 0x0, 100i8 as u8); // VOL L
+    dsp_voice_write(&mut mem, 0, 0x1, 100i8 as u8); // VOL R
 
     // Deliberately slow attack and decay so the phases are audible:
     //   ADSR1 = 1_011_0101 = 0xB5  (ADSR, decay=3, attack=5)
@@ -367,12 +371,12 @@ fn test3_adsr() {
 
     key_on(&mut mem, 0x01);
 
-    let hold_samples  = SAMPLE_RATE;       // 1 s attack+decay+sustain
-    let release_start = SAMPLE_RATE;       // key-off after 1 s
-    let total_samples = SAMPLE_RATE * 3;   // 3 s total
+    let _hold_samples = SAMPLE_RATE; // 1 s attack+decay+sustain
+    let release_start = SAMPLE_RATE; // key-off after 1 s
+    let total_samples = SAMPLE_RATE * 3; // 3 s total
 
     let mut out = Vec::with_capacity(total_samples as usize);
-    let mut phase_log: Vec<(u32, &str, u16)> = Vec::new();
+    let _phase_log: Vec<(u32, &str, u16)> = Vec::new();
     let mut last_phase = EnvelopePhase::Off;
 
     for i in 0..total_samples {
@@ -390,11 +394,11 @@ fn test3_adsr() {
         let cur_phase = mem.dsp.voices[0].adsr.envelope_phase;
         if cur_phase != last_phase {
             let name = match cur_phase {
-                EnvelopePhase::Attack  => "Attack",
-                EnvelopePhase::Decay   => "Decay",
+                EnvelopePhase::Attack => "Attack",
+                EnvelopePhase::Decay => "Decay",
                 EnvelopePhase::Sustain => "Sustain",
                 EnvelopePhase::Release => "Release",
-                EnvelopePhase::Off     => "Off",
+                EnvelopePhase::Off => "Off",
             };
             let level = mem.dsp.voices[0].adsr.envelope_level;
             println!("  → {name} at sample {i} (envelope = {level:#05X})");
@@ -427,9 +431,9 @@ fn test4_loop() {
     // At 32kHz, 16 samples/block → 1000 blocks = 16000 samples = 0.5s
     // You should hear: silence → beep → silence → beep → silence → beep
 
-    let brr_start:     u16 = 0x0200;
+    let brr_start: u16 = 0x0200;
     let silence_count: u16 = 1000;
-    let tone_count:    u16 = 1000;
+    let tone_count: u16 = 1000;
 
     // Write silence blocks (intro, played only once)
     for i in 0..silence_count {
@@ -441,9 +445,8 @@ fn test4_loop() {
     let loop_point = brr_start + silence_count * 9;
 
     // 440 Hz sine wave
-    let tone: [i16; 16] = std::array::from_fn(|i| {
-        ((i as f32 / 16.0 * std::f32::consts::TAU).sin() * 14000.0) as i16
-    });
+    let tone: [i16; 16] =
+        std::array::from_fn(|i| ((i as f32 / 16.0 * std::f32::consts::TAU).sin() * 14000.0) as i16);
 
     // Write tone blocks — last one has end+loop back to first tone block
     for i in 0..tone_count {
@@ -480,7 +483,10 @@ fn test4_loop() {
 
     let went_silent = mem.dsp.voices[0].adsr.envelope_phase == EnvelopePhase::Off;
     if !went_silent {
-        println!("  ✓ Voice still active after {} samples — loop is working", num_samples);
+        println!(
+            "  ✓ Voice still active after {} samples — loop is working",
+            num_samples
+        );
     }
 
     let non_zero = out.iter().filter(|&&s| s != 0).count();
@@ -516,23 +522,23 @@ fn test5_stereo() {
     write_dir_entry(&mut mem, dir_page, 1, brr_hi, brr_hi);
 
     // Voice 0: left only
-    dsp_voice_write(&mut mem, 0, 0x4, 0);             // SRCN 0
+    dsp_voice_write(&mut mem, 0, 0x4, 0); // SRCN 0
     set_pitch(&mut mem, 0, 0x1000);
-    dsp_voice_write(&mut mem, 0, 0x0, 120i8 as u8);   // VOL L = 120
-    dsp_voice_write(&mut mem, 0, 0x1, 0);              // VOL R = 0
+    dsp_voice_write(&mut mem, 0, 0x0, 120i8 as u8); // VOL L = 120
+    dsp_voice_write(&mut mem, 0, 0x1, 0); // VOL R = 0
 
     // Voice 1: right only
-    dsp_voice_write(&mut mem, 1, 0x4, 1);             // SRCN 1
+    dsp_voice_write(&mut mem, 1, 0x4, 1); // SRCN 1
     set_pitch(&mut mem, 1, 0x1000);
-    dsp_voice_write(&mut mem, 1, 0x0, 0);              // VOL L = 0
-    dsp_voice_write(&mut mem, 1, 0x1, 120i8 as u8);   // VOL R = 120
+    dsp_voice_write(&mut mem, 1, 0x0, 0); // VOL L = 0
+    dsp_voice_write(&mut mem, 1, 0x1, 120i8 as u8); // VOL R = 120
 
     set_adsr(&mut mem, 0, 0x8F, 0xE0);
     set_adsr(&mut mem, 1, 0x8F, 0xE0);
     key_on(&mut mem, 0x03); // both voices
 
     let num_samples = SAMPLE_RATE * 2;
-    let mut left_out  = Vec::with_capacity(num_samples as usize);
+    let mut left_out = Vec::with_capacity(num_samples as usize);
     let mut right_out = Vec::with_capacity(num_samples as usize);
 
     for _ in 0..num_samples {
@@ -543,7 +549,7 @@ fn test5_stereo() {
     }
 
     // Sanity: left channel should have signal, right should be near zero and vice versa
-    let left_energy:  i64 = left_out .iter().map(|&s| s as i64 * s as i64).sum();
+    let left_energy: i64 = left_out.iter().map(|&s| s as i64 * s as i64).sum();
     let right_energy: i64 = right_out.iter().map(|&s| s as i64 * s as i64).sum();
     println!("  Left  channel energy: {left_energy}");
     println!("  Right channel energy: {right_energy}");
@@ -575,14 +581,16 @@ fn save_stereo_interleaved(path: &str, left: &[i16], right: &[i16]) {
     }
 }
 
-
 // ============================================================
 // ENTRY POINT
 // ============================================================
 
 fn main() {
     println!("SNES APU Comprehensive Test");
-    println!("Output rate: {} Hz, format: signed 16-bit little-endian PCM", SAMPLE_RATE);
+    println!(
+        "Output rate: {} Hz, format: signed 16-bit little-endian PCM",
+        SAMPLE_RATE
+    );
 
     test1_sine();
     test2_8voices();

@@ -1,7 +1,7 @@
 use crate::constants::*;
 use crate::ppu::PPU;
-use crate::vram::RawVRAM;
 use crate::rendering::renderer::Renderer;
+use crate::vram::RawVRAM;
 
 impl Renderer {
     pub fn render_scanline_mode1(&mut self, ppu: &PPU, y: usize) {
@@ -12,7 +12,7 @@ impl Renderer {
         // BG1 scroll registers
         let scroll_x = ppu.regs.bg1hofs as usize;
         let scroll_y = ppu.regs.bg1vofs as usize;
-        
+
         let backdrop = ppu.cgram.read(0);
         let (br, bg, bb) = Self::apply_brightness(backdrop, self.current_brightness as u16);
         for x in 0..SCREEN_WIDTH {
@@ -51,7 +51,8 @@ impl Renderer {
             // Decode 4bpp pixel from CHR data
             // ============================================================
             let tile_word_base = tiledata_base as usize + tile_index as usize * 16;
-            let color_index = Self::decode_4bpp_tile_pixel_from(&ppu.vram.memory, tile_word_base, fx, fy);
+            let color_index =
+                Self::decode_4bpp_tile_pixel_from(&ppu.vram.memory, tile_word_base, fx, fy);
 
             // Transparent pixel -> do nothing
             if color_index == 0 {
@@ -66,7 +67,12 @@ impl Renderer {
         }
     }
 
-    fn decode_4bpp_tile_pixel_from(vram: &RawVRAM, tile_word_base: usize, x: usize, y: usize) -> u8 {
+    fn decode_4bpp_tile_pixel_from(
+        vram: &RawVRAM,
+        tile_word_base: usize,
+        x: usize,
+        y: usize,
+    ) -> u8 {
         // Planes 0+1: p0 = low byte, p1 = high byte
         let [p0, p1] = vram[tile_word_base + y].to_le_bytes();
 
@@ -234,7 +240,9 @@ mod tests {
         let mut renderer = Renderer::new();
         renderer.current_brightness = 15;
         // Pre-fill framebuffer with a sentinel value
-        for b in renderer.framebuffer.iter_mut() { *b = 0xAA; }
+        for b in renderer.framebuffer.iter_mut() {
+            *b = 0xAA;
+        }
 
         let mut ppu = make_ppu_mode1();
         // Tilemap entry at (0,0): tile 0, palette 0 - CHR data is all zero -> transparent
@@ -246,7 +254,7 @@ mod tests {
         let (br, bg, bb) = Renderer::apply_brightness(ppu.cgram.read(0), 15);
         for x in 0..SCREEN_WIDTH {
             let idx = x * 3;
-            assert_eq!(renderer.framebuffer[idx],     br, "R at x={}", x);
+            assert_eq!(renderer.framebuffer[idx], br, "R at x={}", x);
             assert_eq!(renderer.framebuffer[idx + 1], bg, "G at x={}", x);
             assert_eq!(renderer.framebuffer[idx + 2], bb, "B at x={}", x);
         }
@@ -298,7 +306,7 @@ mod tests {
         assert_eq!(transparent, 0);
 
         // With flip_x: fine_x = 7 - x, so screen x=0 -> fine_x=7 -> lit
-        let flipped_x0 = Renderer::decode_4bpp_tile_pixel_from(&vram, 0, 7 - 0, 0);
+        let flipped_x0 = Renderer::decode_4bpp_tile_pixel_from(&vram, 0, 7, 0);
         let flipped_x7 = Renderer::decode_4bpp_tile_pixel_from(&vram, 0, 7 - 7, 0);
         assert_eq!(flipped_x0, 1);
         assert_eq!(flipped_x7, 0);
@@ -318,7 +326,7 @@ mod tests {
         assert_ne!(row7, 0);
 
         // With flip_y: screen y=0 -> fine_y=7 -> lit
-        let flipped_y0 = Renderer::decode_4bpp_tile_pixel_from(&vram, 0, 0, 7 - 0);
+        let flipped_y0 = Renderer::decode_4bpp_tile_pixel_from(&vram, 0, 0, 7);
         let flipped_y7 = Renderer::decode_4bpp_tile_pixel_from(&vram, 0, 0, 7 - 7);
         assert_ne!(flipped_y0, 0);
         assert_eq!(flipped_y7, 0);

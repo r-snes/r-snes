@@ -3,13 +3,12 @@
 /// Covers:
 ///   - Apu::new(): reset vector loaded, SP initialised, cycle counters zero
 ///   - Apu::step(): CPU ticked every cycle, DSP ticked every 32 cycles,
-///                  total cycle counter advances correctly
+///     total cycle counter advances correctly
 ///   - DSP tick rate: exactly 1 DSP tick per 32 CPU cycles
 ///   - render_audio(): correct output length, advances cycles, produces
-///                     stereo-interleaved samples, silent when no voices active
+///     stereo-interleaved samples, silent when no voices active
 ///   - Component wiring: DSP register writes via Memory reach the DSP,
-///                       render_audio reflects DSP state
-
+///     render_audio reflects DSP state
 use apu::Apu;
 use apu::dsp::EnvelopePhase;
 
@@ -38,7 +37,7 @@ fn write_nops(apu: &mut Apu, addr: u16, count: usize) {
 /// the CPU would interpret as opcode BPL if it fell inside the sled.
 fn setup_cpu(apu: &mut Apu, start_addr: u16, nop_count: usize) {
     apu.memory.write8(0xFFFE, (start_addr & 0xFF) as u8);
-    apu.memory.write8(0xFFFF, (start_addr >> 8)   as u8);
+    apu.memory.write8(0xFFFF, (start_addr >> 8) as u8);
     write_nops(apu, start_addr, nop_count);
     apu.cpu.reset(&mut apu.memory);
     // A fresh Apu boots into the HLE IPL, which owns the core until the
@@ -61,7 +60,7 @@ fn setup_voice_silent_sample(apu: &mut Apu) {
     // The DIR entry high byte is 0x10 (address $1000 >> 8).
     // Placing DIR at $0800 (inside the sled) caused the CPU to fetch
     // that 0x10 byte as opcode BPL and panic.
-    let dir_page: u8  = 0x11; // DIR base = 0x11 << 8 = $1100
+    let dir_page: u8 = 0x11; // DIR base = 0x11 << 8 = $1100
     let brr_addr: u16 = 0x1000;
 
     // Silent BRR block: shift=4, filter=0, end+loop, all nibbles=0
@@ -73,10 +72,10 @@ fn setup_voice_silent_sample(apu: &mut Apu) {
 
     // DIR entry for SRCN 0 at $1100
     let dir_base = (dir_page as u16) << 8; // = $1100
-    apu.memory.write8(dir_base,     (brr_addr & 0xFF) as u8);
-    apu.memory.write8(dir_base + 1, (brr_addr >> 8)   as u8);
+    apu.memory.write8(dir_base, (brr_addr & 0xFF) as u8);
+    apu.memory.write8(dir_base + 1, (brr_addr >> 8) as u8);
     apu.memory.write8(dir_base + 2, (brr_addr & 0xFF) as u8);
-    apu.memory.write8(dir_base + 3, (brr_addr >> 8)   as u8);
+    apu.memory.write8(dir_base + 3, (brr_addr >> 8) as u8);
 
     // Configure voice 0 via $F2/$F3
     let dsp_w = |apu: &mut Apu, reg: u8, val: u8| {
@@ -84,17 +83,17 @@ fn setup_voice_silent_sample(apu: &mut Apu) {
         apu.memory.write8(0x00F3, val);
     };
 
-    dsp_w(apu, 0x5D, dir_page);  // DIR = 0x11
-    dsp_w(apu, 0x00, 100u8);     // VOL L
-    dsp_w(apu, 0x01, 100u8);     // VOL R
-    dsp_w(apu, 0x02, 0x00);      // PITCH lo
-    dsp_w(apu, 0x03, 0x10);      // PITCH hi (0x1000 = native rate)
-    dsp_w(apu, 0x04, 0x00);      // SRCN
-    dsp_w(apu, 0x05, 0x8F);      // ADSR1: fast attack
-    dsp_w(apu, 0x06, 0xE0);      // ADSR2: hold sustain
-    dsp_w(apu, 0x0C, 127u8);     // MVOLL
-    dsp_w(apu, 0x1C, 127u8);     // MVOLR
-    dsp_w(apu, 0x4C, 0x01);      // KON voice 0
+    dsp_w(apu, 0x5D, dir_page); // DIR = 0x11
+    dsp_w(apu, 0x00, 100u8); // VOL L
+    dsp_w(apu, 0x01, 100u8); // VOL R
+    dsp_w(apu, 0x02, 0x00); // PITCH lo
+    dsp_w(apu, 0x03, 0x10); // PITCH hi (0x1000 = native rate)
+    dsp_w(apu, 0x04, 0x00); // SRCN
+    dsp_w(apu, 0x05, 0x8F); // ADSR1: fast attack
+    dsp_w(apu, 0x06, 0xE0); // ADSR2: hold sustain
+    dsp_w(apu, 0x0C, 127u8); // MVOLL
+    dsp_w(apu, 0x1C, 127u8); // MVOLR
+    dsp_w(apu, 0x4C, 0x01); // KON voice 0
 }
 
 /// Set up a looping BRR voice on voice 0 that produces non-zero output.
@@ -105,7 +104,7 @@ fn setup_voice_silent_sample(apu: &mut Apu) {
 /// This guarantees current_sample is non-zero so render_audio_single
 /// produces audible output once the envelope has risen.
 fn setup_voice_nonzero_sample(apu: &mut Apu) {
-    let dir_page: u8  = 0x11;
+    let dir_page: u8 = 0x11;
     let brr_addr: u16 = 0x1000;
 
     // BRR block: shift=4, filter=0, end+loop, all nibbles=7 → sample=112
@@ -117,27 +116,27 @@ fn setup_voice_nonzero_sample(apu: &mut Apu) {
 
     // DIR entry for SRCN 0 at $1100
     let dir_base = (dir_page as u16) << 8;
-    apu.memory.write8(dir_base,     (brr_addr & 0xFF) as u8);
-    apu.memory.write8(dir_base + 1, (brr_addr >> 8)   as u8);
+    apu.memory.write8(dir_base, (brr_addr & 0xFF) as u8);
+    apu.memory.write8(dir_base + 1, (brr_addr >> 8) as u8);
     apu.memory.write8(dir_base + 2, (brr_addr & 0xFF) as u8);
-    apu.memory.write8(dir_base + 3, (brr_addr >> 8)   as u8);
+    apu.memory.write8(dir_base + 3, (brr_addr >> 8) as u8);
 
     let dsp_w = |apu: &mut Apu, reg: u8, val: u8| {
         apu.memory.write8(0x00F2, reg);
         apu.memory.write8(0x00F3, val);
     };
 
-    dsp_w(apu, 0x5D, dir_page);  // DIR = 0x11
-    dsp_w(apu, 0x00, 100u8);     // VOL L
-    dsp_w(apu, 0x01, 100u8);     // VOL R
-    dsp_w(apu, 0x02, 0x00);      // PITCH lo
-    dsp_w(apu, 0x03, 0x10);      // PITCH hi (0x1000 = native rate)
-    dsp_w(apu, 0x04, 0x00);      // SRCN
-    dsp_w(apu, 0x05, 0x8F);      // ADSR1: fast attack (rate=15)
-    dsp_w(apu, 0x06, 0xE0);      // ADSR2: hold at sustain
-    dsp_w(apu, 0x0C, 127u8);     // MVOLL
-    dsp_w(apu, 0x1C, 127u8);     // MVOLR
-    dsp_w(apu, 0x4C, 0x01);      // KON voice 0
+    dsp_w(apu, 0x5D, dir_page); // DIR = 0x11
+    dsp_w(apu, 0x00, 100u8); // VOL L
+    dsp_w(apu, 0x01, 100u8); // VOL R
+    dsp_w(apu, 0x02, 0x00); // PITCH lo
+    dsp_w(apu, 0x03, 0x10); // PITCH hi (0x1000 = native rate)
+    dsp_w(apu, 0x04, 0x00); // SRCN
+    dsp_w(apu, 0x05, 0x8F); // ADSR1: fast attack (rate=15)
+    dsp_w(apu, 0x06, 0xE0); // ADSR2: hold at sustain
+    dsp_w(apu, 0x0C, 127u8); // MVOLL
+    dsp_w(apu, 0x1C, 127u8); // MVOLR
+    dsp_w(apu, 0x4C, 0x01); // KON voice 0
 }
 
 // ============================================================
@@ -164,8 +163,10 @@ fn test_new_cpu_pc_loaded_from_reset_vector() {
     // Default memory is zeroed so reset vector $FFFE/$FFFF = 0x0000,
     // meaning PC should be 0x0000 on a fresh APU.
     let apu = Apu::new();
-    assert_eq!(apu.cpu.regs.pc, 0x0000,
-        "PC must be loaded from reset vector at $FFFE/$FFFF");
+    assert_eq!(
+        apu.cpu.regs.pc, 0x0000,
+        "PC must be loaded from reset vector at $FFFE/$FFFF"
+    );
 }
 
 #[test]
@@ -175,8 +176,10 @@ fn test_new_cpu_pc_reflects_reset_vector() {
     // setup_cpu() correctly repositions PC via a second reset call.
     let mut apu = Apu::new();
     setup_cpu(&mut apu, 0x0100, 64);
-    assert_eq!(apu.cpu.regs.pc, 0x0100,
-        "PC must update when reset vector is changed and reset() re-called");
+    assert_eq!(
+        apu.cpu.regs.pc, 0x0100,
+        "PC must update when reset vector is changed and reset() re-called"
+    );
 }
 
 #[test]
@@ -225,8 +228,11 @@ fn test_step_advances_cpu_pc() {
 
     let pc_before = apu.cpu.regs.pc;
     apu.step(1);
-    assert_eq!(apu.cpu.regs.pc, pc_before.wrapping_add(1),
-        "one step must advance PC by 1 (NOP is 1 byte)");
+    assert_eq!(
+        apu.cpu.regs.pc,
+        pc_before.wrapping_add(1),
+        "one step must advance PC by 1 (NOP is 1 byte)"
+    );
 }
 
 #[test]
@@ -305,10 +311,9 @@ fn test_dsp_tick_count_proportional_to_cycles() {
 
     // 3 DSP ticks = 96 CPU cycles; level should be min(3*1024, 0x7FF)
     apu.step(96);
-    let expected = (3u16 * 1024).min(0x7FF);
+    let expected = 0x7FF;
     assert_eq!(
-        apu.memory.dsp.voices[0].adsr.envelope_level,
-        expected,
+        apu.memory.dsp.voices[0].adsr.envelope_level, expected,
         "after 96 CPU cycles (3 DSP ticks) envelope must be {expected:#05X}"
     );
 }
@@ -323,7 +328,11 @@ fn test_render_audio_output_length() {
     setup_cpu(&mut apu, 0x0100, 0xEFF);
 
     let out = apu.render_audio(10);
-    assert_eq!(out.len(), 10, "render_audio(10) must return 10 stereo pairs");
+    assert_eq!(
+        out.len(),
+        10,
+        "render_audio(10) must return 10 stereo pairs"
+    );
 }
 
 #[test]
@@ -340,8 +349,11 @@ fn test_render_audio_advances_cycles() {
     setup_cpu(&mut apu, 0x0100, 0xEFF);
 
     apu.render_audio(4);
-    assert_eq!(apu.cycles, 4 * 32,
-        "render_audio(4) must advance cycles by 4 * 32 = 128");
+    assert_eq!(
+        apu.cycles,
+        4 * 32,
+        "render_audio(4) must advance cycles by 4 * 32 = 128"
+    );
 }
 
 #[test]
@@ -358,20 +370,22 @@ fn test_render_audio_interleaved_stereo() {
     };
 
     // BRR at $1000, DIR at $1100 — both above the NOP sled ($0100–$0FFF)
-    let dir_page: u8  = 0x11;
+    let dir_page: u8 = 0x11;
     let brr_addr: u16 = 0x1000;
     let header: u8 = 0x40 | 0x03;
     apu.memory.write8(brr_addr, header);
-    for i in 1..9u16 { apu.memory.write8(brr_addr + i, 0x00); }
+    for i in 1..9u16 {
+        apu.memory.write8(brr_addr + i, 0x00);
+    }
     let dir_base = (dir_page as u16) << 8;
-    apu.memory.write8(dir_base,     (brr_addr & 0xFF) as u8);
-    apu.memory.write8(dir_base + 1, (brr_addr >> 8)   as u8);
+    apu.memory.write8(dir_base, (brr_addr & 0xFF) as u8);
+    apu.memory.write8(dir_base + 1, (brr_addr >> 8) as u8);
     apu.memory.write8(dir_base + 2, (brr_addr & 0xFF) as u8);
-    apu.memory.write8(dir_base + 3, (brr_addr >> 8)   as u8);
+    apu.memory.write8(dir_base + 3, (brr_addr >> 8) as u8);
 
     dsp_w(&mut apu, 0x5D, dir_page);
-    dsp_w(&mut apu, 0x00, 100u8);  // VOL L = 100
-    dsp_w(&mut apu, 0x01, 0u8);    // VOL R = 0 (hard left)
+    dsp_w(&mut apu, 0x00, 100u8); // VOL L = 100
+    dsp_w(&mut apu, 0x01, 0u8); // VOL R = 0 (hard left)
     dsp_w(&mut apu, 0x02, 0x00);
     dsp_w(&mut apu, 0x03, 0x10);
     dsp_w(&mut apu, 0x04, 0x00);
@@ -386,8 +400,7 @@ fn test_render_audio_interleaved_stereo() {
 
     // All right-channel samples must be 0 (hard-left pan: right_vol=0)
     for (i, &[_l, r]) in out.iter().enumerate() {
-        assert_eq!(r, 0,
-            "right channel of pair {i} must be 0 (hard-left pan)");
+        assert_eq!(r, 0, "right channel of pair {i} must be 0 (hard-left pan)");
     }
 }
 
@@ -434,8 +447,11 @@ fn test_dsp_register_write_via_f2_f3_reaches_dsp() {
     apu.memory.write8(0x00F2, 0x0C);
     apu.memory.write8(0x00F3, 0x55);
 
-    assert_eq!(apu.memory.dsp.read_reg(0x0C), 0x55,
-        "DSP register written via $F2/$F3 must be readable via read_reg");
+    assert_eq!(
+        apu.memory.dsp.read_reg(0x0C),
+        0x55,
+        "DSP register written via $F2/$F3 must be readable via read_reg"
+    );
 }
 
 #[test]
@@ -459,10 +475,14 @@ fn test_render_audio_reflects_master_volume() {
     setup_voice_nonzero_sample(&mut apu_loud);
 
     let silent_out = apu_silent.render_audio(64);
-    let loud_out   = apu_loud.render_audio(64);
+    let loud_out = apu_loud.render_audio(64);
 
-    assert!(silent_out.iter().all(|&[l, r]| l == 0 && r == 0),
-        "zero master volume must produce silence");
-    assert!(loud_out.iter().any(|&[l, r]| l != 0 || r != 0),
-        "non-zero master volume with active voice must produce output");
+    assert!(
+        silent_out.iter().all(|&[l, r]| l == 0 && r == 0),
+        "zero master volume must produce silence"
+    );
+    assert!(
+        loud_out.iter().any(|&[l, r]| l != 0 || r != 0),
+        "non-zero master volume with active voice must produce output"
+    );
 }

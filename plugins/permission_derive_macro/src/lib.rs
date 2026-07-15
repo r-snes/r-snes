@@ -1,13 +1,10 @@
 use {
     proc_macro::TokenStream,
-    quote::{
-        ToTokens,
-        quote,
-    },
+    quote::{ToTokens, quote},
     syn::{
         ItemStruct,
         parse::{self, Parse, ParseStream},
-    }
+    },
 };
 
 #[proc_macro_derive(Permission)]
@@ -19,7 +16,7 @@ fn derive_permission_impl(input: proc_macro2::TokenStream) -> proc_macro2::Token
     // Parse the annotated item.
     let ast: PermDerive = match syn::parse2(input) {
         Ok(parsed) => parsed,
-        Err(e) => return e.into_compile_error()
+        Err(e) => return e.into_compile_error(),
     };
 
     // Return the macro's expanded form (the main logic is in `Pod::to_tokens`).
@@ -34,7 +31,9 @@ struct PermDerive {
 
 impl Parse for PermDerive {
     fn parse(input: ParseStream) -> parse::Result<Self> {
-        Ok(Self { item: input.call(ItemStruct::parse)? })
+        Ok(Self {
+            item: input.call(ItemStruct::parse)?,
+        })
     }
 }
 
@@ -76,8 +75,8 @@ impl ToTokens for PermDerive {
 
 #[cfg(test)]
 mod tests {
-    use runtime_macros::emulate_derive_macro_expansion;
     use super::derive_permission_impl;
+    use runtime_macros::emulate_derive_macro_expansion;
     use std::{env, fs};
 
     #[test]

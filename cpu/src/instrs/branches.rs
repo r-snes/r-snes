@@ -1,5 +1,5 @@
-use instr_metalang_procmacro::cpu_instr_no_inc_pc;
 use duplicate::duplicate;
+use instr_metalang_procmacro::cpu_instr_no_inc_pc;
 
 duplicate! {
     [
@@ -29,6 +29,7 @@ duplicate! {
         }
 
         // idle if the branch is taken across a page boundary (cpu doc note 6)
+        #[allow(clippy::nonminimal_bool, reason = "false positive for BRA")]
         meta IDLE_IF DUP_flag
             && cpu.registers.E
             && *cpu.internal_data_bus.hi() != *cpu.registers.PC.hi();
@@ -48,6 +49,7 @@ cpu_instr_no_inc_pc!(brl {
 
 #[cfg(test)]
 mod test {
+    #![expect(clippy::nonminimal_bool)]
     use super::super::test_prelude::*;
     use duplicate::duplicate_item;
 
@@ -73,13 +75,16 @@ mod test {
                 return; // always pass test for BRA, it never takes a branch
             }
 
-            let mut regs = Registers::default();
-            regs.PB = 0x12;
-            regs.PC = 0x3456;
+            #[allow(unused_mut, reason = "for BRA")]
+            let mut regs = Registers {
+                PB: 0x12,
+                PC: 0x3456,
+                ..Default::default()
+            };
 
             DUP1_flag = !DUP1_set; // branch not taken
 
-            let mut expected_regs = regs.clone();
+            let mut expected_regs = regs;
             let mut cpu = CPU::new(regs);
 
             expect_opcode_fetch(&mut cpu, DUP1_opcode);
@@ -93,13 +98,16 @@ mod test {
 
         #[test]
         fn branch_taken_no_page_crossed() {
-            let mut regs = Registers::default();
-            regs.PB = 0x12;
-            regs.PC = 0x3456;
+            #[allow(unused_mut, reason = "for BRA")]
+            let mut regs = Registers {
+                PB: 0x12,
+                PC: 0x3456,
+                ..Default::default()
+            };
 
             DUP1_flag = DUP1_set; // case where we do jump
 
-            let mut expected_regs = regs.clone();
+            let mut expected_regs = regs;
             let mut cpu = CPU::new(regs);
 
             expect_opcode_fetch(&mut cpu, DUP1_opcode);
@@ -120,19 +128,27 @@ mod test {
         )]
         #[test]
         fn DUP2_name() {
-            let mut regs = Registers::default();
-            regs.PB = 0x12;
-            regs.PC = 0x3456;
+            #[allow(unused_mut, reason = "for BRA")]
+            let mut regs = Registers {
+                PB: 0x12,
+                PC: 0x3456,
+                ..Default::default()
+            };
 
             DUP1_flag = DUP1_set; // case where we do jump
             regs.E = DUP2_emu;
 
-            let mut expected_regs = regs.clone();
+            let mut expected_regs = regs;
             let mut cpu = CPU::new(regs);
 
             expect_opcode_fetch(&mut cpu, DUP1_opcode);
             // we jump to 0x60 lower, crossing a page boundary
-            expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3457), -0x60_i8 as u8, "jump offset");
+            expect_read_cycle(
+                &mut cpu,
+                snes_addr!(0x12:0x3457),
+                -0x60_i8 as u8,
+                "jump offset",
+            );
             expect_internal_cycle(&mut cpu, "branch taken");
             if DUP2_emu {
                 expect_internal_cycle(&mut cpu, "branch taken across page boundary");
@@ -146,11 +162,13 @@ mod test {
 
     #[test]
     fn brl() {
-        let mut regs = Registers::default();
-        regs.PB = 0x12;
-        regs.PC = 0x3456;
+        let regs = Registers {
+            PB: 0x12,
+            PC: 0x3456,
+            ..Default::default()
+        };
 
-        let mut expected_regs = regs.clone();
+        let mut expected_regs = regs;
         let mut cpu = CPU::new(regs);
 
         expect_opcode_fetch(&mut cpu, 0x82);

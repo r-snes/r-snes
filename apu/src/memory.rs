@@ -53,7 +53,7 @@ pub struct Memory {
     ///
     /// `port_in[n]`  — value written by the SNES CPU, read by SPC700 at $F4+n
     /// `port_out[n]` — value written by SPC700 at $F4+n, read by SNES CPU
-    pub port_in:  [u8; 4],
+    pub port_in: [u8; 4],
     pub port_out: [u8; 4],
 
     /// $FA–$FC — Timer divisors (write-only from SPC700 perspective).
@@ -66,19 +66,25 @@ pub struct Memory {
     pub timer_out: [u8; 3],
 }
 
+impl Default for Memory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Memory {
     pub fn new() -> Self {
         Self {
-            ram:       Box::new([0; _]),
-            dsp:       Dsp::new(),
-            dsp_addr:  0,
+            ram: Box::new([0; _]),
+            dsp: Dsp::new(),
+            dsp_addr: 0,
             // Hardware reset state: IPL ROM mapped (bit 7 set), timers
             // off, no port clears pending. The ROM-enable bit matters:
             // Apu::step gates IPL re-entry on it, and code that never
             // touches $F1 must still be able to re-enter the boot ROM.
-            control:   0x80,
-            port_in:   [0u8; 4],
-            port_out:  [0u8; 4],
+            control: 0x80,
+            port_in: [0u8; 4],
+            port_out: [0u8; 4],
             timer_div: [0u8; 3],
             timer_out: [0u8; 3],
         }
@@ -137,10 +143,22 @@ impl Memory {
     /// The SPC700 CPU must call this variant when executing load instructions.
     pub fn read8_mut(&mut self, addr: u16) -> u8 {
         match addr {
-            0x00FD => { let v = self.timer_out[0]; self.timer_out[0] = 0; v }
-            0x00FE => { let v = self.timer_out[1]; self.timer_out[1] = 0; v }
-            0x00FF => { let v = self.timer_out[2]; self.timer_out[2] = 0; v }
-            _      => self.read8(addr),
+            0x00FD => {
+                let v = self.timer_out[0];
+                self.timer_out[0] = 0;
+                v
+            }
+            0x00FE => {
+                let v = self.timer_out[1];
+                self.timer_out[1] = 0;
+                v
+            }
+            0x00FF => {
+                let v = self.timer_out[2];
+                self.timer_out[2] = 0;
+                v
+            }
+            _ => self.read8(addr),
         }
     }
 
@@ -207,7 +225,7 @@ impl Memory {
     }
 
     pub fn write16(&mut self, addr: u16, value: u16) {
-        self.write8(addr,                     *value.lo());
+        self.write8(addr, *value.lo());
         self.write8(addr.wrapping_add(1), *value.hi());
     }
 
