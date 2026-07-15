@@ -137,17 +137,15 @@ when game compatibility reaches its first milestone rather than at kickoff.
 |---|---------------------------|--------------------|----------------------|----------------|
 | 3 | Game Compatibility        | 31 August 2026     | end of Septembre 2026 | main team focus from day one |
 | 1 | Plug-ins (API enrichment) | 31 August 2026     | early February 2027  | continuous background effort |
-| 2 | User Experience           | 1 Septembre 2026  | end of Decembre 2027     | starts once games are running |
-| 4 | Embedded Components       | 1 Septembre 2026  | early February 2027  | starts once games are running |
+| 2 | User Experience           | 1 Octobre 2026  | end of Decembre 2027     | starts once games are running |
+| 4 | Embedded Components       | 1 Octobre 2026  | early February 2027  | starts once games are running |
 | 5 | Final Polish              | continuous         | mid-February 2027     | primary focus from early January |
 
 ### Key Dates
 
-- **31 August 2026**: PGE5 kickoff — all workstreams begin
-- **Mid-October 2026**: Plugin API enrichment complete
+- **31 August 2026**: PGE5 kickoff, all workstreams begin
 - **Early November 2026**: Core user-experience features (save states, input configuration) complete
-- **End of December 2026**: Game compatibility target reached
-- **Early February 2027**: Embedded components complete
+- **Early February 2027**: Embedded components development stops
 - **Mid-February 2027**: Final delivery
 
 ---
