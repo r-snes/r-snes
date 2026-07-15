@@ -44,9 +44,6 @@ For now, the project is known to work on Linux (Wayland) and Windows, but could 
 
 Each component (hardware piece of the original console) is implemented in its own crate, in its own subfolder at the repository root (see the up-to-date list of workspace members in the root `Cargo.toml`). The main emulator program (front-end, window/GUI, and top-level glue between crates) lives directly in `src/`.
 
-## Language choice
-
-The emulator is implemented in Rust. This choice of language is mostly by personal preference, but our preferences are also influenced by having worked with C and C++ for a few years, and we all come to agree it is easier to collaborate with Rust (even though we had far less experience with it at the start of the project) than with other programming languages which can compete in performance and low-level control such as C and C++.
 - **`cpu/`** - Emulation of the 65816 CPU core, including the full instruction set. Instructions are defined through a small custom DSL, compiled via the `instr_metalang_procmacro` proc-macro sub-crate.
 - **`ppu/`** - Emulation of the Picture Processing Unit: VRAM/CGRAM, PPU registers, and the frame rendering pipeline (one module per background/rendering mode).
 - **`apu/`** - Emulation of the Audio Processing Unit: the S-SMP CPU core and the S-DSP sound chip (ADSR envelopes, BRR sample decoding, voices, timers).
