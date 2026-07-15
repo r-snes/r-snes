@@ -1,5 +1,6 @@
 use super::RSnesCore;
 
+use common::snes_address::SnesAddress;
 use cpu::cpu::CPU;
 use piccolo::Callback;
 use piccolo::CallbackReturn;
@@ -8,6 +9,7 @@ use piccolo::IntoValue;
 use piccolo::Table;
 use piccolo::Value;
 use piccolo::error::LuaError;
+use plugins::perm_tree::BusPermissions;
 use plugins::perm_tree::FileSystemPermissions;
 use plugins::perm_tree::FileWritePermissions;
 use plugins::perm_tree::filesystem::FileWriteOptions;
@@ -20,6 +22,7 @@ use std::fs::OpenOptions;
 use std::io::Seek;
 use std::io::SeekFrom;
 use std::io::Write;
+use std::ops::DerefMut;
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -38,6 +41,13 @@ impl RSnesCore {
             }
             if plugin.table.perms.internal.input {
                 rsnes.set_field(ctx, "input", Self::create_input_table(ctx, emu));
+            }
+            if !plugin.table.perms.internal.bus.is_none() {
+                rsnes.set_field(
+                    ctx,
+                    "bus",
+                    Self::create_bus_table(ctx, emu, &plugin.table.perms.internal.bus),
+                );
             }
             if !plugin.table.perms.external.filesystem.is_none() {
                 rsnes.set_field(
@@ -137,6 +147,59 @@ impl RSnesCore {
                 Ok(piccolo::CallbackReturn::Return)
             }),
         );
+
+        ret
+    }
+
+    fn create_bus_table<'gc>(
+        ctx: Context<'gc>,
+        emu: &Rc<RefCell<Self>>,
+        bus_perms: &BusPermissions,
+    ) -> Table<'gc> {
+        let ret = Table::new(ctx.mutation());
+        if bus_perms.read {
+            let clone = emu.clone();
+            ret.set_field(
+                ctx,
+                "read",
+                Callback::from_fn(ctx.mutation(), move |ctx, _, mut stack| {
+                    let Some(Value::Integer(addr)) = stack.pop_front() else {
+                        return Ok(CallbackReturn::Return);
+                    };
+                    let addr = SnesAddress::from(addr as usize);
+                    let byte = {
+                        let mut emu_mut = clone.borrow_mut();
+                        let RSnesCore { bus, ppu, apu, .. } = emu_mut.deref_mut();
+                        bus.read(addr, ppu, apu)
+                    };
+                    stack.replace(ctx, Value::Integer(byte as i64));
+                    Ok(CallbackReturn::Return)
+                }),
+            );
+        }
+        if bus_perms.write {
+            let clone = emu.clone();
+            ret.set_field(
+                ctx,
+                "write",
+                Callback::from_fn(ctx.mutation(), move |ctx, _, mut stack| {
+                    let Some(Value::Integer(addr)) = stack.pop_front() else {
+                        stack.replace(ctx, Value::Nil);
+                        return Ok(CallbackReturn::Return);
+                    };
+                    let addr = SnesAddress::from(addr as usize);
+                    let byte = match stack.pop_front() {
+                        Some(Value::Integer(i)) => i as u8,
+                        _ => 0,
+                    };
+                    let mut emu_mut = clone.borrow_mut();
+                    let RSnesCore { bus, ppu, apu, .. } = emu_mut.deref_mut();
+                    bus.write(addr, byte, ppu, apu);
+
+                    Ok(CallbackReturn::Return)
+                }),
+            );
+        }
 
         ret
     }
@@ -312,6 +375,7 @@ impl RSnesCore {
 mod test {
     use super::*;
     use crate::rsnes::tests::make_rsnes;
+    use common::snes_addr;
     use cpu::registers::Registers;
     use piccolo::{Executor, Function, StashedExecutor, StashedTable, StashedValue, meta_ops};
     use plugins::perm_tree::RSnesPermissions;
@@ -523,5 +587,123 @@ mod test {
         assert!(core.borrow().bus.io.joy1 & (1 << 7) == 0);
         run_lua(&release_a);
         assert!(core.borrow().bus.io.joy1 & (1 << 7) == 0);
+    }
+
+    #[test]
+    fn bus_inject_count() {
+        let core = Rc::new(RefCell::new(make_rsnes()));
+
+        let mut plugin_read = Plugin::load_from_raw(
+            br#"
+            return {
+                permissions = {
+                    internal = {
+                        bus = { "read" },
+                    }
+                }
+            }
+            "#,
+            None,
+        )
+        .unwrap();
+        let mut plugin_write = Plugin::load_from_raw(
+            br#"
+            return {
+                permissions = {
+                    internal = {
+                        bus = { "write" },
+                    }
+                }
+            }
+            "#,
+            None,
+        )
+        .unwrap();
+        let mut plugin_readwrite = Plugin::load_from_raw(
+            br#"
+            return {
+                permissions = {
+                    internal = {
+                        bus = "all",
+                    }
+                }
+            }
+            "#,
+            None,
+        )
+        .unwrap();
+
+        for (p, count) in [
+            (&mut plugin_read, 1),
+            (&mut plugin_write, 1),
+            (&mut plugin_readwrite, 2),
+        ] {
+            let initial_globals_len = p.lua.enter(|ctx| ctx.globals().iter().count());
+
+            RSnesCore::inject_into_lua(&core, p);
+            p.lua.enter(|ctx| {
+                assert_eq!(
+                    ctx.globals().iter().count(),
+                    initial_globals_len + 1,
+                    "only 1 global should have been added",
+                );
+
+                let rsnes: Table = ctx.get_global("rsnes").unwrap();
+                assert_eq!(rsnes.iter().count(), 1, "only bus table should be loaded",);
+
+                let bus: Table = rsnes.get(ctx, "bus").unwrap();
+                assert_eq!(
+                    bus.iter().count(),
+                    count,
+                    "bus table should have {count} elements"
+                );
+            })
+        }
+    }
+
+    #[test]
+    fn bus_read_write() {
+        let mut core = make_rsnes();
+        let RSnesCore { bus, ppu, apu, .. } = &mut core;
+        bus.write(snes_addr!(0x7F:0x1234), 0x44, ppu, apu);
+        let core = Rc::new(RefCell::new(core));
+        let mut plugin = Plugin::load_from_raw(
+            br#"
+            return {
+                permissions = {
+                    internal = {
+                        bus = "all",
+                    }
+                },
+
+                init = function()
+                    read_global = rsnes.bus.read(0x7F1234)
+                end,
+
+                exit = function()
+                    rsnes.bus.write(0x7F1234, 0x66)
+                    rsnes.bus.write(0x7F1235, 0x35)
+                end
+            }
+            "#,
+            None,
+        )
+        .unwrap();
+
+        RSnesCore::inject_into_lua(&core, &mut plugin);
+
+        plugin.run_init().unwrap();
+        plugin.lua.enter(|ctx| {
+            assert!(matches!(
+                ctx.globals().get_value(ctx, "read_global"),
+                Value::Integer(0x44)
+            ));
+        });
+
+        plugin.run_exit().unwrap();
+        let mut emu_mut = core.borrow_mut();
+        let RSnesCore { bus, ppu, apu, .. } = emu_mut.deref_mut();
+        assert_eq!(bus.read(snes_addr!(0x7F:0x1234), ppu, apu), 0x66);
+        assert_eq!(bus.read(snes_addr!(0x7F:0x1235), ppu, apu), 0x35);
     }
 }
