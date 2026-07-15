@@ -321,6 +321,9 @@ impl PPU {
 mod tests {
     use super::*;
 
+    // (register address, getter into PPURegisters)
+    type RegCase = (u16, fn(&PPURegisters) -> u8);
+
     // ============================================================
     // PPU::new
     // ============================================================
@@ -663,7 +666,7 @@ mod tests {
     /// Writing window registers must store the value verbatim.
     #[test]
     fn test_write_window_registers() {
-        let cases: &[(u16, fn(&PPURegisters) -> u8)] = &[
+        let cases: &[RegCase] = &[
             (0x2123, |r| r.w12sel),
             (0x2124, |r| r.w34sel),
             (0x2125, |r| r.wobjsel),
@@ -699,7 +702,7 @@ mod tests {
         ppu.write(0x212C, 0x1F);
         assert_eq!(ppu.regs.tm, 0x1F);
 
-        let cases: &[(u16, fn(&PPURegisters) -> u8)] = &[
+        let cases: &[RegCase] = &[
             (0x212D, |r| r.ts),
             (0x212E, |r| r.tmw),
             (0x212F, |r| r.tsw),

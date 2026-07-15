@@ -306,7 +306,7 @@ mod tests {
         assert_eq!(transparent, 0);
 
         // With flip_x: fine_x = 7 - x, so screen x=0 -> fine_x=7 -> lit
-        let flipped_x0 = Renderer::decode_4bpp_tile_pixel_from(&vram, 0, 7 - 0, 0);
+        let flipped_x0 = Renderer::decode_4bpp_tile_pixel_from(&vram, 0, 7, 0);
         let flipped_x7 = Renderer::decode_4bpp_tile_pixel_from(&vram, 0, 7 - 7, 0);
         assert_eq!(flipped_x0, 1);
         assert_eq!(flipped_x7, 0);
@@ -326,7 +326,7 @@ mod tests {
         assert_ne!(row7, 0);
 
         // With flip_y: screen y=0 -> fine_y=7 -> lit
-        let flipped_y0 = Renderer::decode_4bpp_tile_pixel_from(&vram, 0, 0, 7 - 0);
+        let flipped_y0 = Renderer::decode_4bpp_tile_pixel_from(&vram, 0, 0, 7);
         let flipped_y7 = Renderer::decode_4bpp_tile_pixel_from(&vram, 0, 0, 7 - 7);
         assert_ne!(flipped_y0, 0);
         assert_eq!(flipped_y7, 0);

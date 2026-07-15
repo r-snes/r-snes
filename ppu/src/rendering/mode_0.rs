@@ -139,25 +139,25 @@ mod tests {
 
         // All zero -> index 0
         for x in 0..8 {
-            assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&*vram, 0, x, 0), 0);
+            assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&vram, 0, x, 0), 0);
         }
 
         // Plane 0 only -> index 1
         vram[0] = 0x00FF;
         for x in 0..8 {
-            assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&*vram, 0, x, 0), 1);
+            assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&vram, 0, x, 0), 1);
         }
 
         // Plane 1 only -> index 2
         vram[0] = 0xFF00;
         for x in 0..8 {
-            assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&*vram, 0, x, 0), 2);
+            assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&vram, 0, x, 0), 2);
         }
 
         // Both planes -> index 3
         vram[0] = 0xFFFF;
         for x in 0..8 {
-            assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&*vram, 0, x, 0), 3);
+            assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&vram, 0, x, 0), 3);
         }
     }
 
@@ -168,14 +168,14 @@ mod tests {
 
         // Bit 7 set -> only x=0 is color 1
         vram[0] = 0x0080;
-        assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&*vram, 0, 0, 0), 1);
-        assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&*vram, 0, 1, 0), 0);
-        assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&*vram, 0, 7, 0), 0);
+        assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&vram, 0, 0, 0), 1);
+        assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&vram, 0, 1, 0), 0);
+        assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&vram, 0, 7, 0), 0);
 
         // Bit 0 set -> only x=7 is color 1
         vram[0] = 0x0001;
-        assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&*vram, 0, 7, 0), 1);
-        assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&*vram, 0, 0, 0), 0);
+        assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&vram, 0, 7, 0), 1);
+        assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&vram, 0, 0, 0), 0);
     }
 
     // y selects the row within the tile; tile_word_base offsets into VRAM.
@@ -186,16 +186,16 @@ mod tests {
         // Row offset: only row 3 has data
         vram[3] = 0x00FF;
         for x in 0..8 {
-            assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&*vram, 0, x, 3), 1);
-            assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&*vram, 0, x, 0), 0);
+            assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&vram, 0, x, 3), 1);
+            assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&vram, 0, x, 0), 0);
         }
 
         // tile_word_base offset: data at base 16
         vram[3] = 0x0000;
         vram[16] = 0x00FF;
         for x in 0..8 {
-            assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&*vram, 16, x, 0), 1);
-            assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&*vram, 0, x, 0), 0);
+            assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&vram, 16, x, 0), 1);
+            assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&vram, 0, x, 0), 0);
         }
     }
 
