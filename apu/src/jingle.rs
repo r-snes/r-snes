@@ -336,8 +336,8 @@ pub fn build_driver() -> Vec<u8> {
     a.dsp_write(0x5D, (DIR_ADDR >> 8) as u8);   // DIR page
     let vols: [u8; 3] = [0x38, 0x46, 0x24];
     for v in 0..3u8 {
-        a.dsp_write((v << 4) | 0x0, vols[v as usize]); // VOLL
-        a.dsp_write((v << 4) | 0x1, vols[v as usize]); // VOLR
+        a.dsp_write(v << 4, vols[v as usize]); // VOLL ($x0)
+        a.dsp_write((v << 4) | 0x1, vols[v as usize]); // VOLR ($x1)
         a.dsp_write((v << 4) | 0x4, v);                // SRCN = instrument v
     }
     a.dsp_write(0x05, 0xAD);                    // V0 ADSR1: attack 13, decay 2
@@ -439,7 +439,7 @@ fn div_round(d: i32, s: u8) -> i32 {
 /// so the loop is seamless without prediction history; later blocks pick
 /// whichever filter/shift reconstructs the samples best.
 pub fn encode_brr(samples: &[i16]) -> Vec<u8> {
-    assert!(samples.len() % 16 == 0 && !samples.is_empty());
+    assert!(samples.len().is_multiple_of(16) && !samples.is_empty());
     let blocks = samples.len() / 16;
     let mut out = Vec::with_capacity(blocks * 9);
     let (mut p1, mut p2) = (0i32, 0i32);
