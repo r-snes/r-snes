@@ -1,10 +1,6 @@
-use egui::ScrollArea;
-use plugins::plugin::{
-    Plugin,
-    gui::PluginPermRequest,
-};
 use eframe::egui;
-use plugins::plugin::{Plugin, PluginPermRequest};
+use egui::ScrollArea;
+use plugins::plugin::{Plugin, gui::PluginPermRequest};
 
 struct PermRequestApp<'app, 'req> {
     title: String,

@@ -1,6 +1,10 @@
 use egui::{CollapsingHeader, RichText, Style, TextFormat, WidgetText, text::LayoutJob};
 
-use crate::{perm_tree::{*, filesystem::*}, permission::{Permission, helpers::AllOr}, plugin::Plugin};
+use crate::{
+    perm_tree::{filesystem::*, *},
+    permission::{Permission, helpers::AllOr},
+    plugin::Plugin,
+};
 
 pub struct PluginPermRequest<'a> {
     pub plugin: &'a Plugin,
