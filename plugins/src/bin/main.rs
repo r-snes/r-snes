@@ -1,6 +1,6 @@
 use eframe::egui;
 use egui::ScrollArea;
-use plugins::plugin::{Plugin, gui::PluginPermRequest};
+use plugins::plugin::{Plugin, gui::PermOutcome, gui::PluginPermRequest};
 
 struct PermRequestApp<'app, 'req> {
     title: String,
@@ -56,7 +56,7 @@ fn main() -> eframe::Result {
         Box::new(|_| Ok(Box::new(PermRequestApp::new(&mut perm_request, title)))),
     )?;
 
-    if perm_request.allow_all {
+    if perm_request.outcome == PermOutcome::Granted {
         println!("\x1B[1;32m✔\x1B[0m permissions granted");
     } else {
         println!("\x1B[1;31m✘\x1B[0m permission denied, exiting");
