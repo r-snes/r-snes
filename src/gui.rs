@@ -16,6 +16,11 @@ use ppu::constants::{SCREEN_HEIGHT, SCREEN_WIDTH};
 use crate::rsnes::RomInfo;
 use state::GuiState;
 
+#[cfg(feature = "plugins")]
+use plugins::plugin::Plugin;
+#[cfg(feature = "plugins")]
+use state::PendingPlugin;
+
 pub struct Gui {
     _sdl_ctx: sdl2::Sdl,
     egui_canvas: EguiCanvas,
@@ -30,6 +35,11 @@ pub struct Gui {
     framebuffer_texture: Option<Texture>,
     /// Persistent overlay state — survives across frames.
     state: GuiState,
+    /// Whether Ctrl+P is allowed to open the plugin picker. Only the idle
+    /// loop enables it, since injection needs a running emu (handled by the
+    /// emu loop, not here).
+    #[cfg(feature = "plugins")]
+    plugin_loading_enabled: bool,
 }
 
 /// Everything the GUI might need to display, handed in fresh each frame.
@@ -68,6 +78,8 @@ pub enum RSnesEvent {
 enum GuiAction {
     ToggleRomInfo,
     CloseOverlays,
+    #[cfg(feature = "plugins")]
+    LoadPlugin,
 }
 
 #[cfg(not(tarpaulin_include))]
@@ -106,6 +118,8 @@ impl Gui {
             audio_queue,
             framebuffer_texture: None,
             state: GuiState::default(),
+            #[cfg(feature = "plugins")]
+            plugin_loading_enabled: false,
         })
     }
 
@@ -126,6 +140,37 @@ impl Gui {
             .set_title(&window_title);
     }
 
+    /// Enables/disables Ctrl+P plugin loading. Idle loop enables, emu loop disables.
+    #[cfg(feature = "plugins")]
+    pub fn set_plugin_loading(&mut self, enabled: bool) {
+        self.plugin_loading_enabled = enabled;
+    }
+
+    /// Takes the plugin the user granted this idle session, if any, and
+    /// abandons any still-undecided prompt. Called when the idle loop exits.
+    #[cfg(feature = "plugins")]
+    pub fn take_granted_plugin(&mut self) -> Option<Plugin> {
+        self.state.pending_plugin = None;
+        self.state.granted_plugin.take()
+    }
+
+    /// Opens a .lua file picker; on success the plugin becomes pending (its
+    /// permission prompt opens next frame), on failure it surfaces as an error.
+    #[cfg(feature = "plugins")]
+    fn load_plugin_dialog(&mut self) {
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("Lua plugin", &["lua"])
+            .pick_file()
+        else {
+            return;
+        };
+
+        match Plugin::load_from_file(&path) {
+            Ok(plugin) => self.state.pending_plugin = Some(PendingPlugin::new(plugin)),
+            Err(e) => self.pass_error(Box::new(e)),
+        }
+    }
+
     /// Maps an SDL event to a GUI-only action (toggling overlays).
     fn map_gui_action(event: &SdlEvent) -> Option<GuiAction> {
         match event {
@@ -134,6 +179,18 @@ impl Gui {
                 repeat: false,
                 ..
             } => Some(GuiAction::ToggleRomInfo),
+
+            #[cfg(feature = "plugins")]
+            SdlEvent::KeyDown {
+                keycode: Some(Keycode::P),
+                keymod,
+                repeat: false,
+                ..
+            } if keymod
+                .intersects(sdl2::keyboard::Mod::LCTRLMOD | sdl2::keyboard::Mod::RCTRLMOD) =>
+            {
+                Some(GuiAction::LoadPlugin)
+            }
 
             SdlEvent::KeyDown {
                 keycode: Some(Keycode::Escape),
@@ -246,6 +303,14 @@ impl Gui {
                         self.state.show_rom_info = !self.state.show_rom_info;
                         continue;
                     }
+                    #[cfg(feature = "plugins")]
+                    GuiAction::LoadPlugin => {
+                        // Idle-loop only: injection needs a running emu.
+                        if self.plugin_loading_enabled {
+                            self.load_plugin_dialog();
+                        }
+                        continue;
+                    }
                     GuiAction::CloseOverlays => {
                         if self.state.close_all() {
                             continue; // an overlay was open; Escape consumed by GUI
@@ -295,7 +360,9 @@ impl Gui {
     /// one line here plus one field in `GuiState` — nothing in `main.rs`.
     fn draw_overlays(state: &mut GuiState, data: &GuiFrameData, ctx: &egui::Context) {
         widgets::rom_info(ctx, &mut state.show_rom_info, data.rom_info);
-        widgets::error_box(ctx, &mut state.error_popup)
+        widgets::error_box(ctx, &mut state.error_popup);
+        #[cfg(feature = "plugins")]
+        widgets::plugin_perm_request(ctx, &mut state.pending_plugin, &mut state.granted_plugin);
     }
 
     /// One frame: poll input, blit the framebuffer, draw overlays, present.

@@ -5,6 +5,12 @@ use egui_sdl2::egui::{self, RichText};
 
 use crate::rsnes::RomInfo;
 
+#[cfg(feature = "plugins")]
+use plugins::plugin::{Plugin, gui::PermOutcome};
+
+#[cfg(feature = "plugins")]
+use super::state::PendingPlugin;
+
 /// Decodes a SNES header size exponent into KB. `0` means "none".
 fn decode_size_kb(exponent: u8) -> Option<usize> {
     if exponent == 0 {
@@ -204,4 +210,67 @@ fn show_error(ui: &mut egui::Ui, err: &dyn Error) {
     ui.collapsing("Debug representation:", |ui| {
         ui.label(format!("{err:?}"));
     });
+}
+
+/// Plugin permission prompt. Rendered only while a plugin is awaiting a
+/// decision. Granting moves the plugin into `granted` for the host to inject;
+/// denying (buttons, [x], or Escape) drops it.
+#[cfg(feature = "plugins")]
+pub fn plugin_perm_request(
+    ctx: &egui::Context,
+    pending: &mut Option<PendingPlugin>,
+    granted: &mut Option<Plugin>,
+) {
+    if pending.is_none() {
+        return;
+    }
+
+    let mut window_open = true;
+
+    // Borrow the pending plugin to render its request, then pull the outcome
+    // and checkbox state out so the borrow ends before we mutate `pending`.
+    let (outcome, show_none) = {
+        let p = pending.as_ref().unwrap();
+        let mut req = p.plugin.perm_request();
+        req.show_none = p.show_none;
+
+        egui::Window::new("Plugin Permissions")
+            .open(&mut window_open)
+            .collapsible(false)
+            .resizable(true)
+            .default_width(320.0)
+            .default_height(400.0)
+            .vscroll(true)
+            .show(ctx, |ui| {
+                let name = p
+                    .plugin
+                    .path
+                    .as_ref()
+                    .and_then(|path| path.file_name())
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| "<in-memory plugin>".to_owned());
+                ui.label(RichText::new(name).monospace());
+                req.show_gui(ui);
+            });
+
+        (req.outcome, req.show_none)
+    };
+
+    if let Some(p) = pending.as_mut() {
+        p.show_none = show_none;
+    }
+
+    match outcome {
+        PermOutcome::Granted => {
+            let taken = pending.take().unwrap();
+            *granted = Some(taken.plugin);
+        }
+        PermOutcome::Denied => *pending = None,
+        // [x] or Escape while undecided : deny.
+        PermOutcome::Pending => {
+            if !window_open {
+                *pending = None;
+            }
+        }
+    }
 }

@@ -265,11 +265,11 @@ impl Plugin {
         Ok(Self { lua, table, path })
     }
 
-    pub fn perm_request<'a>(&'a self) -> PluginPermRequest<'a> {
+    pub fn perm_request(&self) -> PluginPermRequest<'_> {
         PluginPermRequest {
             plugin: self,
-            allow_all: false,
             show_none: false,
+            outcome: gui::PermOutcome::Pending,
         }
     }
 
@@ -356,6 +356,31 @@ impl Plugin {
         });
 
         lua.execute(&ex)
+    }
+}
+
+impl std::fmt::Display for PluginLoadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            PluginLoadError::OpenError(e) => write!(f, "failed to open plugin file: {e}"),
+            PluginLoadError::BufCreationError(e) => write!(f, "failed to create read buffer: {e}"),
+            PluginLoadError::ReadError(e) => write!(f, "failed to read plugin file: {e}"),
+            PluginLoadError::LuaError(e) => write!(f, "lua error while loading plugin: {e}"),
+            PluginLoadError::PluginTabError(e) => write!(f, "error reading plugin table: {e}"),
+        }
+    }
+}
+
+impl std::error::Error for PluginLoadError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            PluginLoadError::OpenError(e)
+            | PluginLoadError::BufCreationError(e)
+            | PluginLoadError::ReadError(e) => Some(e),
+            // ExternError isn't guaranteed to impl Error; keep it in the Display
+            // message above rather than exposing it as a source.
+            _ => None,
+        }
     }
 }
 
