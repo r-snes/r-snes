@@ -39,6 +39,9 @@ impl RSnesCore {
             if plugin.table.perms.internal.cpu.registers {
                 rsnes.set_field(ctx, "cpu", Self::create_regs_table(ctx, emu.clone()));
             }
+            if !plugin.table.perms.internal.ppu.is_none() {
+                rsnes.set_field(ctx, "ppu", Self::create_ppu_table(ctx, emu));
+            }
             if plugin.table.perms.internal.input {
                 rsnes.set_field(ctx, "input", Self::create_input_table(ctx, emu));
             }
@@ -112,6 +115,34 @@ impl RSnesCore {
                 };
 
                 stack.replace(ctx, val);
+                Ok(piccolo::CallbackReturn::Return)
+            }),
+        );
+
+        ret
+    }
+
+    fn create_ppu_table<'gc>(ctx: Context<'gc>, emu: &Rc<RefCell<Self>>) -> Table<'gc> {
+        let ret = Table::new(ctx.mutation());
+
+        let clone = emu.clone();
+        ret.set_field(
+            ctx,
+            "write_cgram",
+            Callback::from_fn(ctx.mutation(), move |ctx, _, mut stack| {
+                let Some(Value::Integer(addr)) = stack.pop_front() else {
+                    return Err(piccolo::Error::Lua(LuaError(
+                        "invalid parameter to truncate".into_value(ctx),
+                    )));
+                };
+                let Some(Value::Integer(val)) = stack.pop_front() else {
+                    return Err(piccolo::Error::Lua(LuaError(
+                        "invalid parameter to truncate".into_value(ctx),
+                    )));
+                };
+                let mut emu = clone.borrow_mut();
+                emu.ppu.cgram.memory[addr as usize & 0xff] = val as u16;
+
                 Ok(piccolo::CallbackReturn::Return)
             }),
         );
@@ -705,5 +736,63 @@ mod test {
         let RSnesCore { bus, ppu, apu, .. } = emu_mut.deref_mut();
         assert_eq!(bus.read(snes_addr!(0x7F:0x1234), ppu, apu), 0x66);
         assert_eq!(bus.read(snes_addr!(0x7F:0x1235), ppu, apu), 0x35);
+    }
+
+    #[test]
+    fn ppu() {
+        let core = Rc::new(RefCell::new(make_rsnes()));
+
+        let mut plugin = Plugin::load_from_raw(
+            br#"return {
+                permissions = {
+                    internal = {
+                        ppu = { "display" },
+                    }
+                },
+
+                actions = {
+                    default = function()
+                        rsnes.ppu.write_cgram(128, 12345)
+                    end
+                },
+            }"#,
+            None,
+        )
+        .unwrap();
+        {
+            let mut res_perms = RSnesPermissions::none();
+            res_perms.internal.ppu.display = true;
+            assert_eq!(plugin.table.perms, res_perms);
+        }
+
+        let initial_globals_len = plugin.lua.enter(|ctx| ctx.globals().iter().count());
+
+        RSnesCore::inject_into_lua(&core, &mut plugin);
+        plugin.lua.enter(|ctx| {
+            assert_eq!(
+                ctx.globals().iter().count(),
+                initial_globals_len + 1,
+                "only 1 global should have been added",
+            );
+
+            let rsnes: Table = ctx.get_global("rsnes").unwrap();
+            assert_eq!(rsnes.iter().count(), 1, "only ppu table should be loaded",);
+
+            let ppu: Table = rsnes.get(ctx, "ppu").unwrap();
+
+            assert_eq!(
+                ppu.iter().count(),
+                1,
+                "ppu table should only have write_cgram",
+            );
+        });
+
+        core.borrow_mut().ppu.cgram.memory = [4242; _];
+        let mut exp_cgram = core.borrow().ppu.cgram.memory;
+        assert_eq!(core.borrow().ppu.cgram.memory, exp_cgram);
+
+        plugin.run_default().unwrap();
+        exp_cgram[128] = 12345;
+        assert_eq!(core.borrow().ppu.cgram.memory, exp_cgram);
     }
 }
