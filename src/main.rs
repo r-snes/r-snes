@@ -15,6 +15,11 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[cfg(feature = "plugins")]
+type IdleExit = (RSnesEvent, Option<Plugin>);
+#[cfg(not(feature = "plugins"))]
+type IdleExit = RSnesEvent;
+
 fn gui_emu_loop(
     gui: &mut gui::Gui,
     rsnes: RSnesCore,
@@ -33,6 +38,8 @@ fn gui_emu_loop(
     let rom_info = rsnes.rom_info();
     let title = rom_info.header.title.trim();
     gui.set_rom_title(if title.is_empty() { None } else { Some(title) });
+    #[cfg(feature = "plugins")]
+    gui.set_plugin_loading(false);
 
     let mut emu = cfg_select! {
         feature = "plugins" => match RSnesEmu::new_with_plugin(rsnes, plugin) {
@@ -149,10 +156,7 @@ fn gui_emu_loop(
 /// Returns the first event the outer loop cares about. Input-only events
 /// (buttons, plugin actions) are meaningless without a game and are
 /// swallowed here.
-fn gui_idle_loop(
-    gui: &mut Gui,
-    default_framebuffer: &ppu::rendering::RawFramebuffer,
-) -> RSnesEvent {
+fn gui_idle_loop(gui: &mut Gui, default_framebuffer: &ppu::rendering::RawFramebuffer) -> IdleExit {
     use apu::jingle::IdleJingle;
 
     /// Silence on the logo screen before the music starts.
@@ -165,12 +169,14 @@ fn gui_idle_loop(
     const CHUNK_FRAMES: usize = 1_024;
 
     gui.set_rom_title(None);
+    #[cfg(feature = "plugins")]
+    gui.set_plugin_loading(true);
 
     let idle_start = Instant::now();
     let mut jingle: Option<IdleJingle> = None;
     let mut jingle_failed = false;
 
-    loop {
+    let ev = loop {
         let frame_start = Instant::now();
 
         // Render the logo + overlays; this also polls input (routed
@@ -178,20 +184,17 @@ fn gui_idle_loop(
         // the overlay will say so if the user opens it.
         let events = gui.update(default_framebuffer, GuiFrameData::default());
 
+        let mut terminal = None;
         for event in events {
             match event {
-                // Input-only events are meaningless without a game loaded.
-                RSnesEvent::ButtonDown | RSnesEvent::ButtonUp => {}
-                #[cfg(feature = "plugins")]
-                RSnesEvent::RunPluginDefault => {}
-                // Everything the outer loop cares about (Quit, Close,
-                // LoadRom, ...) ends the idle state; stop the jingle
-                // stream before handing the event back.
-                ev => {
-                    gui.audio_stop();
-                    return ev;
-                }
+                RSnesEvent::Quit => terminal = Some(RSnesEvent::Quit),
+                RSnesEvent::Close => terminal = Some(RSnesEvent::Close),
+                RSnesEvent::LoadRom { path } => terminal = Some(RSnesEvent::LoadRom { path }),
+                _ => {}
             }
+        }
+        if let Some(ev) = terminal {
+            break ev;
         }
 
         // Boot the jingle APU once the delay has passed. A boot failure
@@ -233,6 +236,13 @@ fn gui_idle_loop(
         if elapsed < Gui::FRAME_DURATION {
             std::thread::sleep(Duration::from_secs_f64(Gui::FRAME_DURATION - elapsed));
         }
+    };
+
+    // Carry any granted plugin back to `gui_loop` alongside the exit event.
+    gui.audio_stop();
+    cfg_select! {
+        feature = "plugins" => (ev, gui.take_granted_plugin()),
+        _ => ev,
     }
 }
 
@@ -251,7 +261,21 @@ fn gui_loop(
         // guaranteeing that the `RSnes` is destructed when
         // we leave the loop
         let ev = match rsnes_core.take() {
-            None => gui_idle_loop(&mut gui, DEFAULT_FRAMEBUFFER),
+            None => {
+                let idle_exit = gui_idle_loop(&mut gui, DEFAULT_FRAMEBUFFER);
+                cfg_select! {
+                    feature = "plugins" => {
+                        let (ev, new_plugin) = idle_exit;
+                        // A freshly granted plugin replaces whatever we were holding;
+                        // neither has been injected/init'd yet, so nothing to run_exit.
+                        if new_plugin.is_some() {
+                            plugin = new_plugin;
+                        }
+                        ev
+                    },
+                    _ => idle_exit,
+                }
+            }
 
             Some(emu) => {
                 let ret_ev = cfg_select! {

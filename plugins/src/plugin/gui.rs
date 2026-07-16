@@ -6,11 +6,20 @@ use crate::{
     plugin::Plugin,
 };
 
+/// The user's decision on a permission request. `Pending` until a button is
+/// clicked; the host reads this after each frame to know what to do.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum PermOutcome {
+    #[default]
+    Pending,
+    Granted,
+    Denied,
+}
+
 pub struct PluginPermRequest<'a> {
     pub plugin: &'a Plugin,
-    pub allow_all: bool,
-
     pub show_none: bool,
+    pub outcome: PermOutcome,
 }
 
 impl<'a> PluginPermRequest<'a> {
@@ -81,18 +90,15 @@ impl<'a> PluginPermRequest<'a> {
             ui.label(Self::perm_label(perm, label));
         });
     }
-    pub fn show_gui(&mut self, ui: &mut egui::Ui) {
-        let close = |ui: &mut egui::Ui| {
-            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
-        };
 
+    pub fn show_gui(&mut self, ui: &mut egui::Ui) {
         ui.separator();
 
         ui.label(RichText::new("Requested permissions").heading());
         let RSnesPermissions { internal, external } = &self.plugin.table.perms;
 
         self.force_show_perm_collapsible(ui, internal, "Internal", |ui, internal| {
-            // we intentionally destructure the stuct listing out all fields (without `..`),
+            // we intentionally destructure the struct listing out all fields (without `..`),
             // so that we get a compile error in case we forget to list a field in the
             // destructure (and a warning if we write it just below but don't use it).
             // This guarantees that we render all requested permissions in the GUI,
@@ -168,12 +174,10 @@ impl<'a> PluginPermRequest<'a> {
 
         ui.horizontal(|ui| {
             if ui.button("Grant requested permissions").clicked() {
-                self.allow_all = true;
-                close(ui);
+                self.outcome = PermOutcome::Granted;
             }
             if ui.button("Cancel plugin execution").clicked() {
-                self.allow_all = false;
-                close(ui);
+                self.outcome = PermOutcome::Denied;
             }
         });
     }
