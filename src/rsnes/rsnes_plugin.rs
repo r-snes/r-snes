@@ -10,8 +10,8 @@ use piccolo::Table;
 use piccolo::Value;
 use piccolo::error::LuaError;
 use plugins::perm_tree::BusPermissions;
-use plugins::perm_tree::FileSystemPermissions;
 use plugins::perm_tree::FilePermissions;
+use plugins::perm_tree::FileSystemPermissions;
 use plugins::perm_tree::filesystem::FileReadWriteOptions;
 use plugins::permission::Permission;
 use plugins::permission::helpers::AllOr;
@@ -215,11 +215,7 @@ impl RSnesCore {
         ret
     }
 
-    fn add_file_perms<'gc>(
-        ctx: Context<'gc>,
-        tab: Table<'gc>,
-        perms: &AllOr<FilePermissions>,
-    ) {
+    fn add_file_perms<'gc>(ctx: Context<'gc>, tab: Table<'gc>, perms: &AllOr<FilePermissions>) {
         match perms {
             AllOr::All => todo!("handle 'all' file perms"),
             AllOr::Inner(FilePermissions { files }) => {
@@ -285,22 +281,29 @@ impl RSnesCore {
 
                 if options.can_read() {
                     let clone = file.clone();
-                    ret.set_field(ctx, "read", Callback::from_fn(ctx.mutation(), move |ctx, _, mut stack| {
-                        let ret = match stack.pop_front() {
-                            Some(Value::String(s)) if s.as_bytes() == b"a" => {
-                                let mut file_mut = clone.borrow_mut();
-                                let mut buf = Vec::new();
-                                match file_mut.read_to_end(&mut buf) {
-                                    Err(_) => Value::Nil,
-                                    Ok(_) => Value::String(piccolo::String::from_buffer(ctx.mutation(), buf.into_boxed_slice())),
+                    ret.set_field(
+                        ctx,
+                        "read",
+                        Callback::from_fn(ctx.mutation(), move |ctx, _, mut stack| {
+                            let ret = match stack.pop_front() {
+                                Some(Value::String(s)) if s.as_bytes() == b"a" => {
+                                    let mut file_mut = clone.borrow_mut();
+                                    let mut buf = Vec::new();
+                                    match file_mut.read_to_end(&mut buf) {
+                                        Err(_) => Value::Nil,
+                                        Ok(_) => Value::String(piccolo::String::from_buffer(
+                                            ctx.mutation(),
+                                            buf.into_boxed_slice(),
+                                        )),
+                                    }
                                 }
-                            }
-                            _ => Value::Nil,
-                        };
+                                _ => Value::Nil,
+                            };
 
-                        stack.replace(ctx, ret);
-                        Ok(CallbackReturn::Return)
-                    }));
+                            stack.replace(ctx, ret);
+                            Ok(CallbackReturn::Return)
+                        }),
+                    );
                 }
             }
             Err(err) => {

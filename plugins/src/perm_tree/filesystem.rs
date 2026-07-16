@@ -615,10 +615,7 @@ mod test {
                         mode: OverwriteMode::Append,
                     },
                 ),
-                (
-                    "rdonly".into(),
-                    FileReadWriteOptions::ReadOnly,
-                )
+                ("rdonly".into(), FileReadWriteOptions::ReadOnly),
             ]),
         };
 
