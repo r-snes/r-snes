@@ -136,7 +136,7 @@ pub struct FileSystemPermissions {
 
 #[derive(Default, PartialEq, Eq, Debug)]
 pub struct FileWritePermissions {
-    pub files: HashMap<PathBuf, self::filesystem::FileWriteOptions>,
+    pub files: HashMap<PathBuf, self::filesystem::FileReadWriteOptions>,
 }
 
 #[cfg(test)]

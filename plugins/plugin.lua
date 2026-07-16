@@ -67,7 +67,7 @@ end
 -- so instead we manually call file.clear() to clear
 -- the file we are going to write to
 write_opts = {
-    mode = "start",
+    overwrite_mode = "start",
     create = true,
 }
 

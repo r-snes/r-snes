@@ -12,7 +12,7 @@ use piccolo::error::LuaError;
 use plugins::perm_tree::BusPermissions;
 use plugins::perm_tree::FileSystemPermissions;
 use plugins::perm_tree::FileWritePermissions;
-use plugins::perm_tree::filesystem::FileWriteOptions;
+use plugins::perm_tree::filesystem::FileReadWriteOptions;
 use plugins::permission::Permission;
 use plugins::permission::helpers::AllOr;
 use plugins::plugin::Plugin;
@@ -247,7 +247,7 @@ impl RSnesCore {
     fn create_file_write_table<'gc>(
         ctx: Context<'gc>,
         filepath: &PathBuf,
-        options: FileWriteOptions,
+        options: FileReadWriteOptions,
     ) -> Table<'gc> {
         let ret = Table::new(ctx.mutation());
 

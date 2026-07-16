@@ -144,11 +144,14 @@ impl<'a> PluginPermRequest<'a> {
                                 ui.spacing_mut().item_spacing.x = 0.;
                                 ui.label(RichText::new(format!("{file:?}")).monospace());
                                 let label = match options {
-                                    FileWriteOptions::NewOnly => "NewOnly",
-                                    FileWriteOptions::CanOverwrite { create, mode } => &format!(
-                                        ": {}{mode:?}",
-                                        if *create { "Create + " } else { "" }
-                                    ),
+                                    FileReadWriteOptions::NewOnly => "NewOnly",
+                                    FileReadWriteOptions::ReadOnly => "ReadOnly",
+                                    FileReadWriteOptions::CanOverwrite { create, mode } => {
+                                        &format!(
+                                            ": {}{mode:?}",
+                                            if *create { "Create + " } else { "" }
+                                        )
+                                    }
                                 };
                                 ui.label(label);
                             });
