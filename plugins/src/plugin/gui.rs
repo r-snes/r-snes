@@ -132,9 +132,8 @@ impl<'a> PluginPermRequest<'a> {
 
             self.show_perm_bool(ui, *http, "HTTP");
             self.show_perm_collapsible(ui, filesystem, "Filesystem", |ui, fs| {
-                let FileSystemPermissions { read, write } = fs;
-                self.show_perm_bool(ui, *read, "Read");
-                self.show_perm_collapsible(ui, write, "Write", |ui, write| match write {
+                let FileSystemPermissions { files } = fs;
+                self.show_perm_collapsible(ui, files, "Files", |ui, write| match write {
                     AllOr::All => {
                         ui.label(RichText::new("all").strong());
                     }

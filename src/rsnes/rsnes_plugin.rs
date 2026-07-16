@@ -11,7 +11,7 @@ use piccolo::Value;
 use piccolo::error::LuaError;
 use plugins::perm_tree::BusPermissions;
 use plugins::perm_tree::FileSystemPermissions;
-use plugins::perm_tree::FileWritePermissions;
+use plugins::perm_tree::FilePermissions;
 use plugins::perm_tree::filesystem::FileReadWriteOptions;
 use plugins::permission::Permission;
 use plugins::permission::helpers::AllOr;
@@ -19,6 +19,7 @@ use plugins::plugin::Plugin;
 use std::cell::RefCell;
 use std::fs::File;
 use std::fs::OpenOptions;
+use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
 use std::io::Write;
@@ -207,24 +208,21 @@ impl RSnesCore {
     fn create_fs_table<'gc>(ctx: Context<'gc>, perms: &FileSystemPermissions) -> Table<'gc> {
         let ret = Table::new(ctx.mutation());
 
-        if !perms.write.is_none() {
-            Self::add_write_perms(ctx, ret, &perms.write);
-        }
-        if !perms.read.is_none() {
-            Self::add_read_perms(ctx, ret, &perms.read);
+        if !perms.files.is_none() {
+            Self::add_file_perms(ctx, ret, &perms.files);
         }
 
         ret
     }
 
-    fn add_write_perms<'gc>(
+    fn add_file_perms<'gc>(
         ctx: Context<'gc>,
         tab: Table<'gc>,
-        perms: &AllOr<FileWritePermissions>,
+        perms: &AllOr<FilePermissions>,
     ) {
         match perms {
-            AllOr::All => todo!("handle 'all' write perms"),
-            AllOr::Inner(FileWritePermissions { files }) => {
+            AllOr::All => todo!("handle 'all' file perms"),
+            AllOr::Inner(FilePermissions { files }) => {
                 let files_tab = Table::new(ctx.mutation());
                 tab.set_field(ctx, "files", files_tab);
 
@@ -236,7 +234,7 @@ impl RSnesCore {
                                 ctx.mutation(),
                                 filepath.as_os_str().as_encoded_bytes(),
                             ), // TODO: windows
-                            Self::create_file_write_table(ctx, filepath, *options),
+                            Self::create_file_table(ctx, filepath, *options),
                         )
                         .expect("inserting with a string key cannot fail");
                 }
@@ -244,7 +242,7 @@ impl RSnesCore {
         }
     }
 
-    fn create_file_write_table<'gc>(
+    fn create_file_table<'gc>(
         ctx: Context<'gc>,
         filepath: &PathBuf,
         options: FileReadWriteOptions,
@@ -255,32 +253,54 @@ impl RSnesCore {
             Ok(file) => {
                 let file = Rc::new(RefCell::new(file));
 
-                let write_clone = file.clone();
-                ret.set_field(
-                    ctx,
-                    "write",
-                    Callback::from_fn(ctx.mutation(), move |_ctx, _, mut stack| {
-                        let mut file_mut = write_clone.borrow_mut();
+                if options.can_write() {
+                    let write_clone = file.clone();
+                    ret.set_field(
+                        ctx,
+                        "write",
+                        Callback::from_fn(ctx.mutation(), move |_ctx, _, mut stack| {
+                            let mut file_mut = write_clone.borrow_mut();
 
-                        stack[..].reverse();
-                        while let Some(value) = stack.pop_back() {
-                            match value {
-                                Value::String(s) => file_mut.write_all(s.as_bytes()).unwrap(),
-                                Value::Integer(i) => {
-                                    file_mut.write_all(i.to_string().as_bytes()).unwrap()
+                            stack[..].reverse();
+                            while let Some(value) = stack.pop_back() {
+                                match value {
+                                    Value::String(s) => file_mut.write_all(s.as_bytes()).unwrap(),
+                                    Value::Integer(i) => {
+                                        file_mut.write_all(i.to_string().as_bytes()).unwrap()
+                                    }
+                                    Value::Number(f) => {
+                                        file_mut.write_all(f.to_string().as_bytes()).unwrap()
+                                    }
+                                    _ => {}
                                 }
-                                Value::Number(f) => {
-                                    file_mut.write_all(f.to_string().as_bytes()).unwrap()
-                                }
-                                _ => {}
                             }
-                        }
-                        Ok(CallbackReturn::Return)
-                    }),
-                );
+                            Ok(CallbackReturn::Return)
+                        }),
+                    );
 
-                if options.can_seek() {
-                    Self::add_write_seek_perms(ctx, ret, &file);
+                    if options.can_seek() {
+                        Self::add_write_seek_perms(ctx, ret, &file);
+                    }
+                }
+
+                if options.can_read() {
+                    let clone = file.clone();
+                    ret.set_field(ctx, "read", Callback::from_fn(ctx.mutation(), move |ctx, _, mut stack| {
+                        let ret = match stack.pop_front() {
+                            Some(Value::String(s)) if s.as_bytes() == b"a" => {
+                                let mut file_mut = clone.borrow_mut();
+                                let mut buf = Vec::new();
+                                match file_mut.read_to_end(&mut buf) {
+                                    Err(_) => Value::Nil,
+                                    Ok(_) => Value::String(piccolo::String::from_buffer(ctx.mutation(), buf.into_boxed_slice())),
+                                }
+                            }
+                            _ => Value::Nil,
+                        };
+
+                        stack.replace(ctx, ret);
+                        Ok(CallbackReturn::Return)
+                    }));
                 }
             }
             Err(err) => {
@@ -364,10 +384,6 @@ impl RSnesCore {
                 Ok(CallbackReturn::Return)
             }),
         );
-    }
-
-    fn add_read_perms<'gc>(_: Context<'gc>, _: Table<'gc>, _: &bool) {
-        eprintln!("todo: handle read permissions")
     }
 }
 

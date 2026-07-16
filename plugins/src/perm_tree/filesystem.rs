@@ -3,7 +3,7 @@ use std::{path::PathBuf, string::FromUtf8Error};
 use piccolo::{Context, Value};
 use product_order::combine_ordering;
 
-use super::{FileWritePermissions, PermTreeFromAllOr, PermTreeNode};
+use super::{FilePermissions, PermTreeFromAllOr, PermTreeNode};
 
 /// All different options to open 1 file for writing.
 ///
@@ -177,7 +177,7 @@ impl PartialOrd for FileReadWriteOptions {
     }
 }
 
-impl PartialOrd for FileWritePermissions {
+impl PartialOrd for FilePermissions {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         use std::cmp::Ordering::*;
 
@@ -209,7 +209,7 @@ impl PartialOrd for FileWritePermissions {
     }
 }
 
-impl PermTreeFromAllOr for FileWritePermissions {
+impl PermTreeFromAllOr for FilePermissions {
     fn from_lua_inner<'gc>(ctx: Context<'gc>, value: Value<'gc>) -> Option<Self> {
         let Value::Table(tab) = value else {
             eprintln!("write permissions should be a table");
@@ -355,12 +355,12 @@ mod test {
 
     use super::*;
     use crate::{
-        perm_tree::{FileWritePermissions, test::build_from_lua},
+        perm_tree::{FilePermissions, test::build_from_lua},
         permission::helpers::AllOr,
     };
 
-    fn build_file_perms(lua: &str) -> AllOr<FileWritePermissions> {
-        build_from_lua(lua, <AllOr<FileWritePermissions> as PermTreeNode>::from_lua)
+    fn build_file_perms(lua: &str) -> AllOr<FilePermissions> {
+        build_from_lua(lua, <AllOr<FilePermissions> as PermTreeNode>::from_lua)
             .expect("valid construction")
     }
 
@@ -381,7 +381,7 @@ mod test {
             assert!(t.files.is_empty());
             assert_eq!(
                 t,
-                FileWritePermissions {
+                FilePermissions {
                     files: HashMap::new()
                 },
             );
@@ -583,7 +583,7 @@ mod test {
             }"#,
         );
 
-        let expected = FileWritePermissions {
+        let expected = FilePermissions {
             files: HashMap::from([
                 ("somefile.txt".into(), FileReadWriteOptions::default()),
                 (

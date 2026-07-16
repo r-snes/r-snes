@@ -130,12 +130,11 @@ pub struct ExternalPermissions {
 
 #[derive(..PermTree)]
 pub struct FileSystemPermissions {
-    pub read: bool,
-    pub write: AllOr<FileWritePermissions>,
+    pub files: AllOr<FilePermissions>,
 }
 
 #[derive(Default, PartialEq, Eq, Debug)]
-pub struct FileWritePermissions {
+pub struct FilePermissions {
     pub files: HashMap<PathBuf, self::filesystem::FileReadWriteOptions>,
 }
 
@@ -193,8 +192,7 @@ mod test {
                 },
                 external = {
                     filesystem = {
-                        read = "all",
-                        write = "none",
+                        files = "all",
                     },
                 },
             }"#,
@@ -212,8 +210,7 @@ mod test {
             },
             external: ExternalPermissions {
                 filesystem: FileSystemPermissions {
-                    read: true,
-                    write: Permission::none(),
+                    files: Permission::all(),
                 },
                 ..Permission::none()
             },
