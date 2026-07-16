@@ -138,9 +138,8 @@ impl<'a> PluginPermRequest<'a> {
 
             self.show_perm_bool(ui, *http, "HTTP");
             self.show_perm_collapsible(ui, filesystem, "Filesystem", |ui, fs| {
-                let FileSystemPermissions { read, write } = fs;
-                self.show_perm_bool(ui, *read, "Read");
-                self.show_perm_collapsible(ui, write, "Write", |ui, write| match write {
+                let FileSystemPermissions { files } = fs;
+                self.show_perm_collapsible(ui, files, "Files", |ui, write| match write {
                     AllOr::All => {
                         ui.label(RichText::new("all").strong());
                     }
@@ -150,11 +149,14 @@ impl<'a> PluginPermRequest<'a> {
                                 ui.spacing_mut().item_spacing.x = 0.;
                                 ui.label(RichText::new(format!("{file:?}")).monospace());
                                 let label = match options {
-                                    FileWriteOptions::NewOnly => "NewOnly",
-                                    FileWriteOptions::CanOverwrite { create, mode } => &format!(
-                                        ": {}{mode:?}",
-                                        if *create { "Create + " } else { "" }
-                                    ),
+                                    FileReadWriteOptions::NewOnly => "NewOnly",
+                                    FileReadWriteOptions::ReadOnly => "ReadOnly",
+                                    FileReadWriteOptions::CanOverwrite { create, mode } => {
+                                        &format!(
+                                            ": {}{mode:?}",
+                                            if *create { "Create + " } else { "" }
+                                        )
+                                    }
                                 };
                                 ui.label(label);
                             });
