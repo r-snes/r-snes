@@ -627,7 +627,8 @@ impl MetaInstruction {
                 ret += Self::EndCycle(quote!(Internal)).expand(pstate);
                 ret += InstrBody::inc_addrbus_direct(quote!(cpu.registers.X));
                 ret += Self::Fetch8Into(quote!(*cpu.internal_data_bus.lo_mut())).expand(pstate);
-                ret += InstrBody::inc_addrbus_direct(quote!(1));
+                // This +1 is always done with page wrapping, which is undocumented CPU behaviour
+                ret += AddrWrappingMode::PageWrap.increment_addrbus(quote!(1));
                 ret += Self::Fetch8Into(quote!(*cpu.internal_data_bus.hi_mut())).expand(pstate);
                 ret += quote! {
                     cpu.addr_bus.bank = cpu.registers.DB;
