@@ -194,40 +194,12 @@ impl SubBcd for u8 {
 
 impl SubBcd for u16 {
     fn sub_bcd(self, other: Self, carry_in: bool) -> (Self, bool, bool) {
-        use std::num::Wrapping as W;
-        let op = !other;
-        let a = self;
+        use common::u16_split::U16Split;
 
-        let mut ret: W<Self> = W(0);
+        let (res_lo, c, _) = self.lo().sub_bcd(*other.lo(), carry_in);
+        let (res_hi, c, v) = self.hi().sub_bcd(*other.hi(), c);
 
-        ret += W(a & 0x000F) + W(op & 0x000F) + W(carry_in as Self);
-        if ret.0 <= 0x000F {
-            ret -= 0x6;
-        }
-
-        ret += W(a & 0x00F0) + W(op & 0x00F0);
-        if ret.0 <= 0x00FF {
-            ret -= 0x60;
-        }
-
-        ret += W(a & 0x0F00) + W(op & 0x0F00);
-        if ret.0 <= 0x0FFF {
-            ret -= 0x600;
-        }
-
-        let ret = ret.0;
-        let (ret, c1) = ret.overflowing_add(a & 0xF000);
-        let (ret, c2) = ret.overflowing_add(op & 0xF000);
-
-        let c = c1 || c2;
-        let v = ((a ^ ret) & (op ^ ret)).is_neg();
-
-        let mut ret = W(ret);
-        if !c {
-            ret -= 0x6000;
-        }
-
-        (ret.0, c, v)
+        (u16::from_le_bytes([res_lo, res_hi]), c, v)
     }
 }
 
@@ -280,5 +252,14 @@ mod test {
         assert_eq!(res, 0x9999);
         assert!(!c_out);
         assert!(!overflow);
+    }
+
+    #[test]
+    fn snes_test_61a() {
+        let (res, c_out, v_out) = 0xAB1D_u16.sub_bcd(0xF1E2, true);
+
+        assert_eq!(res, 0x59DB);
+        assert!(!c_out);
+        assert!(!v_out);
     }
 }
