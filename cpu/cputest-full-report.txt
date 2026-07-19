@@ -1,13 +1,4 @@
-1599/1610 passed (99.3167701863354%), 11 failures
+1608/1610 passed (99.87577639751552%), 2 failures
 All failures listed below 1 per line:
-962
-964
-967
-985
-988
-1003
-1005
-1007
-1094
 1096
 1562

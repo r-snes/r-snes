@@ -99,7 +99,7 @@ cpu_instr!(plp {
     }
 });
 
-// Push effective address: reads an immediat 16 bit operand and pushes it
+// Push effective address: reads an immediate 16 bit operand and pushes it
 cpu_instr!(pea {
     meta FETCH16_IMM_INTO cpu.internal_data_bus;
     meta PUSHN16 cpu.internal_data_bus;

@@ -96,10 +96,6 @@ cpu_instr_no_inc_pc!(jsr_abs_ind_xind {
     cpu.addr_bus.addr = cpu.internal_data_bus.wrapping_add(cpu.registers.X);
 
     meta FETCH16_INTO cpu.registers.PC;
-
-    if cpu.registers.E {
-        *cpu.registers.S.hi_mut() = 0x01;
-    }
 });
 
 // JSL: jump stack relative long
@@ -116,10 +112,6 @@ cpu_instr_no_inc_pc!(jsl {
     meta PUSHN16 cpu.registers.PC.wrapping_add(3);
 
     cpu.registers.PC = cpu.internal_data_bus;
-
-    if cpu.registers.E {
-        *cpu.registers.S.hi_mut() = 0x01;
-    }
 });
 
 // RTS: return from subroutine (return from a JSR).
@@ -149,9 +141,6 @@ cpu_instr_no_inc_pc!(rtl {
 
     // readjust PC: the pushed value is 1 byte before the next opcode
     cpu.registers.PC = cpu.registers.PC.wrapping_add(1);
-
-    // *cpu.registers.S.hi_mut() = 0x01;
-    // see https://github.com/bsnes-emu/bsnes/issues/374
 });
 
 #[cfg(test)]

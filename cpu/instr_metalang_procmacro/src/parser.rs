@@ -41,6 +41,8 @@ pub(crate) struct ParserState {
     pub operand_size: OpSize,
 
     wrapping_mode: AddrWrappingMode,
+
+    has_stack_native: bool,
 }
 
 #[derive(PartialEq, Eq)]
@@ -117,6 +119,7 @@ impl Default for ParserState {
             imm_offset: VarWidth::constw(1),   // at instr start, the first imm value is 1 after PC
             operand_size: OpSize::Constant,
             wrapping_mode: AddrWrappingMode::BankWrap,
+            has_stack_native: false,
         }
     }
 }
@@ -799,6 +802,8 @@ impl MetaInstruction {
                 ret += Self::EndCycle(quote! { Read }).expand(pstate);
             }
             Self::PullN8 => {
+                pstate.has_stack_native = true;
+
                 ret += InstrBody::post(quote! {
                     // stack grows downwards
                     cpu.registers.S = cpu.registers.S.wrapping_add(1);
@@ -871,6 +876,8 @@ impl MetaInstruction {
                 ret += Self::Write8(data).expand(pstate);
             }
             Self::PushN8(data) => {
+                pstate.has_stack_native = true;
+
                 ret += Self::SetAddrModeStack.expand(pstate);
                 // stack grows downwards
                 ret += InstrBody::post(quote! {
@@ -1175,6 +1182,25 @@ impl Instr {
             ) => {
                 *i_s.cycles.last_mut().expect("at least 1 cycle") += o_s;
                 *i_l.cycles.last_mut().expect("at least 1 cycle") += o_l;
+            }
+        }
+
+        if pstate.has_stack_native {
+            let stack_page1_reset = quote! {
+                if cpu.registers.E {
+                    *cpu.registers.S.hi_mut() = 0x01;
+                }
+            };
+
+            match &mut ret.body {
+                VarWidth::ConstWidth(ib) => {
+                    *ib.cycles.last_mut().expect("at least 1 cycle") += stack_page1_reset;
+                }
+                VarWidth::VarWidth { short: s, long: l, .. } => {
+                    *s.cycles.last_mut().expect("at least 1 cycle") += stack_page1_reset.clone();
+                    *l.cycles.last_mut().expect("at least 1 cycle") += stack_page1_reset;
+
+                }
             }
         }
 
