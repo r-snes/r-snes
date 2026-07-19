@@ -1,3 +1,1 @@
-1609/1610 passed (99.93788819875776%), 1 failures
-All failures listed below 1 per line:
-1096
+1610/1610 passed (100%), 0 failures

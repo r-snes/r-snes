@@ -43,6 +43,11 @@ cpu_instr_no_inc_pc!(rti {
 
     // emu mode doesn't pull PB, goes straight to opcode fetch
     if cpu.registers.E {
+        // re-force X and M to 1 if in emulation mode: they can't be set to 0
+        if cpu.registers.E {
+            cpu.registers.P.X = true;
+            cpu.registers.P.M = true;
+        }
         return opcode_fetch(cpu);
     }
 
