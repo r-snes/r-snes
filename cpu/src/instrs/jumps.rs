@@ -97,9 +97,9 @@ cpu_instr_no_inc_pc!(jsr_abs_ind_xind {
 
     meta FETCH16_INTO cpu.registers.PC;
 
-    // *cpu.registers.S.hi_mut() = 0x01;
-    // We may or may not to uncomment the above, I don't know for now
-    // See https://github.com/bsnes-emu/bsnes/issues/374 for info
+    if cpu.registers.E {
+        *cpu.registers.S.hi_mut() = 0x01;
+    }
 });
 
 // JSL: jump stack relative long
@@ -117,8 +117,9 @@ cpu_instr_no_inc_pc!(jsl {
 
     cpu.registers.PC = cpu.internal_data_bus;
 
-    // *cpu.registers.S.hi_mut() = 0x01;
-    // see https://github.com/bsnes-emu/bsnes/issues/374
+    if cpu.registers.E {
+        *cpu.registers.S.hi_mut() = 0x01;
+    }
 });
 
 // RTS: return from subroutine (return from a JSR).
