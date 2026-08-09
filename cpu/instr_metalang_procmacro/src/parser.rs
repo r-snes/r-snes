@@ -1196,10 +1196,11 @@ impl Instr {
                 VarWidth::ConstWidth(ib) => {
                     *ib.cycles.last_mut().expect("at least 1 cycle") += stack_page1_reset;
                 }
-                VarWidth::VarWidth { short: s, long: l, .. } => {
+                VarWidth::VarWidth {
+                    short: s, long: l, ..
+                } => {
                     *s.cycles.last_mut().expect("at least 1 cycle") += stack_page1_reset.clone();
                     *l.cycles.last_mut().expect("at least 1 cycle") += stack_page1_reset;
-
                 }
             }
         }
