@@ -316,7 +316,16 @@ impl PPU {
             // ==========================
             // Status
             // ==========================
-            0x213E => Self::unimplemented_read_only(addr), // TODO
+            0x213E => {
+                let mut val: u8 = 0x01; // PPU1 version
+                if self.oam.time_over {
+                    val |= 0x80;
+                }
+                if self.oam.range_over {
+                    val |= 0x40;
+                }
+                val
+            }
             0x213F => Self::unimplemented_read_only(addr), // TODO
 
             _ => {
@@ -367,6 +376,14 @@ impl PPU {
         if self.h_cycles >= self.scanline_length() {
             self.h_cycles = 0;
             self.scanline += 1;
+
+            // Update STAT77 sprite flags for the current line.
+            let objsel = self.regs.objsel;
+            let oamadd = self.regs.oamadd;
+            let (_, time_over, range_over) =
+                self.oam
+                    .eval_sprites_for_scanline(self.scanline as usize, objsel, oamadd);
+            self.oam.set_flags(time_over, range_over);
 
             let kind = if self.scanline >= SCANLINES_PER_FRAME {
                 self.scanline = 0;
