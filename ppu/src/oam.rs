@@ -46,6 +46,14 @@ pub struct OAM {
 
     /// True when the next OAMDATA write is the high byte of a table 1 pair.
     write_phase_high: bool,
+
+    /// STAT77 bit 7: set when more than 32 sprites were found on a scanline.
+    /// Latched via set_flags; read through $213E.
+    pub time_over: bool,
+
+    /// STAT77 bit 6: set when more than 34 sprite tiles were found on a scanline.
+    /// Latched via set_flags; read through $213E.
+    pub range_over: bool,
 }
 
 impl Default for OAM {
@@ -61,6 +69,8 @@ impl OAM {
             word_addr: 0,
             write_latch: 0,
             write_phase_high: false,
+            time_over: false,
+            range_over: false,
         }
     }
 
@@ -200,8 +210,11 @@ impl OAM {
     ///   index (OAMADDH bit 7 enables it, OAMADDL >> 1 gives the start sprite),
     ///   wrapping around all 128 sprites.
     /// - At most 32 sprites per scanline are kept; a 33rd sets `time_over`.
-    /// - Returns (visible sprites, time_over).
-    pub fn eval_sprites_for_scanline( &self, y: usize, objsel: u8, oamadd: u16) -> (Vec<(u8, Sprite)>, bool) {
+    /// - At most 34 sprite tiles (8-pixel slices) fit on a scanline; beyond
+    ///   that, `range_over` is set.
+    /// - Returns (visible sprites, time_over, range_over). The flags are not
+    ///   stored here (this borrows &self); call `set_flags` to latch them.
+    pub fn eval_sprites_for_scanline(&self, y: usize, objsel: u8, oamadd: u16) -> (Vec<(u8, Sprite)>, bool, bool) {
         let priority_rotation = (oamadd >> 8) & 0x01 != 0;
         let start = if priority_rotation {
             ((oamadd & 0xFF) >> 1) as usize & 0x7F
@@ -211,11 +224,13 @@ impl OAM {
 
         let mut visible: Vec<(u8, Sprite)> = Vec::with_capacity(32);
         let mut time_over = false;
+        let mut range_over = false;
+        let mut tile_count: u16 = 0;
 
         for i in 0..128usize {
             let idx = (start + i) & 0x7F;
             let sprite = self.get_sprite(idx as u8, objsel);
-            let (_, height) = Self::sprite_size(objsel, sprite.large);
+            let (width, height) = Self::sprite_size(objsel, sprite.large);
 
             // Y range check in wrapping u8 arithmetic (matches hardware).
             let dy = (y as u8).wrapping_sub(sprite.y);
@@ -228,10 +243,22 @@ impl OAM {
                 break;
             }
 
+            // Each visible sprite contributes width/8 tiles on this scanline.
+            tile_count += (width as u16) / 8;
+            if tile_count > 34 {
+                range_over = true;
+            }
+
             visible.push((idx as u8, sprite));
         }
 
-        (visible, time_over)
+        (visible, time_over, range_over)
+    }
+
+    /// Latch the time_over / range_over flags for STAT77 ($213E).
+    pub fn set_flags(&mut self, time_over: bool, range_over: bool) {
+        self.time_over = time_over;
+        self.range_over = range_over;
     }
 }
 
@@ -397,7 +424,7 @@ mod tests {
         let mut oam = make_oam();
         make_sprite_entry(&mut oam, 0, 0, 10, 0, 0, 0); // y=10, 8x8 -> rows 10-17
 
-        let (visible, over) = oam.eval_sprites_for_scanline(10, OBJSEL_8_16, 0);
+        let (visible, over, _) = oam.eval_sprites_for_scanline(10, OBJSEL_8_16, 0);
         assert_eq!(visible.len(), 1);
         assert_eq!(visible[0].0, 0);
         assert!(!over);
@@ -414,7 +441,7 @@ mod tests {
         for i in 0..33u8 {
             make_sprite_entry(&mut oam, i, 0, 0, 0, 0, 0);
         }
-        let (visible, over) = oam.eval_sprites_for_scanline(0, OBJSEL_8_16, 0);
+        let (visible, over, _) = oam.eval_sprites_for_scanline(0, OBJSEL_8_16, 0);
         assert_eq!(visible.len(), 32);
         assert!(over);
 
@@ -422,7 +449,7 @@ mod tests {
         for i in 0..32u8 {
             make_sprite_entry(&mut oam, i, 0, 0, 0, 0, 0);
         }
-        let (visible, over) = oam.eval_sprites_for_scanline(0, OBJSEL_8_16, 0);
+        let (visible, over, _) = oam.eval_sprites_for_scanline(0, OBJSEL_8_16, 0);
         assert_eq!(visible.len(), 32);
         assert!(!over);
     }
@@ -433,7 +460,7 @@ mod tests {
         let mut oam = make_oam();
         make_sprite_entry(&mut oam, 10, 0, 0, 0, 0, 0);
         let oamadd: u16 = (1 << 8) | 20; // enable + start sprite 10 (20 >> 1)
-        let (visible, _) = oam.eval_sprites_for_scanline(0, OBJSEL_8_16, oamadd);
+        let (visible, _, _) = oam.eval_sprites_for_scanline(0, OBJSEL_8_16, oamadd);
         assert_eq!(visible.len(), 1);
         assert_eq!(visible[0].0, 10);
     }
@@ -454,9 +481,48 @@ mod tests {
         make_sprite_entry(&mut oam, 0, 0, 0, 0, 0, 0);
         make_sprite_entry(&mut oam, 5, 0, 0, 0, 0, 0);
         make_sprite_entry(&mut oam, 2, 0, 0, 0, 0, 0);
-        let (visible, _) = oam.eval_sprites_for_scanline(0, OBJSEL_8_16, 0);
+        let (visible, _, _) = oam.eval_sprites_for_scanline(0, OBJSEL_8_16, 0);
         assert_eq!(visible[0].0, 0);
         assert_eq!(visible[1].0, 2);
         assert_eq!(visible[2].0, 5);
+    }
+
+    // range_over is set when more than 34 tiles (8px slices) fall on a line.
+    // Small 8x8 sprites can't trigger it (the 32-sprite time_over limit hits
+    // first), so use large 64px-wide sprites: 5 * 8 = 40 tiles > 34, with only
+    // 5 sprites. OBJSEL mode 2 gives large = 64x64.
+    #[test]
+    fn test_eval_range_over() {
+        const OBJSEL_8_64: u8 = 2 << 5; // small 8x8, large 64x64
+
+        let mut oam = make_oam();
+        for i in 0..5u8 {
+            make_sprite_entry(&mut oam, i, 0, 0, 0, 0, 0b10); // large bit set
+        }
+        let (_, time_over, range_over) = oam.eval_sprites_for_scanline(0, OBJSEL_8_64, 0);
+        assert!(!time_over);
+        assert!(range_over);
+
+        // 4 large sprites = 32 tiles, not over.
+        let mut oam = make_oam();
+        for i in 0..4u8 {
+            make_sprite_entry(&mut oam, i, 0, 0, 0, 0, 0b10);
+        }
+        let (_, _, range_over) = oam.eval_sprites_for_scanline(0, OBJSEL_8_64, 0);
+        assert!(!range_over);
+    }
+
+    // set_flags latches the STAT77 flags.
+    #[test]
+    fn test_set_flags() {
+        let mut oam = make_oam();
+        assert!(!oam.time_over);
+        assert!(!oam.range_over);
+        oam.set_flags(true, true);
+        assert!(oam.time_over);
+        assert!(oam.range_over);
+        oam.set_flags(false, false);
+        assert!(!oam.time_over);
+        assert!(!oam.range_over);
     }
 }
