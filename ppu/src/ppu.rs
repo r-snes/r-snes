@@ -1,5 +1,7 @@
 use crate::cgram::CGRAM;
 use crate::constants::*;
+use crate::constants::SCANLINES_PER_FRAME;
+use crate::oam::OAM;
 use crate::registers::PPURegisters;
 use crate::vram::VRAM;
 use common::u16_split::U16Split;
@@ -30,6 +32,7 @@ pub struct PPU {
     pub regs: PPURegisters,
     pub vram: VRAM,
     pub cgram: CGRAM,
+    pub oam: OAM,
 
     // Timing
     pub scanline: u16,
@@ -51,6 +54,7 @@ impl PPU {
             regs: PPURegisters::new(),
             vram: VRAM::new(),
             cgram: CGRAM::new(),
+            oam: OAM::new(),
             scanline: 0,
             h_cycles: 0,
             frame: 0,
@@ -69,10 +73,16 @@ impl PPU {
             // ==========================
             // OAM
             // ==========================
-            0x2101 => self.regs.objsel = value,           // TODO
-            0x2102 => *self.regs.oamadd.lo_mut() = value, // TODO
-            0x2103 => *self.regs.oamadd.hi_mut() = value & 0x01, // TODO
-            0x2104 => self.regs.oamdata = value,          // TODO
+            0x2101 => self.regs.objsel = value,
+            0x2102 => {
+                *self.regs.oamadd.lo_mut() = value;
+                self.oam.write_addr(self.regs.oamadd);
+            }
+            0x2103 => {
+                *self.regs.oamadd.hi_mut() = value & 0x01;
+                self.oam.write_addr(self.regs.oamadd);
+            }
+            0x2104 => self.oam.write_data(value),
 
             // ==========================
             // BACKGROUNDS
@@ -283,7 +293,7 @@ impl PPU {
             // ==========================
             // OAM
             // ==========================
-            0x2138 => Self::unimplemented_read_only(addr), // TODO
+            0x2138 => self.oam.read_data(),
 
             // ==========================
             // VRAM
