@@ -452,10 +452,9 @@ mod tests {
     // $2101–$2104 - OAM
     // ============================================================
 
-    /// Writing $2101 must update objsel.
-    /// Writing $2102 must update the low byte of oamadd.
-    /// Writing $2103 must update the high byte of oamadd (only bit 0 is valid).
-    /// Writing $2104 must update oamdata.
+    // Writing $2101 must update objsel.
+    // Writing $2102/$2103 must update oamadd (only bit 0 of the high byte is valid).
+    // Writing $2104 twice must commit a table-1 word, readable back via $2138.
     #[test]
     fn test_write_oam_registers() {
         let mut ppu = PPU::new();
@@ -469,8 +468,18 @@ mod tests {
         ppu.write(0x2103, 0x01);
         assert_eq!(*ppu.regs.oamadd.hi(), 0x01);
 
-        ppu.write(0x2104, 0xBE);
-        assert_eq!(ppu.regs.oamdata, 0xBE);
+        // Point at OAM address 0 and write a full table-1 word (write-twice:
+        // low byte latched, high byte commits both). Then read it back.
+        ppu.write(0x2102, 0x00);
+        ppu.write(0x2103, 0x00);
+        ppu.write(0x2104, 0xBE); // low byte -> latched
+        ppu.write(0x2104, 0xEF); // high byte -> commits (0xBE, 0xEF)
+
+        // Reset the read address to 0 and read the two bytes back.
+        ppu.write(0x2102, 0x00);
+        ppu.write(0x2103, 0x00);
+        assert_eq!(ppu.read(0x2138), 0xBE);
+        assert_eq!(ppu.read(0x2138), 0xEF);
     }
 
     // ============================================================
