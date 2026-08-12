@@ -4,10 +4,34 @@ use crate::ppu::PPU;
 /// Raw byte array of the framebuffer in RGB888
 pub type RawFramebuffer = [u8; SCREEN_WIDTH * SCREEN_HEIGHT * 3];
 
+// ============================================================
+// Z-order (priority) values, mode 1 (BG1 + OBJ subset).
+// Higher = closer to the front. A pixel is only overwritten when the
+// incoming z is >= the z already stored for that column.
+//
+// Full mode-1 order (front to back), for reference:
+//   OBJ.3 > BG1.1 > BG2.1 > OBJ.2 > BG1.0 > BG2.0 > OBJ.1 >
+//   BG3.1 > BG4.1 > OBJ.0 > BG3.0 > BG4.0 > backdrop
+// Only BG1 and OBJ are rendered for now; the values are spaced so the other
+// layers slot in later without renumbering.
+// ============================================================
+pub const Z_BACKDROP: u8 = 0;
+pub const Z_OBJ0: u8 = 3;
+pub const Z_OBJ1: u8 = 6;
+pub const Z_BG1_LOW: u8 = 8;
+pub const Z_OBJ2: u8 = 9;
+pub const Z_BG1_HIGH: u8 = 11;
+pub const Z_OBJ3: u8 = 12;
+
 pub struct Renderer {
     pub framebuffer: Box<RawFramebuffer>, // back buffer, PPU writes here
     pub presented: Box<RawFramebuffer>,   // front buffer, GUI reads here
     pub current_brightness: u8,
+
+    /// Per-column z-order of the pixel currently written on the scanline
+    /// being rendered. Reset to Z_BACKDROP at the start of each scanline.
+    priority: Box<[u8; SCREEN_WIDTH]>,
+
     brightness_delay: u8,
 }
 
@@ -22,6 +46,7 @@ impl Renderer {
         Self {
             framebuffer: Box::new([0; SCREEN_WIDTH * SCREEN_HEIGHT * 3]),
             current_brightness: 15, // full brightness
+            priority: Box::new([Z_BACKDROP; SCREEN_WIDTH]),
             brightness_delay: 0,
             presented: Box::new([0; SCREEN_WIDTH * SCREEN_HEIGHT * 3]),
         }
@@ -44,6 +69,9 @@ impl Renderer {
 
         // Update brightness
         self.update_brightness(ppu.brightness());
+
+        // Reset per-column priorities for this scanline.
+        self.priority.fill(Z_BACKDROP);
 
         match ppu.regs.bg_mode() {
             0 => self.render_scanline_mode0(ppu, y),
@@ -95,6 +123,15 @@ impl Renderer {
         self.framebuffer[index] = r;
         self.framebuffer[index + 1] = g;
         self.framebuffer[index + 2] = b;
+    }
+
+    /// Write a pixel only if its z-order is at least the one already stored
+    /// for this column. On success, updates the stored z-order.
+    pub fn set_pixel_z(&mut self, x: usize, y: usize, r: u8, g: u8, b: u8, z: u8) {
+        if z >= self.priority[x] {
+            self.set_pixel(x, y, r, g, b);
+            self.priority[x] = z;
+        }
     }
 
     fn render_full_black(&mut self, y: usize) {
