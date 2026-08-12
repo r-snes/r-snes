@@ -68,10 +68,10 @@ impl OAM {
     // $2102/$2103 - OAMADDL/OAMADDH
     // ============================================================
 
-    /// Set the OAM byte address from the OAMADDL/H register pair (9-bit).
-    /// Resets the write-twice latch.
+    /// Set the OAM byte address from the OAMADDL/H register pair, covering
+    /// both tables (0-543). Resets the write-twice latch.
     pub fn write_addr(&mut self, oamadd: u16) {
-        self.word_addr = oamadd & 0x01FF;
+        self.word_addr = (oamadd as usize % OAM_SIZE) as u16;
         self.write_phase_high = false;
     }
 
@@ -189,6 +189,50 @@ impl OAM {
             _ => if large { (16, 16) } else { (8, 8) },
         }
     }
+
+    // ============================================================
+    // Per-scanline evaluation
+    // ============================================================
+
+    /// Evaluate which sprites are visible on scanline `y`.
+    ///
+    /// - Sprites are evaluated in order, starting from the priority-rotation
+    ///   index (OAMADDH bit 7 enables it, OAMADDL >> 1 gives the start sprite),
+    ///   wrapping around all 128 sprites.
+    /// - At most 32 sprites per scanline are kept; a 33rd sets `time_over`.
+    /// - Returns (visible sprites, time_over).
+    pub fn eval_sprites_for_scanline( &self, y: usize, objsel: u8, oamadd: u16) -> (Vec<(u8, Sprite)>, bool) {
+        let priority_rotation = (oamadd >> 8) & 0x01 != 0;
+        let start = if priority_rotation {
+            ((oamadd & 0xFF) >> 1) as usize & 0x7F
+        } else {
+            0
+        };
+
+        let mut visible: Vec<(u8, Sprite)> = Vec::with_capacity(32);
+        let mut time_over = false;
+
+        for i in 0..128usize {
+            let idx = (start + i) & 0x7F;
+            let sprite = self.get_sprite(idx as u8, objsel);
+            let (_, height) = Self::sprite_size(objsel, sprite.large);
+
+            // Y range check in wrapping u8 arithmetic (matches hardware).
+            let dy = (y as u8).wrapping_sub(sprite.y);
+            if dy >= height {
+                continue;
+            }
+
+            if visible.len() >= 32 {
+                time_over = true;
+                break;
+            }
+
+            visible.push((idx as u8, sprite));
+        }
+
+        (visible, time_over)
+    }
 }
 
 #[cfg(test)]
@@ -196,8 +240,29 @@ mod tests {
     use super::*;
 
     fn make_oam() -> OAM {
-        OAM::new()
+        let mut oam = OAM::new();
+        // Park every sprite off-screen (y=240) by default, so evaluation
+        // tests only see the sprites they explicitly place.
+        for i in 0..128 {
+            oam.data[i * 4 + 1] = 240;
+        }
+        oam
     }
+
+    fn make_sprite_entry(oam: &mut OAM, index: u8, x: u8, y: u8, tile: u8, attr: u8, t2_bits: u8) {
+        let i = index as usize;
+        oam.data[i * 4] = x;
+        oam.data[i * 4 + 1] = y;
+        oam.data[i * 4 + 2] = tile;
+        oam.data[i * 4 + 3] = attr;
+        let byte_idx = OAM_TABLE1_SIZE + i / 4;
+        let shift = (i % 4) * 2;
+        oam.data[byte_idx] &= !(0x03 << shift);
+        oam.data[byte_idx] |= (t2_bits & 0x03) << shift;
+    }
+
+    // objsel = 0x00 -> small=8x8, large=16x16
+    const OBJSEL_8_16: u8 = 0x00;
 
     // ============================================================
     // Register access
@@ -206,19 +271,29 @@ mod tests {
     // A freshly created OAM is fully zeroed.
     #[test]
     fn test_new_zeroed() {
-        let oam = make_oam();
+        let oam = OAM::new();
         assert!(oam.data.iter().all(|&b| b == 0));
         assert_eq!(oam.word_addr, 0);
     }
 
-    // write_addr sets the byte address (masked to 9 bits) and resets the latch.
+    // write_addr sets the byte address (covering both tables) and resets the latch.
     #[test]
     fn test_write_addr() {
         let mut oam = make_oam();
         oam.write_phase_high = true;
-        oam.write_addr(0xFFFF);
-        assert_eq!(oam.word_addr, 0x01FF);
+
+        // Table 1 address
+        oam.write_addr(0x0010);
+        assert_eq!(oam.word_addr, 0x0010);
         assert!(!oam.write_phase_high);
+
+        // Table 2 start address
+        oam.write_addr(OAM_TABLE1_SIZE as u16);
+        assert_eq!(oam.word_addr, OAM_TABLE1_SIZE as u16);
+
+        // Out-of-range addresses wrap within the 544-byte OAM
+        oam.write_addr(OAM_SIZE as u16);
+        assert_eq!(oam.word_addr, 0);
     }
 
     // Table 1: first write latches, second commits lo+hi and advances by 2.
@@ -288,11 +363,11 @@ mod tests {
         assert_eq!(s.name_table, 0);
         assert!(!s.large);
 
-        // large bit set
+        // large bit set (x_hi=0 here, so x = x_lo = 100)
         oam.data[OAM_TABLE1_SIZE] = 0b10;
         let s = oam.get_sprite(0, 0x00);
         assert!(s.large);
-        assert_eq!(s.x, 0);
+        assert_eq!(s.x, 100);
     }
 
     // sprite_size returns correct dimensions for all 6 documented size modes.
@@ -311,59 +386,77 @@ mod tests {
             assert_eq!(OAM::sprite_size(objsel, true), large, "objsel={objsel:#04X} large");
         }
     }
-}
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+    // ============================================================
+    // Per-scanline evaluation
+    // ============================================================
 
-    // write_addr sets the byte address (masked to 9 bits) and resets the latch.
+    // A sprite covering the scanline appears; outside its Y range it does not.
     #[test]
-    fn test_write_addr() {
-        let mut oam = OAM::new();
-        oam.write_phase_high = true;
-        oam.write_addr(0xFFFF);
-        assert_eq!(oam.word_addr, 0x01FF);
-        assert!(!oam.write_phase_high);
+    fn test_eval_sprite_range() {
+        let mut oam = make_oam();
+        make_sprite_entry(&mut oam, 0, 0, 10, 0, 0, 0); // y=10, 8x8 -> rows 10-17
+
+        let (visible, over) = oam.eval_sprites_for_scanline(10, OBJSEL_8_16, 0);
+        assert_eq!(visible.len(), 1);
+        assert_eq!(visible[0].0, 0);
+        assert!(!over);
+
+        assert_eq!(oam.eval_sprites_for_scanline(17, OBJSEL_8_16, 0).0.len(), 1);
+        assert_eq!(oam.eval_sprites_for_scanline(18, OBJSEL_8_16, 0).0.len(), 0);
+        assert_eq!(oam.eval_sprites_for_scanline(9, OBJSEL_8_16, 0).0.len(), 0);
     }
 
-    // Table 1: first write latches, second commits lo+hi and advances by 2.
+    // 33 sprites on one scanline: only 32 kept, time_over set; exactly 32 is fine.
     #[test]
-    fn test_write_data_table1_write_twice() {
-        let mut oam = OAM::new();
-        oam.write_addr(0x0000);
+    fn test_eval_time_over() {
+        let mut oam = make_oam();
+        for i in 0..33u8 {
+            make_sprite_entry(&mut oam, i, 0, 0, 0, 0, 0);
+        }
+        let (visible, over) = oam.eval_sprites_for_scanline(0, OBJSEL_8_16, 0);
+        assert_eq!(visible.len(), 32);
+        assert!(over);
 
-        oam.write_data(0xCD); // lo latched
-        assert_eq!(oam.data[0], 0x00);
-        assert!(oam.write_phase_high);
-        assert_eq!(oam.write_latch, 0xCD);
-
-        oam.write_data(0xEF); // commit
-        assert_eq!(oam.data[0], 0xCD);
-        assert_eq!(oam.data[1], 0xEF);
-        assert_eq!(oam.word_addr, 2);
-        assert!(!oam.write_phase_high);
+        let mut oam = make_oam();
+        for i in 0..32u8 {
+            make_sprite_entry(&mut oam, i, 0, 0, 0, 0, 0);
+        }
+        let (visible, over) = oam.eval_sprites_for_scanline(0, OBJSEL_8_16, 0);
+        assert_eq!(visible.len(), 32);
+        assert!(!over);
     }
 
-    // Table 2: writes commit immediately, one byte at a time.
+    // Priority rotation starts evaluation at the sprite given by OAMADDL >> 1.
     #[test]
-    fn test_write_data_table2_immediate() {
-        let mut oam = OAM::new();
-        oam.write_addr(OAM_TABLE1_SIZE as u16);
-        oam.write_data(0b10110001);
-        assert_eq!(oam.data[OAM_TABLE1_SIZE], 0b10110001);
+    fn test_eval_priority_rotation() {
+        let mut oam = make_oam();
+        make_sprite_entry(&mut oam, 10, 0, 0, 0, 0, 0);
+        let oamadd: u16 = (1 << 8) | 20; // enable + start sprite 10 (20 >> 1)
+        let (visible, _) = oam.eval_sprites_for_scanline(0, OBJSEL_8_16, oamadd);
+        assert_eq!(visible.len(), 1);
+        assert_eq!(visible[0].0, 10);
     }
 
-    // read_data returns bytes in order and advances the address.
+    // Y wraps in u8: a sprite at y=250 covers scanline 255 but not 249.
     #[test]
-    fn test_read_data_advances_address() {
-        let mut oam = OAM::new();
-        oam.data[0] = 0xAA;
-        oam.data[1] = 0xBB;
-        oam.write_addr(0x0000);
-        assert_eq!(oam.read_data(), 0xAA);
-        assert_eq!(oam.word_addr, 1);
-        assert_eq!(oam.read_data(), 0xBB);
-        assert_eq!(oam.word_addr, 2);
+    fn test_eval_y_wrap() {
+        let mut oam = make_oam();
+        make_sprite_entry(&mut oam, 0, 0, 250, 0, 0, 0); // y=250, 8x8
+        assert_eq!(oam.eval_sprites_for_scanline(255, OBJSEL_8_16, 0).0.len(), 1);
+        assert_eq!(oam.eval_sprites_for_scanline(249, OBJSEL_8_16, 0).0.len(), 0);
+    }
+
+    // Without rotation, sprites come back in ascending index order.
+    #[test]
+    fn test_eval_order() {
+        let mut oam = make_oam();
+        make_sprite_entry(&mut oam, 0, 0, 0, 0, 0, 0);
+        make_sprite_entry(&mut oam, 5, 0, 0, 0, 0, 0);
+        make_sprite_entry(&mut oam, 2, 0, 0, 0, 0, 0);
+        let (visible, _) = oam.eval_sprites_for_scanline(0, OBJSEL_8_16, 0);
+        assert_eq!(visible[0].0, 0);
+        assert_eq!(visible[1].0, 2);
+        assert_eq!(visible[2].0, 5);
     }
 }
