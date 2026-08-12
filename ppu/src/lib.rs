@@ -4,6 +4,7 @@ pub mod ppu;
 pub mod registers;
 pub mod vram;
 pub mod write_twice;
+pub mod oam;
 
 pub mod rendering;
 
