@@ -182,7 +182,7 @@ mod test {
 
         expected_regs.S = 0x0183;
         expected_regs.PC = 0x8877;
-        expected_regs.P = 0b11001100.into();
+        expected_regs.P = 0b11111100.into();
         assert_eq!(*cpu.regs(), expected_regs);
     }
 
