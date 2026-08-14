@@ -60,9 +60,15 @@ impl Renderer {
         // Update brightness
         self.update_brightness(ppu.brightness());
 
-        // Reset per-column priorities for this scanline.
+        // Reset priorities and fill with the backdrop
         self.priority.fill(Z_BACKDROP);
+        let backdrop = ppu.cgram.read(0);
+        let (br, bg, bb) = Self::apply_brightness(backdrop, self.current_brightness as u16);
+        for x in 0..SCREEN_WIDTH {
+            self.set_pixel(x, y, br, bg, bb);
+        }
 
+        // Background layer
         match ppu.regs.bg_mode() {
             0 => self.render_scanline_mode0(ppu, y),
             1 => self.render_scanline_mode1(ppu, y),
