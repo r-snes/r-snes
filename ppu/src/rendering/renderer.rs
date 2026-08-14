@@ -71,6 +71,11 @@ impl Renderer {
                 println!("PPU mode {} not implemented", mode);
             }
         }
+
+        // Sprites, if OBJ is enabled on the main screen (TM bit 4)
+        if ppu.regs.tm & 0x10 != 0 {
+            self.render_sprites(ppu, y);
+        }
     }
 
     fn update_brightness(&mut self, target: u8) {
