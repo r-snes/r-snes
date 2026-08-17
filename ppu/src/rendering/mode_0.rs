@@ -202,28 +202,29 @@ mod tests {
     #[test]
     fn test_render_mode0_backdrop_and_transparency() {
         let mut renderer = make_renderer();
-        let mut ppu = make_ppu_mode0();
+        let ppu = make_ppu_mode0();
 
         // Default CGRAM[0] = 0x0000 -> black backdrop
-        renderer.render_scanline_mode0(&ppu, 0);
+        renderer.render_scanline(&ppu, 0);
         for x in 0..SCREEN_WIDTH {
             assert_eq!(pixel(&renderer, x, 0), (0, 0, 0), "x={}", x);
         }
 
         // Set backdrop to white, all tiles transparent -> full white scanline
+        let mut ppu = make_ppu_mode0();
         set_cgram_white(&mut ppu, 0);
         ppu.vram.memory[0] = 0x0000;
-        renderer.render_scanline_mode0(&ppu, 0);
+        renderer.render_scanline(&ppu, 0);
         let (br, bg, bb) = Renderer::apply_brightness(ppu.cgram.read(0), 15);
         for x in 0..SCREEN_WIDTH {
             assert_eq!(pixel(&renderer, x, 0), (br, bg, bb), "x={}", x);
         }
 
-        // Tile with CHR all zero (color index 0) -> still shows backdrop even with opaque tile entry
+        // Tile with CHR all zero (color index 0) -> still shows backdrop
         let mut ppu2 = make_ppu_mode0();
         set_cgram_white(&mut ppu2, 0);
         ppu2.vram.memory[0] = 0x0001; // tile 1, CHR stays all zero
-        renderer.render_scanline_mode0(&ppu2, 0);
+        renderer.render_scanline(&ppu2, 0);
         let (br, bg, bb) = Renderer::apply_brightness(ppu2.cgram.read(0), 15);
         for x in 0..SCREEN_WIDTH {
             assert_eq!(pixel(&renderer, x, 0), (br, bg, bb), "x={}", x);
