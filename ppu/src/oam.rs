@@ -36,16 +36,14 @@ pub struct OAM {
     /// Raw OAM data: 512 bytes table 1 + 32 bytes table 2.
     data: [u8; OAM_SIZE],
 
-    /// Internal byte address (0-543 range, masked to 9 bits on write).
-    /// Set by OAMADDL/H ($2102/$2103).
-    word_addr: u16,
+    /// Internal 10-bit byte pointer into OAM. OAMADD ($2102/$2103) holds a
+    /// 9-bit *word* address; the internal byte pointer is word << 1. This is
+    /// how the hardware reaches both the low table (words 0-255 = bytes
+    /// 0-511) and the high table (words 256-271 = bytes 512-543).
+    address: u16,
 
-    /// Low-byte write buffer for table 1 (write-twice mechanism).
-    /// Table 1 writes commit in pairs: first write latches lo, second commits lo+hi.
+    /// Low-byte latch for the table-1 write-twice mechanism.
     write_latch: u8,
-
-    /// True when the next OAMDATA write is the high byte of a table 1 pair.
-    write_phase_high: bool,
 
     /// STAT77 bit 7: set when more than 32 sprites were found on a scanline.
     /// Latched via set_flags; read through $213E.
@@ -66,9 +64,8 @@ impl OAM {
     pub fn new() -> Self {
         Self {
             data: [0; OAM_SIZE],
-            word_addr: 0,
+            address: 0,
             write_latch: 0,
-            write_phase_high: false,
             time_over: false,
             range_over: false,
         }
@@ -78,56 +75,63 @@ impl OAM {
     // $2102/$2103 - OAMADDL/OAMADDH
     // ============================================================
 
-    /// Set the OAM byte address from the OAMADDL/H register pair, covering
-    /// both tables (0-543). Resets the write-twice latch.
+    /// Set the OAM address from the OAMADDL/H register pair.
+    ///
+    /// OAMADD is a 9-bit *word* address (0-511). The internal pointer is a
+    /// byte address (word << 1, 10-bit), which is how the hardware reaches
+    /// the low table (words 0-255) and the high table (words 256-271).
     pub fn write_addr(&mut self, oamadd: u16) {
-        self.word_addr = (oamadd as usize % OAM_SIZE) as u16;
-        self.write_phase_high = false;
+        self.address = (oamadd & 0x01FF) << 1;
     }
 
     // ============================================================
     // $2104 - OAMDATA (write)
     // ============================================================
 
-    /// Write one byte to OAM via the data port.
+    /// Write one byte to OAM via the data port ($2104).
     ///
-    /// Table 1 ($000-$1FF): buffered in pairs. The first write latches the
-    /// low byte; the second commits both bytes and advances the address by 2.
-    /// Table 2 ($200-$21F): committed immediately, one byte at a time.
+    /// Low table (bytes 0-511): write-twice. An even byte address latches the
+    /// value; the following odd byte writes the full word (latched low byte +
+    /// current high byte). This is the hardware's word-granular write.
+    /// High table (bytes 512-543): each byte is written immediately, mirrored
+    /// every 32 bytes.
+    /// The pointer advances by one byte per write and wraps at 10 bits.
     pub fn write_data(&mut self, value: u8) {
-        let addr = self.word_addr as usize;
+        let addr = self.address as usize;
 
         if addr < OAM_TABLE1_SIZE {
-            // Table 1: write-twice (lo then hi)
-            if !self.write_phase_high {
+            // Low table: even byte latches, odd byte commits the word.
+            if addr & 1 == 0 {
                 self.write_latch = value;
-                self.write_phase_high = true;
             } else {
-                let byte_addr = addr & !1; // align to even
-                self.data[byte_addr] = self.write_latch;
-                self.data[byte_addr + 1] = value;
-                self.write_phase_high = false;
-                self.word_addr = (self.word_addr + 2) & 0x01FF;
+                self.data[addr - 1] = self.write_latch;
+                self.data[addr] = value;
             }
         } else {
-            // Table 2: single-byte write, committed immediately
-            let byte_addr = OAM_TABLE1_SIZE + (addr - OAM_TABLE1_SIZE) % OAM_TABLE2_SIZE;
-            self.data[byte_addr] = value;
-            self.word_addr = OAM_TABLE1_SIZE as u16
-                + ((self.word_addr - OAM_TABLE1_SIZE as u16 + 1) % OAM_TABLE2_SIZE as u16);
+            // High table: immediate byte write, mirrored every 32 bytes.
+            let byte = OAM_TABLE1_SIZE + ((addr - OAM_TABLE1_SIZE) & (OAM_TABLE2_SIZE - 1));
+            self.data[byte] = value;
         }
+
+        self.address = (self.address + 1) & 0x03FF;
     }
 
     // ============================================================
     // $2138 - OAMDATAREAD (read)
     // ============================================================
 
-    /// Read one byte from OAM via the data port.
-    /// Reads are single-byte and advance the address by 1.
+    /// Read one byte from OAM via the data port ($2138).
+    /// Single-byte read; the pointer advances by one byte and wraps at 10 bits.
+    /// High-table addresses mirror every 32 bytes.
     pub fn read_data(&mut self) -> u8 {
-        let addr = self.word_addr as usize % OAM_SIZE;
-        let value = self.data[addr];
-        self.word_addr = (self.word_addr + 1) % OAM_SIZE as u16;
+        let addr = self.address as usize;
+        let byte = if addr < OAM_TABLE1_SIZE {
+            addr
+        } else {
+            OAM_TABLE1_SIZE + ((addr - OAM_TABLE1_SIZE) & (OAM_TABLE2_SIZE - 1))
+        };
+        let value = self.data[byte];
+        self.address = (self.address + 1) & 0x03FF;
         value
     }
 
@@ -300,52 +304,48 @@ mod tests {
     fn test_new_zeroed() {
         let oam = OAM::new();
         assert!(oam.data.iter().all(|&b| b == 0));
-        assert_eq!(oam.word_addr, 0);
+        assert_eq!(oam.address, 0);
     }
 
-    // write_addr sets the byte address (covering both tables) and resets the latch.
+    // write_addr converts the 9-bit word address to a byte pointer (word << 1).
     #[test]
     fn test_write_addr() {
         let mut oam = make_oam();
-        oam.write_phase_high = true;
 
-        // Table 1 address
+        // Word 0x10 -> byte 0x20.
         oam.write_addr(0x0010);
-        assert_eq!(oam.word_addr, 0x0010);
-        assert!(!oam.write_phase_high);
+        assert_eq!(oam.address, 0x0020);
 
-        // Table 2 start address
-        oam.write_addr(OAM_TABLE1_SIZE as u16);
-        assert_eq!(oam.word_addr, OAM_TABLE1_SIZE as u16);
+        // Word 256 selects the start of the high table (byte 512).
+        oam.write_addr(256);
+        assert_eq!(oam.address, OAM_TABLE1_SIZE as u16);
 
-        // Out-of-range addresses wrap within the 544-byte OAM
-        oam.write_addr(OAM_SIZE as u16);
-        assert_eq!(oam.word_addr, 0);
+        // Only the low 9 bits of the word address are used.
+        oam.write_addr(0xFFFF);
+        assert_eq!(oam.address, 0x01FF << 1);
     }
 
-    // Table 1: first write latches, second commits lo+hi and advances by 2.
+    // Table 1: even byte latches, odd byte commits the word and advances by 2.
     #[test]
     fn test_write_data_table1_write_twice() {
         let mut oam = make_oam();
         oam.write_addr(0x0000);
 
-        oam.write_data(0xCD); // lo latched
+        oam.write_data(0xCD); // even byte -> latched, not committed
         assert_eq!(oam.data[0], 0x00);
-        assert!(oam.write_phase_high);
         assert_eq!(oam.write_latch, 0xCD);
 
-        oam.write_data(0xEF); // commit
+        oam.write_data(0xEF); // odd byte -> commits the word
         assert_eq!(oam.data[0], 0xCD);
         assert_eq!(oam.data[1], 0xEF);
-        assert_eq!(oam.word_addr, 2);
-        assert!(!oam.write_phase_high);
+        assert_eq!(oam.address, 2);
     }
 
     // Table 2: writes commit immediately, one byte at a time.
     #[test]
     fn test_write_data_table2_immediate() {
         let mut oam = make_oam();
-        oam.write_addr(OAM_TABLE1_SIZE as u16);
+        oam.write_addr(256); // word 256 -> byte 512 (high table start)
         oam.write_data(0b10110001);
         assert_eq!(oam.data[OAM_TABLE1_SIZE], 0b10110001);
     }
@@ -358,9 +358,9 @@ mod tests {
         oam.data[1] = 0xBB;
         oam.write_addr(0x0000);
         assert_eq!(oam.read_data(), 0xAA);
-        assert_eq!(oam.word_addr, 1);
+        assert_eq!(oam.address, 1);
         assert_eq!(oam.read_data(), 0xBB);
-        assert_eq!(oam.word_addr, 2);
+        assert_eq!(oam.address, 2);
     }
 
     // ============================================================
