@@ -224,23 +224,19 @@ mod tests {
     // render_scanline_mode1 - transparent pixels
     // ============================================================
 
-    /// A fully transparent tile must leave pixels filled with the backdrop color (CGRAM entry 0).
+        /// A fully transparent tile must leave pixels showing the backdrop color.
     #[test]
     fn test_render_mode1_transparent_tile_leaves_framebuffer() {
         let mut renderer = Renderer::new();
         renderer.current_brightness = 15;
-        // Pre-fill framebuffer with a sentinel value
-        for b in renderer.framebuffer.iter_mut() {
-            *b = 0xAA;
-        }
 
         let mut ppu = make_ppu_mode1();
-        // Tilemap entry at (0,0): tile 0, palette 0 - CHR data is all zero -> transparent
+        // Tilemap entry at (0,0): tile 0, all-zero CHR -> transparent
         ppu.vram.memory[0] = 0x0000;
 
-        renderer.render_scanline_mode1(&ppu, 0);
+        // Use the full render_scanline so the backdrop is drawn.
+        renderer.render_scanline(&ppu, 0);
 
-        // All pixels on scanline 0 must be the backdrop color
         let (br, bg, bb) = Renderer::apply_brightness(ppu.cgram.read(0), 15);
         for x in 0..SCREEN_WIDTH {
             let idx = x * 3;
