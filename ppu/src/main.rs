@@ -115,8 +115,8 @@ fn main() {
     // Table 1: X=100, Y=108, tile=0, attr = priority 2 (0x20), palette 0.
     ppu.write(0x2102, 0x00);
     ppu.write(0x2103, 0x00);
-    ppu.write(0x2104, 100);  // X    -> latched
-    ppu.write(0x2104, 108);  // Y    -> commits word (X, Y)
+    ppu.write(0x2104, 100); // X    -> latched
+    ppu.write(0x2104, 108); // Y    -> commits word (X, Y)
     ppu.write(0x2104, 0x00); // tile -> latched
     ppu.write(0x2104, 0x20); // attr = priority 2, palette 0 (red)
 
@@ -125,8 +125,8 @@ fn main() {
     // attr layout vhoopppN: priority 2 = 0x20, palette 1 = (1 << 1) = 0x02 -> 0x22.
     ppu.write(0x2102, 0x02);
     ppu.write(0x2103, 0x00);
-    ppu.write(0x2104, 140);  // X    -> latched
-    ppu.write(0x2104, 104);  // Y    -> commits word (X, Y)
+    ppu.write(0x2104, 140); // X    -> latched
+    ppu.write(0x2104, 104); // Y    -> commits word (X, Y)
     ppu.write(0x2104, 0x02); // tile -> latched (tile 2)
     ppu.write(0x2104, 0x22); // attr = priority 2, palette 1 (green)
 
@@ -154,7 +154,7 @@ fn main() {
     let video = sdl_context.video().unwrap();
 
     let window = video
-        .window("SNES PPU - sprite test", SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32)
+        .window("SNES PPU", SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32)
         .position_centered()
         .build()
         .unwrap();

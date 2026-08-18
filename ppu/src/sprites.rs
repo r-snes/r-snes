@@ -41,11 +41,7 @@ impl Renderer {
                 }
 
                 // Column within the sprite, with H flip.
-                let sx = if sprite.flip_x {
-                    w - 1 - col
-                } else {
-                    col
-                };
+                let sx = if sprite.flip_x { w - 1 - col } else { col };
 
                 // Locate the tile inside the sprite and the pixel inside the tile.
                 let tile_col = sx / 8;
