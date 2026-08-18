@@ -162,7 +162,11 @@ impl OAM {
 
         // Reconstruct 9-bit X (256-511 => -256 to -1)
         let x_raw = ((x_hi as u16) << 8) | x_lo as u16;
-        let x = if x_hi != 0 { x_raw as i16 - 512 } else { x_raw as i16 };
+        let x = if x_hi != 0 {
+            x_raw as i16 - 512
+        } else {
+            x_raw as i16
+        };
 
         // CHR base address from OBJSEL, plus name-table selection.
         // OBJSEL bits 2:0 = name base address (in 0x2000-word steps),
@@ -193,14 +197,56 @@ impl OAM {
     /// according to the size mode encoded in OBJSEL bits 7:5.
     pub fn sprite_size(objsel: u8, large: bool) -> (u8, u8) {
         match (objsel >> 5) & 0x07 {
-            0 => if large { (16, 16) } else { (8, 8) },
-            1 => if large { (32, 32) } else { (8, 8) },
-            2 => if large { (64, 64) } else { (8, 8) },
-            3 => if large { (32, 32) } else { (16, 16) },
-            4 => if large { (64, 64) } else { (16, 16) },
-            5 => if large { (64, 64) } else { (32, 32) },
+            0 => {
+                if large {
+                    (16, 16)
+                } else {
+                    (8, 8)
+                }
+            }
+            1 => {
+                if large {
+                    (32, 32)
+                } else {
+                    (8, 8)
+                }
+            }
+            2 => {
+                if large {
+                    (64, 64)
+                } else {
+                    (8, 8)
+                }
+            }
+            3 => {
+                if large {
+                    (32, 32)
+                } else {
+                    (16, 16)
+                }
+            }
+            4 => {
+                if large {
+                    (64, 64)
+                } else {
+                    (16, 16)
+                }
+            }
+            5 => {
+                if large {
+                    (64, 64)
+                } else {
+                    (32, 32)
+                }
+            }
             // can't find documentation for 6 and 7, treating them as 8x8 / 16x16 for now
-            _ => if large { (16, 16) } else { (8, 8) },
+            _ => {
+                if large {
+                    (16, 16)
+                } else {
+                    (8, 8)
+                }
+            }
         }
     }
 
@@ -218,7 +264,12 @@ impl OAM {
     ///   that, `range_over` is set.
     /// - Returns (visible sprites, time_over, range_over). The flags are not
     ///   stored here (this borrows &self); call `set_flags` to latch them.
-    pub fn eval_sprites_for_scanline(&self, y: usize, objsel: u8, oamadd: u16) -> (Vec<(u8, Sprite)>, bool, bool) {
+    pub fn eval_sprites_for_scanline(
+        &self,
+        y: usize,
+        objsel: u8,
+        oamadd: u16,
+    ) -> (Vec<(u8, Sprite)>, bool, bool) {
         let priority_rotation = (oamadd >> 8) & 0x01 != 0;
         let start = if priority_rotation {
             ((oamadd & 0xFF) >> 1) as usize & 0x7F
@@ -409,8 +460,16 @@ mod tests {
             (5 << 5, (32, 32), (64, 64)),
         ];
         for &(objsel, small, large) in cases {
-            assert_eq!(OAM::sprite_size(objsel, false), small, "objsel={objsel:#04X} small");
-            assert_eq!(OAM::sprite_size(objsel, true), large, "objsel={objsel:#04X} large");
+            assert_eq!(
+                OAM::sprite_size(objsel, false),
+                small,
+                "objsel={objsel:#04X} small"
+            );
+            assert_eq!(
+                OAM::sprite_size(objsel, true),
+                large,
+                "objsel={objsel:#04X} large"
+            );
         }
     }
 
@@ -470,8 +529,14 @@ mod tests {
     fn test_eval_y_wrap() {
         let mut oam = make_oam();
         make_sprite_entry(&mut oam, 0, 0, 250, 0, 0, 0); // y=250, 8x8
-        assert_eq!(oam.eval_sprites_for_scanline(255, OBJSEL_8_16, 0).0.len(), 1);
-        assert_eq!(oam.eval_sprites_for_scanline(249, OBJSEL_8_16, 0).0.len(), 0);
+        assert_eq!(
+            oam.eval_sprites_for_scanline(255, OBJSEL_8_16, 0).0.len(),
+            1
+        );
+        assert_eq!(
+            oam.eval_sprites_for_scanline(249, OBJSEL_8_16, 0).0.len(),
+            0
+        )
     }
 
     // Without rotation, sprites come back in ascending index order.

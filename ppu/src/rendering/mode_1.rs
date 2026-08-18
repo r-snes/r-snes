@@ -62,7 +62,12 @@ impl Renderer {
         }
     }
 
-    pub fn decode_4bpp_tile_pixel_from(vram: &RawVRAM, tile_word_base: usize, x: usize, y: usize) -> u8 {
+    pub fn decode_4bpp_tile_pixel_from(
+        vram: &RawVRAM,
+        tile_word_base: usize,
+        x: usize,
+        y: usize,
+    ) -> u8 {
         // Planes 0+1: p0 = low byte, p1 = high byte
         let [p0, p1] = vram[tile_word_base + y].to_le_bytes();
 
@@ -224,7 +229,7 @@ mod tests {
     // render_scanline_mode1 - transparent pixels
     // ============================================================
 
-        /// A fully transparent tile must leave pixels showing the backdrop color.
+    /// A fully transparent tile must leave pixels showing the backdrop color.
     #[test]
     fn test_render_mode1_transparent_tile_leaves_framebuffer() {
         let mut renderer = Renderer::new();
