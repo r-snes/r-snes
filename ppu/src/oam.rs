@@ -321,6 +321,9 @@ impl OAM {
 mod tests {
     use super::*;
 
+    // (objsel, small size, large size) for sprite_size cases
+    type SizeCase = (u8, (u8, u8), (u8, u8));
+
     fn make_oam() -> OAM {
         let mut oam = OAM::new();
         // Park every sprite off-screen (y=240) by default, so evaluation
@@ -451,7 +454,7 @@ mod tests {
     // sprite_size returns correct dimensions for all 6 documented size modes.
     #[test]
     fn test_sprite_size() {
-        let cases: &[(u8, (u8, u8), (u8, u8))] = &[
+        let cases: &[SizeCase] = &[
             (0 << 5, (8, 8), (16, 16)),
             (1 << 5, (8, 8), (32, 32)),
             (2 << 5, (8, 8), (64, 64)),
