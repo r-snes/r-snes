@@ -28,6 +28,9 @@ pub struct CPU {
     /// in bytes read from RAM into the CPU.
     pub data_bus: u8,
 
+    /// CPU state (executing/STP/WAI)
+    pub(crate) state: CPUState,
+
     /// Internal data bus used to store 16-bits operands before doing
     /// operations on them.
     pub(crate) internal_data_bus: u16,
@@ -35,6 +38,31 @@ pub struct CPU {
     /// Member variable that holds a function pointer that will be called the next
     /// time time [`Self::cycle`] is called.
     pub(crate) next_cycle: InstrCycle,
+
+    /// Function pointer to the cycle function to call once the current
+    /// instruction finishes
+    ///
+    /// This is always [`opcode_fetch`] unless an interrupt has been
+    /// successfully requested, in which case the interrupt will be served
+    pub(crate) next_fetch: InstrCycle,
+}
+
+/// State of the CPU, hinting what may or may not happen
+/// when calling the [`cycle`] function
+#[derive(Default, Clone, Copy)]
+pub enum CPUState {
+    /// Default state of the CPU: running, executing instructions
+    #[default]
+    Running,
+
+    /// Stopped by a STP instruction
+    ///
+    /// In this state, the CPU can only go back to the [`Running`] state
+    /// by calling [`reset`].
+    Stopped,
+
+    /// Waiting for an interrupt (in a WAI instruction)
+    WaitForInterrupt,
 }
 
 /// The result of a CPU cycle.
@@ -62,9 +90,11 @@ impl CPU {
             registers,
             addr_bus: SnesAddress::default(),
             addr_bus2: SnesAddress::default(),
+            state: CPUState::default(),
             data_bus: 0,
             internal_data_bus: 0,
             next_cycle: InstrCycle(opcode_fetch),
+            next_fetch: InstrCycle(opcode_fetch),
         }
     }
 
@@ -149,6 +179,50 @@ impl CPU {
         ret
     }
 
+    /// Request an NMI interrupt
+    pub fn nmi(&mut self) {
+        match self.state {
+            CPUState::Running => {
+                // complete the current instruction first, then serve the interrupt
+                self.next_fetch = InstrCycle(nmi::nmi_cyc1);
+            }
+            CPUState::WaitForInterrupt => {
+                // serve the interrupt immediately
+                self.next_cycle = InstrCycle(nmi::nmi_cyc1);
+            }
+            // stopped, don't even serve interrupts
+            CPUState::Stopped => {}
+        }
+    }
+
+    /// Request an IRQ interrupt
+    pub fn irq(&mut self) {
+        match self.state {
+            CPUState::Running => {
+                if self.registers.P.I {
+                    // flag I disables IRQ when running normally
+                    return;
+                }
+
+                // complete the current instruction first, then serve the interrupt
+                self.next_fetch = InstrCycle(irq::irq_cyc1);
+            }
+            CPUState::WaitForInterrupt => {
+                if self.registers.P.I {
+                    // IRQ with I flag while in WAI resumes execution
+                    // but doesn't go through the interrupt routine
+                    self.next_fetch = InstrCycle(opcode_fetch);
+                    self.state = CPUState::Running;
+                } else {
+                    // serve the interrupt immediately
+                    self.next_cycle = InstrCycle(irq::irq_cyc1);
+                }
+            }
+            // stopped, don't even serve interrupts
+            CPUState::Stopped => {}
+        }
+    }
+
     /// Resets the CPU as with the RESB input signal
     ///
     /// This resets some CPU registers and jumps program execution to
@@ -183,6 +257,25 @@ cpu_instr_no_inc_pc!(reset {
 
     cpu.addr_bus = snes_addr!(0:0xfffc);
     meta FETCH16_INTO cpu.registers.PC;
+
+    cpu.state = CPUState::Running;
+    cpu.next_fetch = InstrCycle(opcode_fetch);
+});
+
+cpu_instr_no_inc_pc!(nmi {
+    todo!("draft nmi");
+    meta END_CYCLE Internal;
+
+    cpu.state = CPUState::Running;
+    cpu.next_fetch = InstrCycle(opcode_fetch);
+});
+
+cpu_instr_no_inc_pc!(irq {
+    todo!("draft irq");
+    meta END_CYCLE Internal;
+
+    cpu.state = CPUState::Running;
+    cpu.next_fetch = InstrCycle(opcode_fetch);
 });
 
 #[cfg(test)]
