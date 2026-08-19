@@ -3,8 +3,5 @@ name = "tiny_bitfield"
 version = "0.1.0"
 edition = "2024"
 
-[lib]
-proc-macro = true
-
 [dependencies]
-unicode-ident = "1.0.24"
+tiny_bitfield_proc_macro = { path = "./tiny_bitfield_proc_macro" }

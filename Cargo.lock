@@ -3615,6 +3615,13 @@ dependencies = [
 name = "tiny_bitfield"
 version = "0.1.0"
 dependencies = [
+ "tiny_bitfield_proc_macro",
+]
+
+[[package]]
+name = "tiny_bitfield_proc_macro"
+version = "0.1.0"
+dependencies = [
  "unicode-ident",
 ]
 
