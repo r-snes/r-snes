@@ -16,6 +16,7 @@ members = [
     "ppu",
     "product_order",
     "product_order/product_order_derive",
+    "tiny_bitfield",
 ]
 
 # common dependencies used across the workspace
