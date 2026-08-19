@@ -9,7 +9,8 @@ struct Field {
 impl Field {
     pub fn new(name: char, width: NonZeroUsize) -> Self {
         Self {
-            name: name.to_string(), width
+            name: name.to_string(),
+            width,
         }
     }
 }
@@ -34,7 +35,9 @@ impl std::str::FromStr for Fields {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let extend_one_char = |f: &mut Fields, c: char| -> Result<(), Self::Err> {
-            if let Some(last) = f.fields.last_mut() && last.name == c.to_string() {
+            if let Some(last) = f.fields.last_mut()
+                && last.name == c.to_string()
+            {
                 last.width = last.width.saturating_add(1);
             } else {
                 if c != '_' && f.has_char(c) {
@@ -80,10 +83,13 @@ mod tests {
         let f: Fields = "AAAABBBB".parse().expect("successful parsing");
 
         assert_eq!(f.bit_length(), 8);
-        assert_eq!(f.fields, vec![
-            Field::new('A', NonZeroUsize::new(4).unwrap()),
-            Field::new('B', NonZeroUsize::new(4).unwrap()),
-        ]);
+        assert_eq!(
+            f.fields,
+            vec![
+                Field::new('A', NonZeroUsize::new(4).unwrap()),
+                Field::new('B', NonZeroUsize::new(4).unwrap()),
+            ]
+        );
     }
 
     #[test]
@@ -91,13 +97,16 @@ mod tests {
         let f: Fields = "paaa bbbb  cccc dddd".parse().expect("successful parsing");
 
         assert_eq!(f.bit_length(), 16);
-        assert_eq!(f.fields, vec![
-            Field::new('p', NonZeroUsize::new(1).unwrap()),
-            Field::new('a', NonZeroUsize::new(3).unwrap()),
-            Field::new('b', NonZeroUsize::new(4).unwrap()),
-            Field::new('c', NonZeroUsize::new(4).unwrap()),
-            Field::new('d', NonZeroUsize::new(4).unwrap()),
-        ]);
+        assert_eq!(
+            f.fields,
+            vec![
+                Field::new('p', NonZeroUsize::new(1).unwrap()),
+                Field::new('a', NonZeroUsize::new(3).unwrap()),
+                Field::new('b', NonZeroUsize::new(4).unwrap()),
+                Field::new('c', NonZeroUsize::new(4).unwrap()),
+                Field::new('d', NonZeroUsize::new(4).unwrap()),
+            ]
+        );
     }
 
     #[test]
@@ -105,11 +114,14 @@ mod tests {
         let f: Fields = "aaa--bb_".parse().expect("successful parsing");
 
         assert_eq!(f.bit_length(), 8);
-        assert_eq!(f.fields, vec![
-            Field::new('a', NonZeroUsize::new(3).unwrap()),
-            Field::new('_', NonZeroUsize::new(2).unwrap()),
-            Field::new('b', NonZeroUsize::new(2).unwrap()),
-            Field::new('_', NonZeroUsize::new(1).unwrap()),
-        ]);
+        assert_eq!(
+            f.fields,
+            vec![
+                Field::new('a', NonZeroUsize::new(3).unwrap()),
+                Field::new('_', NonZeroUsize::new(2).unwrap()),
+                Field::new('b', NonZeroUsize::new(2).unwrap()),
+                Field::new('_', NonZeroUsize::new(1).unwrap()),
+            ]
+        );
     }
 }
