@@ -24,3 +24,11 @@ fn read_16_bit() {
     assert_eq!(c, 0b10010);
     assert_eq!(z, 0b11);
 }
+
+#[test]
+fn renames() {
+    bitfield_read!(0b11111010 : fffbbbbb (foo = f; bar = b;));
+
+    assert_eq!(foo, 0b111);
+    assert_eq!(bar, 0b11010);
+}

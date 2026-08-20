@@ -1,4 +1,4 @@
-use proc_macro2::{TokenStream, TokenTree};
+use proc_macro2::{Punct, Spacing, TokenStream, TokenTree};
 use quote::quote;
 
 use crate::fields::Fields;
@@ -37,7 +37,7 @@ fn bitfield_read_impl(ts: TokenStream) -> TokenStream {
 
         take_while.collect::<TokenStream>()
     };
-    let fields = {
+    let mut fields = {
         let bit_pattern = tokens.next().expect("unexpected end of stream");
         let TokenTree::Ident(id) = bit_pattern else {
             panic!("bit pattern should be an identifier, like `aabbcc_d`");
@@ -47,6 +47,46 @@ fn bitfield_read_impl(ts: TokenStream) -> TokenStream {
         };
         fields
     };
+
+    if let Some(rename_block) = tokens.next() {
+        let TokenTree::Group(rename_block) = rename_block else {
+            panic!("expected rename block or end of stream");
+        };
+        let mut rename_tokens = rename_block.stream().into_iter();
+        while let Some(token) = rename_tokens.next() {
+            let TokenTree::Ident(to) = token else {
+                panic!("rename field shoud be an identifier");
+            };
+            if let Some(TokenTree::Punct(p)) = rename_tokens.next()
+                && p.as_char() == '='
+                && p.spacing() == Spacing::Alone
+            {
+            } else {
+                panic!("expected equals sign");
+            };
+            let Some(TokenTree::Ident(from)) = rename_tokens.next() else {
+                panic!(
+                    "expected rename field from {:?}",
+                    fields.fields.iter().map(|f| &f.name).collect::<Vec<_>>()
+                );
+            };
+            if let Err(()) = fields.rename_field(&from.to_string(), to.to_string()) {
+                panic!("field `{}` doesn't exist", from.to_string());
+            }
+            if let Some(TokenTree::Punct(p)) = rename_tokens.next()
+                && p.as_char() == ';'
+                && p.spacing() == Spacing::Alone
+            {
+            } else {
+                panic!("expected semicolon");
+            };
+        }
+
+        assert!(
+            tokens.next().is_none(),
+            "unexpected tokens after rename block"
+        );
+    }
 
     let ty = get_bits_type_from_bitlength(fields.bit_length());
     fields.generate_bindings(&expr, &ty)

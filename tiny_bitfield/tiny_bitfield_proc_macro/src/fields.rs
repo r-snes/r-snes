@@ -57,6 +57,16 @@ impl Fields {
             }
         }
     }
+
+    pub fn rename_field(&mut self, from: &str, to: String) -> Result<(), ()> {
+        for field in self.fields.iter_mut() {
+            if field.name == from {
+                field.name = to;
+                return Ok(());
+            }
+        }
+        Err(())
+    }
 }
 
 impl std::str::FromStr for Fields {
