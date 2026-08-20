@@ -1,4 +1,5 @@
-#[cfg(test)]
+#![cfg(test)]
+
 use std::cmp::Ordering;
 use std::cmp::Ordering::*;
 

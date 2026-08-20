@@ -1,13 +1,17 @@
-use std::num::NonZeroUsize;
+use std::num::NonZeroU32;
+
+use proc_macro2::{Ident, Literal, Span, TokenStream};
+use quote::quote;
 
 #[derive(PartialEq, Eq, Debug)]
-struct Field {
+pub struct Field {
     pub name: String,
-    pub width: NonZeroUsize,
+    pub width: NonZeroU32,
 }
 
 impl Field {
-    pub fn new(name: char, width: NonZeroUsize) -> Self {
+    #[cfg(test)]
+    pub fn new(name: char, width: NonZeroU32) -> Self {
         Self {
             name: name.to_string(),
             width,
@@ -16,17 +20,42 @@ impl Field {
 }
 
 #[derive(PartialEq, Eq, Default)]
-struct Fields {
+pub struct Fields {
     pub fields: Vec<Field>,
 }
 
 impl Fields {
-    pub fn bit_length(&self) -> usize {
+    pub fn bit_length(&self) -> u32 {
         self.fields.iter().fold(0, |acc, f| acc + f.width.get())
     }
 
     pub fn has_char(&self, c: char) -> bool {
         self.fields.iter().any(|f| f.name == c.to_string())
+    }
+
+    pub fn generate_bindings(&self, expr: &TokenStream, ty: &TokenStream) -> TokenStream {
+        let mut rshift = 0;
+        let mut decls = quote!();
+        let mut assigns = quote!();
+
+        for Field { name, width } in self.fields.iter().rev() {
+            let name = Ident::new(name, Span::call_site());
+            let width = width.get();
+            let mask = Literal::u32_unsuffixed(1_u32.strict_shl(width).strict_sub(1));
+
+            decls.extend(quote!(let #name: #ty;));
+            assigns.extend(quote!(
+                #name = ((#expr) >> #rshift) & #mask;
+            ));
+            rshift += width;
+        }
+        quote! {
+            #decls
+            {
+                let expr: #ty = #expr;
+                #assigns
+            }
+        }
     }
 }
 
@@ -45,7 +74,7 @@ impl std::str::FromStr for Fields {
                 }
                 f.fields.push(Field {
                     name: c.to_string(),
-                    width: NonZeroUsize::new(1).unwrap(),
+                    width: NonZeroU32::new(1).unwrap(),
                 });
             }
 
@@ -86,8 +115,8 @@ mod tests {
         assert_eq!(
             f.fields,
             vec![
-                Field::new('A', NonZeroUsize::new(4).unwrap()),
-                Field::new('B', NonZeroUsize::new(4).unwrap()),
+                Field::new('A', NonZeroU32::new(4).unwrap()),
+                Field::new('B', NonZeroU32::new(4).unwrap()),
             ]
         );
     }
@@ -100,11 +129,11 @@ mod tests {
         assert_eq!(
             f.fields,
             vec![
-                Field::new('p', NonZeroUsize::new(1).unwrap()),
-                Field::new('a', NonZeroUsize::new(3).unwrap()),
-                Field::new('b', NonZeroUsize::new(4).unwrap()),
-                Field::new('c', NonZeroUsize::new(4).unwrap()),
-                Field::new('d', NonZeroUsize::new(4).unwrap()),
+                Field::new('p', NonZeroU32::new(1).unwrap()),
+                Field::new('a', NonZeroU32::new(3).unwrap()),
+                Field::new('b', NonZeroU32::new(4).unwrap()),
+                Field::new('c', NonZeroU32::new(4).unwrap()),
+                Field::new('d', NonZeroU32::new(4).unwrap()),
             ]
         );
     }
@@ -117,10 +146,10 @@ mod tests {
         assert_eq!(
             f.fields,
             vec![
-                Field::new('a', NonZeroUsize::new(3).unwrap()),
-                Field::new('_', NonZeroUsize::new(2).unwrap()),
-                Field::new('b', NonZeroUsize::new(2).unwrap()),
-                Field::new('_', NonZeroUsize::new(1).unwrap()),
+                Field::new('a', NonZeroU32::new(3).unwrap()),
+                Field::new('_', NonZeroU32::new(2).unwrap()),
+                Field::new('b', NonZeroU32::new(2).unwrap()),
+                Field::new('_', NonZeroU32::new(1).unwrap()),
             ]
         );
     }

@@ -7,4 +7,9 @@ edition = "2024"
 proc-macro = true
 
 [dependencies]
+proc-macro2 = "1.0.107"
+quote = "1.0.47"
 unicode-ident = "1.0.24"
+
+[dev-dependencies]
+tiny_bitfield = { path = "../" }
