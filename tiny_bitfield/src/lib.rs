@@ -7,7 +7,7 @@ macro_rules! impl_bits {
         impl Bits for $ty {
             const BITS: usize = $n;
         }
-    }
+    };
 }
 
 impl_bits!(u8, 8);
