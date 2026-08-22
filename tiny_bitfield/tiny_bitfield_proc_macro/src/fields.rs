@@ -67,30 +67,30 @@ impl Fields {
         }
         Err(())
     }
+
+    pub fn extend_one_char(&mut self, c: char) -> Result<(), ()> {
+        if let Some(last) = self.fields.last_mut()
+            && last.name == c.to_string()
+        {
+            last.width = last.width.saturating_add(1);
+        } else {
+            if c != '_' && self.has_char(c) {
+                return Err(());
+            }
+            self.fields.push(Field {
+                name: c.to_string(),
+                width: NonZeroU32::new(1).unwrap(),
+            });
+        }
+
+        Ok(())
+    }
 }
 
 impl std::str::FromStr for Fields {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let extend_one_char = |f: &mut Fields, c: char| -> Result<(), Self::Err> {
-            if let Some(last) = f.fields.last_mut()
-                && last.name == c.to_string()
-            {
-                last.width = last.width.saturating_add(1);
-            } else {
-                if c != '_' && f.has_char(c) {
-                    return Err(());
-                }
-                f.fields.push(Field {
-                    name: c.to_string(),
-                    width: NonZeroU32::new(1).unwrap(),
-                });
-            }
-
-            Ok(())
-        };
-
         let mut ret = Fields::default();
         for c in s.chars() {
             if c.is_whitespace() {
@@ -106,7 +106,7 @@ impl std::str::FromStr for Fields {
                 _ => return Err(()),
             };
 
-            extend_one_char(&mut ret, c)?;
+            ret.extend_one_char(c)?;
         }
 
         Ok(ret)

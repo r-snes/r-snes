@@ -32,3 +32,12 @@ fn renames() {
     assert_eq!(foo, 0b111);
     assert_eq!(bar, 0b11010);
 }
+
+#[test]
+fn multiple_idents() {
+    bitfield_read!(0b1110_0101_1100_0111 : aaaa bbbb bbbb cccc);
+
+    assert_eq!(a, 0b1110);
+    assert_eq!(b, 0b01011100);
+    assert_eq!(c, 0b0111);
+}

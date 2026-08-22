@@ -1,4 +1,4 @@
-use proc_macro2::{Punct, Spacing, TokenStream, TokenTree};
+use proc_macro2::{Spacing, TokenStream, TokenTree};
 use quote::quote;
 
 use crate::fields::Fields;
@@ -23,7 +23,7 @@ fn get_bits_type_from_bitlength(bit_length: u32) -> TokenStream {
 }
 
 fn bitfield_read_impl(ts: TokenStream) -> TokenStream {
-    let mut tokens = ts.into_iter();
+    let mut tokens = ts.into_iter().peekable();
     let expr = {
         let take_while = tokens.by_ref().take_while(|t| {
             if let TokenTree::Punct(p) = t
@@ -37,16 +37,13 @@ fn bitfield_read_impl(ts: TokenStream) -> TokenStream {
 
         take_while.collect::<TokenStream>()
     };
-    let mut fields = {
-        let bit_pattern = tokens.next().expect("unexpected end of stream");
-        let TokenTree::Ident(id) = bit_pattern else {
-            panic!("bit pattern should be an identifier, like `aabbcc_d`");
-        };
-        let Ok(fields) = id.to_string().parse::<Fields>() else {
-            panic!("invalid bit pattern format");
-        };
-        fields
-    };
+
+    let mut fields = Fields::default();
+    while let Some(TokenTree::Ident(id)) = tokens.next_if(|t| matches!(t, TokenTree::Ident(_))) {
+        for c in id.to_string().chars() {
+            fields.extend_one_char(c).expect("invalid character in bit pattern: {c:?}");
+        }
+    }
 
     if let Some(rename_block) = tokens.next() {
         let TokenTree::Group(rename_block) = rename_block else {
