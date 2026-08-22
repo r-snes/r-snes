@@ -79,7 +79,12 @@ impl Fields {
         let mut decls = quote!();
         let mut assigns = quote!();
 
-        for Field { name, width, retype } in self.fields.iter().rev() {
+        for Field {
+            name,
+            width,
+            retype,
+        } in self.fields.iter().rev()
+        {
             let name = Ident::new(name, Span::call_site());
             let width = width.get();
             let mask = Literal::u32_unsuffixed(1_u32.strict_shl(width).strict_sub(1));

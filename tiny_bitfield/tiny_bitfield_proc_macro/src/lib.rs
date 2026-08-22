@@ -28,7 +28,9 @@ fn bitfield_read_impl(ts: TokenStream) -> TokenStream {
     let mut fields = Fields::default();
     while let Some(TokenTree::Ident(id)) = tokens.next_if(|t| matches!(t, TokenTree::Ident(_))) {
         for c in id.to_string().chars() {
-            fields.extend_one_char(c).expect("invalid character in bit pattern: {c:?}");
+            fields
+                .extend_one_char(c)
+                .expect("invalid character in bit pattern: {c:?}");
         }
     }
 
