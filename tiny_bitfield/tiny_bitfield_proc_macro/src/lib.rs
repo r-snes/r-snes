@@ -57,7 +57,7 @@ fn bitfield_read_impl(ts: TokenStream) -> TokenStream {
                 );
             };
             if let Err(()) = fields.rename_field(&from.to_string(), to.to_string()) {
-                panic!("field `{}` doesn't exist", from.to_string());
+                panic!("field `{}` doesn't exist", from);
             }
             if let Some(TokenTree::Punct(p)) = rename_tokens.next()
                 && p.as_char() == ';'
