@@ -1,12 +1,13 @@
 use std::num::NonZeroU32;
 
 use proc_macro2::{Ident, Literal, Span, TokenStream};
-use quote::quote;
+use quote::{ToTokens, quote};
 
 #[derive(PartialEq, Eq, Debug)]
 pub struct Field {
     pub name: String,
     pub width: NonZeroU32,
+    pub retype: Option<BitsType>,
 }
 
 impl Field {
@@ -15,6 +16,46 @@ impl Field {
         Self {
             name: name.to_string(),
             width,
+            retype: None,
+        }
+    }
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
+pub enum BitsType {
+    Bool,
+    U8,
+    U16,
+    U32,
+    U64,
+    U128,
+}
+
+impl ToTokens for BitsType {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        match *self {
+            Self::Bool => tokens.extend(quote!(bool)),
+            Self::U8 => tokens.extend(quote!(u8)),
+            Self::U16 => tokens.extend(quote!(u16)),
+            Self::U32 => tokens.extend(quote!(u32)),
+            Self::U64 => tokens.extend(quote!(u64)),
+            Self::U128 => tokens.extend(quote!(u128)),
+        }
+    }
+}
+
+impl TryFrom<u32> for BitsType {
+    type Error = ();
+
+    fn try_from(bit_length: u32) -> Result<Self, Self::Error> {
+        match bit_length {
+            1 => Ok(Self::Bool),
+            8 => Ok(Self::U8),
+            16 => Ok(Self::U16),
+            32 => Ok(Self::U32),
+            64 => Ok(Self::U64),
+            128 => Ok(Self::U128),
+            _ => Err(()),
         }
     }
 }
@@ -33,19 +74,21 @@ impl Fields {
         self.fields.iter().any(|f| f.name == c.to_string())
     }
 
-    pub fn generate_bindings(&self, expr: &TokenStream, ty: &TokenStream) -> TokenStream {
+    pub fn generate_bindings(&self, expr: &TokenStream, ty: BitsType) -> TokenStream {
         let mut rshift = 0;
         let mut decls = quote!();
         let mut assigns = quote!();
 
-        for Field { name, width } in self.fields.iter().rev() {
+        for Field { name, width, retype } in self.fields.iter().rev() {
             let name = Ident::new(name, Span::call_site());
             let width = width.get();
             let mask = Literal::u32_unsuffixed(1_u32.strict_shl(width).strict_sub(1));
+            let ty = retype.unwrap_or(ty);
+            let as_clause = retype.map(|ty| quote!(as #ty)).unwrap_or_default();
 
             decls.extend(quote!(let #name: #ty;));
             assigns.extend(quote!(
-                #name = ((#expr) >> #rshift) & #mask;
+                #name = ((#expr) >> #rshift) & #mask #as_clause;
             ));
             rshift += width;
         }
@@ -80,6 +123,7 @@ impl Fields {
             self.fields.push(Field {
                 name: c.to_string(),
                 width: NonZeroU32::new(1).unwrap(),
+                retype: None,
             });
         }
 
