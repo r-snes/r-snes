@@ -233,7 +233,8 @@ impl RSnesCore {
         // Render the line currently being scanned, if it is on-screen
         let scanline = self.ppu.scanline;
         if (scanline as usize) < SCREEN_HEIGHT {
-            self.ppu_renderer.render_scanline(&self.ppu, scanline as usize);
+            self.ppu_renderer
+                .render_scanline(&self.ppu, scanline as usize);
         }
 
         // Advance the PPU to the next scanline (wraps the frame at 262)
