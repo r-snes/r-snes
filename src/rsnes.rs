@@ -239,9 +239,6 @@ impl RSnesCore {
 
         // Advance the PPU to the next scanline (wraps the frame at 262)
         self.ppu.step_scanline();
-        if self.ppu.scanline == 0 {
-            println!(">> Frame done, master_cycles={}", self.master_cycles);
-        }
     }
 
     /// This function will be called every master cycle, it will update the CPU, PPU and APU state accordingly
