@@ -44,6 +44,7 @@ fn multiple_idents() {
 
 #[test]
 fn retypes() {
+    #[expect(clippy::unusual_byte_groupings)]
     {
         // widening retype; no rename
         bitfield_read!(0b111_001_10 : aaabbbcc (a: u16; b: u32));
@@ -77,8 +78,8 @@ fn complex_decode() {
         bar = b;
         baz = B;
     ));
-    assert_eq!(b1, true);
-    assert_eq!(b2, false);
+    assert!(b1);
+    assert!(!b2);
     assert_eq!(foo, 0b11);
     assert_eq!(bar, 0b011);
     assert_eq!(baz, 0);
