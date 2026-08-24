@@ -41,3 +41,45 @@ fn multiple_idents() {
     assert_eq!(b, 0b01011100);
     assert_eq!(c, 0b0111);
 }
+
+#[test]
+fn retypes() {
+    {
+        // widening retype; no rename
+        bitfield_read!(0b111_001_10 : aaabbbcc (a: u16; b: u32));
+
+        let _: u16 = a; // would fail to compile if `a` wasn't u16
+        let _: u32 = b; // same
+        let _: u8 = c; // same
+
+        assert_eq!(a, 0b111);
+        assert_eq!(b, 0b001);
+        assert_eq!(c, 0b10);
+    }
+
+    {
+        // shortening retype + rename
+        bitfield_read!(0xAAFF : hhhhhhhh llllllll (hi: u8 = h; lo: u8 = l));
+
+        assert_eq!(hi, 0xAA_u8);
+        assert_eq!(lo, 0xFF_u8);
+    }
+}
+
+#[test]
+fn complex_decode() {
+    let data = [0b1011_0110_u8];
+
+    bitfield_read!(data[0] : tfFFbbbB (
+        b1: bool = t;
+        b2: bool = f;
+        foo = F;
+        bar = b;
+        baz = B;
+    ));
+    assert_eq!(b1, true);
+    assert_eq!(b2, false);
+    assert_eq!(foo, 0b11);
+    assert_eq!(bar, 0b011);
+    assert_eq!(baz, 0);
+}

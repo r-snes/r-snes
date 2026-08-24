@@ -1,11 +1,11 @@
-use std::num::NonZeroU32;
+use std::{fmt::Display, num::NonZeroU32};
 
 use proc_macro2::{Ident, Literal, Span, TokenStream};
 use quote::{ToTokens, quote};
 
 #[derive(PartialEq, Eq, Debug)]
 pub struct Field {
-    pub name: String,
+    pub name: Ident,
     pub width: NonZeroU32,
     pub retype: Option<BitsType>,
 }
@@ -14,7 +14,7 @@ impl Field {
     #[cfg(test)]
     pub fn new(name: char, width: NonZeroU32) -> Self {
         Self {
-            name: name.to_string(),
+            name: Ident::new(&name.to_string(), Span::call_site()),
             width,
             retype: None,
         }
@@ -29,6 +29,19 @@ pub enum BitsType {
     U32,
     U64,
     U128,
+}
+
+impl Display for BitsType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {
+            Self::Bool => write!(f, "bool"),
+            Self::U8 => write!(f, "u8"),
+            Self::U16 => write!(f, "u16"),
+            Self::U32 => write!(f, "u32"),
+            Self::U64 => write!(f, "u64"),
+            Self::U128 => write!(f, "u128"),
+        }
+    }
 }
 
 impl ToTokens for BitsType {
@@ -60,6 +73,46 @@ impl TryFrom<u32> for BitsType {
     }
 }
 
+impl TryFrom<Ident> for BitsType {
+    type Error = ();
+
+    fn try_from(id: Ident) -> Result<Self, Self::Error> {
+        match id.to_string().as_ref() {
+            "u8" => Ok(Self::U8),
+            "u16" => Ok(Self::U16),
+            "u32" => Ok(Self::U32),
+            "u64" => Ok(Self::U64),
+            "u128" => Ok(Self::U128),
+            "bool" => Ok(Self::Bool),
+            _ => Err(()),
+        }
+    }
+}
+
+impl BitsType {
+    pub fn bits(self) -> u32 {
+        match self {
+            Self::Bool => 1,
+            Self::U8 => 8,
+            Self::U16 => 16,
+            Self::U32 => 32,
+            Self::U64 => 64,
+            Self::U128 => 128,
+        }
+    }
+
+    pub fn cast(self) -> TokenStream {
+        match self {
+            Self::Bool => quote!(!= 0),
+            Self::U8 => quote!(as u8),
+            Self::U16 => quote!(as u16),
+            Self::U32 => quote!(as u32),
+            Self::U64 => quote!(as u64),
+            Self::U128 => quote!(as u128),
+        }
+    }
+}
+
 #[derive(PartialEq, Eq, Default)]
 pub struct Fields {
     pub fields: Vec<Field>,
@@ -68,6 +121,10 @@ pub struct Fields {
 impl Fields {
     pub fn bit_length(&self) -> u32 {
         self.fields.iter().fold(0, |acc, f| acc + f.width.get())
+    }
+
+    pub fn has_field(&self, id: &Ident) -> bool {
+        self.fields.iter().any(|f| &f.name == id)
     }
 
     pub fn has_char(&self, c: char) -> bool {
@@ -85,15 +142,14 @@ impl Fields {
             retype,
         } in self.fields.iter().rev()
         {
-            let name = Ident::new(name, Span::call_site());
             let width = width.get();
             let mask = Literal::u32_unsuffixed(1_u32.strict_shl(width).strict_sub(1));
             let ty = retype.unwrap_or(ty);
-            let as_clause = retype.map(|ty| quote!(as #ty)).unwrap_or_default();
+            let as_clause = retype.map(BitsType::cast).unwrap_or_default();
 
             decls.extend(quote!(let #name: #ty;));
             assigns.extend(quote!(
-                #name = ((#expr) >> #rshift) & #mask #as_clause;
+                #name = (((expr) >> #rshift) & #mask) #as_clause;
             ));
             rshift += width;
         }
@@ -106,16 +162,6 @@ impl Fields {
         }
     }
 
-    pub fn rename_field(&mut self, from: &str, to: String) -> Result<(), ()> {
-        for field in self.fields.iter_mut() {
-            if field.name == from {
-                field.name = to;
-                return Ok(());
-            }
-        }
-        Err(())
-    }
-
     pub fn extend_one_char(&mut self, c: char) -> Result<(), ()> {
         if let Some(last) = self.fields.last_mut()
             && last.name == c.to_string()
@@ -126,7 +172,7 @@ impl Fields {
                 return Err(());
             }
             self.fields.push(Field {
-                name: c.to_string(),
+                name: Ident::new(&c.to_string(), Span::call_site()),
                 width: NonZeroU32::new(1).unwrap(),
                 retype: None,
             });

@@ -1,8 +1,12 @@
-use proc_macro2::{Spacing, TokenStream, TokenTree};
+use proc_macro2::{TokenStream, TokenTree};
 
-use crate::fields::{BitsType, Fields};
+use crate::{
+    fields::{BitsType, Fields},
+    rename_fields::RenameRetypeGroup,
+};
 
 mod fields;
+mod rename_fields;
 
 #[proc_macro]
 pub fn bitfield_read(ts: proc_macro::TokenStream) -> proc_macro::TokenStream {
@@ -38,35 +42,10 @@ fn bitfield_read_impl(ts: TokenStream) -> TokenStream {
         let TokenTree::Group(rename_block) = rename_block else {
             panic!("expected rename block or end of stream");
         };
-        let mut rename_tokens = rename_block.stream().into_iter();
-        while let Some(token) = rename_tokens.next() {
-            let TokenTree::Ident(to) = token else {
-                panic!("rename field shoud be an identifier");
-            };
-            if let Some(TokenTree::Punct(p)) = rename_tokens.next()
-                && p.as_char() == '='
-                && p.spacing() == Spacing::Alone
-            {
-            } else {
-                panic!("expected equals sign");
-            };
-            let Some(TokenTree::Ident(from)) = rename_tokens.next() else {
-                panic!(
-                    "expected rename field from {:?}",
-                    fields.fields.iter().map(|f| &f.name).collect::<Vec<_>>()
-                );
-            };
-            if let Err(()) = fields.rename_field(&from.to_string(), to.to_string()) {
-                panic!("field `{}` doesn't exist", from);
-            }
-            if let Some(TokenTree::Punct(p)) = rename_tokens.next()
-                && p.as_char() == ';'
-                && p.spacing() == Spacing::Alone
-            {
-            } else {
-                panic!("expected semicolon");
-            };
-        }
+        let rename_tokens = rename_block.stream().into_iter();
+        let renames = RenameRetypeGroup::from_tokens(rename_tokens, &fields);
+
+        renames.apply_to(&mut fields);
 
         assert!(
             tokens.next().is_none(),
