@@ -40,7 +40,7 @@ impl RenameRetypeGroup {
         for rename in &self.0 {
             let target = &rename.target;
 
-            for field in &mut fields.fields {
+            for field in &mut fields.0 {
                 if &field.name != target {
                     continue;
                 }

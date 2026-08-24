@@ -15,19 +15,10 @@ pub fn bitfield_read(ts: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
 fn bitfield_read_impl(ts: TokenStream) -> TokenStream {
     let mut tokens = ts.into_iter().peekable();
-    let expr = {
-        let take_while = tokens.by_ref().take_while(|t| {
-            if let TokenTree::Punct(p) = t
-                && p.as_char() == ':'
-            {
-                false
-            } else {
-                true
-            }
-        });
-
-        take_while.collect::<TokenStream>()
-    };
+    let expr = tokens
+        .by_ref()
+        .take_while(|t| !matches!(t, TokenTree::Punct(p) if p.as_char() == ':'))
+        .collect::<TokenStream>();
 
     let mut fields = Fields::default();
     while let Some(TokenTree::Ident(id)) = tokens.next_if(|t| matches!(t, TokenTree::Ident(_))) {
