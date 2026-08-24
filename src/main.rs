@@ -9,7 +9,6 @@ use crate::{
 use clap::Parser;
 #[cfg(feature = "plugins")]
 use plugins::plugin::Plugin;
-use ppu::constants::SCREEN_HEIGHT;
 use std::{
     path::PathBuf,
     time::{Duration, Instant},
@@ -88,14 +87,6 @@ fn gui_emu_loop(
 
         let mut emu_mut = emu.core_mut();
 
-        // temporary: render full PPU frame for each GUI frame
-        for y in 0..SCREEN_HEIGHT {
-            let RSnesCore {
-                ppu, ppu_renderer, ..
-            } = &mut *emu_mut;
-            ppu_renderer.render_scanline(ppu, y);
-            emu_mut.ppu.step_scanline();
-        }
         // temporary: toggle VBLANK each rendered frame
         emu_mut.bus.io.rdnmi = !emu_mut.bus.io.rdnmi;
 
