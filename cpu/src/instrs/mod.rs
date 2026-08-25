@@ -4,6 +4,8 @@ pub(crate) mod prelude;
 #[cfg(test)]
 pub(crate) mod test_prelude;
 
+pub(crate) use interrupts::{nmi, irq};
+
 mod algorithms;
 mod arithmetic;
 

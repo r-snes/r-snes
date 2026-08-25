@@ -32,6 +32,38 @@ duplicate! {
     });
 }
 
+duplicate! {
+    [
+        DUP_name    DUP_cyc2    DUP_emu_vec     DUP_nat_vec;
+        [nmi]       [nmi_cyc2]  [0xFFFA]        [0xFFEA];
+        [irq]       [irq_cyc2]  [0xFFFE]        [0xFFEE];
+    ]
+    cpu_instr_no_inc_pc!(DUP_name {
+        cpu.state = crate::cpu::CPUState::Running;
+        cpu.next_fetch = InstrCycle(opcode_fetch);
+
+        if cpu.registers.E {
+            // skip the PB push if in emu mode
+            return DUP_cyc2(cpu);
+        }
+        meta PUSH8 cpu.registers.PB;
+        meta PUSH16 cpu.registers.PC;
+        meta PUSH8 cpu.registers.P.into();
+
+        cpu.registers.P.I = true;
+        cpu.registers.P.D = false;
+
+        let addr = if cpu.registers.E {
+            DUP_emu_vec
+        } else {
+            DUP_nat_vec
+        };
+        cpu.addr_bus = snes_addr!(0:addr);
+        meta FETCH16_INTO cpu.registers.PC;
+        cpu.registers.PB = 0;
+    });
+}
+
 cpu_instr_no_inc_pc!(rti {
     meta END_CYCLE Internal;
     meta END_CYCLE Internal;

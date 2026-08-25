@@ -181,6 +181,7 @@ impl CPU {
 
     /// Request an NMI interrupt
     pub fn nmi(&mut self) {
+        use crate::instrs::nmi;
         match self.state {
             CPUState::Running => {
                 // complete the current instruction first, then serve the interrupt
@@ -197,6 +198,7 @@ impl CPU {
 
     /// Request an IRQ interrupt
     pub fn irq(&mut self) {
+        use crate::instrs::irq;
         match self.state {
             CPUState::Running => {
                 if self.registers.P.I {
@@ -228,6 +230,9 @@ impl CPU {
     /// This resets some CPU registers and jumps program execution to
     /// the address contained at 0:FFFC in bank 0
     pub fn reset(&mut self) {
+        // mark the CPU as running again in case reset is hit while in STP or WAI
+        self.state = CPUState::Running;
+
         // set the next cycle to be the reset sequence defined below
         self.next_cycle = InstrCycle(reset_cyc1);
     }
@@ -257,22 +262,6 @@ cpu_instr_no_inc_pc!(reset {
 
     cpu.addr_bus = snes_addr!(0:0xfffc);
     meta FETCH16_INTO cpu.registers.PC;
-
-    cpu.state = CPUState::Running;
-    cpu.next_fetch = InstrCycle(opcode_fetch);
-});
-
-cpu_instr_no_inc_pc!(nmi {
-    todo!("draft nmi");
-    meta END_CYCLE Internal;
-
-    cpu.state = CPUState::Running;
-    cpu.next_fetch = InstrCycle(opcode_fetch);
-});
-
-cpu_instr_no_inc_pc!(irq {
-    todo!("draft irq");
-    meta END_CYCLE Internal;
 
     cpu.state = CPUState::Running;
     cpu.next_fetch = InstrCycle(opcode_fetch);
