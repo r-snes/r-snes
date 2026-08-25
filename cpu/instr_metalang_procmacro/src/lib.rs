@@ -24,7 +24,7 @@ fn gen_cycle_functions(name: &Ident, instr_body: InstrBody) -> TokenStream {
                     quote! {
                         |cpu| {
                             #post_instr
-                            opcode_fetch(cpu)
+                            (cpu.next_fetch.0)(cpu)
                         }
                     }
                 }
@@ -310,7 +310,7 @@ mod test {
                             InstrCycle(|cpu| {
                                 cpu.registers.X = cpu.data_bus as u16;
 
-                                opcode_fetch(cpu)
+                                (cpu.next_fetch.0)(cpu)
                             })
                         )
                     }
@@ -414,7 +414,7 @@ mod test {
                                 Read,
                                 InstrCycle(|cpu| {
                                     *cpu.internal_data_bus.lo_mut() = cpu.data_bus;
-                                    opcode_fetch(cpu)
+                                    (cpu.next_fetch.0)(cpu)
                                 })
                             )
                         }
@@ -436,7 +436,7 @@ mod test {
                                 Read,
                                 InstrCycle(|cpu| {
                                     *cpu.internal_data_bus.hi_mut() = cpu.data_bus;
-                                    opcode_fetch(cpu)
+                                    (cpu.next_fetch.0)(cpu)
                                 })
                             )
                         }

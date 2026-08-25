@@ -48,7 +48,7 @@ cpu_instr_no_inc_pc!(rti {
             cpu.registers.P.X = true;
             cpu.registers.P.M = true;
         }
-        return opcode_fetch(cpu);
+        return (cpu.next_fetch.0)(cpu);
     }
 
     meta PULL8_INTO cpu.registers.PB;
