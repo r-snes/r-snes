@@ -81,7 +81,7 @@ return {
         internal = { "cpu", "input" },
         external = {
             filesystem = {
-                write = {
+                files = {
                     [files.basic] = write_opts,
                     [files.full] = write_opts,
                 }
