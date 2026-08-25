@@ -1,6 +1,7 @@
 #[cfg(feature = "plugins")]
 mod rsnes_plugin;
 
+use bus::io::IrqMode;
 #[cfg(feature = "plugins")]
 use plugins::plugin::Plugin;
 use ppu::ppu::PpuEvent;
@@ -75,7 +76,6 @@ pub struct RSnesEmu {
 
 impl RSnesCore {
     pub const MASTER_CLOCK_HZ: u64 = 21_477_300;
-    pub const MASTER_CYCLE_DURATION: f64 = 1.0 / Self::MASTER_CLOCK_HZ as f64;
 
     pub fn load_rom<P: AsRef<Path>>(rom_path: &P) -> Result<Self, Box<dyn Error>> {
         let bus = Bus::new(rom_path)?;
@@ -237,7 +237,7 @@ impl RSnesCore {
             PpuEvent::DotStart => {}
             PpuEvent::HBlankStart => self.on_hblank_start(),
             PpuEvent::ScanlineStart(kind) => {
-                self.bus.io.hvbjoy &= !0x40; // H-Blank ends
+                self.bus.io.set_hblank(false); // H-Blank ends
                 match kind {
                     ScanlineKind::Normal => {}
                     ScanlineKind::VBlankStart => self.on_vblank_start(),
@@ -254,7 +254,7 @@ impl RSnesCore {
 
     /// Start of H-Blank (dot 274) on the current scanline.
     fn on_hblank_start(&mut self) {
-        self.bus.io.hvbjoy |= 0x40;
+        self.bus.io.set_hblank(true);
 
         if let Some(y) = self.ppu.visible_line() {
             self.ppu_renderer.render_scanline(&self.ppu, y);
@@ -275,8 +275,8 @@ impl RSnesCore {
 
     /// First scanline of V-Blank (225, or 240 when SETINI's overscan bit is set).
     fn on_vblank_start(&mut self) {
-        self.bus.io.hvbjoy |= 0x80;
-        self.bus.io.rdnmi |= 0x80;
+        self.bus.io.set_vblank(true);
+        self.bus.io.set_nmi_flag(true);
 
         // Hardware reloads the internal OAM address from OAMADD here,
         // but only when the screen isn't being force-blanked.
@@ -284,7 +284,7 @@ impl RSnesCore {
             // TODO : Reload OAM address
         }
 
-        if self.bus.io.nmitimen & 0x80 != 0 {
+        if self.bus.io.nmi_enabled() {
             self.nmi_pending = true;
             todo!("V-Blank NMI: CPU should vector through $FFEA (native) / $FFFA (emulation)");
         }
@@ -293,8 +293,8 @@ impl RSnesCore {
     /// Scanline 0: V-Blank ends and a new frame begins. Scanline 0 is the
     /// pre-render line, nothing is drawn on it, the first visible line is 1.
     fn on_frame_start(&mut self) {
-        self.bus.io.hvbjoy &= !0x80;
-        self.bus.io.rdnmi &= !0x80;
+        self.bus.io.set_vblank(false);
+        self.bus.io.set_nmi_flag(false);
 
         // The last visible scanline was rendered back at line 224's
         // H-Blank, so the back buffer is complete and safe to publish.
@@ -313,16 +313,15 @@ impl RSnesCore {
     fn check_hv_irq(&mut self) {
         let (h, v) = (self.ppu.dot(), self.ppu.scanline);
 
-        let hit = match (self.bus.io.nmitimen >> 4) & 0x03 {
-            0 => return,                           // disabled
-            1 => h == self.bus.io.htime,           // every scanline
-            2 => v == self.bus.io.vtime && h == 0, // once per frame
-            3 => v == self.bus.io.vtime && h == self.bus.io.htime,
-            _ => unreachable!(),
+        let hit = match self.bus.io.irq_mode() {
+            IrqMode::Disabled => return,
+            IrqMode::H => h == self.bus.io.htime,
+            IrqMode::V => v == self.bus.io.vtime && h == 0,
+            IrqMode::HV => v == self.bus.io.vtime && h == self.bus.io.htime,
         };
 
         if hit {
-            self.bus.io.timeup |= 0x80;
+            self.bus.io.set_timer_flag(true);
             self.irq_pending = true;
             todo!("H/V timer IRQ: CPU should vector through $FFEE/$FFFE here");
         }

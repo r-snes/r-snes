@@ -245,6 +245,19 @@ pub struct DMAChannel {
     pub unused: u8,
 }
 
+/// H/V timer mode selected by NMITIMEN bits 5-4.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum IrqMode {
+    /// No timer IRQ.
+    Disabled,
+    /// Every scanline, at H = HTIME.
+    H,
+    /// Once per frame, at V = VTIME, H = 0.
+    V,
+    /// Once per frame, at V = VTIME and H = HTIME.
+    HV,
+}
+
 impl Default for DMAChannel {
     fn default() -> Self {
         Self {
@@ -287,7 +300,7 @@ impl Default for Io {
             rddiv: 0,
             rdmpy: 0,
 
-            rdnmi: 0,
+            rdnmi: Io::RDNMI_CPU_VERSION,
             timeup: 0,
             hvbjoy: 0,
 
@@ -300,6 +313,137 @@ impl Default for Io {
 
             open_bus: 0,
         }
+    }
+}
+
+/// Named accessors for the different I/O registers.
+impl Io {
+    // ================================================================
+    // Bit positions masks
+    // ================================================================
+
+    const NMITIMEN_NMI: u8 = 1 << 7;
+    const NMITIMEN_IRQ_MODE: u8 = 0b0011_0000;
+    const NMITIMEN_AUTO_JOYPAD: u8 = 1 << 0;
+
+    const RDNMI_FLAG: u8 = 1 << 7;
+    const RDNMI_CPU_VERSION: u8 = 2;
+
+    const TIMEUP_FLAG: u8 = 1 << 7;
+
+    const HVBJOY_VBLANK: u8 = 1 << 7;
+    const HVBJOY_HBLANK: u8 = 1 << 6;
+    const HVBJOY_AUTO_JOYPAD: u8 = 1 << 0;
+
+    /// Set or clear `mask` in `reg` depending on `on`.
+    fn set_bit(reg: &mut u8, mask: u8, on: bool) {
+        if on {
+            *reg |= mask;
+        } else {
+            *reg &= !mask;
+        }
+    }
+
+    // ================================================================
+    // NMITIMEN ($4200) - NMI/IRQ/Auto-Joypad
+    // ================================================================
+
+    /// Should an NMI be triggered at the start of V-Blank.
+    pub fn nmi_enabled(&self) -> bool {
+        self.nmitimen & Self::NMITIMEN_NMI != 0
+    }
+
+    /// Should the joypads be read automatically each frame.
+    pub fn auto_joypad_enabled(&self) -> bool {
+        self.nmitimen & Self::NMITIMEN_AUTO_JOYPAD != 0
+    }
+
+    /// Which H/V timer condition, if any, should raise an IRQ.
+    pub fn irq_mode(&self) -> IrqMode {
+        match (self.nmitimen & Self::NMITIMEN_IRQ_MODE) >> 4 {
+            0 => IrqMode::Disabled,
+            1 => IrqMode::H,
+            2 => IrqMode::V,
+            _ => IrqMode::HV,
+        }
+    }
+
+    // ================================================================
+    // RDNMI ($4210) - V-Blank NMI flag
+    // ================================================================
+
+    /// Raise or lower the V-Blank NMI flag.
+    ///
+    /// Set at V-Blank start, cleared at V-Blank end - and also cleared by
+    /// the CPU reading `$4210`, which [`read_rdnmi`](Self::read_rdnmi)
+    /// handles.
+    pub fn set_nmi_flag(&mut self, on: bool) {
+        Self::set_bit(&mut self.rdnmi, Self::RDNMI_FLAG, on);
+    }
+
+    /// Check whether the V-Blank NMI flag is set.
+    pub fn nmi_flag(&self) -> bool {
+        self.rdnmi & Self::RDNMI_FLAG != 0
+    }
+
+    /// Read `$4210`: returns the current value and acknowledges the NMI
+    /// by clearing bit 7. The CPU version bits survive.
+    pub fn read_rdnmi(&mut self) -> u8 {
+        let value = self.rdnmi;
+        self.rdnmi &= !Self::RDNMI_FLAG;
+        value
+    }
+
+    // ================================================================
+    // TIMEUP ($4211) - H/V timer IRQ flag
+    // ================================================================
+
+    /// Raise or lower the Timer TIMEUP flag.
+    pub fn set_timer_flag(&mut self, on: bool) {
+        Self::set_bit(&mut self.timeup, Self::TIMEUP_FLAG, on);
+    }
+
+    /// Check whether the TIMEUP IRQ flag is set.
+    pub fn timer_flag(&self) -> bool {
+        self.timeup & Self::TIMEUP_FLAG != 0
+    }
+
+    /// Read `$4211`: returns the current value.
+    /// This read clears the Timer flag.
+    pub fn read_timeup(&mut self) -> u8 {
+        let value = self.timeup;
+        self.timeup &= !Self::TIMEUP_FLAG;
+        value
+    }
+
+    // ================================================================
+    // HVBJOY ($4212) - screen and joypad status
+    // ================================================================
+
+    pub fn set_vblank(&mut self, on: bool) {
+        Self::set_bit(&mut self.hvbjoy, Self::HVBJOY_VBLANK, on);
+    }
+
+    pub fn in_vblank(&self) -> bool {
+        self.hvbjoy & Self::HVBJOY_VBLANK != 0
+    }
+
+    pub fn set_hblank(&mut self, on: bool) {
+        Self::set_bit(&mut self.hvbjoy, Self::HVBJOY_HBLANK, on);
+    }
+
+    pub fn in_hblank(&self) -> bool {
+        self.hvbjoy & Self::HVBJOY_HBLANK != 0
+    }
+
+    /// Bit 0: set while the auto-joypad read is in progress (~4224 master
+    /// cycles from V-Blank start). ROMs poll this before reading JOY1-4.
+    pub fn set_auto_joypad_busy(&mut self, on: bool) {
+        Self::set_bit(&mut self.hvbjoy, Self::HVBJOY_AUTO_JOYPAD, on);
+    }
+
+    pub fn auto_joypad_busy(&self) -> bool {
+        self.hvbjoy & Self::HVBJOY_AUTO_JOYPAD != 0
     }
 }
 
@@ -333,19 +477,11 @@ impl Io {
 
             // Vblank flag and CPU version register
             // TODO : Implement open bus on unused bits
-            0x4210 => {
-                let value = self.rdnmi;
-                self.rdnmi &= 0x7F; // Reset V-Blank flag
-                value
-            }
+            0x4210 => self.read_rdnmi(),
 
             // Timer flag register
             // TODO : Implement open bus on unused bits
-            0x4211 => {
-                let value = self.timeup;
-                self.timeup &= 0x7F; // Reset Timer flag
-                value
-            }
+            0x4211 => self.read_timeup(),
 
             // Screen and Joypad status register
             // TODO : Implement open bus on unused bits
