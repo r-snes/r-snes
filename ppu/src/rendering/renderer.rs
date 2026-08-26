@@ -5,9 +5,9 @@ use crate::ppu::PPU;
 pub type RawFramebuffer = [u8; SCREEN_WIDTH * SCREEN_HEIGHT * 3];
 
 pub struct Renderer {
-    pub framebuffer: Box<RawFramebuffer>,
+    pub framebuffer: Box<RawFramebuffer>, // back buffer, PPU writes here
+    pub presented: Box<RawFramebuffer>,   // front buffer, GUI reads here
     pub current_brightness: u8,
-
     brightness_delay: u8,
 }
 
@@ -23,7 +23,16 @@ impl Renderer {
             framebuffer: Box::new([0; SCREEN_WIDTH * SCREEN_HEIGHT * 3]),
             current_brightness: 15, // full brightness
             brightness_delay: 0,
+            presented: Box::new([0; SCREEN_WIDTH * SCREEN_HEIGHT * 3]),
         }
+    }
+
+    pub fn swap_buffers(&mut self) {
+        std::mem::swap(&mut self.framebuffer, &mut self.presented);
+    }
+
+    pub fn presented(&self) -> &RawFramebuffer {
+        &self.presented
     }
 
     pub fn render_scanline(&mut self, ppu: &PPU, y: usize) {
