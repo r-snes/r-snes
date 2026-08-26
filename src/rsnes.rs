@@ -409,6 +409,28 @@ mod tests {
     use super::*;
     use bus::rom::test_rom::*;
     use common::snes_addr;
+    use ppu::constants::*;
+
+    /// Ticks the core without letting the CPU run.
+    fn tick_core(rsnes: &mut RSnesCore, cycles: u64) {
+        rsnes.cpu_master_cycles_to_wait = u32::MAX;
+        for _ in 0..cycles {
+            rsnes.update();
+        }
+    }
+
+    /// Ticks until the PPU sits at the very start of `target`.
+    fn advance_core_to_scanline(rsnes: &mut RSnesCore, target: u16) {
+        rsnes.cpu_master_cycles_to_wait = u32::MAX;
+        let cap = (SCANLINES_PER_FRAME as u32 + 1) * MASTER_CYCLES_PER_SCANLINE;
+        for _ in 0..cap {
+            rsnes.update();
+            if rsnes.ppu.scanline == target && rsnes.ppu.h_cycles == 0 {
+                return;
+            }
+        }
+        panic!("never reached the start of scanline {target}");
+    }
 
     pub(super) fn make_rsnes() -> RSnesCore {
         let rom_data = create_valid_lorom(0x20000);
@@ -631,5 +653,350 @@ mod tests {
         rsnes.cpu_master_cycles_to_wait = 0;
 
         assert_eq!(rsnes.bus.wram.read(snes_addr!(0:0x1234)), 0x42);
+    }
+
+    // ============================================================
+    // update() - clock distribution
+    // ============================================================
+
+    /// The PPU now advances from the same clock as everything else: one
+    /// tick per master cycle, regardless of what the CPU is doing.
+    #[test]
+    fn test_ppu_advances_with_master_clock() {
+        let mut rsnes = make_rsnes();
+
+        tick_core(&mut rsnes, 100);
+
+        assert_eq!(rsnes.master_cycles, 100);
+        assert_eq!(rsnes.ppu.h_cycles, 100);
+        assert_eq!(rsnes.ppu.dot(), 25, "4 master cycles per dot");
+    }
+
+    /// The APU is driven by the same clock at its own 1.024 MHz rate.
+    #[test]
+    fn test_apu_cycle_debt_tracks_clock_ratio() {
+        let mut rsnes = make_rsnes();
+        let cycles = 1_000u64;
+
+        tick_core(&mut rsnes, cycles);
+
+        let expected = (cycles * Apu::CLOCK_HZ) % RSnesCore::MASTER_CLOCK_HZ;
+        assert_eq!(rsnes.apu_cycle_debt, expected);
+    }
+
+    #[test]
+    fn test_interrupt_flags_clear_at_poweron() {
+        let rsnes = make_rsnes();
+        assert!(!rsnes.nmi_pending);
+        assert!(!rsnes.irq_pending);
+    }
+
+    // ============================================================
+    // $4212 HVBJOY - H-Blank
+    // ============================================================
+
+    /// Bit 6 is purely positional: set on entry to dot 274, cleared when
+    /// the next scanline begins.
+    #[test]
+    fn test_hblank_flag_tracks_dot_position() {
+        let mut rsnes = make_rsnes();
+
+        tick_core(&mut rsnes, HBLANK_START_DOT as u64 * 4 - 1);
+        assert!(!rsnes.bus.io.in_hblank());
+
+        tick_core(&mut rsnes, 1);
+        assert!(rsnes.bus.io.in_hblank());
+
+        advance_core_to_scanline(&mut rsnes, 1);
+        assert!(!rsnes.bus.io.in_hblank());
+    }
+
+    // ============================================================
+    // $4212 HVBJOY / $4210 RDNMI - V-Blank
+    // ============================================================
+
+    /// Both flags go up on scanline 225 and come back down on scanline 0.
+    #[test]
+    fn test_vblank_flags_set_and_cleared() {
+        let mut rsnes = make_rsnes();
+        assert!(!rsnes.bus.io.in_vblank());
+        assert!(!rsnes.bus.io.nmi_flag());
+
+        advance_core_to_scanline(&mut rsnes, VBLANK_START_LINE);
+        assert!(rsnes.bus.io.in_vblank());
+        assert!(rsnes.bus.io.nmi_flag());
+
+        advance_core_to_scanline(&mut rsnes, 0);
+        assert!(!rsnes.bus.io.in_vblank());
+        assert!(!rsnes.bus.io.nmi_flag());
+    }
+
+    /// The V-Blank flag stays up for every scanline in the interval, not
+    /// just the first one — ROMs poll it in a loop.
+    #[test]
+    fn test_vblank_flag_held_for_whole_interval() {
+        let mut rsnes = make_rsnes();
+
+        advance_core_to_scanline(&mut rsnes, VBLANK_START_LINE);
+        for line in [230, 245, SCANLINES_PER_FRAME - 1] {
+            advance_core_to_scanline(&mut rsnes, line);
+            assert!(
+                rsnes.bus.io.in_vblank(),
+                "should still be in V-Blank at line {line}"
+            );
+        }
+    }
+
+    /// The last visible line is still outside V-Blank.
+    #[test]
+    fn test_last_visible_scanline_is_not_vblank() {
+        let mut rsnes = make_rsnes();
+        advance_core_to_scanline(&mut rsnes, VBLANK_START_LINE - 1);
+        assert!(!rsnes.bus.io.in_vblank());
+    }
+
+    /// Reading $4210 acknowledges the NMI. HVBJOY is positional and must
+    /// not be disturbed by it.
+    #[test]
+    fn test_reading_rdnmi_acknowledges_without_clearing_vblank() {
+        let mut rsnes = make_rsnes();
+        advance_core_to_scanline(&mut rsnes, VBLANK_START_LINE);
+
+        let value = rsnes
+            .bus
+            .read(snes_addr!(0:0x4210), &mut rsnes.ppu, &mut rsnes.apu);
+
+        assert_eq!(value & 0x80, 0x80, "read returns the flag that was set");
+        assert!(!rsnes.bus.io.nmi_flag(), "read acknowledges");
+        assert!(rsnes.bus.io.in_vblank(), "HVBJOY is unaffected");
+    }
+
+    /// SETINI bit 2 moves V-Blank to line 240, and the core follows it.
+    #[test]
+    fn test_overscan_moves_vblank_start() {
+        let mut rsnes = make_rsnes();
+        rsnes.ppu.write(0x2133, 0x04);
+
+        advance_core_to_scanline(&mut rsnes, VBLANK_START_LINE);
+        assert!(
+            !rsnes.bus.io.in_vblank(),
+            "line 225 is visible with overscan"
+        );
+
+        advance_core_to_scanline(&mut rsnes, VBLANK_START_LINE_OVERSCAN);
+        assert!(rsnes.bus.io.in_vblank());
+    }
+
+    // ============================================================
+    // V-Blank NMI
+    // ============================================================
+
+    /// With NMITIMEN bit 7 set, entering V-Blank must request an NMI.
+    /// Becomes a `nmi_pending` assertion once the CPU can take interrupts.
+    #[test]
+    #[should_panic(expected = "V-Blank NMI")]
+    fn test_vblank_nmi_requested_when_enabled() {
+        let mut rsnes = make_rsnes();
+        rsnes.bus.io.nmitimen = 0x80;
+        advance_core_to_scanline(&mut rsnes, VBLANK_START_LINE);
+    }
+
+    /// With NMI disabled, no request — but the RDNMI flag still goes up.
+    /// That asymmetry is real hardware: the flag is positional, the
+    /// interrupt is opt-in.
+    #[test]
+    fn test_vblank_flag_set_even_when_nmi_disabled() {
+        let mut rsnes = make_rsnes();
+        assert!(!rsnes.bus.io.nmi_enabled());
+
+        advance_core_to_scanline(&mut rsnes, VBLANK_START_LINE);
+
+        assert!(rsnes.bus.io.nmi_flag());
+        assert!(!rsnes.nmi_pending);
+    }
+
+    // ============================================================
+    // check_hv_irq - NMITIMEN bits 5-4
+    // ============================================================
+
+    #[test]
+    fn test_irq_mode_decoding() {
+        let mut rsnes = make_rsnes();
+        for (bits, expected) in [
+            (0b0000_0000, IrqMode::Disabled),
+            (0b0001_0000, IrqMode::H),
+            (0b0010_0000, IrqMode::V),
+            (0b0011_0000, IrqMode::HV),
+        ] {
+            rsnes.bus.io.nmitimen = bits;
+            assert_eq!(rsnes.bus.io.irq_mode(), expected);
+        }
+    }
+
+    /// Mode 1 fires wherever H reaches HTIME, on any scanline.
+    #[test]
+    #[should_panic(expected = "H/V timer IRQ")]
+    fn test_h_irq_fires_at_htime() {
+        let mut rsnes = make_rsnes();
+        rsnes.bus.io.nmitimen = 0b0001_0000;
+        rsnes.bus.io.htime = 100;
+
+        tick_core(&mut rsnes, 100 * 4);
+    }
+
+    /// Mode 2 fires once per frame, at H = 0 of VTIME.
+    #[test]
+    #[should_panic(expected = "H/V timer IRQ")]
+    fn test_v_irq_fires_on_target_scanline() {
+        let mut rsnes = make_rsnes();
+        rsnes.bus.io.nmitimen = 0b0010_0000;
+        rsnes.bus.io.vtime = 42;
+
+        advance_core_to_scanline(&mut rsnes, 100);
+    }
+
+    /// Mode 2 must ignore every other scanline.
+    #[test]
+    fn test_v_irq_silent_on_other_scanlines() {
+        let mut rsnes = make_rsnes();
+        rsnes.bus.io.nmitimen = 0b0010_0000;
+        rsnes.bus.io.vtime = 200;
+
+        advance_core_to_scanline(&mut rsnes, 100);
+        assert!(!rsnes.irq_pending);
+    }
+
+    /// Mode 3 needs both coordinates: an HTIME match on the wrong scanline
+    /// must not fire.
+    #[test]
+    fn test_hv_irq_ignores_htime_match_on_wrong_scanline() {
+        let mut rsnes = make_rsnes();
+        rsnes.bus.io.nmitimen = 0b0011_0000;
+        rsnes.bus.io.htime = 100;
+        rsnes.bus.io.vtime = 200;
+
+        advance_core_to_scanline(&mut rsnes, 150);
+        assert!(!rsnes.irq_pending);
+    }
+
+    /// Mode 0 must never fire, even when both counters match.
+    #[test]
+    fn test_irq_disabled_never_fires() {
+        let mut rsnes = make_rsnes();
+        rsnes.bus.io.htime = 100;
+        rsnes.bus.io.vtime = 100;
+
+        advance_core_to_scanline(&mut rsnes, 150);
+        assert!(!rsnes.irq_pending);
+        assert!(!rsnes.bus.io.timer_flag());
+    }
+
+    // ============================================================
+    // Scanline rendering
+    // ============================================================
+
+    /// Scanline N is drawn at its H-Blank, into framebuffer row N-1.
+    /// Force blank makes the renderer emit black, which is easy to detect
+    /// against a pre-filled buffer.
+    #[test]
+    fn test_scanline_rendered_at_hblank_of_visible_line() {
+        let mut rsnes = make_rsnes();
+        rsnes.ppu.write(0x2100, 0x80);
+        rsnes.ppu_renderer.framebuffer.fill(0xFF);
+
+        advance_core_to_scanline(&mut rsnes, 1);
+        assert_eq!(rsnes.ppu_renderer.framebuffer[0], 0xFF, "not drawn yet");
+
+        tick_core(&mut rsnes, HBLANK_START_DOT as u64 * 4);
+
+        let row0 = &rsnes.ppu_renderer.framebuffer[..SCREEN_WIDTH * 3];
+        assert!(row0.iter().all(|&b| b == 0), "scanline 1 drew row 0");
+
+        let row1 = &rsnes.ppu_renderer.framebuffer[SCREEN_WIDTH * 3..SCREEN_WIDTH * 6];
+        assert!(row1.iter().all(|&b| b == 0xFF), "row 1 untouched");
+    }
+
+    /// Scanline 0 is the pre-render line and draws nothing.
+    #[test]
+    fn test_prerender_scanline_draws_nothing() {
+        let mut rsnes = make_rsnes();
+        rsnes.ppu.write(0x2100, 0x80);
+        rsnes.ppu_renderer.framebuffer.fill(0xFF);
+
+        tick_core(&mut rsnes, HBLANK_START_DOT as u64 * 4);
+
+        assert!(rsnes.ppu_renderer.framebuffer.iter().all(|&b| b == 0xFF));
+    }
+
+    /// V-Blank scanlines draw nothing either.
+    #[test]
+    fn test_vblank_scanlines_draw_nothing() {
+        let mut rsnes = make_rsnes();
+        rsnes.ppu.write(0x2100, 0x80);
+
+        advance_core_to_scanline(&mut rsnes, VBLANK_START_LINE);
+        rsnes.ppu_renderer.framebuffer.fill(0xFF);
+
+        tick_core(&mut rsnes, MASTER_CYCLES_PER_SCANLINE as u64);
+
+        assert!(rsnes.ppu_renderer.framebuffer.iter().all(|&b| b == 0xFF));
+    }
+
+    /// The back buffer becomes visible only when the frame completes.
+    #[test]
+    fn test_framebuffer_published_at_frame_start() {
+        let mut rsnes = make_rsnes();
+
+        // Park in V-Blank first so no further rendering overwrites the mark.
+        advance_core_to_scanline(&mut rsnes, VBLANK_START_LINE);
+        rsnes.ppu_renderer.framebuffer[0] = 0xAB;
+        assert_ne!(rsnes.ppu_renderer.presented()[0], 0xAB, "not published yet");
+
+        advance_core_to_scanline(&mut rsnes, 0);
+        assert_eq!(rsnes.ppu_renderer.presented()[0], 0xAB);
+    }
+
+    // ============================================================
+    // HDMA scheduling
+    // ============================================================
+
+    /// A transfer is requested in the H-Blank of every visible scanline
+    /// while HDMAEN is non-zero.
+    #[test]
+    #[should_panic(expected = "HDMA transfer")]
+    fn test_hdma_transfer_requested_during_visible_lines() {
+        let mut rsnes = make_rsnes();
+        rsnes.bus.io.hdmaen = 0b0000_0001;
+
+        tick_core(&mut rsnes, HBLANK_START_DOT as u64 * 4);
+    }
+
+    /// HDMA never runs during V-Blank — that window belongs to the ROM.
+    /// Reaching the end without panicking is the assertion.
+    #[test]
+    fn test_hdma_not_requested_during_vblank() {
+        let mut rsnes = make_rsnes();
+        advance_core_to_scanline(&mut rsnes, VBLANK_START_LINE);
+        rsnes.bus.io.hdmaen = 0b0000_0001;
+
+        tick_core(&mut rsnes, MASTER_CYCLES_PER_SCANLINE as u64);
+    }
+
+    /// Channels are re-initialised at the top of each frame.
+    #[test]
+    #[should_panic(expected = "HDMA init")]
+    fn test_hdma_init_requested_at_frame_start() {
+        let mut rsnes = make_rsnes();
+        advance_core_to_scanline(&mut rsnes, VBLANK_START_LINE);
+        rsnes.bus.io.hdmaen = 0b0000_0001;
+
+        advance_core_to_scanline(&mut rsnes, 0);
+    }
+
+    /// Nothing is requested when HDMAEN is clear.
+    #[test]
+    fn test_no_hdma_when_disabled() {
+        let mut rsnes = make_rsnes();
+        advance_core_to_scanline(&mut rsnes, 10);
     }
 }
