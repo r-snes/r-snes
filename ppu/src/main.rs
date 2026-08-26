@@ -96,6 +96,11 @@ fn main() {
 
     let mut event_pump = sdl_context.event_pump().unwrap();
 
+    for y in 0..SCREEN_HEIGHT {
+        renderer.render_scanline(&ppu, y);
+    }
+    renderer.swap_buffers();
+
     'running: loop {
         for event in event_pump.poll_iter() {
             if let sdl2::event::Event::Quit { .. } = event {
@@ -103,18 +108,13 @@ fn main() {
             }
         }
 
-        for y in 0..SCREEN_HEIGHT {
-            renderer.render_scanline(&ppu, y);
-            ppu.step_scanline();
-        }
+        texture
+            .update(None, &renderer.presented()[..], SCREEN_WIDTH * 3)
+            .unwrap();
+        canvas.copy(&texture, None, None).unwrap();
+        canvas.present();
 
-        if ppu.frame_ready {
-            texture
-                .update(None, &renderer.framebuffer[..], SCREEN_WIDTH * 3)
-                .unwrap();
-            canvas.copy(&texture, None, None).unwrap();
-            canvas.present();
-        }
+        std::thread::sleep(std::time::Duration::from_millis(16));
     }
     println!("\n>> Nice and clean.");
 }

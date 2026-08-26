@@ -262,14 +262,12 @@ impl RSnesCore {
 
         // HDMA transfers run in the H-Blank of scanlines 0 through the last
         // visible one, never during V-Blank.
-        if self.ppu.scanline < self.ppu.vblank_start_line() {
-            if self.bus.io.hdmaen != 0 {
-                todo!(
-                    "HDMA transfer on scanline {}: channels {:08b} enabled via HDMAEN",
-                    self.ppu.scanline,
-                    self.bus.io.hdmaen
-                );
-            }
+        if self.ppu.scanline < self.ppu.vblank_start_line() && self.bus.io.hdmaen != 0 {
+            todo!(
+                "HDMA transfer on scanline {}: channels {:08b} enabled via HDMAEN",
+                self.ppu.scanline,
+                self.bus.io.hdmaen
+            );
         }
     }
 
