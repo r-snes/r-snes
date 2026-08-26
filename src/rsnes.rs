@@ -14,6 +14,7 @@ use cpu::cpu::CPU;
 use cpu::cpu::CycleResult;
 
 use bus::rom::header::RomHeader;
+use ppu::constants::SCREEN_HEIGHT;
 use ppu::ppu::PPU;
 use std::error::Error;
 use std::path::Path;
@@ -31,6 +32,7 @@ pub struct RSnesCore {
     pub apu: Apu,
     pub master_cycles: u64,
     pub cpu_master_cycles_to_wait: u32,
+    ppu_master_cycles: u32,
     apu_cycle_debt: u64,
 }
 
@@ -72,6 +74,7 @@ pub struct RSnesEmu {
 impl RSnesCore {
     pub const MASTER_CLOCK_HZ: u64 = 21_477_300;
     pub const MASTER_CYCLE_DURATION: f64 = 1.0 / Self::MASTER_CLOCK_HZ as f64;
+    const MASTER_CYCLES_PER_SCANLINE: u32 = 1364;
 
     pub fn load_rom<P: AsRef<Path>>(rom_path: &P) -> Result<Self, Box<dyn Error>> {
         let bus = Bus::new(rom_path)?;
@@ -89,6 +92,7 @@ impl RSnesCore {
             apu,
             master_cycles: 0,
             cpu_master_cycles_to_wait: 0,
+            ppu_master_cycles: 0,
             apu_cycle_debt: 0,
         })
     }
@@ -216,10 +220,32 @@ impl RSnesCore {
         }
     }
 
+    /// Accumulates master cycles toward the PPU's scanline period and,
+    /// once a full scanline's worth (1364) has elapsed,
+    /// renders the current visible scanline and advances the PPU by one line.
+    fn update_ppu_cycles(&mut self) {
+        self.ppu_master_cycles += 1;
+        if self.ppu_master_cycles < Self::MASTER_CYCLES_PER_SCANLINE {
+            return;
+        }
+        self.ppu_master_cycles -= Self::MASTER_CYCLES_PER_SCANLINE;
+
+        // Render the line currently being scanned, if it is on-screen
+        let scanline = self.ppu.scanline;
+        if (scanline as usize) < SCREEN_HEIGHT {
+            self.ppu_renderer
+                .render_scanline(&self.ppu, scanline as usize);
+        }
+
+        // Advance the PPU to the next scanline (wraps the frame at 262)
+        self.ppu.step_scanline();
+    }
+
     /// This function will be called every master cycle, it will update the CPU, PPU and APU state accordingly
     pub fn update(&mut self) {
         self.update_cpu_cycles();
         self.update_apu_cycles();
+        self.update_ppu_cycles();
 
         self.master_cycles += 1;
     }
