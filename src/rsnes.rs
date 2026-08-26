@@ -34,8 +34,6 @@ pub struct RSnesCore {
     pub apu: Apu,
     pub master_cycles: u64,
     pub cpu_master_cycles_to_wait: u32,
-    pub nmi_pending: bool,
-    pub irq_pending: bool,
     pub apu_cycle_debt: u64,
 }
 
@@ -94,8 +92,6 @@ impl RSnesCore {
             master_cycles: 0,
             cpu_master_cycles_to_wait: 0,
             apu_cycle_debt: 0,
-            nmi_pending: false,
-            irq_pending: false,
         })
     }
 
@@ -283,8 +279,7 @@ impl RSnesCore {
         }
 
         if self.bus.io.nmi_enabled() {
-            self.nmi_pending = true;
-            todo!("V-Blank NMI: CPU should vector through $FFEA (native) / $FFFA (emulation)");
+            self.cpu.nmi();
         }
     }
 
@@ -320,8 +315,7 @@ impl RSnesCore {
 
         if hit {
             self.bus.io.set_timer_flag(true);
-            self.irq_pending = true;
-            todo!("H/V timer IRQ: CPU should vector through $FFEE/$FFFE here");
+            self.cpu.irq();
         }
     }
 
