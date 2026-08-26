@@ -1,5 +1,5 @@
 use duplicate::duplicate;
-use instr_metalang_procmacro::cpu_instr_no_inc_pc;
+use instr_metalang_procmacro::{cpu_instr, cpu_instr_no_inc_pc};
 
 duplicate! {
     [
@@ -84,6 +84,17 @@ cpu_instr_no_inc_pc!(rti {
     }
 
     meta PULL8_INTO cpu.registers.PB;
+});
+
+cpu_instr!(wai {
+    meta END_CYCLE Internal;
+
+    // only once we reach the third cycle, mark the CPU as waiting for an interrupt
+    cpu.state = crate::cpu::CPUState::WaitForInterrupt;
+    meta END_CYCLE Internal;
+
+    return wai_cyc2(cpu);
+    #[expect(unreachable_code)]
 });
 
 #[cfg(test)]
