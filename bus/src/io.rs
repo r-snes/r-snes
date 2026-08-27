@@ -155,6 +155,15 @@ pub struct Io {
     /// [SNESdev Wiki - JOY4](https://snes.nesdev.org/wiki/MMIO_registers#JOY4)
     pub joy4: u16,
 
+    /// Live button state of controller **port 1** - the physical controller's
+    /// shift register, not an I/O register. One bit per button in JOY1 order,
+    /// copied into [`joy1`](Self::joy1) each frame by
+    /// [`latch_joypad1`](Self::latch_joypad1).
+    ///
+    /// # Reference
+    /// [SNESdev Wiki - Controller reading](https://snes.nesdev.org/wiki/Controller_reading)
+    pub joypad1: u16,
+
     /// DMA/HDMA register banks for all 8 channels (`0x4300–0x437F`).
     /// Channel `n` occupies `0x43n0–0x43nF`.
     pub dma_channels: [DMAChannel; 8],
@@ -309,6 +318,8 @@ impl Default for Io {
             joy3: 0,
             joy4: 0,
 
+            joypad1: 0,
+
             dma_channels: Default::default(),
 
             open_bus: 0,
@@ -444,6 +455,27 @@ impl Io {
 
     pub fn auto_joypad_busy(&self) -> bool {
         self.hvbjoy & Self::HVBJOY_AUTO_JOYPAD != 0
+    }
+
+    // ================================================================
+    // Controller input
+    // ================================================================
+
+    /// Set or clear the buttons in `mask` on controller port 1, according to
+    /// `pressed`. `mask` uses the JOY1 bit layout (bit 15 = B ... bit 4 = R).
+    pub fn set_joypad1_button(&mut self, mask: u16, pressed: bool) {
+        if pressed {
+            self.joypad1 |= mask;
+        } else {
+            self.joypad1 &= !mask;
+        }
+    }
+
+    /// Latch the live controller state into JOY1 (`$4218`/`$4219`), where ROMs
+    /// read it. Called once per frame at V-Blank when auto-read is enabled
+    /// (NMITIMEN bit 0).
+    pub fn latch_joypad1(&mut self) {
+        self.joy1 = self.joypad1;
     }
 }
 
