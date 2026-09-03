@@ -270,6 +270,7 @@ cpu_instr_no_inc_pc!(reset {
 #[cfg(test)]
 mod tests {
     use crate::instrs::test_prelude::*;
+    use duplicate::duplicate_item;
 
     #[test]
     fn poweron() {
@@ -299,5 +300,70 @@ mod tests {
         expect_vector_to(&mut cpu, 0xfffc);
     }
 
+    /// This test runs an interrupt during a jump instruction and immediately
+    /// returns from the interrupt, the expected behaviour is:
+    /// - Jump instruction runs to completion, it determines a jump address
+    ///   and stores it in PC
+    /// - The interrupt is served:
+    ///   - PC is saved on the stack (this should store
+    ///     the new PC computed by the jump)
+    ///   - We jump to the interrupt routine
+    /// - We artificially input a RTI to return from the interrupt routine,
+    ///   which should pull the saved PC back in the register
+    /// - The CPU uses the pulled PC to jump to the address determined
+    ///   by the jump which happened before the interrupt
+    ///
+    /// Technically, everything from the RTI onwards is already covered by
+    /// other tests: once the PB:PC from the jump is saved in the stack and
+    /// we reached the interrupt routine, the "NMI mid jump" is already
+    /// successful.<br>
+    /// We still test the entire scenario to show what it would look like
+    #[duplicate_item(
+        DUP_name        DUP_interrupt   DUP_vector;
+        [nmi_mid_jump]  [nmi]           [0xFFEA];
+        [irq_mid_jump]  [irq]           [0xFFEE];
+    )]
+    #[test]
+    fn DUP_name() {
+        let regs = Registers {
+            PB: 4,
+            PC: 7,
+            E: false,
+            S: 0x0244,
+            P: 123.into(),
+            ..Default::default()
+        };
+        assert!(!regs.P.I, "we need IRQ to not be disabled");
+        let mut cpu = CPU::new(regs);
+
+        expect_opcode_fetch(&mut cpu, 0x5c); // jml
+        expect_read_cycle(&mut cpu, snes_addr!(4:8), 0x56, "PCL");
+        cpu.DUP_interrupt(); // request an interrupt which has to be served only once the JML completes
+        expect_read_cycle(&mut cpu, snes_addr!(4:9), 0x34, "PCH");
+        expect_read_cycle(&mut cpu, snes_addr!(4:10), 0x12, "PB");
+
+        expect_write_cycle(&mut cpu, snes_addr!(0:0x0244), 0x12, "save PB");
+        expect_write_cycle(&mut cpu, snes_addr!(0:0x0243), 0x34, "save PCH");
+        expect_write_cycle(&mut cpu, snes_addr!(0:0x0242), 0x56, "save PCL");
+        expect_write_cycle(&mut cpu, snes_addr!(0:0x0241), 123, "save P");
+        expect_read_cycle(&mut cpu, snes_addr!(0:DUP_vector), 0x68, "interrupt vec lo");
+        expect_read_cycle(
+            &mut cpu,
+            snes_addr!(0:DUP_vector + 1),
+            0x24,
+            "interrupt vec hi",
+        );
+
+        expect_read_cycle(&mut cpu, snes_addr!(0:0x2468), 0x40, "fetch RTI opcode");
+        expect_internal_cycle(&mut cpu, "RTI first idle");
+        expect_internal_cycle(&mut cpu, "RTI second idle");
+        expect_read_cycle(&mut cpu, snes_addr!(0:0x0241), 123, "restore P");
+        expect_read_cycle(&mut cpu, snes_addr!(0:0x0242), 0x56, "restore PCL");
+        expect_read_cycle(&mut cpu, snes_addr!(0:0x0243), 0x34, "restore PCH");
+        expect_read_cycle(&mut cpu, snes_addr!(0:0x0244), 0x12, "restore PB");
+
+        expect_opcode_fetch_cycle(&mut cpu);
+        assert_eq!(cpu.registers.PB, 0x12);
+        assert_eq!(cpu.registers.PC, 0x3456);
     }
 }
