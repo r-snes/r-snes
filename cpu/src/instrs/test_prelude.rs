@@ -94,3 +94,18 @@ pub(crate) fn expect_write_cycle(
         expected_address, expected_value,
     )
 }
+
+/// Expects (creates an assertion) the CPU to read an interrupt vector,
+/// and jump to it, testing 3 cycles:
+/// - read interrupt vector lo
+/// - read interrupt vector hi
+/// - opcode fetch at the address contained in the interrupt vector
+pub(crate) fn expect_vector_to(cpu: &mut CPU, vector: u16) {
+    expect_read_cycle(cpu, snes_addr!(0:vector), 0x68, "start address lo");
+    expect_read_cycle(cpu, snes_addr!(0:vector + 1), 0x24, "start address hi");
+    expect_opcode_fetch_cycle(cpu);
+
+    // we only test the CPU started fetching an opcode from the provided address
+    assert_eq!(cpu.regs().PC, 0x2468);
+    assert_eq!(cpu.regs().PB, 0);
+}

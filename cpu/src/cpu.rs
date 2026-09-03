@@ -275,12 +275,29 @@ mod tests {
     fn poweron() {
         let mut cpu = super::CPU::poweron();
 
-        expect_read_cycle(&mut cpu, snes_addr!(0:0xfffc), 0x68, "start address lo");
-        expect_read_cycle(&mut cpu, snes_addr!(0:0xfffd), 0x24, "start address hi");
-        expect_opcode_fetch_cycle(&mut cpu);
+        expect_vector_to(&mut cpu, 0xfffc);
+    }
 
-        // we only test the CPU started fetching an opcode from the provided address
-        assert_eq!(cpu.regs().PC, 0x2468);
-        assert_eq!(cpu.regs().PB, 0);
+    #[test]
+    fn only_reset_affects_stp() {
+        let mut cpu = CPU::new(Registers::default());
+
+        expect_opcode_fetch(&mut cpu, 0xdb);
+        for _ in 0..100 {
+            expect_internal_cycle(&mut cpu, "stp spin loop");
+        }
+        cpu.irq();
+        for _ in 0..100 {
+            expect_internal_cycle(&mut cpu, "stp spin loop");
+        }
+        cpu.nmi();
+        for _ in 0..100 {
+            expect_internal_cycle(&mut cpu, "stp spin loop");
+        }
+
+        cpu.reset();
+        expect_vector_to(&mut cpu, 0xfffc);
+    }
+
     }
 }
