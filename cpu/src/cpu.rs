@@ -269,7 +269,7 @@ cpu_instr_no_inc_pc!(reset {
 
 #[cfg(test)]
 mod tests {
-    use crate::instrs::test_prelude::*;
+    use crate::{instrs::test_prelude::*, registers::RegisterP};
     use duplicate::duplicate_item;
 
     #[test]
@@ -390,5 +390,69 @@ mod tests {
         expect_opcode_fetch_cycle(&mut cpu);
         assert_eq!(cpu.registers.PB, 0x12);
         assert_eq!(cpu.registers.PC, 0x3456);
+    }
+
+    #[test]
+    fn nmi_interrupts_wai() {
+        let mut cpu = CPU::new(Registers::default());
+
+        expect_opcode_fetch(&mut cpu, 0xcb);
+        for _ in 0..100 {
+            expect_internal_cycle(&mut cpu, "WAI spin loop");
+        }
+        cpu.nmi();
+        for _ in 0..4 {
+            assert!(
+                matches!(cpu.cycle(), CycleResult::Write),
+                "interrupt write cycle"
+            );
+        }
+        expect_vector_to(&mut cpu, 0xFFEA);
+    }
+
+    #[test]
+    fn irq_interrupts_wai() {
+        let mut cpu = CPU::new(Registers::default());
+
+        expect_opcode_fetch(&mut cpu, 0xcb);
+        for _ in 0..100 {
+            expect_internal_cycle(&mut cpu, "WAI spin loop");
+        }
+        cpu.irq();
+        for _ in 0..4 {
+            assert!(
+                matches!(cpu.cycle(), CycleResult::Write),
+                "interrupt write cycle"
+            );
+        }
+        expect_vector_to(&mut cpu, 0xFFEE);
+    }
+
+    /// If an IRQ happens when the I flag is set, it is usually ignored,
+    /// unless the CPU has reached the third cycle of WAI, in which
+    /// case it simply resumes execution (starts executing code after the
+    /// WAI instead of serving the interrupt)
+    #[test]
+    fn irq_resumes_wai() {
+        let mut cpu = CPU::new(Registers {
+            P: RegisterP {
+                I: true,
+                ..Default::default()
+            },
+            PB: 3,
+            PC: 42,
+            A: 15,
+            ..Default::default()
+        });
+
+        expect_opcode_fetch(&mut cpu, 0xcb);
+        for _ in 0..100 {
+            expect_internal_cycle(&mut cpu, "WAI spin loop");
+        }
+        cpu.irq();
+        // expect_internal_cycle(&mut cpu, "internal response time");
+        expect_read_cycle(&mut cpu, snes_addr!(3:43), 0x1a, "opcode fetch INC");
+        expect_internal_cycle(&mut cpu, "INC cycle");
+        assert_eq!(cpu.registers.A, 16);
     }
 }

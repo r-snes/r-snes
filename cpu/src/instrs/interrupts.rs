@@ -99,6 +99,8 @@ cpu_instr!(wai {
 
 #[cfg(test)]
 mod test {
+    use duplicate::duplicate_item;
+
     use super::super::test_prelude::*;
 
     #[test]
@@ -258,5 +260,31 @@ mod test {
         expected_regs.PC = 0x8877;
         expected_regs.P = 0b11001100.into();
         assert_eq!(*cpu.regs(), expected_regs);
+    }
+
+    #[duplicate_item(
+        DUP_name        DUP_cycles  DUP_interrupt   DUP_vec;
+        [nmi_mid_wai2]   [(1, 1)]   [nmi]           [0xFFEA];
+        [nmi_mid_wai3]   [(2, 0)]   [nmi]           [0xFFEA];
+        [irq_mid_wai2]   [(1, 1)]   [irq]           [0xFFEE];
+        [irq_mid_wai3]   [(2, 0)]   [irq]           [0xFFEE];
+    )]
+    #[test]
+    fn DUP_name() {
+        let mut cpu = CPU::new(Registers::default());
+
+        expect_opcode_fetch(&mut cpu, 0xcb);
+        for i in 1..=DUP_cycles.0 {
+            expect_internal_cycle(&mut cpu, &format!("WAI init cycle {i}"));
+        }
+        cpu.DUP_interrupt();
+        for i in 1..=DUP_cycles.1 {
+            expect_internal_cycle(&mut cpu, &format!("WAI init cycle {i}"));
+        }
+
+        for i in 1..=4 {
+            assert_eq!(cpu.cycle(), CycleResult::Write, "push {i} for interrupt");
+        }
+        expect_vector_to(&mut cpu, DUP_vec);
     }
 }
