@@ -1,6 +1,6 @@
 use crate::constants::*;
 use crate::ppu::PPU;
-use crate::rendering::renderer::Renderer;
+use crate::rendering::renderer::{Renderer, Z_BG1_HIGH, Z_BG1_LOW};
 use crate::vram::RawVRAM;
 
 impl Renderer {
@@ -12,12 +12,6 @@ impl Renderer {
         // BG1 scroll registers
         let scroll_x = ppu.regs.bg1hofs as usize;
         let scroll_y = ppu.regs.bg1vofs as usize;
-
-        let backdrop = ppu.cgram.read(0);
-        let (br, bg, bb) = Self::apply_brightness(backdrop, self.current_brightness as u16);
-        for x in 0..SCREEN_WIDTH {
-            self.set_pixel(x, y, br, bg, bb);
-        }
 
         for x in 0..SCREEN_WIDTH {
             // ============================================================
@@ -39,7 +33,7 @@ impl Renderer {
 
             let tile_index = entry & 0x03FF; // bits 9:0
             let palette_num = (entry >> 10) & 0x07; // bits 12:10
-            let _priority = (entry & 0x2000) != 0; // bit 13
+            let priority = (entry & 0x2000) != 0; // bit 13
             let flip_x = (entry & 0x4000) != 0; // bit 14
             let flip_y = (entry & 0x8000) != 0; // bit 15
 
@@ -63,7 +57,8 @@ impl Renderer {
             let color = ppu.cgram.read(palette_entry);
 
             let (r, g, b) = Self::apply_brightness(color, self.current_brightness as u16);
-            self.set_pixel(x, y, r, g, b);
+            let z = if priority { Z_BG1_HIGH } else { Z_BG1_LOW };
+            self.set_pixel_z(x, y, r, g, b, z);
         }
     }
 
@@ -207,28 +202,29 @@ mod tests {
     #[test]
     fn test_render_mode0_backdrop_and_transparency() {
         let mut renderer = make_renderer();
-        let mut ppu = make_ppu_mode0();
+        let ppu = make_ppu_mode0();
 
         // Default CGRAM[0] = 0x0000 -> black backdrop
-        renderer.render_scanline_mode0(&ppu, 0);
+        renderer.render_scanline(&ppu, 0);
         for x in 0..SCREEN_WIDTH {
             assert_eq!(pixel(&renderer, x, 0), (0, 0, 0), "x={}", x);
         }
 
         // Set backdrop to white, all tiles transparent -> full white scanline
+        let mut ppu = make_ppu_mode0();
         set_cgram_white(&mut ppu, 0);
         ppu.vram.memory[0] = 0x0000;
-        renderer.render_scanline_mode0(&ppu, 0);
+        renderer.render_scanline(&ppu, 0);
         let (br, bg, bb) = Renderer::apply_brightness(ppu.cgram.read(0), 15);
         for x in 0..SCREEN_WIDTH {
             assert_eq!(pixel(&renderer, x, 0), (br, bg, bb), "x={}", x);
         }
 
-        // Tile with CHR all zero (color index 0) -> still shows backdrop even with opaque tile entry
+        // Tile with CHR all zero (color index 0) -> still shows backdrop
         let mut ppu2 = make_ppu_mode0();
         set_cgram_white(&mut ppu2, 0);
         ppu2.vram.memory[0] = 0x0001; // tile 1, CHR stays all zero
-        renderer.render_scanline_mode0(&ppu2, 0);
+        renderer.render_scanline(&ppu2, 0);
         let (br, bg, bb) = Renderer::apply_brightness(ppu2.cgram.read(0), 15);
         for x in 0..SCREEN_WIDTH {
             assert_eq!(pixel(&renderer, x, 0), (br, bg, bb), "x={}", x);
