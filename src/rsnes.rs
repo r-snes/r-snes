@@ -309,8 +309,9 @@ impl RSnesEmu {
         }
 
         if let Some(interval_action) = plugin.table.autoactions.on_interval.as_ref() {
-            let interval_cycles =
-                (interval_action.interval_seconds * RSnesCore::MASTER_CLOCK_HZ as f64).round() as u64;
+            let interval_cycles = (interval_action.interval_seconds
+                * RSnesCore::MASTER_CLOCK_HZ as f64)
+                .round() as u64;
 
             let next = *plugin
                 .next_interval_master_cycle
