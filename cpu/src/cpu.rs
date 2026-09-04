@@ -28,6 +28,9 @@ pub struct CPU {
     /// in bytes read from RAM into the CPU.
     pub data_bus: u8,
 
+    /// CPU state (executing/STP/WAI)
+    pub(crate) state: CPUState,
+
     /// Internal data bus used to store 16-bits operands before doing
     /// operations on them.
     pub(crate) internal_data_bus: u16,
@@ -35,13 +38,38 @@ pub struct CPU {
     /// Member variable that holds a function pointer that will be called the next
     /// time time [`Self::cycle`] is called.
     pub(crate) next_cycle: InstrCycle,
+
+    /// Function pointer to the cycle function to call once the current
+    /// instruction finishes
+    ///
+    /// This is always [`opcode_fetch`] unless an interrupt has been
+    /// successfully requested, in which case the interrupt will be served
+    pub(crate) next_fetch: InstrCycle,
+}
+
+/// State of the CPU, hinting what may or may not happen
+/// when calling the [`cycle`] function
+#[derive(Default, Clone, Copy)]
+pub enum CPUState {
+    /// Default state of the CPU: running, executing instructions
+    #[default]
+    Running,
+
+    /// Stopped by a STP instruction
+    ///
+    /// In this state, the CPU can only go back to the [`Running`] state
+    /// by calling [`reset`].
+    Stopped,
+
+    /// Waiting for an interrupt (in a WAI instruction)
+    WaitForInterrupt,
 }
 
 /// The result of a CPU cycle.
 ///
 /// This enum is the return type of the [`CPU::cycle`] function: it is used
 /// to inform the caller of what the CPU has done or I/O requests.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum CycleResult {
     /// The CPU wants to read from RAM. The caller should write in the data
     /// bus the byte contained at the address pointed to by the address bus.
@@ -62,9 +90,11 @@ impl CPU {
             registers,
             addr_bus: SnesAddress::default(),
             addr_bus2: SnesAddress::default(),
+            state: CPUState::default(),
             data_bus: 0,
             internal_data_bus: 0,
             next_cycle: InstrCycle(opcode_fetch),
+            next_fetch: InstrCycle(opcode_fetch),
         }
     }
 
@@ -149,11 +179,60 @@ impl CPU {
         ret
     }
 
+    /// Request an NMI interrupt
+    pub fn nmi(&mut self) {
+        use crate::instrs::nmi;
+        match self.state {
+            CPUState::Running => {
+                // complete the current instruction first, then serve the interrupt
+                self.next_fetch = InstrCycle(nmi::nmi_cyc1);
+            }
+            CPUState::WaitForInterrupt => {
+                // serve the interrupt immediately
+                self.next_cycle = InstrCycle(nmi::nmi_cyc1);
+            }
+            // stopped, don't even serve interrupts
+            CPUState::Stopped => {}
+        }
+    }
+
+    /// Request an IRQ interrupt
+    pub fn irq(&mut self) {
+        use crate::instrs::irq;
+        match self.state {
+            CPUState::Running => {
+                if self.registers.P.I {
+                    // flag I disables IRQ when running normally
+                    return;
+                }
+
+                // complete the current instruction first, then serve the interrupt
+                self.next_fetch = InstrCycle(irq::irq_cyc1);
+            }
+            CPUState::WaitForInterrupt => {
+                if self.registers.P.I {
+                    // IRQ with I flag while in WAI resumes execution
+                    // but doesn't go through the interrupt routine
+                    self.next_cycle = InstrCycle(opcode_fetch);
+                    self.state = CPUState::Running;
+                } else {
+                    // serve the interrupt immediately
+                    self.next_cycle = InstrCycle(irq::irq_cyc1);
+                }
+            }
+            // stopped, don't even serve interrupts
+            CPUState::Stopped => {}
+        }
+    }
+
     /// Resets the CPU as with the RESB input signal
     ///
     /// This resets some CPU registers and jumps program execution to
     /// the address contained at 0:FFFC in bank 0
     pub fn reset(&mut self) {
+        // mark the CPU as running again in case reset is hit while in STP or WAI
+        self.state = CPUState::Running;
+
         // set the next cycle to be the reset sequence defined below
         self.next_cycle = InstrCycle(reset_cyc1);
     }
@@ -183,22 +262,196 @@ cpu_instr_no_inc_pc!(reset {
 
     cpu.addr_bus = snes_addr!(0:0xfffc);
     meta FETCH16_INTO cpu.registers.PC;
+
+    cpu.next_fetch = InstrCycle(opcode_fetch);
 });
 
 #[cfg(test)]
 mod tests {
-    use crate::instrs::test_prelude::*;
+    use crate::{instrs::test_prelude::*, registers::RegisterP};
+    use duplicate::duplicate_item;
 
     #[test]
     fn poweron() {
         let mut cpu = super::CPU::poweron();
 
-        expect_read_cycle(&mut cpu, snes_addr!(0:0xfffc), 0x68, "start address lo");
-        expect_read_cycle(&mut cpu, snes_addr!(0:0xfffd), 0x24, "start address hi");
-        expect_opcode_fetch_cycle(&mut cpu);
+        expect_vector_to(&mut cpu, 0xfffc);
+    }
 
-        // we only test the CPU started fetching an opcode from the provided address
-        assert_eq!(cpu.regs().PC, 0x2468);
-        assert_eq!(cpu.regs().PB, 0);
+    #[test]
+    fn only_reset_affects_stp() {
+        let mut cpu = CPU::new(Registers::default());
+
+        expect_opcode_fetch(&mut cpu, 0xdb);
+        for _ in 0..100 {
+            expect_internal_cycle(&mut cpu, "stp spin loop");
+        }
+        cpu.irq();
+        for _ in 0..100 {
+            expect_internal_cycle(&mut cpu, "stp spin loop");
+        }
+        cpu.nmi();
+        for _ in 0..100 {
+            expect_internal_cycle(&mut cpu, "stp spin loop");
+        }
+
+        cpu.reset();
+        expect_vector_to(&mut cpu, 0xfffc);
+    }
+
+    #[duplicate_item(
+        DUP_name        DUP_interrupt   DUP_vector;
+        [nmi_mid_nop]   [nmi]           [0xFFFA];
+        [irq_mid_nop]   [irq]           [0xFFFE];
+    )]
+    #[test]
+    fn DUP_name() {
+        let mut cpu = CPU::new(Registers {
+            E: true,
+            S: 0x0188,
+            PC: 0xeeaa,
+            P: 0.into(),
+            ..Default::default()
+        });
+
+        expect_opcode_fetch(&mut cpu, 0xea);
+        cpu.DUP_interrupt();
+        expect_internal_cycle(&mut cpu, "NOP cycle");
+
+        expect_write_cycle(&mut cpu, snes_addr!(0:0x0188), 0xee, "save PCH");
+        expect_write_cycle(&mut cpu, snes_addr!(0:0x0187), 0xab, "save PCL");
+        expect_write_cycle(&mut cpu, snes_addr!(0:0x0186), 0, "save P");
+        expect_vector_to(&mut cpu, DUP_vector);
+    }
+
+    /// This test runs an interrupt during a jump instruction and immediately
+    /// returns from the interrupt, the expected behaviour is:
+    /// - Jump instruction runs to completion, it determines a jump address
+    ///   and stores it in PC
+    /// - The interrupt is served:
+    ///   - PC is saved on the stack (this should store
+    ///     the new PC computed by the jump)
+    ///   - We jump to the interrupt routine
+    /// - We artificially input a RTI to return from the interrupt routine,
+    ///   which should pull the saved PC back in the register
+    /// - The CPU uses the pulled PC to jump to the address determined
+    ///   by the jump which happened before the interrupt
+    ///
+    /// Technically, everything from the RTI onwards is already covered by
+    /// other tests: once the PB:PC from the jump is saved in the stack and
+    /// we reached the interrupt routine, the "NMI mid jump" is already
+    /// successful.<br>
+    /// We still test the entire scenario to show what it would look like
+    #[duplicate_item(
+        DUP_name        DUP_interrupt   DUP_vector;
+        [nmi_mid_jump]  [nmi]           [0xFFEA];
+        [irq_mid_jump]  [irq]           [0xFFEE];
+    )]
+    #[test]
+    fn DUP_name() {
+        let regs = Registers {
+            PB: 4,
+            PC: 7,
+            E: false,
+            S: 0x0244,
+            P: 123.into(),
+            ..Default::default()
+        };
+        assert!(!regs.P.I, "we need IRQ to not be disabled");
+        let mut cpu = CPU::new(regs);
+
+        expect_opcode_fetch(&mut cpu, 0x5c); // jml
+        expect_read_cycle(&mut cpu, snes_addr!(4:8), 0x56, "PCL");
+        cpu.DUP_interrupt(); // request an interrupt which has to be served only once the JML completes
+        expect_read_cycle(&mut cpu, snes_addr!(4:9), 0x34, "PCH");
+        expect_read_cycle(&mut cpu, snes_addr!(4:10), 0x12, "PB");
+
+        expect_write_cycle(&mut cpu, snes_addr!(0:0x0244), 0x12, "save PB");
+        expect_write_cycle(&mut cpu, snes_addr!(0:0x0243), 0x34, "save PCH");
+        expect_write_cycle(&mut cpu, snes_addr!(0:0x0242), 0x56, "save PCL");
+        expect_write_cycle(&mut cpu, snes_addr!(0:0x0241), 123, "save P");
+        expect_read_cycle(&mut cpu, snes_addr!(0:DUP_vector), 0x68, "interrupt vec lo");
+        expect_read_cycle(
+            &mut cpu,
+            snes_addr!(0:DUP_vector + 1),
+            0x24,
+            "interrupt vec hi",
+        );
+
+        expect_read_cycle(&mut cpu, snes_addr!(0:0x2468), 0x40, "fetch RTI opcode");
+        expect_internal_cycle(&mut cpu, "RTI first idle");
+        expect_internal_cycle(&mut cpu, "RTI second idle");
+        expect_read_cycle(&mut cpu, snes_addr!(0:0x0241), 123, "restore P");
+        expect_read_cycle(&mut cpu, snes_addr!(0:0x0242), 0x56, "restore PCL");
+        expect_read_cycle(&mut cpu, snes_addr!(0:0x0243), 0x34, "restore PCH");
+        expect_read_cycle(&mut cpu, snes_addr!(0:0x0244), 0x12, "restore PB");
+
+        expect_opcode_fetch_cycle(&mut cpu);
+        assert_eq!(cpu.registers.PB, 0x12);
+        assert_eq!(cpu.registers.PC, 0x3456);
+    }
+
+    #[test]
+    fn nmi_interrupts_wai() {
+        let mut cpu = CPU::new(Registers::default());
+
+        expect_opcode_fetch(&mut cpu, 0xcb);
+        for _ in 0..100 {
+            expect_internal_cycle(&mut cpu, "WAI spin loop");
+        }
+        cpu.nmi();
+        for _ in 0..4 {
+            assert!(
+                matches!(cpu.cycle(), CycleResult::Write),
+                "interrupt write cycle"
+            );
+        }
+        expect_vector_to(&mut cpu, 0xFFEA);
+    }
+
+    #[test]
+    fn irq_interrupts_wai() {
+        let mut cpu = CPU::new(Registers::default());
+
+        expect_opcode_fetch(&mut cpu, 0xcb);
+        for _ in 0..100 {
+            expect_internal_cycle(&mut cpu, "WAI spin loop");
+        }
+        cpu.irq();
+        for _ in 0..4 {
+            assert!(
+                matches!(cpu.cycle(), CycleResult::Write),
+                "interrupt write cycle"
+            );
+        }
+        expect_vector_to(&mut cpu, 0xFFEE);
+    }
+
+    /// If an IRQ happens when the I flag is set, it is usually ignored,
+    /// unless the CPU has reached the third cycle of WAI, in which
+    /// case it simply resumes execution (starts executing code after the
+    /// WAI instead of serving the interrupt)
+    #[test]
+    fn irq_resumes_wai() {
+        let mut cpu = CPU::new(Registers {
+            P: RegisterP {
+                I: true,
+                ..Default::default()
+            },
+            PB: 3,
+            PC: 42,
+            A: 15,
+            ..Default::default()
+        });
+
+        expect_opcode_fetch(&mut cpu, 0xcb);
+        for _ in 0..100 {
+            expect_internal_cycle(&mut cpu, "WAI spin loop");
+        }
+        cpu.irq();
+        // expect_internal_cycle(&mut cpu, "internal response time");
+        expect_read_cycle(&mut cpu, snes_addr!(3:43), 0x1a, "opcode fetch INC");
+        expect_internal_cycle(&mut cpu, "INC cycle");
+        assert_eq!(cpu.registers.A, 16);
     }
 }

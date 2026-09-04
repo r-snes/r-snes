@@ -17,14 +17,14 @@ fn gen_cycle_functions(name: &Ident, instr_body: InstrBody) -> TokenStream {
                 format_ident!("{}_cyc{}", name, i + 2).into_token_stream()
             } else {
                 if post_instr.is_empty() {
-                    format_ident!("opcode_fetch").into_token_stream()
+                    quote!(cpu.next_fetch.0)
                 } else {
                     // inject the post-instr code in closure before returning to
                     // the opcode fetch.
                     quote! {
                         |cpu| {
                             #post_instr
-                            opcode_fetch(cpu)
+                            (cpu.next_fetch.0)(cpu)
                         }
                     }
                 }
@@ -210,7 +210,7 @@ mod test {
                         cpu.registers.P.Z = cpu.registers.X == 0;
                         cpu.registers.P.N = cpu.registers.X > 0x7fff;
 
-                        (Internal, InstrCycle(opcode_fetch))
+                        (Internal, InstrCycle(cpu.next_fetch.0))
                     }
                 }
             ),
@@ -249,7 +249,7 @@ mod test {
                     pub(crate) fn some_instr_cyc3(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
                         some_function3(cpu);
 
-                        (Write, InstrCycle(opcode_fetch))
+                        (Write, InstrCycle(cpu.next_fetch.0))
                     }
                 }
             ),
@@ -281,7 +281,7 @@ mod test {
                     pub(crate) fn test_instr_cyc2(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
                         (
                             some_func_which_determines_cyc_type(),
-                            InstrCycle(opcode_fetch)
+                            InstrCycle(cpu.next_fetch.0)
                         )
                     }
                 }
@@ -310,7 +310,7 @@ mod test {
                             InstrCycle(|cpu| {
                                 cpu.registers.X = cpu.data_bus as u16;
 
-                                opcode_fetch(cpu)
+                                (cpu.next_fetch.0)(cpu)
                             })
                         )
                     }
@@ -344,7 +344,7 @@ mod test {
                         call_func2();
 
                         cpu.registers.PC = cpu.registers.PC.wrapping_add(1u16);
-                        (Internal, InstrCycle(opcode_fetch))
+                        (Internal, InstrCycle(cpu.next_fetch.0))
                     }
                 }
             ),
@@ -375,7 +375,7 @@ mod test {
                     }
 
                     pub(crate) fn cond_cyc2(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
-                        (Internal, InstrCycle(opcode_fetch))
+                        (Internal, InstrCycle(cpu.next_fetch.0))
                     }
                 }
             ),
@@ -414,7 +414,7 @@ mod test {
                                 Read,
                                 InstrCycle(|cpu| {
                                     *cpu.internal_data_bus.lo_mut() = cpu.data_bus;
-                                    opcode_fetch(cpu)
+                                    (cpu.next_fetch.0)(cpu)
                                 })
                             )
                         }
@@ -436,7 +436,7 @@ mod test {
                                 Read,
                                 InstrCycle(|cpu| {
                                     *cpu.internal_data_bus.hi_mut() = cpu.data_bus;
-                                    opcode_fetch(cpu)
+                                    (cpu.next_fetch.0)(cpu)
                                 })
                             )
                         }

@@ -27,14 +27,6 @@ pub(crate) fn opcode_dispatch(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
     (INSTR_CYC1[cpu.data_bus as usize].0)(cpu)
 }
 
-macro_rules! todo_opcode {
-    ($oc:tt) => {
-        |_| {
-            todo!("opcode {:#2x} not yet implemented!", $oc);
-        }
-    };
-}
-
 const INSTR_CYC1: [InstrCycle; 256] = [
     /* 00 */ InstrCycle(brk_cyc1),
     /* 01 */ InstrCycle(ora::dxind_cyc1),
@@ -239,7 +231,7 @@ const INSTR_CYC1: [InstrCycle; 256] = [
     /* c8 */ InstrCycle(iny_cyc1),
     /* c9 */ InstrCycle(cmp::imm_cyc1),
     /* ca */ InstrCycle(dex_cyc1),
-    /* cb */ InstrCycle(todo_opcode!(0xcb)),
+    /* cb */ InstrCycle(wai_cyc1),
     /* cc */ InstrCycle(cpy_abs_cyc1),
     /* cd */ InstrCycle(cmp::abs_cyc1),
     /* ce */ InstrCycle(dec_abs_cyc1),

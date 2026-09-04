@@ -32,6 +32,38 @@ duplicate! {
     });
 }
 
+duplicate! {
+    [
+        DUP_name    DUP_cyc2    DUP_emu_vec     DUP_nat_vec;
+        [nmi]       [nmi_cyc2]  [0xFFFA]        [0xFFEA];
+        [irq]       [irq_cyc2]  [0xFFFE]        [0xFFEE];
+    ]
+    cpu_instr_no_inc_pc!(DUP_name {
+        cpu.state = crate::cpu::CPUState::Running;
+        cpu.next_fetch = InstrCycle(opcode_fetch);
+
+        if cpu.registers.E {
+            // skip the PB push if in emu mode
+            return DUP_cyc2(cpu);
+        }
+        meta PUSH8 cpu.registers.PB;
+        meta PUSH16 cpu.registers.PC;
+        meta PUSH8 cpu.registers.P.into();
+
+        cpu.registers.P.I = true;
+        cpu.registers.P.D = false;
+
+        let addr = if cpu.registers.E {
+            DUP_emu_vec
+        } else {
+            DUP_nat_vec
+        };
+        cpu.addr_bus = snes_addr!(0:addr);
+        meta FETCH16_INTO cpu.registers.PC;
+        cpu.registers.PB = 0;
+    });
+}
+
 cpu_instr_no_inc_pc!(rti {
     meta END_CYCLE Internal;
     meta END_CYCLE Internal;
@@ -48,14 +80,26 @@ cpu_instr_no_inc_pc!(rti {
             cpu.registers.P.X = true;
             cpu.registers.P.M = true;
         }
-        return opcode_fetch(cpu);
+        return (cpu.next_fetch.0)(cpu);
     }
 
     meta PULL8_INTO cpu.registers.PB;
 });
 
+cpu_instr_no_inc_pc!(wai {
+    cpu.registers.PC = cpu.registers.PC.wrapping_add(1);
+    cpu.next_fetch = InstrCycle(wai_cyc2);
+    meta END_CYCLE Internal;
+
+    // only once we reach the third cycle, mark the CPU as waiting for an interrupt
+    cpu.state = crate::cpu::CPUState::WaitForInterrupt;
+    meta END_CYCLE Internal;
+});
+
 #[cfg(test)]
 mod test {
+    use duplicate::duplicate_item;
+
     use super::super::test_prelude::*;
 
     #[test]
@@ -215,5 +259,31 @@ mod test {
         expected_regs.PC = 0x8877;
         expected_regs.P = 0b11001100.into();
         assert_eq!(*cpu.regs(), expected_regs);
+    }
+
+    #[duplicate_item(
+        DUP_name        DUP_cycles  DUP_interrupt   DUP_vec;
+        [nmi_mid_wai2]   [(1, 1)]   [nmi]           [0xFFEA];
+        [nmi_mid_wai3]   [(2, 0)]   [nmi]           [0xFFEA];
+        [irq_mid_wai2]   [(1, 1)]   [irq]           [0xFFEE];
+        [irq_mid_wai3]   [(2, 0)]   [irq]           [0xFFEE];
+    )]
+    #[test]
+    fn DUP_name() {
+        let mut cpu = CPU::new(Registers::default());
+
+        expect_opcode_fetch(&mut cpu, 0xcb);
+        for i in 1..=DUP_cycles.0 {
+            expect_internal_cycle(&mut cpu, &format!("WAI init cycle {i}"));
+        }
+        cpu.DUP_interrupt();
+        for i in 1..=DUP_cycles.1 {
+            expect_internal_cycle(&mut cpu, &format!("WAI init cycle {i}"));
+        }
+
+        for i in 1..=4 {
+            assert_eq!(cpu.cycle(), CycleResult::Write, "push {i} for interrupt");
+        }
+        expect_vector_to(&mut cpu, DUP_vec);
     }
 }
