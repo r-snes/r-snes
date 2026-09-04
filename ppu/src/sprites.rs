@@ -51,8 +51,8 @@ impl Renderer {
 
                 // Multi-tile sprites wrap the low nibble (X) and high nibble (Y) of the tile number independently.
                 let base = sprite.tile as usize;
-                let tx = (base & 0x0F).wrapping_add(tile_col) & 0x0F;
-                let ty = (base & 0xF0).wrapping_add(tile_row * 0x10) & 0xF0;
+                let tx = ((base & 0x0F) + tile_col) & 0x0F;
+                let ty = ((base & 0xF0) + tile_row * 0x10) & 0xF0;
                 let tile_num = ty | tx;
 
                 let tile_word_base = (sprite.chr_base as usize + tile_num * 16) & VRAM_WORD_MASK;
