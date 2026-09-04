@@ -17,7 +17,7 @@ fn gen_cycle_functions(name: &Ident, instr_body: InstrBody) -> TokenStream {
                 format_ident!("{}_cyc{}", name, i + 2).into_token_stream()
             } else {
                 if post_instr.is_empty() {
-                    format_ident!("opcode_fetch").into_token_stream()
+                    quote!(cpu.next_fetch.0)
                 } else {
                     // inject the post-instr code in closure before returning to
                     // the opcode fetch.
