@@ -28,8 +28,15 @@ pub struct Plugin {
     pub path: Option<PathBuf>,
     pub table: PluginTable,
 
-    /// Runtime scheduling cursor for `autoactions.on_interval`
+    /// Runtime scheduling cursor for `autoactions.on_interval`: the
+    /// `master_cycles` value at which the next interval should fire.
+    /// `None` until the first `update()` call lazily initializes it
+    /// (we don't know the current `master_cycles` at load time).
+    /// This is deliberately kept outside of `PluginTable` since it's
+    /// mutable runtime state, not parsed plugin configuration.
     pub next_interval_master_cycle: Option<u64>,
+    pub next_real_interval_instant: Option<std::time::Instant>,
+    pub real_interval_origin: Option<std::time::Instant>,
 }
 
 /// The data described in the lua table returned by
@@ -76,8 +83,17 @@ pub struct IntervalAction {
 pub struct PluginAutoActions {
     pub on_instr: Option<picc::StashedClosure>,
 
-    /// Fires at a fixed interval of emulated time (see [`IntervalAction`]).
+    /// Fires at a fixed interval of *emulated* time (see [`IntervalAction`]).
+    /// Scales with emulation speed and pauses when emulation pauses,
+    /// since it's driven by `master_cycles`.
     pub on_interval: Option<IntervalAction>,
+
+    /// Fires at a fixed interval of *real* (wall-clock) time. Runs on
+    /// its own schedule regardless of emulation speed or pause state.
+    /// Shares [`IntervalAction`]'s shape (`{ seconds, action }`) since
+    /// the lua-facing config is identical -- only how the interval is
+    /// measured differs, which is a `rsnes.rs`-side concern.
+    pub on_real_interval: Option<IntervalAction>,
 }
 
 impl<'gc> picc::FromValue<'gc> for PluginTable {
@@ -228,6 +244,9 @@ impl<'gc> picc::FromValue<'gc> for PluginAutoActions {
                 b"on_interval" => {
                     ret.on_interval = Some(IntervalAction::from_value(ctx, value)?);
                 }
+                b"on_real_interval" => {
+                    ret.on_real_interval = Some(IntervalAction::from_value(ctx, value)?);
+                }
                 _ => eprintln!(
                     "found unknow key in plugin table: [{:?}]",
                     key.debug_lossy()
@@ -349,6 +368,8 @@ impl Plugin {
             table,
             path,
             next_interval_master_cycle: None,
+            next_real_interval_instant: None,
+            real_interval_origin: None,
         })
     }
 
@@ -389,6 +410,15 @@ impl Plugin {
     /// `master_cycles` == 0)
     pub fn run_on_interval(&mut self, elapsed_seconds: f64) -> Result<(), picc::ExternError> {
         let Some(interval_action) = self.table.autoactions.on_interval.as_ref() else {
+            return Ok(());
+        };
+        Self::run_lua_with_args(&mut self.lua, &interval_action.action, (elapsed_seconds,))
+    }
+
+    /// Run the on_real_interval action registered in the plugin table,
+    /// if any, passing it the amount of *real* (wall-clock) time
+    pub fn run_on_real_interval(&mut self, elapsed_seconds: f64) -> Result<(), picc::ExternError> {
+        let Some(interval_action) = self.table.autoactions.on_real_interval.as_ref() else {
             return Ok(());
         };
         Self::run_lua_with_args(&mut self.lua, &interval_action.action, (elapsed_seconds,))
@@ -707,5 +737,108 @@ mod tests {
             matches!(missing_action, Err(PluginLoadError::PluginTabError(_))),
             "on_interval without `action` should fail to load",
         );
+    }
+
+    #[test]
+    fn on_real_interval_parses_and_runs() {
+        use piccolo::Value;
+
+        let mut plugin = Plugin::load_from_raw(
+            br#"
+            return {
+                permissions = "all",
+
+                init = function()
+                    real_interval_count = 0
+                    last_elapsed = -1
+                end,
+
+                autoactions = {
+                    on_real_interval = {
+                        seconds = 5,
+                        action = function(elapsed_seconds)
+                            real_interval_count = real_interval_count + 1
+                            last_elapsed = elapsed_seconds
+                        end,
+                    },
+                },
+            }"#,
+            None,
+        )
+        .unwrap();
+
+        assert!(plugin.next_real_interval_instant.is_none());
+        assert!(plugin.real_interval_origin.is_none());
+        // on_interval (emulated) should be untouched by an on_real_interval-only plugin
+        assert!(plugin.table.autoactions.on_interval.is_none());
+        assert_eq!(
+            plugin
+                .table
+                .autoactions
+                .on_real_interval
+                .as_ref()
+                .map(|t| t.interval_seconds),
+            Some(5.0)
+        );
+
+        plugin.run_init().unwrap();
+
+        plugin.run_on_real_interval(5.0).unwrap();
+        plugin.run_on_real_interval(10.0).unwrap();
+
+        plugin.lua.enter(|ctx| {
+            assert!(matches!(
+                ctx.get_global_value("real_interval_count"),
+                Value::Integer(2)
+            ));
+            assert!(matches!(
+                ctx.get_global_value("last_elapsed"),
+                Value::Number(n) if n == 10.0
+            ));
+        });
+    }
+
+    #[test]
+    fn on_interval_and_on_real_interval_are_independent() {
+        use piccolo::Value;
+
+        let mut plugin = Plugin::load_from_raw(
+            br#"
+            return {
+                permissions = "all",
+
+                init = function()
+                    emu_count = 0
+                    real_count = 0
+                end,
+
+                autoactions = {
+                    on_interval = {
+                        seconds = 5,
+                        action = function() emu_count = emu_count + 1 end,
+                    },
+                    on_real_interval = {
+                        seconds = 5,
+                        action = function() real_count = real_count + 1 end,
+                    },
+                },
+            }"#,
+            None,
+        )
+        .unwrap();
+
+        plugin.run_init().unwrap();
+
+        plugin.run_on_interval(5.0).unwrap();
+        plugin.run_on_real_interval(5.0).unwrap();
+        plugin.run_on_real_interval(10.0).unwrap();
+
+        plugin.lua.enter(|ctx| {
+            assert!(matches!(ctx.get_global_value("emu_count"), Value::Integer(1)));
+            assert!(matches!(
+                ctx.get_global_value("real_count"),
+                Value::Integer(2)
+            ));
+        });
     }
 }
