@@ -22,6 +22,8 @@ use std::error::Error;
 use std::path::Path;
 use std::path::PathBuf;
 
+use crate::dma::*;
+
 /// R-SNES core: struct containing all the emulated hardware components,
 /// without anything else: no GUI handles, no additional resources for
 /// plugin execution; just the hardware components.
@@ -37,6 +39,7 @@ pub struct RSnesCore {
     pub nmi_pending: bool,
     pub irq_pending: bool,
     pub apu_cycle_debt: u64,
+    pub dma: Dma,
 }
 
 /// Snapshot of the loaded ROM's metadata for display in the GUI.
@@ -96,81 +99,22 @@ impl RSnesCore {
             apu_cycle_debt: 0,
             nmi_pending: false,
             irq_pending: false,
+            dma: Dma::default(),
         })
     }
 
-    fn dma_transfer(&mut self) {
-        let mdmaen = self.bus.io.mdmaen;
+    /// This function will be called every master cycle, it will update the
+    /// CPU, PPU, APU and DMA state accordingly.
+    pub fn update(&mut self) {
+        self.update_ppu_cycles();
+        self.update_apu_cycles();
 
-        for channel_nb in 0..8 {
-            if mdmaen & (1 << channel_nb) == 0 {
-                continue;
-            }
-            self.execute_dma_channel(channel_nb);
+        // DMA holds the bus while it is active, so the CPU does not run during that time.
+        if !self.update_dma_cycles() {
+            self.update_cpu_cycles();
         }
 
-        self.bus.io.mdmaen = 0;
-    }
-
-    fn execute_dma_channel(&mut self, channel_nb: u8) {
-        let ch = &self.bus.io.dma_channels[channel_nb as usize];
-
-        // Get transfer parameters from channel DMAP register
-        let direction = (ch.dmap >> 7) & 1;
-        let fixed = (ch.dmap >> 3) & 1;
-        let decrement = (ch.dmap >> 4) & 1;
-        let mode = ch.dmap & 0x07;
-        let ch_b_addr = ch.bbad;
-
-        let mut a_addr = ch.a1t;
-
-        // 0x0000 means 65536 bytes, u32 needed to not overflow
-        let remaining: u32 = {
-            let raw = ch.das;
-            if raw == 0 { 0x10000 } else { raw as u32 }
-        };
-
-        let b_offsets: &[u8] = match mode {
-            0 => &[0],
-            1 => &[0, 1],
-            2 | 6 => &[0, 0],
-            3 | 7 => &[0, 0, 1, 1],
-            4 => &[0, 1, 2, 3],
-            5 => &[0, 1, 0, 1],
-            _ => unreachable!(),
-        };
-
-        for pattern_idx in 0..remaining {
-            let b_offset = b_offsets[pattern_idx as usize % b_offsets.len()];
-            let b_addr = SnesAddress {
-                bank: 0x00,
-                addr: 0x2100 | (ch_b_addr as u16 + b_offset as u16),
-            };
-
-            let (src, dest) = if direction == 0 {
-                (a_addr, b_addr)
-            } else {
-                (b_addr, a_addr)
-            };
-            let byte = self.bus.read(src, &mut self.ppu, &mut self.apu);
-            self.bus.write(dest, byte, &mut self.ppu, &mut self.apu);
-
-            if fixed == 0 {
-                if decrement == 0 {
-                    a_addr.increment();
-                } else {
-                    a_addr.decrement();
-                }
-            }
-
-            // Each byte transferred takes 8 master cycles - ROUGH WAY TO HANDLE IT, TO CHANGE LATER
-            self.cpu_master_cycles_to_wait += 8;
-        }
-
-        // Reset DMA channel registers
-        let ch = &mut self.bus.io.dma_channels[channel_nb as usize];
-        ch.das = 0;
-        ch.a1t.addr = a_addr.addr;
+        self.master_cycles += 1;
     }
 
     /// This function will be called every master cycle, it will either decrease the
@@ -179,11 +123,6 @@ impl RSnesCore {
         if self.cpu_master_cycles_to_wait > 0 {
             self.cpu_master_cycles_to_wait -= 1;
             return;
-        }
-
-        // Check for DMA start
-        if self.bus.io.mdmaen != 0 {
-            self.dma_transfer();
         }
 
         match self.cpu.cycle() {
@@ -211,6 +150,306 @@ impl RSnesCore {
         }
     }
 
+    /// Advance the DMA unit one master cycle.
+    ///
+    /// Returns `true` while DMA holds the bus, which is the signal for the
+    /// CPU to sit out this cycle.
+    fn update_dma_cycles(&mut self) -> bool {
+        self.start_pending_dma();
+
+        // HDMA preempts a running DMA transfer, but only on a
+        // unit boundary, never mid-byte. The transfer's progress is left
+        // untouched and resumes once the HDMA pass drains.
+        if self.dma.hdma_pending && self.dma.wait == 0 {
+            self.dma.hdma_pending = false;
+            self.dma.hdma_queue = self.bus.io.hdmaen;
+            self.dma.state = DmaState::Hdma;
+            self.dma.wait = HDMA_LINE_COST - 1;
+            return true;
+        }
+
+        if self.dma.state == DmaState::Idle {
+            return false;
+        }
+
+        if self.dma.wait > 0 {
+            self.dma.wait -= 1;
+            return true;
+        }
+
+        match self.dma.state {
+            DmaState::Idle => unreachable!("checked above"),
+            DmaState::Startup => {
+                self.dma.state = DmaState::Dma;
+            }
+            DmaState::Dma => self.dma_step(),
+            DmaState::Hdma => self.hdma_step(),
+        }
+
+        true
+    }
+
+    /// Pick up a DMA transfer requested via MDMAEN.
+    fn start_pending_dma(&mut self) {
+        if self.dma.dma_running || self.bus.io.mdmaen == 0 {
+            return;
+        }
+
+        // A channel enabled for both loses its general-purpose transfer;
+        // HDMA wins outright and the transfer is aborted, not deferred.
+        self.bus.io.mdmaen &= !self.bus.io.hdmaen;
+        if self.bus.io.mdmaen == 0 {
+            return;
+        }
+
+        self.dma.dma_running = true;
+        self.dma.state = DmaState::Startup;
+
+        // Sync to the next 8-cycle slot, then pay the startup overhead.
+        let align = 8 - (self.master_cycles % 8) as u32;
+        self.dma.wait = align + DMA_START_COST - 1;
+    }
+
+    /// One DMA action: either select the next channel, or move one byte.
+    fn dma_step(&mut self) {
+        let Some(progress) = self.dma.dma else {
+            match self.bus.io.mdmaen {
+                // Every queued channel has completed.
+                0 => {
+                    self.dma.dma_running = false;
+                    self.dma.state = DmaState::Idle;
+                    // Sync back to a whole CPU clock since the pause
+                    // before the S-CPU resumes: 2-8 master cycles.
+                    self.dma.wait = 8 - (self.master_cycles % 8).max(2) as u32;
+                }
+                // Channels run lowest bit first, one fully at a time.
+                mask => {
+                    let channel = mask.trailing_zeros() as u8;
+                    self.dma.dma = Some(DmaProgress {
+                        channel,
+                        unit_index: 0,
+                    });
+                    self.dma.wait = DMA_CHANNEL_COST - 1;
+                }
+            }
+            return;
+        };
+
+        self.dma_transfer_byte(progress.channel, progress.unit_index);
+
+        let ch = &mut self.bus.io.dma_channels[progress.channel as usize];
+
+        // DAS is a live down-counter, so a starting value of 0 naturally
+        // yields 65 536 bytes: it wraps to 0xFFFF on the first decrement
+        // and only reaches 0 after a full lap.
+        ch.das = ch.das.wrapping_sub(1);
+
+        if ch.das == 0 {
+            self.bus.io.mdmaen &= !(1 << progress.channel);
+            self.dma.dma = None;
+        } else {
+            self.dma.dma = Some(DmaProgress {
+                unit_index: progress.unit_index.wrapping_add(1),
+                channel: progress.channel,
+            });
+        }
+
+        self.dma.wait = BYTE_COST - 1;
+    }
+
+    fn dma_transfer_byte(&mut self, channel: u8, unit_index: u32) {
+        let ch = &self.bus.io.dma_channels[channel as usize];
+        let dmap = ch.dmap;
+        let a_addr = ch.a1t;
+
+        let b_to_a = dmap & 0x80 != 0;
+        // Bit 3 (fixed) takes priority over bit 4 (decrement).
+        let fixed = dmap & 0x08 != 0;
+        let decrement = dmap & 0x10 != 0;
+
+        let pattern = Dma::transfer_pattern(dmap);
+        let b_addr = Dma::b_address(ch.bbad, pattern[unit_index as usize % pattern.len()]);
+
+        let (src, dst) = if b_to_a {
+            (b_addr, a_addr)
+        } else {
+            (a_addr, b_addr)
+        };
+        let byte = self.bus.read(src, &mut self.ppu, &mut self.apu);
+        self.bus.write(dst, byte, &mut self.ppu, &mut self.apu);
+
+        // The A-bus address wraps inside its bank; A1B never increments.
+        if !fixed {
+            let ch = &mut self.bus.io.dma_channels[channel as usize];
+            ch.a1t.addr = if decrement {
+                ch.a1t.addr.wrapping_sub(1)
+            } else {
+                ch.a1t.addr.wrapping_add(1)
+            };
+        }
+    }
+
+    /// One HDMA action: service the next queued channel, or hand the bus back.
+    fn hdma_step(&mut self) {
+        if self.dma.hdma_queue == 0 {
+            self.dma.hdma_init = false;
+
+            // A preempted general-purpose transfer picks up exactly where
+            // it paused.
+            if self.dma.dma_running {
+                self.dma.state = DmaState::Dma;
+                self.dma.wait = DMA_RESUME_COST - 1;
+            } else {
+                self.dma.state = DmaState::Idle;
+            }
+            return;
+        }
+
+        let channel = self.dma.hdma_queue.trailing_zeros() as u8;
+        self.dma.hdma_queue &= !(1 << channel);
+
+        if self.dma.hdma_init {
+            self.hdma_init_channel(channel);
+        } else {
+            self.hdma_line_channel(channel);
+        }
+    }
+
+    /// Once per frame: rewind the table pointer and load the first entry.
+    fn hdma_init_channel(&mut self, channel: u8) {
+        self.dma.channels[channel as usize] = HdmaChannelState::default();
+
+        let ch = &mut self.bus.io.dma_channels[channel as usize];
+        ch.a2a = ch.a1t.addr;
+        let indirect = ch.dmap & 0x40 != 0;
+
+        let counter = self.hdma_read_table(channel);
+        let state = &mut self.dma.channels[channel as usize];
+
+        if counter == 0 {
+            state.finished = true;
+            self.dma.wait = HDMA_RELOAD_COST - 1;
+            return;
+        }
+
+        state.line_counter = counter;
+        state.do_transfer = true;
+
+        let cost = if indirect {
+            let lo = self.hdma_read_table(channel);
+            let hi = self.hdma_read_table(channel);
+            self.bus.io.dma_channels[channel as usize].das = u16::from_le_bytes([lo, hi]);
+            HDMA_RELOAD_INDIRECT_COST
+        } else {
+            HDMA_RELOAD_COST
+        };
+
+        self.dma.wait = cost - 1;
+    }
+
+    /// Per scanline: reload the entry if the counter ran out, transfer if
+    /// this line calls for it, then step the counter.
+    fn hdma_line_channel(&mut self, channel: u8) {
+        if self.dma.channels[channel as usize].finished {
+            return;
+        }
+
+        let indirect = self.bus.io.dma_channels[channel as usize].dmap & 0x40 != 0;
+        let mut cost = HDMA_CHANNEL_COST;
+
+        if self.dma.channels[channel as usize].line_counter & 0x7F == 0 {
+            let counter = self.hdma_read_table(channel);
+
+            // A line count of 0 terminates the channel for the rest of
+            // the frame — it does not mean 256.
+            if counter == 0 {
+                self.dma.channels[channel as usize].finished = true;
+                self.dma.wait = HDMA_RELOAD_COST - 1;
+                return;
+            }
+
+            let state = &mut self.dma.channels[channel as usize];
+            state.line_counter = counter;
+            state.do_transfer = true;
+
+            if indirect {
+                let lo = self.hdma_read_table(channel);
+                let hi = self.hdma_read_table(channel);
+                self.bus.io.dma_channels[channel as usize].das = u16::from_le_bytes([lo, hi]);
+                cost += HDMA_RELOAD_INDIRECT_COST;
+            } else {
+                cost += HDMA_RELOAD_COST;
+            }
+        }
+
+        if self.dma.channels[channel as usize].do_transfer {
+            cost += self.hdma_transfer_unit(channel, indirect);
+        }
+
+        let state = &mut self.dma.channels[channel as usize];
+        // Bit 7 is the repeat flag: set means "write every line for N
+        // lines" (a gradient), clear means "write once, then hold for N
+        // lines" (a flat band).
+        let repeat = state.line_counter & 0x80 != 0;
+        state.line_counter = state.line_counter.wrapping_sub(1);
+        state.do_transfer = repeat || (state.line_counter & 0x7F) == 0;
+
+        self.dma.wait = cost - 1;
+    }
+
+    /// Read one byte from the channel's HDMA table and advance A2A.
+    fn hdma_read_table(&mut self, channel: u8) -> u8 {
+        let ch = &mut self.bus.io.dma_channels[channel as usize];
+        let addr = SnesAddress {
+            bank: ch.a1t.bank,
+            addr: ch.a2a,
+        };
+        ch.a2a = ch.a2a.wrapping_add(1);
+
+        self.bus.read(addr, &mut self.ppu, &mut self.apu)
+    }
+
+    /// Move one full transfer unit (1-4 bytes per DMAP mode) and return
+    /// its cycle cost.
+    fn hdma_transfer_unit(&mut self, channel: u8, indirect: bool) -> u32 {
+        let ch = &self.bus.io.dma_channels[channel as usize];
+        let dmap = ch.dmap;
+        let bbad = ch.bbad;
+        let b_to_a = dmap & 0x80 != 0;
+        let pattern = Dma::transfer_pattern(dmap);
+
+        // Direct channels stream from the table itself; indirect ones
+        // stream from DASB:DAS, which the table supplied.
+        let bank = if indirect { ch.dasb } else { ch.a1t.bank };
+        let mut addr = if indirect { ch.das } else { ch.a2a };
+
+        let mut cost = 0;
+        for &offset in pattern {
+            let a_addr = SnesAddress { bank, addr };
+            let b_addr = Dma::b_address(bbad, offset);
+
+            let (src, dst) = if b_to_a {
+                (b_addr, a_addr)
+            } else {
+                (a_addr, b_addr)
+            };
+            let byte = self.bus.read(src, &mut self.ppu, &mut self.apu);
+            self.bus.write(dst, byte, &mut self.ppu, &mut self.apu);
+
+            addr = addr.wrapping_add(1);
+            cost += BYTE_COST;
+        }
+
+        let ch = &mut self.bus.io.dma_channels[channel as usize];
+        if indirect {
+            ch.das = addr;
+        } else {
+            ch.a2a = addr;
+        }
+
+        cost
+    }
+
     /// Advance the APU by however many of its own 1.024 MHz cycles are
     /// owed, given one more master clock cycle has just elapsed.
     /// ~1 APU cycle per 20.97 master cycles
@@ -222,18 +461,9 @@ impl RSnesCore {
         }
     }
 
-    /// This function will be called every master cycle, it will update the CPU, PPU and APU state accordingly
-    pub fn update(&mut self) {
-        self.update_cpu_cycles();
-        self.update_apu_cycles();
-        self.update_ppu_cycles();
-
-        self.master_cycles += 1;
-    }
-
     fn update_ppu_cycles(&mut self) {
         match self.ppu.tick() {
-            PpuEvent::None => return,
+            PpuEvent::None => {}
             PpuEvent::DotStart => {}
             PpuEvent::HBlankStart => self.on_hblank_start(),
             PpuEvent::ScanlineStart(kind) => {
@@ -260,14 +490,10 @@ impl RSnesCore {
             self.ppu_renderer.render_scanline(&self.ppu, y);
         }
 
-        // HDMA transfers run in the H-Blank of scanlines 0 through the last
-        // visible one, never during V-Blank.
+        // HDMA runs in the H-Blank of scanlines 0 through the last
+        // visible one, never during V-Blank
         if self.ppu.scanline < self.ppu.vblank_start_line() && self.bus.io.hdmaen != 0 {
-            todo!(
-                "HDMA transfer on scanline {}: channels {:08b} enabled via HDMAEN",
-                self.ppu.scanline,
-                self.bus.io.hdmaen
-            );
+            self.dma.hdma_pending = true;
         }
     }
 
@@ -300,10 +526,8 @@ impl RSnesCore {
 
         // HDMA init for the new frame.
         if self.bus.io.hdmaen != 0 {
-            todo!(
-                "HDMA init at frame start: channels {:08b} enabled via HDMAEN",
-                self.bus.io.hdmaen
-            );
+            self.dma.hdma_pending = true;
+            self.dma.hdma_init = true;
         }
     }
 
@@ -452,156 +676,6 @@ mod tests {
         ch.a1t.bank = src_bank;
         ch.a1t.addr = src_addr;
         ch.das = size;
-    }
-
-    #[test]
-    fn test_mdmaen_cleared_after_transfer() {
-        let mut rsnes = make_rsnes();
-        rsnes.bus.io.mdmaen = 0b0000_0001;
-        set_dma_channel(&mut rsnes, 0, 0x00, 0x7E, 0x0000, 1);
-
-        rsnes.dma_transfer();
-
-        assert_eq!(
-            rsnes.bus.io.mdmaen, 0,
-            "mdmaen should be cleared after transfer"
-        );
-    }
-
-    #[test]
-    fn test_only_enabled_channels_run() {
-        let mut rsnes = make_rsnes();
-        rsnes.bus.io.mdmaen = 0b0000_0010;
-
-        set_dma_channel(&mut rsnes, 0, 0x00, 0x7E, 0x0000, 1);
-        set_dma_channel(&mut rsnes, 1, 0x00, 0x7E, 0x0000, 1);
-
-        rsnes.dma_transfer();
-
-        // Channel 0 was not enabled, its source address should not have changed
-        let ch0 = &rsnes.bus.io.dma_channels[0];
-        let ch0_addr = ch0.a1t.addr;
-        assert_eq!(ch0_addr, 0x0000, "Channel 0 should not have run");
-        assert_eq!(rsnes.bus.io.mdmaen, 0);
-    }
-
-    #[test]
-    fn test_multiple_channels_run() {
-        let mut rsnes = make_rsnes();
-        rsnes.bus.io.mdmaen = 0b0000_0011;
-
-        set_dma_channel(&mut rsnes, 0, 0x00, 0x7E, 0x0000, 2);
-        set_dma_channel(&mut rsnes, 1, 0x00, 0x7E, 0x0100, 3);
-
-        rsnes.dma_transfer();
-
-        let ch0 = &rsnes.bus.io.dma_channels[0];
-        let ch0_addr = ch0.a1t.addr;
-        assert_eq!(ch0_addr, 0x0002, "Channel 0 should have advanced by 2");
-
-        let ch1 = &rsnes.bus.io.dma_channels[1];
-        let ch1_addr = ch1.a1t.addr;
-        assert_eq!(ch1_addr, 0x0103, "Channel 1 should have advanced by 3");
-    }
-
-    #[test]
-    fn test_a1t_increments_after_transfer() {
-        let mut rsnes = make_rsnes();
-        rsnes.bus.io.mdmaen = 0b0000_0001;
-        set_dma_channel(&mut rsnes, 0, 0x00, 0x7E, 0x0010, 4);
-
-        rsnes.dma_transfer();
-
-        let ch = &rsnes.bus.io.dma_channels[0];
-        let final_addr = ch.a1t.addr;
-        assert_eq!(
-            final_addr, 0x0014,
-            "Source address should have advanced by 4"
-        );
-    }
-
-    #[test]
-    fn test_a1t_decrements_after_transfer() {
-        let mut rsnes = make_rsnes();
-        rsnes.bus.io.mdmaen = 0b0000_0001;
-        set_dma_channel(&mut rsnes, 0, 0b0001_0000, 0x7E, 0x0010, 4);
-
-        rsnes.dma_transfer();
-
-        let ch = &rsnes.bus.io.dma_channels[0];
-        let final_addr = ch.a1t.addr;
-        assert_eq!(
-            final_addr, 0x000C,
-            "Source address should have decreased by 4"
-        );
-    }
-
-    #[test]
-    fn test_a1t_unchanged_in_fixed_mode() {
-        let mut rsnes = make_rsnes();
-        rsnes.bus.io.mdmaen = 0b0000_0001;
-        set_dma_channel(&mut rsnes, 0, 0b0000_1000, 0x7E, 0x0010, 4);
-
-        rsnes.dma_transfer();
-
-        let ch = &rsnes.bus.io.dma_channels[0];
-        let final_addr = ch.a1t.addr;
-        assert_eq!(
-            final_addr, 0x0010,
-            "Source address should not change in fixed mode"
-        );
-    }
-
-    #[test]
-    fn test_das_zeroed_after_transfer() {
-        let mut rsnes = make_rsnes();
-        rsnes.bus.io.mdmaen = 0b0000_0001;
-        set_dma_channel(&mut rsnes, 0, 0x00, 0x7E, 0x0000, 8);
-
-        rsnes.dma_transfer();
-
-        let ch = &rsnes.bus.io.dma_channels[0];
-        assert_eq!(ch.das, 0, "das should be 0 after transfer");
-    }
-
-    /// This test isn't really relevant for now because the destination
-    /// does not really registers the written value from a to b
-    #[test]
-    fn test_wram_source_bytes_are_read() {
-        let mut rsnes = make_rsnes();
-
-        rsnes.bus.wram.data[0x0100] = 0xAB;
-        rsnes.bus.wram.data[0x0101] = 0xCD;
-        rsnes.bus.wram.data[0x0102] = 0xEF;
-
-        rsnes.bus.io.mdmaen = 0b0000_0001;
-        set_dma_channel(&mut rsnes, 0, 0x00, 0x7E, 0x0100, 3);
-
-        rsnes.dma_transfer();
-
-        let ch = &rsnes.bus.io.dma_channels[0];
-        let final_addr = ch.a1t.addr;
-        assert_eq!(final_addr, 0x0103);
-    }
-
-    #[test]
-    fn test_direction_b_to_a_writes_into_wram() {
-        let mut rsnes = make_rsnes();
-
-        // Pre-fill so we can confirm it changed
-        rsnes.bus.wram.data[0x0200] = 0xFF;
-        rsnes.bus.wram.data[0x0201] = 0xFF;
-        rsnes.bus.wram.data[0x0202] = 0xFF;
-        rsnes.bus.io.mdmaen = 0b0000_0001;
-        set_dma_channel(&mut rsnes, 0, 0b1000_0000, 0x7E, 0x0200, 3);
-
-        rsnes.dma_transfer();
-
-        assert_eq!(
-            &rsnes.bus.wram.data[0x0200..=0x0202],
-            &[0x00, 0x00, 0x00],
-            "WRAM should have been overwritten with open bus value 0x00"
-        );
     }
 
     #[test]
