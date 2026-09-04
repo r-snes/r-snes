@@ -1,4 +1,4 @@
-local tick_count = 0
+local interval_count = 0
 
 return {
     permissions = {
@@ -6,15 +6,15 @@ return {
     },
 
     init = function()
-        tick_count = 0
+        interval_count = 0
     end,
 
     autoactions = {
-        on_tick = {
-            seconds = 3,
+        on_interval = {
+            seconds = 5,
             action = function(elapsed_seconds)
-                tick_count = tick_count + 1
-                print("[periodic] tick #" .. tick_count .. " at t=" .. elapsed_seconds .. "s (emulated)")
+                interval_count = interval_count + 1
+                print("[periodic] interval #" .. interval_count .. " at t=" .. elapsed_seconds .. "s (emulated)")
             end,
         },
     },
