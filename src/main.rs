@@ -74,13 +74,14 @@ fn gui_emu_loop(
                 RSnesEvent::Close => break 'emu_loop None,
                 RSnesEvent::ButtonDown => {
                     let mut emu_mut = emu.core_mut();
-                    emu_mut.bus.io.hvbjoy = 0;
-                    emu_mut.bus.io.joy1 = !0;
+                    emu_mut.bus.io.hvbjoy &= !1;
+                    emu_mut.bus.io.joy1 = 0b0000_0001_0000_0000;
                 }
                 RSnesEvent::ButtonUp => {
                     let mut emu_mut = emu.core_mut();
-                    emu_mut.bus.io.hvbjoy = 0;
-                    emu_mut.bus.io.joy1 = 0;
+                    emu_mut.bus.io.hvbjoy &= !1;
+                    emu_mut.bus.io.joy1 = 0b0000_0010_0000_0000;
+
                 }
 
                 #[cfg(feature = "plugins")]
