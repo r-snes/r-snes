@@ -18,6 +18,8 @@ use ppu::ppu::PPU;
 use std::error::Error;
 use std::path::Path;
 use std::path::PathBuf;
+#[cfg(feature = "plugins")]
+use std::time::{Duration, Instant};
 
 /// R-SNES core: struct containing all the emulated hardware components,
 /// without anything else: no GUI handles, no additional resources for
@@ -239,6 +241,11 @@ impl RSnesCore {
 }
 
 impl RSnesEmu {
+    /// `update()` runs once per master cycle (~21.4M times/sec at
+    /// native speed), and sampling the wall clock
+    #[cfg(feature = "plugins")]
+    const REAL_TIME_CHECK_PERIOD_CYCLES: u64 = 16384;
+
     #[cfg_attr(
         feature = "plugins",
         expect(unused, reason = "unused for now, but makes sense to have")
@@ -287,16 +294,66 @@ impl RSnesEmu {
 
     #[cfg(feature = "plugins")]
     pub fn update(&mut self) -> Result<(), piccolo::ExternError> {
-        let mut rsnes_mut = self.core.borrow_mut();
+        // Advance the core exactly one master cycle, and grab everything
+        // we need from it
+        let (instr_start, master_cycles) = {
+            let mut rsnes_mut = self.core.borrow_mut();
+            rsnes_mut.update();
 
-        rsnes_mut.update();
+            let instr_start = rsnes_mut
+                .is_cpu_instr_start()
+                .map(|opcode| (opcode, *rsnes_mut.cpu.addr_bus()));
 
-        if let Some(plugin) = self.plugin.as_mut()
-            && let Some(opcode) = rsnes_mut.is_cpu_instr_start()
+            (instr_start, rsnes_mut.master_cycles)
+        };
+
+        let Some(plugin) = self.plugin.as_mut() else {
+            return Ok(());
+        };
+
+        if let Some((opcode, addr)) = instr_start {
+            plugin.run_on_instr(opcode, addr)?;
+        }
+
+        if let Some(interval_action) = plugin.table.autoactions.on_interval.as_ref() {
+            let interval_cycles = (interval_action.interval_seconds
+                * RSnesCore::MASTER_CLOCK_HZ as f64)
+                .round() as u64;
+
+            let next = *plugin
+                .next_interval_master_cycle
+                .get_or_insert(master_cycles + interval_cycles);
+
+            if master_cycles >= next {
+                plugin.next_interval_master_cycle = Some(next + interval_cycles);
+
+                let elapsed_seconds = master_cycles as f64 / RSnesCore::MASTER_CLOCK_HZ as f64;
+                plugin.run_on_interval(elapsed_seconds)?;
+            }
+        }
+
+        if plugin.table.autoactions.on_real_interval.is_some()
+            && master_cycles & (Self::REAL_TIME_CHECK_PERIOD_CYCLES - 1) == 0
         {
-            let addr = *rsnes_mut.cpu.addr_bus();
-            drop(rsnes_mut);
-            return plugin.run_on_instr(opcode, addr);
+            let now = Instant::now();
+            let origin = *plugin.real_interval_origin.get_or_insert(now);
+            let interval = Duration::from_secs_f64(
+                plugin
+                    .table
+                    .autoactions
+                    .on_real_interval
+                    .as_ref()
+                    .expect("checked is_some above")
+                    .interval_seconds,
+            );
+            let next = *plugin.next_real_interval_instant.get_or_insert(now + interval);
+
+            if now >= next {
+                plugin.next_real_interval_instant = Some(next + interval);
+
+                let elapsed_seconds = now.duration_since(origin).as_secs_f64();
+                plugin.run_on_real_interval(elapsed_seconds)?;
+            }
         }
 
         Ok(())

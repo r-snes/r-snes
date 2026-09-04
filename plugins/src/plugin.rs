@@ -27,6 +27,16 @@ pub struct Plugin {
     pub lua: picc::Lua,
     pub path: Option<PathBuf>,
     pub table: PluginTable,
+
+    /// Runtime scheduling cursor for `autoactions.on_interval`: the
+    /// `master_cycles` value at which the next interval should fire.
+    /// `None` until the first `update()` call lazily initializes it
+    /// (we don't know the current `master_cycles` at load time).
+    /// This is deliberately kept outside of `PluginTable` since it's
+    /// mutable runtime state, not parsed plugin configuration.
+    pub next_interval_master_cycle: Option<u64>,
+    pub next_real_interval_instant: Option<std::time::Instant>,
+    pub real_interval_origin: Option<std::time::Instant>,
 }
 
 /// The data described in the lua table returned by
@@ -61,11 +71,29 @@ pub struct PluginActions {
     pub default: Option<picc::StashedClosure>,
 }
 
+#[derive(Debug)]
+pub struct IntervalAction {
+    pub interval_seconds: f64,
+    pub action: picc::StashedClosure,
+}
+
 /// Plugin "autoactions" (lua functions) which are to be run
 /// automatically on certain events
 #[derive(Debug, Default)]
 pub struct PluginAutoActions {
     pub on_instr: Option<picc::StashedClosure>,
+
+    /// Fires at a fixed interval of *emulated* time (see [`IntervalAction`]).
+    /// Scales with emulation speed and pauses when emulation pauses,
+    /// since it's driven by `master_cycles`.
+    pub on_interval: Option<IntervalAction>,
+
+    /// Fires at a fixed interval of *real* (wall-clock) time. Runs on
+    /// its own schedule regardless of emulation speed or pause state.
+    /// Shares [`IntervalAction`]'s shape (`{ seconds, action }`) since
+    /// the lua-facing config is identical -- only how the interval is
+    /// measured differs, which is a `rsnes.rs`-side concern.
+    pub on_real_interval: Option<IntervalAction>,
 }
 
 impl<'gc> picc::FromValue<'gc> for PluginTable {
@@ -213,6 +241,12 @@ impl<'gc> picc::FromValue<'gc> for PluginAutoActions {
                         }
                     }
                 }
+                b"on_interval" => {
+                    ret.on_interval = Some(IntervalAction::from_value(ctx, value)?);
+                }
+                b"on_real_interval" => {
+                    ret.on_real_interval = Some(IntervalAction::from_value(ctx, value)?);
+                }
                 _ => eprintln!(
                     "found unknow key in plugin table: [{:?}]",
                     key.debug_lossy()
@@ -221,6 +255,73 @@ impl<'gc> picc::FromValue<'gc> for PluginAutoActions {
         }
 
         Ok(ret)
+    }
+}
+
+impl<'gc> picc::FromValue<'gc> for IntervalAction {
+    fn from_value(
+        ctx: picc::Context<'gc>,
+        value: picc::Value<'gc>,
+    ) -> Result<Self, picc::TypeError> {
+        use picc::*;
+
+        let Value::Table(tab) = value else {
+            return Err(picc::TypeError {
+                expected: "on_interval table ({ seconds = <number>, action = <function> })",
+                found: value.type_name(),
+            });
+        };
+
+        let mut interval_seconds = None;
+        let mut action = None;
+
+        for (key, value) in tab {
+            let Value::String(key) = key else {
+                eprintln!("found unexpected non-string key [{}]", key.display());
+                continue;
+            };
+
+            match key.as_bytes() {
+                b"seconds" => {
+                    interval_seconds = match value {
+                        Value::Integer(i) => Some(i as f64),
+                        Value::Number(n) => Some(n),
+                        v => {
+                            return Err(picc::TypeError {
+                                expected: "seconds: number",
+                                found: v.type_name(),
+                            });
+                        }
+                    };
+                }
+                b"action" => {
+                    action = match value {
+                        Value::Function(Function::Closure(c)) => Some(ctx.stash(c)),
+                        v => {
+                            return Err(picc::TypeError {
+                                expected: "action: function",
+                                found: v.type_name(),
+                            });
+                        }
+                    };
+                }
+                _ => eprintln!(
+                    "found unknow key in on_interval table: [{:?}]",
+                    key.debug_lossy()
+                ),
+            }
+        }
+
+        Ok(Self {
+            interval_seconds: interval_seconds.ok_or(picc::TypeError {
+                expected: "seconds field",
+                found: "nil",
+            })?,
+            action: action.ok_or(picc::TypeError {
+                expected: "action field",
+                found: "nil",
+            })?,
+        })
     }
 }
 
@@ -262,7 +363,14 @@ impl Plugin {
             .execute::<PluginTable>(&plugin)
             .map_err(PluginLoadError::PluginTabError)?;
 
-        Ok(Self { lua, table, path })
+        Ok(Self {
+            lua,
+            table,
+            path,
+            next_interval_master_cycle: None,
+            next_real_interval_instant: None,
+            real_interval_origin: None,
+        })
     }
 
     pub fn perm_request(&self) -> PluginPermRequest<'_> {
@@ -295,6 +403,25 @@ impl Plugin {
             &self.table.autoactions.on_instr,
             (opcode, addr.bank, addr.addr),
         )
+    }
+
+    /// Run the on_interval action registered in the plugin table, if any,
+    /// passing it the amount of *emulated* time (in seconds, since
+    /// `master_cycles` == 0)
+    pub fn run_on_interval(&mut self, elapsed_seconds: f64) -> Result<(), picc::ExternError> {
+        let Some(interval_action) = self.table.autoactions.on_interval.as_ref() else {
+            return Ok(());
+        };
+        Self::run_lua_with_args(&mut self.lua, &interval_action.action, (elapsed_seconds,))
+    }
+
+    /// Run the on_real_interval action registered in the plugin table,
+    /// if any, passing it the amount of *real* (wall-clock) time
+    pub fn run_on_real_interval(&mut self, elapsed_seconds: f64) -> Result<(), picc::ExternError> {
+        let Some(interval_action) = self.table.autoactions.on_real_interval.as_ref() else {
+            return Ok(());
+        };
+        Self::run_lua_with_args(&mut self.lua, &interval_action.action, (elapsed_seconds,))
     }
 
     /// Run an Option-wrapped stashed lua function, returning Ok(())
@@ -527,5 +654,191 @@ mod tests {
 
         // run exit should be a no-op as there's none
         plugin.run_exit().unwrap();
+    }
+
+    #[test]
+    fn on_interval_parses_and_runs() {
+        use piccolo::Value;
+
+        let mut plugin = Plugin::load_from_raw(
+            br#"
+            return {
+                permissions = "all",
+
+                init = function()
+                    interval_count = 0
+                    last_elapsed = -1
+                end,
+
+                autoactions = {
+                    on_interval = {
+                        seconds = 5,
+                        action = function(elapsed_seconds)
+                            interval_count = interval_count + 1
+                            last_elapsed = elapsed_seconds
+                        end,
+                    },
+                },
+            }"#,
+            None,
+        )
+        .unwrap();
+
+        assert!(plugin.next_interval_master_cycle.is_none());
+        assert_eq!(
+            plugin
+                .table
+                .autoactions
+                .on_interval
+                .as_ref()
+                .map(|t| t.interval_seconds),
+            Some(5.0)
+        );
+
+        plugin.run_init().unwrap();
+
+        plugin.run_on_interval(5.0).unwrap();
+        plugin.run_on_interval(10.0).unwrap();
+
+        plugin.lua.enter(|ctx| {
+            assert!(matches!(
+                ctx.get_global_value("interval_count"),
+                Value::Integer(2)
+            ));
+            assert!(matches!(
+                ctx.get_global_value("last_elapsed"),
+                Value::Number(n) if n == 10.0
+            ));
+        });
+    }
+
+    #[test]
+    fn on_interval_missing_fields_error() {
+        let missing_seconds = Plugin::load_from_raw(
+            br#"return {
+                permissions = "all",
+                autoactions = { on_interval = { action = function() end } },
+            }"#,
+            None,
+        );
+        assert!(
+            matches!(missing_seconds, Err(PluginLoadError::PluginTabError(_))),
+            "on_interval without `seconds` should fail to load",
+        );
+
+        let missing_action = Plugin::load_from_raw(
+            br#"return {
+                permissions = "all",
+                autoactions = { on_interval = { seconds = 5 } },
+            }"#,
+            None,
+        );
+        assert!(
+            matches!(missing_action, Err(PluginLoadError::PluginTabError(_))),
+            "on_interval without `action` should fail to load",
+        );
+    }
+
+    #[test]
+    fn on_real_interval_parses_and_runs() {
+        use piccolo::Value;
+
+        let mut plugin = Plugin::load_from_raw(
+            br#"
+            return {
+                permissions = "all",
+
+                init = function()
+                    real_interval_count = 0
+                    last_elapsed = -1
+                end,
+
+                autoactions = {
+                    on_real_interval = {
+                        seconds = 5,
+                        action = function(elapsed_seconds)
+                            real_interval_count = real_interval_count + 1
+                            last_elapsed = elapsed_seconds
+                        end,
+                    },
+                },
+            }"#,
+            None,
+        )
+        .unwrap();
+
+        assert!(plugin.next_real_interval_instant.is_none());
+        assert!(plugin.real_interval_origin.is_none());
+        // on_interval (emulated) should be untouched by an on_real_interval-only plugin
+        assert!(plugin.table.autoactions.on_interval.is_none());
+        assert_eq!(
+            plugin
+                .table
+                .autoactions
+                .on_real_interval
+                .as_ref()
+                .map(|t| t.interval_seconds),
+            Some(5.0)
+        );
+
+        plugin.run_init().unwrap();
+
+        plugin.run_on_real_interval(5.0).unwrap();
+        plugin.run_on_real_interval(10.0).unwrap();
+
+        plugin.lua.enter(|ctx| {
+            assert!(matches!(
+                ctx.get_global_value("real_interval_count"),
+                Value::Integer(2)
+            ));
+            assert!(matches!(
+                ctx.get_global_value("last_elapsed"),
+                Value::Number(n) if n == 10.0
+            ));
+        });
+    }
+
+    #[test]
+    fn on_interval_and_on_real_interval_are_independent() {
+        use piccolo::Value;
+
+        let mut plugin = Plugin::load_from_raw(
+            br#"
+            return {
+                permissions = "all",
+
+                init = function()
+                    emu_count = 0
+                    real_count = 0
+                end,
+
+                autoactions = {
+                    on_interval = {
+                        seconds = 5,
+                        action = function() emu_count = emu_count + 1 end,
+                    },
+                    on_real_interval = {
+                        seconds = 5,
+                        action = function() real_count = real_count + 1 end,
+                    },
+                },
+            }"#,
+            None,
+        )
+        .unwrap();
+
+        plugin.run_init().unwrap();
+
+        plugin.run_on_interval(5.0).unwrap();
+        plugin.run_on_real_interval(5.0).unwrap();
+        plugin.run_on_real_interval(10.0).unwrap();
+
+        plugin.lua.enter(|ctx| {
+            assert!(matches!(ctx.get_global_value("emu_count"), Value::Integer(1)));
+            assert!(matches!(
+                ctx.get_global_value("real_count"),
+                Value::Integer(2)
+            ));
+        });
     }
 }
