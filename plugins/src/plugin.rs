@@ -28,8 +28,8 @@ pub struct Plugin {
     pub path: Option<PathBuf>,
     pub table: PluginTable,
 
-    /// Runtime scheduling cursor for `autoactions.on_tick`
-    pub next_tick_master_cycle: Option<u64>,
+    /// Runtime scheduling cursor for `autoactions.on_interval`
+    pub next_interval_master_cycle: Option<u64>,
 }
 
 /// The data described in the lua table returned by
@@ -64,10 +64,8 @@ pub struct PluginActions {
     pub default: Option<picc::StashedClosure>,
 }
 
-/// A registered `autoactions.on_tick` entry: how often (in seconds of
-/// *emulated* time) to fire
 #[derive(Debug)]
-pub struct TickAction {
+pub struct IntervalAction {
     pub interval_seconds: f64,
     pub action: picc::StashedClosure,
 }
@@ -78,8 +76,8 @@ pub struct TickAction {
 pub struct PluginAutoActions {
     pub on_instr: Option<picc::StashedClosure>,
 
-    /// Fires at a fixed interval of emulated time (see [`TickAction`]).
-    pub on_tick: Option<TickAction>,
+    /// Fires at a fixed interval of emulated time (see [`IntervalAction`]).
+    pub on_interval: Option<IntervalAction>,
 }
 
 impl<'gc> picc::FromValue<'gc> for PluginTable {
@@ -227,8 +225,8 @@ impl<'gc> picc::FromValue<'gc> for PluginAutoActions {
                         }
                     }
                 }
-                b"on_tick" => {
-                    ret.on_tick = Some(TickAction::from_value(ctx, value)?);
+                b"on_interval" => {
+                    ret.on_interval = Some(IntervalAction::from_value(ctx, value)?);
                 }
                 _ => eprintln!(
                     "found unknow key in plugin table: [{:?}]",
@@ -241,7 +239,7 @@ impl<'gc> picc::FromValue<'gc> for PluginAutoActions {
     }
 }
 
-impl<'gc> picc::FromValue<'gc> for TickAction {
+impl<'gc> picc::FromValue<'gc> for IntervalAction {
     fn from_value(
         ctx: picc::Context<'gc>,
         value: picc::Value<'gc>,
@@ -250,7 +248,7 @@ impl<'gc> picc::FromValue<'gc> for TickAction {
 
         let Value::Table(tab) = value else {
             return Err(picc::TypeError {
-                expected: "on_tick table ({ seconds = <number>, action = <function> })",
+                expected: "on_interval table ({ seconds = <number>, action = <function> })",
                 found: value.type_name(),
             });
         };
@@ -289,7 +287,7 @@ impl<'gc> picc::FromValue<'gc> for TickAction {
                     };
                 }
                 _ => eprintln!(
-                    "found unknow key in on_tick table: [{:?}]",
+                    "found unknow key in on_interval table: [{:?}]",
                     key.debug_lossy()
                 ),
             }
@@ -350,7 +348,7 @@ impl Plugin {
             lua,
             table,
             path,
-            next_tick_master_cycle: None,
+            next_interval_master_cycle: None,
         })
     }
 
@@ -386,14 +384,14 @@ impl Plugin {
         )
     }
 
-    /// Run the on_tick action registered in the plugin table, if any,
+    /// Run the on_interval action registered in the plugin table, if any,
     /// passing it the amount of *emulated* time (in seconds, since
     /// `master_cycles` == 0)
-    pub fn run_on_tick(&mut self, elapsed_seconds: f64) -> Result<(), picc::ExternError> {
-        let Some(tick) = self.table.autoactions.on_tick.as_ref() else {
+    pub fn run_on_interval(&mut self, elapsed_seconds: f64) -> Result<(), picc::ExternError> {
+        let Some(interval_action) = self.table.autoactions.on_interval.as_ref() else {
             return Ok(());
         };
-        Self::run_lua_with_args(&mut self.lua, &tick.action, (elapsed_seconds,))
+        Self::run_lua_with_args(&mut self.lua, &interval_action.action, (elapsed_seconds,))
     }
 
     /// Run an Option-wrapped stashed lua function, returning Ok(())
@@ -629,7 +627,7 @@ mod tests {
     }
 
     #[test]
-    fn on_tick_parses_and_runs() {
+    fn on_interval_parses_and_runs() {
         use piccolo::Value;
 
         let mut plugin = Plugin::load_from_raw(
@@ -638,15 +636,15 @@ mod tests {
                 permissions = "all",
 
                 init = function()
-                    tick_count = 0
+                    interval_count = 0
                     last_elapsed = -1
                 end,
 
                 autoactions = {
-                    on_tick = {
+                    on_interval = {
                         seconds = 5,
                         action = function(elapsed_seconds)
-                            tick_count = tick_count + 1
+                            interval_count = interval_count + 1
                             last_elapsed = elapsed_seconds
                         end,
                     },
@@ -656,12 +654,12 @@ mod tests {
         )
         .unwrap();
 
-        assert!(plugin.next_tick_master_cycle.is_none());
+        assert!(plugin.next_interval_master_cycle.is_none());
         assert_eq!(
             plugin
                 .table
                 .autoactions
-                .on_tick
+                .on_interval
                 .as_ref()
                 .map(|t| t.interval_seconds),
             Some(5.0)
@@ -669,12 +667,12 @@ mod tests {
 
         plugin.run_init().unwrap();
 
-        plugin.run_on_tick(5.0).unwrap();
-        plugin.run_on_tick(10.0).unwrap();
+        plugin.run_on_interval(5.0).unwrap();
+        plugin.run_on_interval(10.0).unwrap();
 
         plugin.lua.enter(|ctx| {
             assert!(matches!(
-                ctx.get_global_value("tick_count"),
+                ctx.get_global_value("interval_count"),
                 Value::Integer(2)
             ));
             assert!(matches!(
@@ -685,29 +683,29 @@ mod tests {
     }
 
     #[test]
-    fn on_tick_missing_fields_error() {
+    fn on_interval_missing_fields_error() {
         let missing_seconds = Plugin::load_from_raw(
             br#"return {
                 permissions = "all",
-                autoactions = { on_tick = { action = function() end } },
+                autoactions = { on_interval = { action = function() end } },
             }"#,
             None,
         );
         assert!(
             matches!(missing_seconds, Err(PluginLoadError::PluginTabError(_))),
-            "on_tick without `seconds` should fail to load",
+            "on_interval without `seconds` should fail to load",
         );
 
         let missing_action = Plugin::load_from_raw(
             br#"return {
                 permissions = "all",
-                autoactions = { on_tick = { seconds = 5 } },
+                autoactions = { on_interval = { seconds = 5 } },
             }"#,
             None,
         );
         assert!(
             matches!(missing_action, Err(PluginLoadError::PluginTabError(_))),
-            "on_tick without `action` should fail to load",
+            "on_interval without `action` should fail to load",
         );
     }
 }
