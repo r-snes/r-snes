@@ -263,7 +263,6 @@ cpu_instr_no_inc_pc!(reset {
     cpu.addr_bus = snes_addr!(0:0xfffc);
     meta FETCH16_INTO cpu.registers.PC;
 
-    cpu.state = CPUState::Running;
     cpu.next_fetch = InstrCycle(opcode_fetch);
 });
 
