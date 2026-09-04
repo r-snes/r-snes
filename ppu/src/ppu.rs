@@ -51,7 +51,7 @@ impl PPU {
                 self.oam.write_addr(self.regs.oamadd);
             }
             0x2103 => {
-                *self.regs.oamadd.hi_mut() = value & 0x01;
+                *self.regs.oamadd.hi_mut() = value & 0x81;
                 self.oam.write_addr(self.regs.oamadd);
             }
             0x2104 => self.oam.write_data(value),

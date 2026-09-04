@@ -272,7 +272,7 @@ impl OAM {
         objsel: u8,
         oamadd: u16,
     ) -> (Vec<(u8, Sprite)>, bool, bool) {
-        let priority_rotation = (oamadd >> 8) & 0x01 != 0;
+        let priority_rotation = (oamadd >> 15) & 0x01 != 0;
         let start = if priority_rotation {
             (*oamadd.lo() >> 1) as usize
         } else {
@@ -522,11 +522,22 @@ mod tests {
     #[test]
     fn test_eval_priority_rotation() {
         let mut oam = make_oam();
+        make_sprite_entry(&mut oam, 00, 0, 0, 0, 0, 0);
         make_sprite_entry(&mut oam, 10, 0, 0, 0, 0, 0);
-        let oamadd: u16 = (1 << 8) | 20; // enable + start sprite 10 (20 >> 1)
+
+        let oamadd: u16 = (0 << 15) | 20; // disable priority rotation + start sprite 10 (20 >> 1)
         let (visible, _, _) = oam.eval_sprites_for_scanline(0, OBJSEL_8_16, oamadd);
-        assert_eq!(visible.len(), 1);
+        // we expect 0 to come before 10, because we start from 0
+        assert_eq!(visible.len(), 2);
+        assert_eq!(visible[0].0, 0);
+        assert_eq!(visible[1].0, 10);
+
+        let oamadd: u16 = (1 << 15) | 20; // enable priority rotation + start sprite 10 (20 >> 1)
+        let (visible, _, _) = oam.eval_sprites_for_scanline(0, OBJSEL_8_16, oamadd);
+        // we expect 10 to come before 0, because we start at 10 and only reach 0 after wrap around
+        assert_eq!(visible.len(), 2);
         assert_eq!(visible[0].0, 10);
+        assert_eq!(visible[1].0, 0);
     }
 
     // Y wraps in u8: a sprite at y=250 covers scanline 255 but not 249.
