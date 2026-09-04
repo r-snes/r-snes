@@ -287,16 +287,43 @@ impl RSnesEmu {
 
     #[cfg(feature = "plugins")]
     pub fn update(&mut self) -> Result<(), piccolo::ExternError> {
-        let mut rsnes_mut = self.core.borrow_mut();
+        // Advance the core exactly one master cycle, and grab everything
+        // we need from it up front
+        let (instr_start, master_cycles) = {
+            let mut rsnes_mut = self.core.borrow_mut();
+            rsnes_mut.update();
 
-        rsnes_mut.update();
+            let instr_start = rsnes_mut
+                .is_cpu_instr_start()
+                .map(|opcode| (opcode, *rsnes_mut.cpu.addr_bus()));
 
-        if let Some(plugin) = self.plugin.as_mut()
-            && let Some(opcode) = rsnes_mut.is_cpu_instr_start()
-        {
-            let addr = *rsnes_mut.cpu.addr_bus();
-            drop(rsnes_mut);
-            return plugin.run_on_instr(opcode, addr);
+            (instr_start, rsnes_mut.master_cycles)
+        };
+
+        let Some(plugin) = self.plugin.as_mut() else {
+            return Ok(());
+        };
+
+        if let Some((opcode, addr)) = instr_start {
+            plugin.run_on_instr(opcode, addr)?;
+        }
+
+        if let Some(tick) = plugin.table.autoactions.on_tick.as_ref() {
+            let interval_cycles =
+                (tick.interval_seconds * RSnesCore::MASTER_CLOCK_HZ as f64).round() as u64;
+
+            // Lazily anchor the schedule to "now" to avoid catch-up tick if
+            //the plugin was loaded partway through a run.
+            let next = *plugin
+                .next_tick_master_cycle
+                .get_or_insert(master_cycles + interval_cycles);
+
+            if master_cycles >= next {
+                plugin.next_tick_master_cycle = Some(next + interval_cycles);
+
+                let elapsed_seconds = master_cycles as f64 / RSnesCore::MASTER_CLOCK_HZ as f64;
+                plugin.run_on_tick(elapsed_seconds)?;
+            }
         }
 
         Ok(())

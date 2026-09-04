@@ -27,6 +27,9 @@ pub struct Plugin {
     pub lua: picc::Lua,
     pub path: Option<PathBuf>,
     pub table: PluginTable,
+
+    /// Runtime scheduling cursor for `autoactions.on_tick`
+    pub next_tick_master_cycle: Option<u64>,
 }
 
 /// The data described in the lua table returned by
@@ -61,11 +64,22 @@ pub struct PluginActions {
     pub default: Option<picc::StashedClosure>,
 }
 
+/// A registered `autoactions.on_tick` entry: how often (in seconds of
+/// *emulated* time) to fire
+#[derive(Debug)]
+pub struct TickAction {
+    pub interval_seconds: f64,
+    pub action: picc::StashedClosure,
+}
+
 /// Plugin "autoactions" (lua functions) which are to be run
 /// automatically on certain events
 #[derive(Debug, Default)]
 pub struct PluginAutoActions {
     pub on_instr: Option<picc::StashedClosure>,
+
+    /// Fires at a fixed interval of emulated time (see [`TickAction`]).
+    pub on_tick: Option<TickAction>,
 }
 
 impl<'gc> picc::FromValue<'gc> for PluginTable {
@@ -213,6 +227,9 @@ impl<'gc> picc::FromValue<'gc> for PluginAutoActions {
                         }
                     }
                 }
+                b"on_tick" => {
+                    ret.on_tick = Some(TickAction::from_value(ctx, value)?);
+                }
                 _ => eprintln!(
                     "found unknow key in plugin table: [{:?}]",
                     key.debug_lossy()
@@ -221,6 +238,73 @@ impl<'gc> picc::FromValue<'gc> for PluginAutoActions {
         }
 
         Ok(ret)
+    }
+}
+
+impl<'gc> picc::FromValue<'gc> for TickAction {
+    fn from_value(
+        ctx: picc::Context<'gc>,
+        value: picc::Value<'gc>,
+    ) -> Result<Self, picc::TypeError> {
+        use picc::*;
+
+        let Value::Table(tab) = value else {
+            return Err(picc::TypeError {
+                expected: "on_tick table ({ seconds = <number>, action = <function> })",
+                found: value.type_name(),
+            });
+        };
+
+        let mut interval_seconds = None;
+        let mut action = None;
+
+        for (key, value) in tab {
+            let Value::String(key) = key else {
+                eprintln!("found unexpected non-string key [{}]", key.display());
+                continue;
+            };
+
+            match key.as_bytes() {
+                b"seconds" => {
+                    interval_seconds = match value {
+                        Value::Integer(i) => Some(i as f64),
+                        Value::Number(n) => Some(n),
+                        v => {
+                            return Err(picc::TypeError {
+                                expected: "seconds: number",
+                                found: v.type_name(),
+                            });
+                        }
+                    };
+                }
+                b"action" => {
+                    action = match value {
+                        Value::Function(Function::Closure(c)) => Some(ctx.stash(c)),
+                        v => {
+                            return Err(picc::TypeError {
+                                expected: "action: function",
+                                found: v.type_name(),
+                            });
+                        }
+                    };
+                }
+                _ => eprintln!(
+                    "found unknow key in on_tick table: [{:?}]",
+                    key.debug_lossy()
+                ),
+            }
+        }
+
+        Ok(Self {
+            interval_seconds: interval_seconds.ok_or(picc::TypeError {
+                expected: "seconds field",
+                found: "nil",
+            })?,
+            action: action.ok_or(picc::TypeError {
+                expected: "action field",
+                found: "nil",
+            })?,
+        })
     }
 }
 
@@ -262,7 +346,12 @@ impl Plugin {
             .execute::<PluginTable>(&plugin)
             .map_err(PluginLoadError::PluginTabError)?;
 
-        Ok(Self { lua, table, path })
+        Ok(Self {
+            lua,
+            table,
+            path,
+            next_tick_master_cycle: None,
+        })
     }
 
     pub fn perm_request(&self) -> PluginPermRequest<'_> {
@@ -295,6 +384,16 @@ impl Plugin {
             &self.table.autoactions.on_instr,
             (opcode, addr.bank, addr.addr),
         )
+    }
+
+    /// Run the on_tick action registered in the plugin table, if any,
+    /// passing it the amount of *emulated* time (in seconds, since
+    /// `master_cycles` == 0)
+    pub fn run_on_tick(&mut self, elapsed_seconds: f64) -> Result<(), picc::ExternError> {
+        let Some(tick) = self.table.autoactions.on_tick.as_ref() else {
+            return Ok(());
+        };
+        Self::run_lua_with_args(&mut self.lua, &tick.action, (elapsed_seconds,))
     }
 
     /// Run an Option-wrapped stashed lua function, returning Ok(())
@@ -527,5 +626,88 @@ mod tests {
 
         // run exit should be a no-op as there's none
         plugin.run_exit().unwrap();
+    }
+
+    #[test]
+    fn on_tick_parses_and_runs() {
+        use piccolo::Value;
+
+        let mut plugin = Plugin::load_from_raw(
+            br#"
+            return {
+                permissions = "all",
+
+                init = function()
+                    tick_count = 0
+                    last_elapsed = -1
+                end,
+
+                autoactions = {
+                    on_tick = {
+                        seconds = 5,
+                        action = function(elapsed_seconds)
+                            tick_count = tick_count + 1
+                            last_elapsed = elapsed_seconds
+                        end,
+                    },
+                },
+            }"#,
+            None,
+        )
+        .unwrap();
+
+        assert!(plugin.next_tick_master_cycle.is_none());
+        assert_eq!(
+            plugin
+                .table
+                .autoactions
+                .on_tick
+                .as_ref()
+                .map(|t| t.interval_seconds),
+            Some(5.0)
+        );
+
+        plugin.run_init().unwrap();
+
+        plugin.run_on_tick(5.0).unwrap();
+        plugin.run_on_tick(10.0).unwrap();
+
+        plugin.lua.enter(|ctx| {
+            assert!(matches!(
+                ctx.get_global_value("tick_count"),
+                Value::Integer(2)
+            ));
+            assert!(matches!(
+                ctx.get_global_value("last_elapsed"),
+                Value::Number(n) if n == 10.0
+            ));
+        });
+    }
+
+    #[test]
+    fn on_tick_missing_fields_error() {
+        let missing_seconds = Plugin::load_from_raw(
+            br#"return {
+                permissions = "all",
+                autoactions = { on_tick = { action = function() end } },
+            }"#,
+            None,
+        );
+        assert!(
+            matches!(missing_seconds, Err(PluginLoadError::PluginTabError(_))),
+            "on_tick without `seconds` should fail to load",
+        );
+
+        let missing_action = Plugin::load_from_raw(
+            br#"return {
+                permissions = "all",
+                autoactions = { on_tick = { seconds = 5 } },
+            }"#,
+            None,
+        );
+        assert!(
+            matches!(missing_action, Err(PluginLoadError::PluginTabError(_))),
+            "on_tick without `action` should fail to load",
+        );
     }
 }
