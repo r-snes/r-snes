@@ -8,6 +8,14 @@ pub(crate) use crate::registers::Registers;
 pub(crate) use common::snes_address::{SnesAddress, snes_addr};
 pub(crate) use common::u16_split::*;
 
+fn describe_cycle(cpu: &CPU, cyc_type: CycleResult) -> String {
+    match cyc_type {
+        CycleResult::Internal => "Internal".to_owned(),
+        CycleResult::Read => format!("Read at {:?}", cpu.addr_bus),
+        CycleResult::Write => format!("Write of {:#.2x} at {:?}", cpu.data_bus, cpu.addr_bus),
+    }
+}
+
 /// Same as [`expect_opcode_fetch`], but doesn't require providing an
 /// opcode to inject for the next cycle. This only checks that the CPU
 /// is fetching from the appropriate address
@@ -39,10 +47,12 @@ pub(crate) fn expect_opcode_fetch(cpu: &mut CPU, opcode: u8) {
 
 /// Expects (creates an assertion) the CPU to return an internal cycle
 pub(crate) fn expect_internal_cycle(cpu: &mut CPU, reason: &str) {
+    let cyc_type = cpu.cycle();
     assert_eq!(
-        cpu.cycle(),
+        cyc_type,
         CycleResult::Internal,
-        "Expecting an internal cycle for {reason}",
+        "Expecting an internal cycle for {reason}, but got {}",
+        describe_cycle(cpu, cyc_type),
     );
 }
 
@@ -55,10 +65,12 @@ pub(crate) fn expect_read_cycle(
     value: u8,
     reason: &str,
 ) {
+    let cyc_type = cpu.cycle();
     assert_eq!(
-        cpu.cycle(),
+        cyc_type,
         CycleResult::Read,
-        "Expecting a read cycle for {reason}",
+        "Expecting a read cycle for {reason}, but got {}",
+        describe_cycle(cpu, cyc_type),
     );
     assert_eq!(
         *cpu.addr_bus(),
@@ -77,10 +89,12 @@ pub(crate) fn expect_write_cycle(
     expected_value: u8,
     reason: &str,
 ) {
+    let cyc_type = cpu.cycle();
     assert_eq!(
-        cpu.cycle(),
+        cyc_type,
         CycleResult::Write,
-        "Expecting a write cycle for {reason}",
+        "Expecting a write cycle for {reason}, but got {}",
+        describe_cycle(cpu, cyc_type),
     );
     assert_eq!(
         *cpu.addr_bus(),

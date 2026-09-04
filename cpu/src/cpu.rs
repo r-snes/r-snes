@@ -69,7 +69,7 @@ pub enum CPUState {
 ///
 /// This enum is the return type of the [`CPU::cycle`] function: it is used
 /// to inform the caller of what the CPU has done or I/O requests.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum CycleResult {
     /// The CPU wants to read from RAM. The caller should write in the data
     /// bus the byte contained at the address pointed to by the address bus.
