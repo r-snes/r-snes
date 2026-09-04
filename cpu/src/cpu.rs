@@ -213,7 +213,7 @@ impl CPU {
                 if self.registers.P.I {
                     // IRQ with I flag while in WAI resumes execution
                     // but doesn't go through the interrupt routine
-                    self.next_fetch = InstrCycle(opcode_fetch);
+                    self.next_cycle = InstrCycle(opcode_fetch);
                     self.state = CPUState::Running;
                 } else {
                     // serve the interrupt immediately
