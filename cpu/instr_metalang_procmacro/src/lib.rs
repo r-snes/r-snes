@@ -210,7 +210,7 @@ mod test {
                         cpu.registers.P.Z = cpu.registers.X == 0;
                         cpu.registers.P.N = cpu.registers.X > 0x7fff;
 
-                        (Internal, InstrCycle(opcode_fetch))
+                        (Internal, InstrCycle(cpu.next_fetch.0))
                     }
                 }
             ),
@@ -249,7 +249,7 @@ mod test {
                     pub(crate) fn some_instr_cyc3(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
                         some_function3(cpu);
 
-                        (Write, InstrCycle(opcode_fetch))
+                        (Write, InstrCycle(cpu.next_fetch.0))
                     }
                 }
             ),
@@ -281,7 +281,7 @@ mod test {
                     pub(crate) fn test_instr_cyc2(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
                         (
                             some_func_which_determines_cyc_type(),
-                            InstrCycle(opcode_fetch)
+                            InstrCycle(cpu.next_fetch.0)
                         )
                     }
                 }
@@ -344,7 +344,7 @@ mod test {
                         call_func2();
 
                         cpu.registers.PC = cpu.registers.PC.wrapping_add(1u16);
-                        (Internal, InstrCycle(opcode_fetch))
+                        (Internal, InstrCycle(cpu.next_fetch.0))
                     }
                 }
             ),
@@ -375,7 +375,7 @@ mod test {
                     }
 
                     pub(crate) fn cond_cyc2(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
-                        (Internal, InstrCycle(opcode_fetch))
+                        (Internal, InstrCycle(cpu.next_fetch.0))
                     }
                 }
             ),
