@@ -300,6 +300,31 @@ mod tests {
         expect_vector_to(&mut cpu, 0xfffc);
     }
 
+    #[duplicate_item(
+        DUP_name        DUP_interrupt   DUP_vector;
+        [nmi_mid_nop]   [nmi]           [0xFFFA];
+        [irq_mid_nop]   [irq]           [0xFFFE];
+    )]
+    #[test]
+    fn DUP_name() {
+        let mut cpu = CPU::new(Registers {
+            E: true,
+            S: 0x0188,
+            PC: 0xeeaa,
+            P: 0.into(),
+            ..Default::default()
+        });
+
+        expect_opcode_fetch(&mut cpu, 0xea);
+        cpu.DUP_interrupt();
+        expect_internal_cycle(&mut cpu, "NOP cycle");
+
+        expect_write_cycle(&mut cpu, snes_addr!(0:0x0188), 0xee, "save PCH");
+        expect_write_cycle(&mut cpu, snes_addr!(0:0x0187), 0xab, "save PCL");
+        expect_write_cycle(&mut cpu, snes_addr!(0:0x0186), 0, "save P");
+        expect_vector_to(&mut cpu, DUP_vector);
+    }
+
     /// This test runs an interrupt during a jump instruction and immediately
     /// returns from the interrupt, the expected behaviour is:
     /// - Jump instruction runs to completion, it determines a jump address
