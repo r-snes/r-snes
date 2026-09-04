@@ -525,7 +525,7 @@ mod tests {
         make_sprite_entry(&mut oam, 00, 0, 0, 0, 0, 0);
         make_sprite_entry(&mut oam, 10, 0, 0, 0, 0, 0);
 
-        let oamadd: u16 = (0 << 15) | 20; // disable priority rotation + start sprite 10 (20 >> 1)
+        let oamadd: u16 = 20; // disable priority rotation + start sprite 10 (20 >> 1)
         let (visible, _, _) = oam.eval_sprites_for_scanline(0, OBJSEL_8_16, oamadd);
         // we expect 0 to come before 10, because we start from 0
         assert_eq!(visible.len(), 2);
