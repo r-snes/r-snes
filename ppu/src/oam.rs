@@ -1,3 +1,5 @@
+use common::u16_split::U16Split;
+
 // OAM layout:
 // Table 1 ($000-$1FF): 128 sprites * 4 bytes
 // Table 2 ($200-$21F): 128 sprites * 2 bits (packed, 4 sprites per byte)
@@ -272,7 +274,7 @@ impl OAM {
     ) -> (Vec<(u8, Sprite)>, bool, bool) {
         let priority_rotation = (oamadd >> 8) & 0x01 != 0;
         let start = if priority_rotation {
-            ((oamadd & 0xFF) >> 1) as usize & 0x7F
+            (*oamadd.lo() >> 1) as usize
         } else {
             0
         };
