@@ -52,6 +52,53 @@ pub struct GuiFrameData<'a> {
     pub rom_info: Option<&'a RomInfo>,
 }
 
+/// A button on a SNES controller.
+///
+/// Each button maps to a fixed bit in the JOY1 auto-read register
+/// (`$4218`/`$4219`) via [`SnesButton::mask`]. The GUI produces these in
+/// response to key presses; the core stores the layout, so the GUI never
+/// needs to know the hardware bit order.
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
+pub enum SnesButton {
+    X,
+    Y,
+    A,
+    B,
+    Start,
+    Select,
+    Up,
+    Down,
+    Left,
+    Right,
+    R,
+    L,
+}
+
+impl SnesButton {
+    /// The button's bit within the 16-bit JOY1 register.
+    ///
+    /// Layout, from bit 15 down to bit 4:
+    /// B, Y, Select, Start, Up, Down, Left, Right, A, X, L, R.
+    /// The low 4 bits are unused on a standard controller.
+    pub fn mask(self) -> u16 {
+        let bit = match self {
+            SnesButton::B => 15,
+            SnesButton::Y => 14,
+            SnesButton::Select => 13,
+            SnesButton::Start => 12,
+            SnesButton::Up => 11,
+            SnesButton::Down => 10,
+            SnesButton::Left => 9,
+            SnesButton::Right => 8,
+            SnesButton::A => 7,
+            SnesButton::X => 6,
+            SnesButton::L => 5,
+            SnesButton::R => 4,
+        };
+        1 << bit
+    }
+}
+
 #[derive(PartialEq, Eq, Debug)]
 pub enum RSnesEvent {
     /// Load a new ROM, showing a file picker (closes current game)
@@ -64,10 +111,10 @@ pub enum RSnesEvent {
     Quit,
 
     /// A key mapped to an emulated button has been pressed
-    ButtonDown,
+    ButtonDown(SnesButton),
 
     /// A key mapped to an emulated button has been released
-    ButtonUp,
+    ButtonUp(SnesButton),
 
     /// Run the `default` action of a plugin (if a plugin is loaded, and if it defines one)
     RunPluginDefault,
@@ -202,46 +249,60 @@ impl Gui {
         }
     }
 
+    /// Maps a keyboard key to a SNES controller button, or `None` if the key
+    /// isn't bound. This is the single place to change the key layout.
+    ///
+    /// Current layout:
+    ///   Arrows = D-pad, Z = X, Q = Y, E = A, S = B
+    ///   A = L, R = R, Return = Start, Right Shift = Select.
+    fn map_button(keycode: Keycode) -> Option<SnesButton> {
+        Some(match keycode {
+            Keycode::Z => SnesButton::X,
+            Keycode::Q => SnesButton::Y,
+            Keycode::E => SnesButton::A,
+            Keycode::S => SnesButton::B,
+            Keycode::Return => SnesButton::Start,
+            Keycode::RShift => SnesButton::Select,
+            Keycode::Up => SnesButton::Up,
+            Keycode::Down => SnesButton::Down,
+            Keycode::Left => SnesButton::Left,
+            Keycode::Right => SnesButton::Right,
+            Keycode::A => SnesButton::L,
+            Keycode::R => SnesButton::R,
+            _ => return None,
+        })
+    }
+
     fn map_event(event: &SdlEvent) -> Option<RSnesEvent> {
         use sdl2::keyboard::Mod;
 
+        // System / GUI shortcuts first - these take precedence over buttons.
         match event {
-            SdlEvent::Quit { .. } => Some(RSnesEvent::Quit),
+            SdlEvent::Quit { .. } => return Some(RSnesEvent::Quit),
+
             SdlEvent::KeyDown {
                 keycode: Some(Keycode::Q),
                 keymod,
                 ..
-            } if keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => Some(RSnesEvent::Quit),
+            } if keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => {
+                return Some(RSnesEvent::Quit);
+            }
 
             SdlEvent::KeyDown {
                 keycode: Some(Keycode::Escape),
                 repeat: false,
                 ..
-            } => Some(RSnesEvent::Close),
+            } => return Some(RSnesEvent::Close),
 
             SdlEvent::KeyDown {
                 keycode: Some(Keycode::L),
                 keymod,
                 ..
-            } if keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => rfd::FileDialog::new()
-                .pick_file()
-                .map(|path| RSnesEvent::LoadRom { path }),
-
-            SdlEvent::KeyDown {
-                keycode: Some(Keycode::Space),
-                repeat: false,
-                keymod,
-                ..
-            } if !keymod
-                .intersects(Mod::LCTRLMOD | Mod::RCTRLMOD | Mod::LALTMOD | Mod::RALTMOD) =>
-            {
-                Some(RSnesEvent::ButtonDown)
+            } if keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => {
+                return rfd::FileDialog::new()
+                    .pick_file()
+                    .map(|path| RSnesEvent::LoadRom { path });
             }
-
-            SdlEvent::KeyUp {
-                keycode: Some(Keycode::Space),
-                ..
-            } => Some(RSnesEvent::ButtonUp),
 
             SdlEvent::KeyDown {
                 keycode: Some(Keycode::R),
@@ -250,8 +311,29 @@ impl Gui {
             } if !keymod
                 .intersects(Mod::LCTRLMOD | Mod::RCTRLMOD | Mod::LALTMOD | Mod::RALTMOD) =>
             {
-                Some(RSnesEvent::RunPluginDefault)
+                return Some(RSnesEvent::RunPluginDefault);
             }
+
+            _ => {}
+        }
+
+        // Controller buttons: a mapped key with no ctrl/alt held. Key releases
+        // always clear, even if a modifier is now held, so a held button can't
+        // get stuck.
+        match event {
+            SdlEvent::KeyDown {
+                keycode: Some(kc),
+                keymod,
+                ..
+            } if !keymod
+                .intersects(Mod::LCTRLMOD | Mod::RCTRLMOD | Mod::LALTMOD | Mod::RALTMOD) =>
+            {
+                Self::map_button(*kc).map(RSnesEvent::ButtonDown)
+            }
+
+            SdlEvent::KeyUp {
+                keycode: Some(kc), ..
+            } => Self::map_button(*kc).map(RSnesEvent::ButtonUp),
 
             _ => None,
         }

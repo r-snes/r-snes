@@ -1,8 +1,11 @@
 #[cfg(feature = "plugins")]
 mod rsnes_plugin;
 
+use bus::io::IrqMode;
 #[cfg(feature = "plugins")]
 use plugins::plugin::Plugin;
+use ppu::ppu::PpuEvent;
+use ppu::ppu::ScanlineKind;
 use std::ops::DerefMut;
 #[cfg(feature = "plugins")]
 use std::{cell::RefCell, rc::Rc};
@@ -31,7 +34,9 @@ pub struct RSnesCore {
     pub apu: Apu,
     pub master_cycles: u64,
     pub cpu_master_cycles_to_wait: u32,
-    apu_cycle_debt: u64,
+    pub nmi_pending: bool,
+    pub irq_pending: bool,
+    pub apu_cycle_debt: u64,
 }
 
 /// Snapshot of the loaded ROM's metadata for display in the GUI.
@@ -41,7 +46,7 @@ pub struct RSnesCore {
 #[derive(Clone)]
 pub struct RomInfo {
     pub path: PathBuf,
-    /// Actual size of the ROM file on disk, in KB — not the header's
+    /// Actual size of the ROM file on disk, in KB - not the header's
     /// `rom_size` exponent, which is what the cartridge *claims*.
     pub file_size_kb: usize,
     pub header: RomHeader,
@@ -90,6 +95,8 @@ impl RSnesCore {
             master_cycles: 0,
             cpu_master_cycles_to_wait: 0,
             apu_cycle_debt: 0,
+            nmi_pending: false,
+            irq_pending: false,
         })
     }
 
@@ -220,8 +227,108 @@ impl RSnesCore {
     pub fn update(&mut self) {
         self.update_cpu_cycles();
         self.update_apu_cycles();
+        self.update_ppu_cycles();
 
         self.master_cycles += 1;
+    }
+
+    fn update_ppu_cycles(&mut self) {
+        match self.ppu.tick() {
+            PpuEvent::None => return,
+            PpuEvent::DotStart => {}
+            PpuEvent::HBlankStart => self.on_hblank_start(),
+            PpuEvent::ScanlineStart(kind) => {
+                self.bus.io.set_hblank(false); // H-Blank ends
+                match kind {
+                    ScanlineKind::Normal => {}
+                    ScanlineKind::VBlankStart => self.on_vblank_start(),
+                    ScanlineKind::FrameStart => self.on_frame_start(),
+                }
+            }
+        }
+
+        // Everything below is implied by "a new dot began", which every
+        // variant except `None` guarantees.
+        self.check_hv_irq();
+    }
+
+    /// Start of H-Blank (dot 274) on the current scanline.
+    fn on_hblank_start(&mut self) {
+        self.bus.io.set_hblank(true);
+
+        if let Some(y) = self.ppu.visible_line() {
+            self.ppu_renderer.render_scanline(&self.ppu, y);
+        }
+
+        // HDMA transfers run in the H-Blank of scanlines 0 through the last
+        // visible one, never during V-Blank.
+        if self.ppu.scanline < self.ppu.vblank_start_line() && self.bus.io.hdmaen != 0 {
+            todo!(
+                "HDMA transfer on scanline {}: channels {:08b} enabled via HDMAEN",
+                self.ppu.scanline,
+                self.bus.io.hdmaen
+            );
+        }
+    }
+
+        /// First scanline of V-Blank (225, or 240 when SETINI's overscan bit is set).
+    fn on_vblank_start(&mut self) {
+        self.bus.io.set_vblank(true);
+        self.bus.io.set_nmi_flag(true);
+
+        // Auto-read: latch the live controller state into JOY1 so ROMs polling $4218/$4219 see this frame's inputs.
+        // Only happens when the game enabled it via NMITIMEN bit 0.
+        if self.bus.io.auto_joypad_enabled() {
+            self.bus.io.latch_joypad1();
+        }
+
+        // Hardware reloads the internal OAM address from OAMADD here,
+        // but only when the screen isn't being force-blanked.
+        if !self.ppu.force_blank() {
+            // TODO : Reload OAM address
+        }
+
+        if self.bus.io.nmi_enabled() {
+            self.nmi_pending = true;
+            todo!("V-Blank NMI: CPU should vector through $FFEA (native) / $FFFA (emulation)");
+        }
+    }
+
+    /// Scanline 0: V-Blank ends and a new frame begins. Scanline 0 is the
+    /// pre-render line, nothing is drawn on it, the first visible line is 1.
+    fn on_frame_start(&mut self) {
+        self.bus.io.set_vblank(false);
+        self.bus.io.set_nmi_flag(false);
+
+        // The last visible scanline was rendered back at line 224's
+        // H-Blank, so the back buffer is complete and safe to publish.
+        self.ppu_renderer.swap_buffers();
+
+        // HDMA init for the new frame.
+        if self.bus.io.hdmaen != 0 {
+            todo!(
+                "HDMA init at frame start: channels {:08b} enabled via HDMAEN",
+                self.bus.io.hdmaen
+            );
+        }
+    }
+
+    /// NMITIMEN bits 5-4 select the H/V timer mode.
+    fn check_hv_irq(&mut self) {
+        let (h, v) = (self.ppu.dot(), self.ppu.scanline);
+
+        let hit = match self.bus.io.irq_mode() {
+            IrqMode::Disabled => return,
+            IrqMode::H => h == self.bus.io.htime,
+            IrqMode::V => v == self.bus.io.vtime && h == 0,
+            IrqMode::HV => v == self.bus.io.vtime && h == self.bus.io.htime,
+        };
+
+        if hit {
+            self.bus.io.set_timer_flag(true);
+            self.irq_pending = true;
+            todo!("H/V timer IRQ: CPU should vector through $FFEE/$FFFE here");
+        }
     }
 
     /// Checks if the CPU is about to execute the first cycle of an instruction,
