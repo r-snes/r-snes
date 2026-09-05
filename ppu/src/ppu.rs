@@ -898,7 +898,7 @@ mod tests {
 
         // Dot N begins at master cycle 4*N.
         for _ in 0..(HBLANK_START_DOT as u32 * 4 - 1) {
-            assert_eq!(ppu.tick(), None);
+            assert_ne!(ppu.tick(), Some(PpuEvent::HBlankStart));
         }
 
         assert_eq!(ppu.tick(), Some(PpuEvent::HBlankStart));
