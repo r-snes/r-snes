@@ -1,8 +1,28 @@
 use crate::cgram::CGRAM;
-use crate::constants::SCANLINES_PER_FRAME;
+use crate::constants::*;
 use crate::registers::PPURegisters;
 use crate::vram::VRAM;
 use common::u16_split::U16Split;
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum PpuEvent {
+    /// A new dot began mid-scanline.
+    DotStart,
+    /// A new dot began, and it is the first dot of H-Blank.
+    HBlankStart,
+    /// A new scanline began. Implies a new dot and the end of H-Blank.
+    ScanlineStart(ScanlineKind),
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ScanlineKind {
+    /// Any line that isn't a V-Blank boundary, visible or not.
+    Normal,
+    /// First line of V-Blank (225, or 240 with overscan).
+    VBlankStart,
+    /// Line 0: V-Blank ends and a new frame begins.
+    FrameStart,
+}
 
 pub struct PPU {
     pub regs: PPURegisters,
@@ -11,7 +31,10 @@ pub struct PPU {
 
     // Timing
     pub scanline: u16,
-    pub frame_ready: bool,
+    /// Master cycles elapsed inside the current scanline (0..1364).
+    pub h_cycles: u32,
+    pub frame: u64,
+    pub odd_frame: bool,
 }
 
 impl Default for PPU {
@@ -27,7 +50,9 @@ impl PPU {
             vram: VRAM::new(),
             cgram: CGRAM::new(),
             scanline: 0,
-            frame_ready: false,
+            h_cycles: 0,
+            frame: 0,
+            odd_frame: false,
         }
     }
 
@@ -292,14 +317,65 @@ impl PPU {
         }
     }
 
-    pub fn step_scanline(&mut self) {
-        self.scanline += 1;
+    /// Current dot (0..339).
+    pub fn dot(&self) -> u16 {
+        (self.h_cycles / 4) as u16
+    }
 
-        if self.scanline >= SCANLINES_PER_FRAME {
-            self.scanline = 0;
-            self.frame_ready = true;
+    /// Non-interlace odd frames shorten scanline 240 to 1360 cycles.
+    fn scanline_length(&self) -> u32 {
+        if self.odd_frame && self.scanline == 240 {
+            MASTER_CYCLES_PER_SCANLINE - 4
         } else {
-            self.frame_ready = false;
+            MASTER_CYCLES_PER_SCANLINE
+        }
+    }
+
+    pub fn vblank_start_line(&self) -> u16 {
+        if self.regs.setini & 0x04 != 0 {
+            VBLANK_START_LINE_OVERSCAN
+        } else {
+            VBLANK_START_LINE
+        }
+    }
+
+    /// Framebuffer row this scanline draws into, if it's a visible one.
+    /// Scanline 0 is the dummy/pre-render line; 1..=224 are visible.
+    pub fn visible_line(&self) -> Option<usize> {
+        (1..=SCREEN_HEIGHT as u16)
+            .contains(&self.scanline)
+            .then(|| self.scanline as usize - 1)
+    }
+
+    /// Advance one master cycle.
+    pub fn tick(&mut self) -> Option<PpuEvent> {
+        let prev_dot = self.dot();
+        self.h_cycles += 1;
+
+        if self.h_cycles >= self.scanline_length() {
+            self.h_cycles = 0;
+            self.scanline += 1;
+
+            let kind = if self.scanline >= SCANLINES_PER_FRAME {
+                self.scanline = 0;
+                self.frame += 1;
+                self.odd_frame = !self.odd_frame;
+                ScanlineKind::FrameStart
+            } else if self.scanline == self.vblank_start_line() {
+                ScanlineKind::VBlankStart
+            } else {
+                ScanlineKind::Normal
+            };
+
+            Some(PpuEvent::ScanlineStart(kind))
+        } else if self.dot() != prev_dot {
+            if self.dot() == HBLANK_START_DOT {
+                Some(PpuEvent::HBlankStart)
+            } else {
+                Some(PpuEvent::DotStart)
+            }
+        } else {
+            None
         }
     }
 
@@ -328,12 +404,15 @@ mod tests {
     // PPU::new
     // ============================================================
 
-    /// A freshly created PPU must have scanline at 0 and frame_ready false.
+    /// A freshly created PPU sits at the very start of scanline 0 of frame 0.
     #[test]
     fn test_new_initial_state() {
         let ppu = PPU::new();
         assert_eq!(ppu.scanline, 0);
-        assert!(!ppu.frame_ready);
+        assert_eq!(ppu.h_cycles, 0);
+        assert_eq!(ppu.dot(), 0);
+        assert_eq!(ppu.frame, 0);
+        assert!(!ppu.odd_frame);
     }
 
     // ============================================================
@@ -762,36 +841,206 @@ mod tests {
     }
 
     // ============================================================
-    // step_scanline
+    // Timing helpers
     // ============================================================
 
-    /// step_scanline increments the counter, wraps at SCANLINES_PER_FRAME,
-    /// and sets frame_ready only on the wrap.
+    /// Ticks until the PPU sits at the very start of `target`, and returns
+    /// the event raised on arrival. Panics rather than spinning forever if
+    /// the scanline is never reached.
+    ///
+    /// Always ticks at least once, so calling it with the PPU already at
+    /// `target` advances a full frame.
+    fn advance_to_scanline_start(ppu: &mut PPU, target: u16) -> Option<PpuEvent> {
+        let cap = (SCANLINES_PER_FRAME as u32 + 1) * MASTER_CYCLES_PER_SCANLINE;
+        for _ in 0..cap {
+            let ev = ppu.tick();
+            if ppu.scanline == target && ppu.h_cycles == 0 {
+                return ev;
+            }
+        }
+        panic!("never reached the start of scanline {target}");
+    }
+
+    /// Ticks through one whole frame and returns how many master cycles it took.
+    fn count_frame_cycles(ppu: &mut PPU) -> u32 {
+        let mut cycles = 0;
+        loop {
+            cycles += 1;
+            if ppu.tick() == Some(PpuEvent::ScanlineStart(ScanlineKind::FrameStart)) {
+                return cycles;
+            }
+        }
+    }
+
+    // ============================================================
+    // tick() - dot progression
+    // ============================================================
+
+    /// A dot is 4 master cycles, so only every fourth tick advances it.
     #[test]
-    fn test_step_scanline() {
+    fn test_tick_dot_progression() {
         let mut ppu = PPU::new();
 
-        ppu.step_scanline();
+        for _ in 0..3 {
+            assert_eq!(ppu.tick(), None);
+            assert_eq!(ppu.dot(), 0);
+        }
+
+        assert_eq!(ppu.tick(), Some(PpuEvent::DotStart));
+        assert_eq!(ppu.dot(), 1);
+        assert_eq!(ppu.h_cycles, 4);
+    }
+
+    /// H-Blank is announced exactly once, on the first cycle of dot 274.
+    #[test]
+    fn test_tick_hblank_start() {
+        let mut ppu = PPU::new();
+
+        // Dot N begins at master cycle 4*N.
+        for _ in 0..(HBLANK_START_DOT as u32 * 4 - 1) {
+            assert_ne!(ppu.tick(), Some(PpuEvent::HBlankStart));
+        }
+
+        assert_eq!(ppu.tick(), Some(PpuEvent::HBlankStart));
+        assert_eq!(ppu.dot(), HBLANK_START_DOT);
+    }
+
+    /// Over one full scanline: one ScanlineStart, one HBlankStart, and a
+    /// DotStart on every other dot boundary.
+    #[test]
+    fn test_event_counts_over_one_scanline() {
+        let mut ppu = PPU::new();
+        let (mut none, mut dots, mut hblanks, mut scanlines) = (0, 0, 0, 0);
+
+        for _ in 0..MASTER_CYCLES_PER_SCANLINE {
+            match ppu.tick() {
+                None => none += 1,
+                Some(PpuEvent::DotStart) => dots += 1,
+                Some(PpuEvent::HBlankStart) => hblanks += 1,
+                Some(PpuEvent::ScanlineStart(_)) => scanlines += 1,
+            }
+        }
+
+        assert_eq!(scanlines, 1);
+        assert_eq!(hblanks, 1);
+        assert_eq!(dots, 339);
+        assert_eq!(none, MASTER_CYCLES_PER_SCANLINE - 341);
+    }
+
+    // ============================================================
+    // tick() - scanline and frame wrap
+    // ============================================================
+
+    /// Crossing a scanline boundary resets h_cycles and bumps the counter.
+    #[test]
+    fn test_tick_scanline_wrap() {
+        let mut ppu = PPU::new();
+
+        for _ in 0..MASTER_CYCLES_PER_SCANLINE - 1 {
+            ppu.tick();
+        }
+        assert_eq!(ppu.scanline, 0);
+
+        assert_eq!(
+            ppu.tick(),
+            Some(PpuEvent::ScanlineStart(ScanlineKind::Normal))
+        );
         assert_eq!(ppu.scanline, 1);
-        assert!(!ppu.frame_ready);
+        assert_eq!(ppu.h_cycles, 0);
+        assert_eq!(ppu.dot(), 0);
+    }
 
-        // One step before wrap
-        for _ in 1..SCANLINES_PER_FRAME - 1 {
-            ppu.step_scanline();
-        }
-        assert!(!ppu.frame_ready);
-        assert_eq!(ppu.scanline, SCANLINES_PER_FRAME - 1);
+    /// Scanline 225 raises VBlankStart; line 0 raises FrameStart and flips
+    /// the odd/even field.
+    #[test]
+    fn test_tick_vblank_and_frame_events() {
+        let mut ppu = PPU::new();
 
-        // Wrap
-        ppu.step_scanline();
+        assert_eq!(
+            advance_to_scanline_start(&mut ppu, VBLANK_START_LINE),
+            Some(PpuEvent::ScanlineStart(ScanlineKind::VBlankStart))
+        );
+
+        assert_eq!(
+            advance_to_scanline_start(&mut ppu, 0),
+            Some(PpuEvent::ScanlineStart(ScanlineKind::FrameStart))
+        );
         assert_eq!(ppu.scanline, 0);
-        assert!(ppu.frame_ready);
+        assert_eq!(ppu.frame, 1);
+        assert!(ppu.odd_frame);
 
-        // Second frame wrap also sets frame_ready
-        for _ in 0..SCANLINES_PER_FRAME {
-            ppu.step_scanline();
+        advance_to_scanline_start(&mut ppu, 0);
+        assert_eq!(ppu.frame, 2);
+        assert!(!ppu.odd_frame);
+    }
+
+    /// Ordinary scanlines raise ScanlineKind::Normal, not a boundary kind.
+    #[test]
+    fn test_tick_normal_scanline_kind() {
+        let mut ppu = PPU::new();
+        assert_eq!(
+            advance_to_scanline_start(&mut ppu, 100),
+            Some(PpuEvent::ScanlineStart(ScanlineKind::Normal))
+        );
+    }
+
+    /// Non-interlace odd frames shorten scanline 240 by one dot.
+    #[test]
+    fn test_short_scanline_on_odd_frames() {
+        let mut ppu = PPU::new();
+        let full = SCANLINES_PER_FRAME as u32 * MASTER_CYCLES_PER_SCANLINE;
+
+        assert_eq!(count_frame_cycles(&mut ppu), full);
+        assert!(ppu.odd_frame);
+
+        assert_eq!(count_frame_cycles(&mut ppu), full - 4);
+        assert!(!ppu.odd_frame);
+
+        assert_eq!(count_frame_cycles(&mut ppu), full);
+    }
+
+    // ============================================================
+    // vblank_start_line - $2133 SETINI overscan
+    // ============================================================
+
+    /// SETINI bit 2 moves the start of V-Blank from line 225 to line 240.
+    #[test]
+    fn test_vblank_start_line_overscan() {
+        let mut ppu = PPU::new();
+        assert_eq!(ppu.vblank_start_line(), VBLANK_START_LINE);
+
+        ppu.write(0x2133, 0x04);
+        assert_eq!(ppu.vblank_start_line(), VBLANK_START_LINE_OVERSCAN);
+
+        // Line 225 is now an ordinary line...
+        assert_eq!(
+            advance_to_scanline_start(&mut ppu, VBLANK_START_LINE),
+            Some(PpuEvent::ScanlineStart(ScanlineKind::Normal))
+        );
+        // ...and V-Blank starts 15 lines later.
+        assert_eq!(
+            advance_to_scanline_start(&mut ppu, VBLANK_START_LINE_OVERSCAN),
+            Some(PpuEvent::ScanlineStart(ScanlineKind::VBlankStart))
+        );
+    }
+
+    // ============================================================
+    // visible_line
+    // ============================================================
+
+    /// Scanline 0 is the pre-render line; 1..=224 map to framebuffer rows
+    /// 0..=223; everything from V-Blank on maps to nothing.
+    #[test]
+    fn test_visible_line() {
+        let mut ppu = PPU::new();
+        assert_eq!(ppu.visible_line(), None);
+
+        for expected_y in 0..SCREEN_HEIGHT {
+            advance_to_scanline_start(&mut ppu, expected_y as u16 + 1);
+            assert_eq!(ppu.visible_line(), Some(expected_y));
         }
-        assert!(ppu.frame_ready);
-        assert_eq!(ppu.scanline, 0);
+
+        advance_to_scanline_start(&mut ppu, VBLANK_START_LINE);
+        assert_eq!(ppu.visible_line(), None);
     }
 }

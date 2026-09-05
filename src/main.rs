@@ -9,7 +9,6 @@ use crate::{
 use clap::Parser;
 #[cfg(feature = "plugins")]
 use plugins::plugin::Plugin;
-use ppu::constants::SCREEN_HEIGHT;
 use std::{
     path::PathBuf,
     time::{Duration, Instant},
@@ -28,10 +27,6 @@ fn gui_emu_loop(
 ) -> Option<RSnesEvent> {
     let mut frame_nb = 0_u64;
     let exec_start = Instant::now();
-
-    let mut last_instant = Instant::now();
-    let mut frame_accum: f64 = 0.0;
-    let mut master_cycle_accum: f64 = 0.0;
 
     // Snapshot the ROM header once — it never changes while the ROM is loaded,
     // so there's no reason to rebuild it every frame.
@@ -53,54 +48,20 @@ fn gui_emu_loop(
     };
 
     let closing_ev = 'emu_loop: loop {
-        // Get new delta based on current Instant::now()
-        let current_instant = Instant::now();
-        let delta = current_instant.duration_since(last_instant).as_secs_f64();
-        last_instant = current_instant;
+        let deadline = Instant::now() + Duration::from_secs_f64(Gui::FRAME_DURATION);
 
-        frame_accum += delta;
-        master_cycle_accum += delta;
-
-        // sleep until we are due a cycle instead of busy-waiting
-        if master_cycle_accum < RSnesCore::MASTER_CYCLE_DURATION {
-            // since the frequency of master cycles is orders
-            // of magnitude greater than the framerate, we need
-            // to sleep for master cycles, not for frames
-            std::thread::sleep(Duration::from_secs_f64(
-                RSnesCore::MASTER_CYCLE_DURATION - master_cycle_accum,
-            ));
-        }
-
-        while master_cycle_accum >= RSnesCore::MASTER_CYCLE_DURATION {
-            master_cycle_accum -= RSnesCore::MASTER_CYCLE_DURATION;
-
+        // run master cycles until the PPU completes a frame
+        let curr_frame = emu.core_mut().ppu.frame;
+        while emu.core_mut().ppu.frame == curr_frame {
             cfg_select! {
                 feature = "plugins" => gui.unwrap_result(emu.update()),
                 _ => emu.update(),
             }
         }
 
-        // Window update if frame treshold is crossed
-        if frame_accum < Gui::FRAME_DURATION {
-            continue;
-        }
-        frame_accum -= Gui::FRAME_DURATION;
-
-        let mut emu_mut = emu.core_mut();
-
-        // temporary: render full PPU frame for each GUI frame
-        for y in 0..SCREEN_HEIGHT {
-            let RSnesCore {
-                ppu, ppu_renderer, ..
-            } = &mut *emu_mut;
-            ppu_renderer.render_scanline(ppu, y);
-            emu_mut.ppu.step_scanline();
-        }
-        // temporary: toggle VBLANK each rendered frame
-        emu_mut.bus.io.rdnmi = !emu_mut.bus.io.rdnmi;
-
+        let emu_mut = emu.core_mut();
         let events = gui.update(
-            &emu_mut.ppu_renderer.framebuffer,
+            emu_mut.ppu_renderer.presented(),
             GuiFrameData {
                 rom_info: Some(&rom_info),
             },
@@ -131,6 +92,11 @@ fn gui_emu_loop(
 
                 e => println!("ignored event: {e:?}"),
             }
+        }
+
+        let now = Instant::now();
+        if now < deadline {
+            std::thread::sleep(deadline - now);
         }
         frame_nb += 1;
     };
