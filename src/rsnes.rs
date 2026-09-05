@@ -233,10 +233,10 @@ impl RSnesCore {
 
     fn update_ppu_cycles(&mut self) {
         match self.ppu.tick() {
-            PpuEvent::None => return,
-            PpuEvent::DotStart => {}
-            PpuEvent::HBlankStart => self.on_hblank_start(),
-            PpuEvent::ScanlineStart(kind) => {
+            None => return,
+            Some(PpuEvent::DotStart) => {}
+            Some(PpuEvent::HBlankStart) => self.on_hblank_start(),
+            Some(PpuEvent::ScanlineStart(kind)) => {
                 self.bus.io.set_hblank(false); // H-Blank ends
                 match kind {
                     ScanlineKind::Normal => {}

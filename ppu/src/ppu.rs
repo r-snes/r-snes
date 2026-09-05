@@ -6,8 +6,6 @@ use common::u16_split::U16Split;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum PpuEvent {
-    /// Nothing crossed.
-    None,
     /// A new dot began mid-scanline.
     DotStart,
     /// A new dot began, and it is the first dot of H-Blank.
@@ -350,7 +348,7 @@ impl PPU {
     }
 
     /// Advance one master cycle.
-    pub fn tick(&mut self) -> PpuEvent {
+    pub fn tick(&mut self) -> Option<PpuEvent> {
         let prev_dot = self.dot();
         self.h_cycles += 1;
 
@@ -369,15 +367,15 @@ impl PPU {
                 ScanlineKind::Normal
             };
 
-            PpuEvent::ScanlineStart(kind)
+            Some(PpuEvent::ScanlineStart(kind))
         } else if self.dot() != prev_dot {
             if self.dot() == HBLANK_START_DOT {
-                PpuEvent::HBlankStart
+                Some(PpuEvent::HBlankStart)
             } else {
-                PpuEvent::DotStart
+                Some(PpuEvent::DotStart)
             }
         } else {
-            PpuEvent::None
+            None
         }
     }
 
@@ -852,7 +850,7 @@ mod tests {
     ///
     /// Always ticks at least once, so calling it with the PPU already at
     /// `target` advances a full frame.
-    fn advance_to_scanline_start(ppu: &mut PPU, target: u16) -> PpuEvent {
+    fn advance_to_scanline_start(ppu: &mut PPU, target: u16) -> Option<PpuEvent> {
         let cap = (SCANLINES_PER_FRAME as u32 + 1) * MASTER_CYCLES_PER_SCANLINE;
         for _ in 0..cap {
             let ev = ppu.tick();
@@ -868,7 +866,7 @@ mod tests {
         let mut cycles = 0;
         loop {
             cycles += 1;
-            if ppu.tick() == PpuEvent::ScanlineStart(ScanlineKind::FrameStart) {
+            if ppu.tick() == Some(PpuEvent::ScanlineStart(ScanlineKind::FrameStart)) {
                 return cycles;
             }
         }
@@ -884,11 +882,11 @@ mod tests {
         let mut ppu = PPU::new();
 
         for _ in 0..3 {
-            assert_eq!(ppu.tick(), PpuEvent::None);
+            assert_eq!(ppu.tick(), None);
             assert_eq!(ppu.dot(), 0);
         }
 
-        assert_eq!(ppu.tick(), PpuEvent::DotStart);
+        assert_eq!(ppu.tick(), Some(PpuEvent::DotStart));
         assert_eq!(ppu.dot(), 1);
         assert_eq!(ppu.h_cycles, 4);
     }
@@ -900,10 +898,10 @@ mod tests {
 
         // Dot N begins at master cycle 4*N.
         for _ in 0..(HBLANK_START_DOT as u32 * 4 - 1) {
-            assert_ne!(ppu.tick(), PpuEvent::HBlankStart);
+            assert_eq!(ppu.tick(), None);
         }
 
-        assert_eq!(ppu.tick(), PpuEvent::HBlankStart);
+        assert_eq!(ppu.tick(), Some(PpuEvent::HBlankStart));
         assert_eq!(ppu.dot(), HBLANK_START_DOT);
     }
 
@@ -916,10 +914,10 @@ mod tests {
 
         for _ in 0..MASTER_CYCLES_PER_SCANLINE {
             match ppu.tick() {
-                PpuEvent::None => none += 1,
-                PpuEvent::DotStart => dots += 1,
-                PpuEvent::HBlankStart => hblanks += 1,
-                PpuEvent::ScanlineStart(_) => scanlines += 1,
+                None => none += 1,
+                Some(PpuEvent::DotStart) => dots += 1,
+                Some(PpuEvent::HBlankStart) => hblanks += 1,
+                Some(PpuEvent::ScanlineStart(_)) => scanlines += 1,
             }
         }
 
@@ -943,7 +941,10 @@ mod tests {
         }
         assert_eq!(ppu.scanline, 0);
 
-        assert_eq!(ppu.tick(), PpuEvent::ScanlineStart(ScanlineKind::Normal));
+        assert_eq!(
+            ppu.tick(),
+            Some(PpuEvent::ScanlineStart(ScanlineKind::Normal))
+        );
         assert_eq!(ppu.scanline, 1);
         assert_eq!(ppu.h_cycles, 0);
         assert_eq!(ppu.dot(), 0);
@@ -957,12 +958,12 @@ mod tests {
 
         assert_eq!(
             advance_to_scanline_start(&mut ppu, VBLANK_START_LINE),
-            PpuEvent::ScanlineStart(ScanlineKind::VBlankStart)
+            Some(PpuEvent::ScanlineStart(ScanlineKind::VBlankStart))
         );
 
         assert_eq!(
             advance_to_scanline_start(&mut ppu, 0),
-            PpuEvent::ScanlineStart(ScanlineKind::FrameStart)
+            Some(PpuEvent::ScanlineStart(ScanlineKind::FrameStart))
         );
         assert_eq!(ppu.scanline, 0);
         assert_eq!(ppu.frame, 1);
@@ -979,7 +980,7 @@ mod tests {
         let mut ppu = PPU::new();
         assert_eq!(
             advance_to_scanline_start(&mut ppu, 100),
-            PpuEvent::ScanlineStart(ScanlineKind::Normal)
+            Some(PpuEvent::ScanlineStart(ScanlineKind::Normal))
         );
     }
 
@@ -1014,12 +1015,12 @@ mod tests {
         // Line 225 is now an ordinary line...
         assert_eq!(
             advance_to_scanline_start(&mut ppu, VBLANK_START_LINE),
-            PpuEvent::ScanlineStart(ScanlineKind::Normal)
+            Some(PpuEvent::ScanlineStart(ScanlineKind::Normal))
         );
         // ...and V-Blank starts 15 lines later.
         assert_eq!(
             advance_to_scanline_start(&mut ppu, VBLANK_START_LINE_OVERSCAN),
-            PpuEvent::ScanlineStart(ScanlineKind::VBlankStart)
+            Some(PpuEvent::ScanlineStart(ScanlineKind::VBlankStart))
         );
     }
 
