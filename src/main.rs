@@ -1,14 +1,18 @@
 mod gui;
+
 mod rsnes;
 
 use crate::{
-    gui::{Gui, GuiFrameData, RSnesEvent},
+    gui::{Gui, GuiFrameData, RSnesEvent, SnesButton},
     rsnes::{RSnesCore, RSnesEmu},
 };
+
 #[cfg(feature = "cli")]
 use clap::Parser;
+
 #[cfg(feature = "plugins")]
 use plugins::plugin::Plugin;
+
 use std::{
     path::PathBuf,
     time::{Duration, Instant},
@@ -19,6 +23,15 @@ type IdleExit = (RSnesEvent, Option<Plugin>);
 #[cfg(not(feature = "plugins"))]
 type IdleExit = RSnesEvent;
 
+/// Update the port-1 controller state for a single button. Goes through
+/// `core_mut()` so it works whether the core is held directly or behind an
+/// `Rc<RefCell<...>>` (plugins feature).
+fn set_button(emu: &mut RSnesEmu, button: SnesButton, pressed: bool) {
+    let mut core = emu.core_mut();
+    core.bus.io.set_joypad1_button(button.mask(), pressed);
+    println!("joypad1 = {:016b}", core.bus.io.joypad1);
+}
+
 fn gui_emu_loop(
     gui: &mut gui::Gui,
     rsnes: RSnesCore,
@@ -28,7 +41,11 @@ fn gui_emu_loop(
     let mut frame_nb = 0_u64;
     let exec_start = Instant::now();
 
-    // Snapshot the ROM header once — it never changes while the ROM is loaded,
+    let mut last_instant = Instant::now();
+    let mut frame_accum: f64 = 0.0;
+    let mut master_cycle_accum: f64 = 0.0;
+
+    // Snapshot the ROM header once - it never changes while the ROM is loaded,
     // so there's no reason to rebuild it every frame.
     let rom_info = rsnes.rom_info();
     let title = rom_info.header.title.trim();
@@ -48,20 +65,45 @@ fn gui_emu_loop(
     };
 
     let closing_ev = 'emu_loop: loop {
-        let deadline = Instant::now() + Duration::from_secs_f64(Gui::FRAME_DURATION);
+        // Get new delta based on current Instant::now()
+        let current_instant = Instant::now();
+        let delta = current_instant.duration_since(last_instant).as_secs_f64();
+        last_instant = current_instant;
 
-        // run master cycles until the PPU completes a frame
-        let curr_frame = emu.core_mut().ppu.frame;
-        while emu.core_mut().ppu.frame == curr_frame {
+        frame_accum += delta;
+        master_cycle_accum += delta;
+
+        // sleep until we are due a cycle instead of busy-waiting
+        if master_cycle_accum < RSnesCore::MASTER_CYCLE_DURATION {
+            // since the frequency of master cycles is orders of magnitude greater than the framerate,
+            // we need to sleep for master cycles, not for frames
+            std::thread::sleep(Duration::from_secs_f64(
+                RSnesCore::MASTER_CYCLE_DURATION - master_cycle_accum,
+            ));
+        }
+
+        while master_cycle_accum >= RSnesCore::MASTER_CYCLE_DURATION {
+            master_cycle_accum -= RSnesCore::MASTER_CYCLE_DURATION;
+
             cfg_select! {
                 feature = "plugins" => gui.unwrap_result(emu.update()),
                 _ => emu.update(),
             }
         }
 
+        // Window update if frame treshold is crossed
+        if frame_accum < Gui::FRAME_DURATION {
+            continue;
+        }
+        frame_accum -= Gui::FRAME_DURATION;
+
         let emu_mut = emu.core_mut();
+
+        // The PPU renders its scanlines in step with the master clock 
+        // and the controller auto-read happens at V-Blank (see RSnesCore), 
+        // so the framebuffer already holds the latest frame. The GUI just displays it.
         let events = gui.update(
-            emu_mut.ppu_renderer.presented(),
+            &emu_mut.ppu_renderer.framebuffer,
             GuiFrameData {
                 rom_info: Some(&rom_info),
             },
@@ -72,15 +114,11 @@ fn gui_emu_loop(
             match state_event {
                 RSnesEvent::Quit => break 'emu_loop Some(RSnesEvent::Quit),
                 RSnesEvent::Close => break 'emu_loop None,
-                RSnesEvent::ButtonDown => {
-                    let mut emu_mut = emu.core_mut();
-                    emu_mut.bus.io.hvbjoy = 0;
-                    emu_mut.bus.io.joy1 = !0;
+                RSnesEvent::ButtonDown(button) => {
+                    set_button(&mut emu, button, true);
                 }
-                RSnesEvent::ButtonUp => {
-                    let mut emu_mut = emu.core_mut();
-                    emu_mut.bus.io.hvbjoy = 0;
-                    emu_mut.bus.io.joy1 = 0;
+                RSnesEvent::ButtonUp(button) => {
+                    set_button(&mut emu, button, false);
                 }
 
                 #[cfg(feature = "plugins")]
@@ -92,11 +130,6 @@ fn gui_emu_loop(
 
                 e => println!("ignored event: {e:?}"),
             }
-        }
-
-        let now = Instant::now();
-        if now < deadline {
-            std::thread::sleep(deadline - now);
         }
         frame_nb += 1;
     };
@@ -116,7 +149,7 @@ fn gui_emu_loop(
 
 /// The no-ROM idle state: render the logo screen (plus any open overlays)
 /// at the normal frame rate, and after a few seconds start the waiting
-/// music — a real SPC700 driver uploaded into a standalone APU over the
+/// music - a real SPC700 driver uploaded into a standalone APU over the
 /// IPL boot protocol (see `apu::jingle`).
 ///
 /// Returns the first event the outer loop cares about. Input-only events
@@ -146,7 +179,7 @@ fn gui_idle_loop(gui: &mut Gui, default_framebuffer: &ppu::rendering::RawFramebu
         let frame_start = Instant::now();
 
         // Render the logo + overlays; this also polls input (routed
-        // through egui first). No ROM loaded, so no rom_info to show —
+        // through egui first). No ROM loaded, so no rom_info to show -
         // the overlay will say so if the user opens it.
         let events = gui.update(default_framebuffer, GuiFrameData::default());
 
@@ -162,7 +195,6 @@ fn gui_idle_loop(gui: &mut Gui, default_framebuffer: &ppu::rendering::RawFramebu
         if let Some(ev) = terminal {
             break ev;
         }
-
         // Boot the jingle APU once the delay has passed. A boot failure
         // is loudly logged but non-fatal: the emulator just stays silent.
         if jingle.is_none() && !jingle_failed && idle_start.elapsed() >= JINGLE_DELAY {

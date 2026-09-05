@@ -46,7 +46,7 @@ pub struct RSnesCore {
 #[derive(Clone)]
 pub struct RomInfo {
     pub path: PathBuf,
-    /// Actual size of the ROM file on disk, in KB — not the header's
+    /// Actual size of the ROM file on disk, in KB - not the header's
     /// `rom_size` exponent, which is what the cartridge *claims*.
     pub file_size_kb: usize,
     pub header: RomHeader,
@@ -76,6 +76,7 @@ pub struct RSnesEmu {
 
 impl RSnesCore {
     pub const MASTER_CLOCK_HZ: u64 = 21_477_300;
+    pub const MASTER_CYCLE_DURATION: f64 = 1.0 / Self::MASTER_CLOCK_HZ as f64;
 
     pub fn load_rom<P: AsRef<Path>>(rom_path: &P) -> Result<Self, Box<dyn Error>> {
         let bus = Bus::new(rom_path)?;
