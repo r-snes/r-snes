@@ -250,7 +250,6 @@ impl RSnesCore {
         // Everything below is implied by "a new dot began", which every
         // variant except `None` guarantees.
         self.check_hv_irq();
-        // TODO : joypad auto read check
     }
 
     /// Start of H-Blank (dot 274) on the current scanline.
@@ -272,10 +271,16 @@ impl RSnesCore {
         }
     }
 
-    /// First scanline of V-Blank (225, or 240 when SETINI's overscan bit is set).
+        /// First scanline of V-Blank (225, or 240 when SETINI's overscan bit is set).
     fn on_vblank_start(&mut self) {
         self.bus.io.set_vblank(true);
         self.bus.io.set_nmi_flag(true);
+
+        // Auto-read: latch the live controller state into JOY1 so ROMs polling $4218/$4219 see this frame's inputs.
+        // Only happens when the game enabled it via NMITIMEN bit 0.
+        if self.bus.io.auto_joypad_enabled() {
+            self.bus.io.latch_joypad1();
+        }
 
         // Hardware reloads the internal OAM address from OAMADD here,
         // but only when the screen isn't being force-blanked.
