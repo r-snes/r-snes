@@ -659,7 +659,7 @@ mod tests {
     // update() - clock distribution
     // ============================================================
 
-    /// The PPU now advances from the same clock as everything else: one
+    /// The PPU advances from the same clock as everything else: one
     /// tick per master cycle, regardless of what the CPU is doing.
     #[test]
     fn test_ppu_advances_with_master_clock() {
@@ -738,7 +738,7 @@ mod tests {
         let mut rsnes = make_rsnes();
 
         advance_core_to_scanline(&mut rsnes, VBLANK_START_LINE);
-        for line in [230, 245, SCANLINES_PER_FRAME - 1] {
+        for line in VBLANK_START_LINE..SCANLINES_PER_FRAME {
             advance_core_to_scanline(&mut rsnes, line);
             assert!(
                 rsnes.bus.io.in_vblank(),
