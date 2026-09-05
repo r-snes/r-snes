@@ -737,7 +737,6 @@ mod tests {
     fn test_vblank_flag_held_for_whole_interval() {
         let mut rsnes = make_rsnes();
 
-        advance_core_to_scanline(&mut rsnes, VBLANK_START_LINE);
         for line in VBLANK_START_LINE..SCANLINES_PER_FRAME {
             advance_core_to_scanline(&mut rsnes, line);
             assert!(
