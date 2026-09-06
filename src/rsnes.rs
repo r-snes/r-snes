@@ -400,14 +400,108 @@ impl RSnesEmu {
 
 #[cfg(test)]
 mod tests {
+    use std::ops::Deref;
+
     use super::*;
-    use bus::rom::test_rom::*;
-    use common::snes_addr;
+    use bus::rom::{Rom, test_rom::*};
+    use common::{snes_addr, u16_split::U16Split};
+    use cpu::registers::RegisterP;
+    use duplicate::duplicate_item;
     use ppu::constants::*;
+
+    struct RSnesCoreInterruptDetector(RSnesCore);
+    impl AsRef<RSnesCore> for RSnesCoreInterruptDetector {
+        fn as_ref(&self) -> &RSnesCore {
+            &self.0
+        }
+    }
+    impl Deref for RSnesCoreInterruptDetector {
+        type Target = RSnesCore;
+        fn deref(&self) -> &Self::Target {
+            &self.0
+        }
+    }
+    impl AsMut<RSnesCore> for RSnesCoreInterruptDetector {
+        fn as_mut(&mut self) -> &mut RSnesCore {
+            &mut self.0
+        }
+    }
+    impl DerefMut for RSnesCoreInterruptDetector {
+        fn deref_mut(&mut self) -> &mut Self::Target {
+            &mut self.0
+        }
+    }
+    impl RSnesCoreInterruptDetector {
+        const NMI_MARKER_ADDR: SnesAddress = snes_addr!(0:0x1FFE);
+        const IRQ_MARKER_ADDR: SnesAddress = snes_addr!(0:0x1FFF);
+
+        pub fn new() -> Self {
+            let mut core = make_rsnes();
+            core.bus.wram.write(Self::NMI_MARKER_ADDR, 0x42);
+            core.bus.wram.write(Self::IRQ_MARKER_ADDR, 0x42);
+
+            // init code is a BRA (branch always) the branches to itself:
+            // we keep the CPU looping on one instruction by doing this,
+            // avoiding executing uninitised memory
+            let init_code: [u8; _] = [
+                0x58,        // CLI opcode: clear the "disable IRQ" flag, so we can see IRQs
+                0x80,        // BRA opcode
+                -2_i8 as u8, // jump 2 bytes backwards: BRA is 2 bytes long, so we loop
+            ];
+            // write a 0x99 at the NMI marker
+            // to be sure we only write one byte, we have to put the accumulator in 8-bit mode first
+            let interrupt_handler = |marker_addr: SnesAddress| {
+                [
+                    0xe2, // SEP opcode used to set CPU flags
+                    RegisterP {
+                        M: true,
+                        ..0.into()
+                    }
+                    .into(), // set the M flag for 8-bit memory
+                    0xa9, // LDA imm opcode, to load a byte in A
+                    0x99, // the byte we're going to write
+                    0x8f, // STA absl opcode, to store A somewhere
+                    *marker_addr.addr.lo(),
+                    *marker_addr.addr.hi(),
+                    marker_addr.bank,
+                    0x40, // RTI opcode: return from interrupt
+                ]
+            };
+
+            for (interrupt_vec, routine_addr, interrupt_code) in [
+                (0xFFFC, 1000_u16, &init_code as &[u8]), // reset
+                (0xFFEA, 1100_u16, &interrupt_handler(Self::NMI_MARKER_ADDR)), // nmi native
+                (0xFFFA, 1100_u16, &interrupt_handler(Self::NMI_MARKER_ADDR)), // nmi emu
+                (0xFFEE, 1200_u16, &interrupt_handler(Self::IRQ_MARKER_ADDR)), // irq native
+                (0xFFFE, 1200_u16, &interrupt_handler(Self::IRQ_MARKER_ADDR)), // irq emu
+            ] {
+                let int_vec_addr = Rom::get_lorom_offset(snes_addr!(0:interrupt_vec));
+                core.bus.rom.data[int_vec_addr] = *routine_addr.lo();
+                core.bus.rom.data[int_vec_addr + 1] = *routine_addr.hi();
+                core.bus.wram.data
+                    [routine_addr as usize..routine_addr as usize + interrupt_code.len()]
+                    .copy_from_slice(interrupt_code);
+            }
+
+            Self(core)
+        }
+
+        #[duplicate_item(
+            DUP_name            DUP_addr;
+            [has_nmi_occured]   [Self::NMI_MARKER_ADDR];
+            [has_irq_occured]   [Self::IRQ_MARKER_ADDR];
+        )]
+        pub fn DUP_name(&mut self) -> bool {
+            // let the CPU complete an interrupt routine in case one was just requested
+            for _ in 0..100000 {
+                self.0.update_cpu_cycles();
+            }
+            self.0.bus.wram.read(DUP_addr) == 0x99
+        }
+    }
 
     /// Ticks the core without letting the CPU run.
     fn tick_core(rsnes: &mut RSnesCore, cycles: u64) {
-        rsnes.cpu_master_cycles_to_wait = u32::MAX;
         for _ in 0..cycles {
             rsnes.update();
         }
@@ -415,7 +509,6 @@ mod tests {
 
     /// Ticks until the PPU sits at the very start of `target`.
     fn advance_core_to_scanline(rsnes: &mut RSnesCore, target: u16) {
-        rsnes.cpu_master_cycles_to_wait = u32::MAX;
         let cap = (SCANLINES_PER_FRAME as u32 + 1) * MASTER_CYCLES_PER_SCANLINE;
         for _ in 0..cap {
             rsnes.update();
@@ -680,9 +773,9 @@ mod tests {
 
     #[test]
     fn test_interrupt_flags_clear_at_poweron() {
-        let rsnes = make_rsnes();
-        assert!(!rsnes.nmi_pending);
-        assert!(!rsnes.irq_pending);
+        let mut rsnes = RSnesCoreInterruptDetector::new();
+        assert!(!rsnes.has_nmi_occured());
+        assert!(!rsnes.has_irq_occured());
     }
 
     // ============================================================
@@ -788,11 +881,11 @@ mod tests {
     /// With NMITIMEN bit 7 set, entering V-Blank must request an NMI.
     /// Becomes a `nmi_pending` assertion once the CPU can take interrupts.
     #[test]
-    #[should_panic(expected = "V-Blank NMI")]
     fn test_vblank_nmi_requested_when_enabled() {
-        let mut rsnes = make_rsnes();
+        let mut rsnes = RSnesCoreInterruptDetector::new();
         rsnes.bus.io.nmitimen = 0x80;
         advance_core_to_scanline(&mut rsnes, VBLANK_START_LINE);
+        assert!(rsnes.has_nmi_occured());
     }
 
     /// With NMI disabled, no request — but the RDNMI flag still goes up.
@@ -800,13 +893,13 @@ mod tests {
     /// interrupt is opt-in.
     #[test]
     fn test_vblank_flag_set_even_when_nmi_disabled() {
-        let mut rsnes = make_rsnes();
+        let mut rsnes = RSnesCoreInterruptDetector::new();
         assert!(!rsnes.bus.io.nmi_enabled());
 
         advance_core_to_scanline(&mut rsnes, VBLANK_START_LINE);
 
         assert!(rsnes.bus.io.nmi_flag());
-        assert!(!rsnes.nmi_pending);
+        assert!(!rsnes.has_nmi_occured());
     }
 
     // ============================================================
@@ -829,59 +922,59 @@ mod tests {
 
     /// Mode 1 fires wherever H reaches HTIME, on any scanline.
     #[test]
-    #[should_panic(expected = "H/V timer IRQ")]
     fn test_h_irq_fires_at_htime() {
-        let mut rsnes = make_rsnes();
+        let mut rsnes = RSnesCoreInterruptDetector::new();
         rsnes.bus.io.nmitimen = 0b0001_0000;
         rsnes.bus.io.htime = 100;
 
         tick_core(&mut rsnes, 100 * 4);
+        assert!(rsnes.has_irq_occured());
     }
 
     /// Mode 2 fires once per frame, at H = 0 of VTIME.
     #[test]
-    #[should_panic(expected = "H/V timer IRQ")]
     fn test_v_irq_fires_on_target_scanline() {
-        let mut rsnes = make_rsnes();
+        let mut rsnes = RSnesCoreInterruptDetector::new();
         rsnes.bus.io.nmitimen = 0b0010_0000;
         rsnes.bus.io.vtime = 42;
 
         advance_core_to_scanline(&mut rsnes, 100);
+        assert!(rsnes.has_irq_occured());
     }
 
     /// Mode 2 must ignore every other scanline.
     #[test]
     fn test_v_irq_silent_on_other_scanlines() {
-        let mut rsnes = make_rsnes();
+        let mut rsnes = RSnesCoreInterruptDetector::new();
         rsnes.bus.io.nmitimen = 0b0010_0000;
         rsnes.bus.io.vtime = 200;
 
         advance_core_to_scanline(&mut rsnes, 100);
-        assert!(!rsnes.irq_pending);
+        assert!(!rsnes.has_irq_occured());
     }
 
     /// Mode 3 needs both coordinates: an HTIME match on the wrong scanline
     /// must not fire.
     #[test]
     fn test_hv_irq_ignores_htime_match_on_wrong_scanline() {
-        let mut rsnes = make_rsnes();
+        let mut rsnes = RSnesCoreInterruptDetector::new();
         rsnes.bus.io.nmitimen = 0b0011_0000;
         rsnes.bus.io.htime = 100;
         rsnes.bus.io.vtime = 200;
 
         advance_core_to_scanline(&mut rsnes, 150);
-        assert!(!rsnes.irq_pending);
+        assert!(!rsnes.has_irq_occured());
     }
 
     /// Mode 0 must never fire, even when both counters match.
     #[test]
     fn test_irq_disabled_never_fires() {
-        let mut rsnes = make_rsnes();
+        let mut rsnes = RSnesCoreInterruptDetector::new();
         rsnes.bus.io.htime = 100;
         rsnes.bus.io.vtime = 100;
 
         advance_core_to_scanline(&mut rsnes, 150);
-        assert!(!rsnes.irq_pending);
+        assert!(!rsnes.has_irq_occured());
         assert!(!rsnes.bus.io.timer_flag());
     }
 

@@ -145,10 +145,7 @@ impl Rom {
         let offset = self.to_offset(addr);
 
         *self.data.get(offset).unwrap_or_else(|| {
-            panic!(
-                "ERROR: Couldn't extract value from ROM at address: {:06X}",
-                usize::from(addr)
-            )
+            panic!("ERROR: Couldn't extract value from ROM at address: {addr:?}",)
         })
     }
 

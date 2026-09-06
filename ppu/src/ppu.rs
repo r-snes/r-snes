@@ -1,6 +1,6 @@
 use crate::cgram::CGRAM;
-use crate::constants::*;
 use crate::constants::SCANLINES_PER_FRAME;
+use crate::constants::*;
 use crate::oam::OAM;
 use crate::registers::PPURegisters;
 use crate::vram::VRAM;

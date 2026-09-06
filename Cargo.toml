@@ -40,6 +40,7 @@ egui-sdl2 = { version = "0.4.0", features = ["canvas-backend"] }
 
 rfd = "0.17.2"
 clap = { version = "^4.6.0", features = ["derive"], optional = true }
+duplicate.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 sdl2 = { version = "0.38.0", features = ["bundled"] }
