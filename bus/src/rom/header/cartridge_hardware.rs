@@ -72,16 +72,26 @@ impl CartridgeHardware {
             _ => panic!("ERROR: Could not identify hardware of ROM"),
         };
 
-        let coprocessor = match (byte & 0xF0) >> 4 {
-            0x0 => Some(Coprocessor::DSP(1)),
-            0x1 => Some(Coprocessor::GSU),
-            0x2 => Some(Coprocessor::OBC1),
-            0x3 => Some(Coprocessor::SA1),
-            0x4 => Some(Coprocessor::SDD1),
-            0x5 => Some(Coprocessor::SRTC),
-            0xE => Some(Coprocessor::Other),
-            0xF => Some(Coprocessor::Custom),
-            _ => None,
+        let coprocessor = if matches!(
+            layout,
+            HardwareLayout::RomCoprocessor
+                | HardwareLayout::RomCoprocessorRam
+                | HardwareLayout::RomCoprocessorRamBattery
+                | HardwareLayout::RomCoprocessorBattery
+        ) {
+            match (byte & 0xF0) >> 4 {
+                0x0 => Some(Coprocessor::DSP(1)),
+                0x1 => Some(Coprocessor::GSU),
+                0x2 => Some(Coprocessor::OBC1),
+                0x3 => Some(Coprocessor::SA1),
+                0x4 => Some(Coprocessor::SDD1),
+                0x5 => Some(Coprocessor::SRTC),
+                0xE => Some(Coprocessor::Other),
+                0xF => Some(Coprocessor::Custom),
+                _ => None,
+            }
+        } else {
+            None
         };
 
         CartridgeHardware {
