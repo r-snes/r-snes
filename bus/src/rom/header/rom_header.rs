@@ -4,7 +4,7 @@ use crate::constants::{
     HEADER_CHECKSUM_COMPLEMENT_OFFSET, HEADER_CHECKSUM_OFFSET, HEADER_COUNTRY_OFFSET,
     HEADER_DEVELOPER_ID_OFFSET, HEADER_RAM_SIZE_OFFSET, HEADER_ROM_HARDWARE_OFFSET,
     HEADER_ROM_SIZE_OFFSET, HEADER_ROM_VERSION_OFFSET, HEADER_SIZE, HEADER_SPEED_MAP_OFFSET,
-    HEADER_TITLE_LEN,
+    HEADER_TITLE_LEN, SRAM_MAX_SIZE_EXP,
 };
 use crate::rom::header::cartridge_hardware::CartridgeHardware;
 use crate::rom::header::country::{Country, VideoStandard};
@@ -72,6 +72,18 @@ impl RomHeader {
                 header_bytes[HEADER_CHECKSUM_OFFSET],
                 header_bytes[HEADER_CHECKSUM_OFFSET + 1],
             ]),
+        }
+    }
+
+    /// Size in bytes of the cartridge's S-RAM, `0` if the cartridge has none.
+    ///
+    /// The header encodes the size as an exponent: `1024 << n`. Values above
+    /// `SRAM_MAX_SIZE_EXP` are treated as 0.
+    pub fn ram_size_bytes(&self) -> usize {
+        match self.ram_size {
+            0 => 0,
+            n if n <= SRAM_MAX_SIZE_EXP => 1024 << n,
+            _ => 0,
         }
     }
 

@@ -9,6 +9,7 @@ pub const IO_SIZE: usize = (IO_END_ADDRESS - IO_START_ADDRESS + 1) as usize; // 
 // WRAM Memory zone
 pub const WRAM_BANK_NB: usize = 2; // WRAM spans on 2 banks
 pub const WRAM_SIZE: usize = BANK_SIZE * WRAM_BANK_NB;
+pub const SRAM_MAX_SIZE_EXP: u8 = 7; // 1024 << 7 == 128 KiB
 
 // ROM Header
 pub const LOROM_HEADER_OFFSET: usize = 0x7FC0;
