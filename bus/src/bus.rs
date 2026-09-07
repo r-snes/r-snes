@@ -25,20 +25,19 @@ impl Bus {
 
     duplicate! {
         [
-            DUP_method  DUP_parameters                                  DUP_return_t    DUP_method_param;
-            [ read ]    [ &mut self, addr: SnesAddress ]                [ u8 ]          [ addr ];
-            [ write ]   [ &mut self, addr: SnesAddress, value: u8 ]     [ () ]          [ addr, value ];
+            DUP_method  DUP_parameters                              DUP_return_t  DUP_method_param  DUP_cart;
+            [ read ]    [ &mut self, addr: SnesAddress ]             [ u8 ]        [ addr ]         [ self.rom.read(addr).unwrap_or(self.io.open_bus) ];
+            [ write ]   [ &mut self, addr: SnesAddress, value: u8 ]  [ () ]        [ addr, value ]  [ self.rom.write(addr, value) ];
         ]
         pub fn DUP_method(DUP_parameters, ppu: &mut PPU, apu: &mut Apu) -> DUP_return_t {
             match addr.bank {
                 0x00..=0x3F | 0x80..=0xBF => match addr.addr {
                     0x0000..0x2000 => self.wram.DUP_method(DUP_method_param),
                     0x2000..0x6000 => self.io.DUP_method(DUP_method_param, ppu, apu),
-                    0x6000..0x8000 => self.rom.DUP_method(DUP_method_param), // TODO : Expansion port
-                    0x8000..=0xFFFF => self.rom.DUP_method(DUP_method_param),
+                    0x6000..=0xFFFF => DUP_cart,
                 },
                 0x7E..=0x7F => self.wram.DUP_method(DUP_method_param),
-                0x40..=0x7D | 0xC0..=0xFF => self.rom.DUP_method(DUP_method_param),
+                0x40..=0x7D | 0xC0..=0xFF => DUP_cart,
             }
         }
     }

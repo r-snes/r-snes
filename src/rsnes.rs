@@ -739,7 +739,7 @@ mod tests {
     fn test_cpu_update_function() {
         let mut rsnes = make_rsnes();
 
-        let reset_addr = bus::rom::Rom::get_lorom_offset(snes_addr!(0:0xFFFC));
+        let reset_addr = bus::rom::Rom::get_lorom_offset(snes_addr!(0:0xFFFC)).unwrap();
         rsnes.bus.rom.data[reset_addr] = 0x00;
         rsnes.bus.rom.data[reset_addr + 1] = 0x80;
 
