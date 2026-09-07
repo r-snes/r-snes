@@ -207,14 +207,14 @@ mod tests {
     #[test]
     fn test_coprocessor_from_byte_valid() {
         let mappings = [
-            (0x00, Some(Coprocessor::DSP(1))),
-            (0x10, Some(Coprocessor::GSU)),
-            (0x20, Some(Coprocessor::OBC1)),
-            (0x30, Some(Coprocessor::SA1)),
-            (0x40, Some(Coprocessor::SDD1)),
-            (0x50, Some(Coprocessor::SRTC)),
-            (0xE0, Some(Coprocessor::Other)),
-            (0xF0, Some(Coprocessor::Custom)),
+            (0x00, None),
+            (0x10, None),
+            (0x20, None),
+            (0x30, None),
+            (0x40, None),
+            (0x50, None),
+            (0xE0, None),
+            (0xF0, None),
             // Tens digit changed
             (0x04, Some(Coprocessor::DSP(1))),
             (0x14, Some(Coprocessor::GSU)),

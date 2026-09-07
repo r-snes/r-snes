@@ -117,8 +117,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "ERROR: Couldn't extract value from ROM")]
-    fn test_rom_read_out_of_range_panics() {
+    fn test_rom_read_out_of_range() {
         let (mut ppu, mut apu) = init_extern_components();
         let rom_data = create_valid_lorom(0x20000);
         let (rom_path, _dir) = create_temp_rom(&rom_data);
@@ -126,7 +125,8 @@ mod tests {
 
         // Create an address mapped to an offset beyond the 128 KiB dummy ROM.
         let addr = snes_addr!(0x7D:0xFFFF);
-        bus.read(addr, &mut ppu, &mut apu);
+        bus.io.open_bus = 123;
+        assert_eq!(bus.read(addr, &mut ppu, &mut apu), 123);
     }
 
     // ---- APU communication port tests (from the APU link branch) ----
