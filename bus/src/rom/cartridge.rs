@@ -2,6 +2,7 @@ use crate::constants::{BANK_SIZE, COPIER_HEADER_SIZE, LOROM_BANK_SIZE};
 use crate::rom::error::RomError;
 use crate::rom::header::RomHeader;
 use crate::rom::header::mapping_mode::MappingMode;
+use crate::rom::sram::Sram;
 use common::snes_address::SnesAddress;
 use std::fs::File;
 use std::io::Read;
@@ -24,6 +25,18 @@ pub struct Rom {
     pub data: Vec<u8>,
     pub map: MappingMode,
     pub header: RomHeader,
+    pub sram: Sram,
+}
+
+/// Which chip on the cartridge board responds to a given address.
+///
+/// Returns the corresponding offset into the ROM or S-RAM, or `Unmapped` if no chip responds.
+enum CartridgeTarget {
+    /// Byte offset into the mask ROM.
+    Rom(usize),
+    /// Address on the S-RAM chip
+    Sram(usize),
+    Unmapped,
 }
 
 impl Rom {
@@ -56,15 +69,58 @@ impl Rom {
         Ok(Rom {
             data: rom_data,
             map: map_mode,
+            sram: Sram::new(&header),
             header,
         })
     }
 
-    fn panic_invalid_addr(addr: SnesAddress) -> ! {
-        panic!(
-            "Incorrect access to the ROM at address: {:06X}",
-            usize::from(addr)
-        );
+    /// Determines which chip on the cartridge board responds to a `SnesAddress`.
+    ///
+    /// Returns the selected chip and the offset within it, or
+    /// `CartridgeTarget::Unmapped` if no chip drives the data bus.
+    fn decode(&self, addr: SnesAddress) -> CartridgeTarget {
+        match self.map {
+            MappingMode::LoRom => self.decode_lorom(addr),
+            MappingMode::HiRom => Self::decode_hirom(addr),
+        }
+    }
+
+    /// Determines which chip on a LoROM cartridge board responds to a `SnesAddress`.
+    ///
+    /// Returns the selected chip and the offset within it, or
+    /// `CartridgeTarget::Unmapped` if no chip drives the data bus.
+    fn decode_lorom(&self, addr: SnesAddress) -> CartridgeTarget {
+        if self.sram.is_present() {
+            if matches!(
+                (addr.bank, addr.addr),
+                (0x70..=0x7D | 0xF0..=0xFF, 0x0000..=0x7FFF)
+            ) {
+                return CartridgeTarget::Sram(addr.addr as usize);
+            }
+        }
+
+        match Self::get_lorom_offset(addr) {
+            Some(offset) => CartridgeTarget::Rom(offset),
+            None => CartridgeTarget::Unmapped,
+        }
+    }
+
+    /// Determines which chip on a HiROM cartridge board responds to a `SnesAddress`.
+    ///
+    /// Returns the selected chip and the offset within it, or
+    /// `CartridgeTarget::Unmapped` if no chip drives the data bus.
+    fn decode_hirom(addr: SnesAddress) -> CartridgeTarget {
+        if let (0x20..=0x3F | 0xA0..=0xBF, 0x6000..=0x7FFF) = (addr.bank, addr.addr) {
+            // AND with 0x3F to fold $A0-$BF back onto $20-$3F
+            let bank = addr.bank as usize & 0x3F;
+
+            return CartridgeTarget::Sram((bank << 13) | (addr.addr as usize & 0x1FFF));
+        }
+
+        match Self::get_hirom_offset(addr) {
+            Some(offset) => CartridgeTarget::Rom(offset),
+            None => CartridgeTarget::Unmapped,
+        }
     }
 
     /// Converts a `SnesAddress` into an internal LoROM ROM offset.
@@ -77,9 +133,8 @@ impl Rom {
     ///
     /// Each bank maps 32 distinct KiB of the ROM.
     ///
-    /// # Panics
-    /// Panics if the given address does not correspond to a valid LoROM location.
-    pub fn get_lorom_offset(addr: SnesAddress) -> usize {
+    /// Returns `None` if the address does not select the mask ROM.
+    pub fn get_lorom_offset(addr: SnesAddress) -> Option<usize> {
         match (addr.bank, addr.addr) {
             | (0x00..=0x7D, 0x8000..=0xFFFF)
             | (0x80..=0xFF, 0x8000..=0xFFFF)
@@ -88,9 +143,9 @@ impl Rom {
                 let bank = addr.bank & !0x80;
                 let addr = addr.addr & !0x8000;
 
-                bank as usize * 0x8000 + addr as usize
+                Some(bank as usize * LOROM_BANK_SIZE + addr as usize)
             }
-            _ => Self::panic_invalid_addr(addr),
+            _ => None,
         }
     }
 
@@ -102,9 +157,8 @@ impl Rom {
     /// - Banks $00-3F and $80-BF ($8000-$FFFF, only upper half) mirror the
     ///   upper halves of $C0-$FF
     ///
-    /// # Panics
-    /// Panics if the given address does not correspond to a valid HiROM location.
-    pub fn get_hirom_offset(addr: SnesAddress) -> usize {
+    /// Returns `None` if the address does not select the mask ROM.
+    pub fn get_hirom_offset(addr: SnesAddress) -> Option<usize> {
         match (addr.bank, addr.addr) {
             | (0x00..=0x7D, 0x8000..=0xFFFF)
             | (0x80..=0xFF, 0x8000..=0xFFFF)
@@ -113,9 +167,9 @@ impl Rom {
                 // AND with 0x3F so that we start over from 0 every 0x40 (64) banks
                 let bank = addr.bank as usize & 0x3F;
 
-                bank * BANK_SIZE + addr.addr as usize
+                Some(bank * BANK_SIZE + addr.addr as usize)
             }
-            _ => Self::panic_invalid_addr(addr),
+            _ => None,
         }
     }
 
@@ -124,9 +178,8 @@ impl Rom {
     /// Uses the ROM’s mapping mode (`MappingMode::LoRom` or `MappingMode::HiRom`)
     /// to compute the correct byte position in the loaded ROM data.
     ///
-    /// # Panics
-    /// Panics if the address is invalid for the detected mapping mode
-    fn to_offset(&self, addr: SnesAddress) -> usize {
+    /// Returns `None` if the address is invalid for the detected mapping mode.
+    pub fn to_offset(&self, addr: SnesAddress) -> Option<usize> {
         match self.map {
             MappingMode::HiRom => Self::get_hirom_offset(addr),
             MappingMode::LoRom => Self::get_lorom_offset(addr),
@@ -135,26 +188,24 @@ impl Rom {
 }
 
 impl Rom {
-    /// Reads a byte from the ROM at the given `SnesAddress`.
+    /// Reads a byte from the cartridge at the given `SnesAddress`.
     ///
-    /// The address is translated to an internal ROM offset using `to_offset`.
-    ///
-    /// # Panics
-    /// Panics if the index is out of bounds.
-    pub fn read(&self, addr: SnesAddress) -> u8 {
-        let offset = self.to_offset(addr);
-
-        *self.data.get(offset).unwrap_or_else(|| {
-            panic!("ERROR: Couldn't extract value from ROM at address: {addr:?}",)
-        })
+    /// Returns `None` when no chip on the board responds, leaving the caller
+    /// to return open bus.
+    pub fn read(&self, addr: SnesAddress) -> Option<u8> {
+        match self.decode(addr) {
+            CartridgeTarget::Rom(offset) => self.data.get(offset).copied(),
+            CartridgeTarget::Sram(linear) => self.sram.read(linear),
+            CartridgeTarget::Unmapped => None,
+        }
     }
 
-    /// Ignores writes to the ROM.
-    ///
-    /// ROM is read-only; this function performs no action.
-    pub fn write(&mut self, _addr: SnesAddress, _value: u8) {
-        // ROM is read-only, ignore writes
-        // TODO : Add a warning ?
+    /// Writes a byte to the cartridge at the given `SnesAddress`. Writes to the ROM are ignored.
+    pub fn write(&mut self, addr: SnesAddress, value: u8) {
+        match self.decode(addr) {
+            CartridgeTarget::Sram(linear) => self.sram.write(linear, value),
+            CartridgeTarget::Rom(_) | CartridgeTarget::Unmapped => {}
+        }
     }
 }
 
