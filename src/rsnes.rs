@@ -22,6 +22,18 @@ use std::error::Error;
 use std::path::Path;
 use std::path::PathBuf;
 
+// Once-per-frame auto-joypad read, split into its two hardware phases.
+// Copy so update_auto_joypad can match it by value while still touching self.
+#[derive(Clone, Copy)]
+enum AutoJoypad {
+    // Not reading this frame (disabled, or the window already elapsed).
+    Idle,
+    // V-Blank started, master cycles left before the controllers are strobed.
+    Pending(u32),
+    // Strobed; master cycles left before HVBJOY bit 0 clears.
+    Reading(u32),
+}
+
 /// R-SNES core: struct containing all the emulated hardware components,
 /// without anything else: no GUI handles, no additional resources for
 /// plugin execution; just the hardware components.
@@ -37,7 +49,7 @@ pub struct RSnesCore {
     pub nmi_pending: bool,
     pub irq_pending: bool,
     pub apu_cycle_debt: u64,
-    auto_joypad_countdown: u32,
+    auto_joypad: AutoJoypad,
 }
 
 /// Snapshot of the loaded ROM's metadata for display in the GUI.
@@ -78,6 +90,7 @@ pub struct RSnesEmu {
 impl RSnesCore {
     pub const MASTER_CLOCK_HZ: u64 = 21_477_300;
     const AUTO_JOYPAD_READ_CYCLES: u32 = 4224;
+    const AUTO_JOYPAD_START_DELAY: u32 = 298;
 
     pub fn load_rom<P: AsRef<Path>>(rom_path: &P) -> Result<Self, Box<dyn Error>> {
         let bus = Bus::new(rom_path)?;
@@ -98,7 +111,7 @@ impl RSnesCore {
             apu_cycle_debt: 0,
             nmi_pending: false,
             irq_pending: false,
-            auto_joypad_countdown: 0,
+            auto_joypad: AutoJoypad::Idle,
         })
     }
 
@@ -235,14 +248,24 @@ impl RSnesCore {
         self.master_cycles += 1;
     }
 
-    // Tick down the auto-joypad-read window opened at V-Blank start, clearing HVBJOY's busy flag when it elapses.
+    // Drive the two-phase auto-joypad read one master cycle: count down to the strobe,
+    // then hold HVBJOY bit 0 busy until the 16-bit read completes.
     fn update_auto_joypad(&mut self) {
-        if self.auto_joypad_countdown > 0 {
-            self.auto_joypad_countdown -= 1;
-            if self.auto_joypad_countdown == 0 {
-                self.bus.io.set_auto_joypad_busy(false);
+        self.auto_joypad = match self.auto_joypad {
+            AutoJoypad::Pending(1) => {
+                // Strobe: snapshot the pads and raise the busy flag.
+                self.bus.io.set_auto_joypad_busy(true);
+                self.bus.io.latch_joypad1();
+                AutoJoypad::Reading(Self::AUTO_JOYPAD_READ_CYCLES)
             }
-        }
+            AutoJoypad::Pending(n) => AutoJoypad::Pending(n - 1),
+            AutoJoypad::Reading(1) => {
+                self.bus.io.set_auto_joypad_busy(false);
+                AutoJoypad::Idle
+            }
+            AutoJoypad::Reading(n) => AutoJoypad::Reading(n - 1),
+            AutoJoypad::Idle => AutoJoypad::Idle,
+        };
     }
 
     fn update_ppu_cycles(&mut self) {
@@ -295,12 +318,10 @@ impl RSnesCore {
             // TODO : Reload OAM address
         }
 
-        // Auto-joypad read: strobe the pads at V-Blank start and hold HVBJOY bit 0 busy for the window.
-        // Snapshot is exact (state is stable mid-frame).
+        // Auto-joypad read: schedule the strobe. It fires ~74.5 dots into V-Blank,
+        // not at dot 0, so HVBJOY bit 0 still reads clear for a brief window here.
         if self.bus.io.auto_joypad_enabled() {
-            self.bus.io.set_auto_joypad_busy(true);
-            self.bus.io.latch_joypad1();
-            self.auto_joypad_countdown = Self::AUTO_JOYPAD_READ_CYCLES;
+            self.auto_joypad = AutoJoypad::Pending(Self::AUTO_JOYPAD_START_DELAY);
         }
 
         if self.bus.io.nmi_enabled() {
