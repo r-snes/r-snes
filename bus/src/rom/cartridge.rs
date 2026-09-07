@@ -31,6 +31,7 @@ pub struct Rom {
 /// Which chip on the cartridge board responds to a given address.
 ///
 /// Returns the corresponding offset into the ROM or S-RAM, or `Unmapped` if no chip responds.
+#[derive(Debug, PartialEq, Eq)]
 enum CartridgeTarget {
     /// Byte offset into the mask ROM.
     Rom(usize),
@@ -572,5 +573,150 @@ mod tests {
     fn test_hirom_incorrect_address3() {
         let addr = snes_addr!(0x7E:0x4000);
         assert_eq!(Rom::get_hirom_offset(addr), None);
+    }
+
+    // --- ram_size_bytes -------------------------------------------------------
+
+    #[test]
+    fn test_ram_size_bytes_encoding() {
+        assert_eq!(lorom_with_sram(0x03).header.ram_size_bytes(), 8 * 1024);
+        assert_eq!(lorom_with_sram(0x05).header.ram_size_bytes(), 32 * 1024);
+        assert_eq!(lorom_with_sram(0x01).header.ram_size_bytes(), 2 * 1024);
+    }
+
+    #[test]
+    fn test_ram_size_bytes_none() {
+        let data = create_valid_lorom(0x10000);
+        let (path, _dir) = create_temp_rom(&data);
+        let rom = Rom::load_from_file(path).unwrap();
+
+        assert_eq!(rom.header.ram_size_bytes(), 0);
+        assert!(!rom.sram.is_present());
+    }
+
+    #[test]
+    fn test_ram_size_bytes_garbage_is_clamped() {
+        let rom = lorom_with_sram(0xFF);
+        assert_eq!(rom.header.ram_size_bytes(), 0);
+    }
+
+    #[test]
+    fn test_lorom_decode_sram_window() {
+        let rom = lorom_with_sram(0x03);
+
+        assert_eq!(
+            rom.decode_lorom(snes_addr!(0x70:0x0000)),
+            CartridgeTarget::Sram(0x0000)
+        );
+        assert_eq!(
+            rom.decode_lorom(snes_addr!(0x7D:0x7FFF)),
+            CartridgeTarget::Sram(0x7FFF)
+        );
+        assert_eq!(
+            rom.decode_lorom(snes_addr!(0xFE:0x0000)),
+            CartridgeTarget::Sram(0x0000)
+        );
+    }
+
+    #[test]
+    fn test_lorom_decode_upper_half_is_rom() {
+        let rom = lorom_with_sram(0x03);
+
+        assert_eq!(
+            rom.decode_lorom(snes_addr!(0x70:0x8000)),
+            CartridgeTarget::Rom(0x70 * LOROM_BANK_SIZE)
+        );
+    }
+
+    #[test]
+    fn test_lorom_decode_without_sram_falls_through_to_rom() {
+        let data = create_valid_lorom(0x10000);
+        let (path, _dir) = create_temp_rom(&data);
+        let rom = Rom::load_from_file(path).unwrap();
+
+        assert_eq!(
+            rom.decode_lorom(snes_addr!(0x70:0x0000)),
+            CartridgeTarget::Rom(0x70 * LOROM_BANK_SIZE)
+        );
+    }
+
+    #[test]
+    fn test_hirom_decode_sram_bank_selects_chunk() {
+        assert_eq!(
+            Rom::decode_hirom(snes_addr!(0x20:0x6000)),
+            CartridgeTarget::Sram(0x20 << 13)
+        );
+        assert_eq!(
+            Rom::decode_hirom(snes_addr!(0x21:0x6000)),
+            CartridgeTarget::Sram(0x21 << 13)
+        );
+        // $A0-$BF folds back onto $20-$3F
+        assert_eq!(
+            Rom::decode_hirom(snes_addr!(0xA0:0x6000)),
+            Rom::decode_hirom(snes_addr!(0x20:0x6000))
+        );
+    }
+
+    #[test]
+    fn test_hirom_decode_outside_sram_window() {
+        assert_eq!(
+            Rom::decode_hirom(snes_addr!(0x1F:0x6000)),
+            CartridgeTarget::Unmapped
+        );
+        assert_eq!(
+            Rom::decode_hirom(snes_addr!(0x20:0x5FFF)),
+            CartridgeTarget::Unmapped
+        );
+        assert_eq!(
+            Rom::decode_hirom(snes_addr!(0x20:0x8000)),
+            CartridgeTarget::Rom(0x20 * BANK_SIZE + 0x8000)
+        );
+    }
+
+    #[test]
+    fn test_sram_lorom_mirrors_within_window() {
+        let mut rom = lorom_with_sram(0x01);
+
+        rom.write(snes_addr!(0x70:0x0000), 0x42);
+
+        assert_eq!(rom.read(snes_addr!(0x70:0x0800)).unwrap(), 0x42);
+        assert_eq!(rom.read(snes_addr!(0x70:0x7800)).unwrap(), 0x42);
+        assert_eq!(rom.read(snes_addr!(0x7D:0x0000)).unwrap(), 0x42);
+        assert_eq!(rom.read(snes_addr!(0xF0:0x0000)).unwrap(), 0x42);
+    }
+
+    #[test]
+    fn test_sram_hirom_chunks_and_mirroring() {
+        let mut rom = hirom_with_sram(0x05);
+
+        rom.write(snes_addr!(0x20:0x6000), 0x11);
+        rom.write(snes_addr!(0x21:0x6000), 0x22);
+
+        assert_eq!(rom.read(snes_addr!(0x20:0x6000)).unwrap(), 0x11);
+        assert_eq!(rom.read(snes_addr!(0x21:0x6000)).unwrap(), 0x22);
+        assert_eq!(rom.read(snes_addr!(0x24:0x6000)).unwrap(), 0x11);
+        assert_eq!(rom.read(snes_addr!(0xA1:0x6000)).unwrap(), 0x22);
+    }
+
+    #[test]
+    fn test_sram_write_persists() {
+        let mut rom = lorom_with_sram(0x03);
+        let addr = snes_addr!(0x70:0x0010);
+
+        rom.write(addr, 0x99);
+        assert_eq!(rom.read(addr).unwrap(), 0x99);
+    }
+
+    #[test]
+    fn test_sram_powers_up_uninitialized() {
+        // Games detect a fresh chip via a magic value or checksum.
+        let rom = lorom_with_sram(0x03);
+        assert_eq!(rom.read(snes_addr!(0x70:0x0000)).unwrap(), 0xFF);
+    }
+
+    #[test]
+    fn test_read_unmapped_returns_none() {
+        let rom = lorom_with_sram(0x03);
+        assert_eq!(rom.read(snes_addr!(0x00:0x6000)), None);
     }
 }
