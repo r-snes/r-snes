@@ -37,6 +37,7 @@ pub struct RSnesCore {
     pub nmi_pending: bool,
     pub irq_pending: bool,
     pub apu_cycle_debt: u64,
+    auto_joypad_countdown: u32,
 }
 
 /// Snapshot of the loaded ROM's metadata for display in the GUI.
@@ -76,6 +77,7 @@ pub struct RSnesEmu {
 
 impl RSnesCore {
     pub const MASTER_CLOCK_HZ: u64 = 21_477_300;
+    const AUTO_JOYPAD_READ_CYCLES: u32 = 4224;
 
     pub fn load_rom<P: AsRef<Path>>(rom_path: &P) -> Result<Self, Box<dyn Error>> {
         let bus = Bus::new(rom_path)?;
@@ -96,6 +98,7 @@ impl RSnesCore {
             apu_cycle_debt: 0,
             nmi_pending: false,
             irq_pending: false,
+            auto_joypad_countdown: 0,
         })
     }
 
@@ -227,8 +230,19 @@ impl RSnesCore {
         self.update_cpu_cycles();
         self.update_apu_cycles();
         self.update_ppu_cycles();
+        self.update_auto_joypad();
 
         self.master_cycles += 1;
+    }
+
+    // Tick down the auto-joypad-read window opened at V-Blank start, clearing HVBJOY's busy flag when it elapses.
+    fn update_auto_joypad(&mut self) {
+        if self.auto_joypad_countdown > 0 {
+            self.auto_joypad_countdown -= 1;
+            if self.auto_joypad_countdown == 0 {
+                self.bus.io.set_auto_joypad_busy(false);
+            }
+        }
     }
 
     fn update_ppu_cycles(&mut self) {
@@ -249,7 +263,6 @@ impl RSnesCore {
         // Everything below is implied by "a new dot began", which every
         // variant except `None` guarantees.
         self.check_hv_irq();
-        // TODO : joypad auto read check
     }
 
     /// Start of H-Blank (dot 274) on the current scanline.
@@ -280,6 +293,14 @@ impl RSnesCore {
         // but only when the screen isn't being force-blanked.
         if !self.ppu.force_blank() {
             // TODO : Reload OAM address
+        }
+
+        // Auto-joypad read: strobe the pads at V-Blank start and hold HVBJOY bit 0 busy for the window.
+        // Snapshot is exact (state is stable mid-frame).
+        if self.bus.io.auto_joypad_enabled() {
+            self.bus.io.set_auto_joypad_busy(true);
+            self.bus.io.latch_joypad1();
+            self.auto_joypad_countdown = Self::AUTO_JOYPAD_READ_CYCLES;
         }
 
         if self.bus.io.nmi_enabled() {
