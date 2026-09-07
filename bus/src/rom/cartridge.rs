@@ -224,7 +224,7 @@ mod tests {
 
         let rom = Rom::load_from_file(path).unwrap();
         assert_eq!(rom.map, MappingMode::LoRom);
-        assert_eq!(rom.read(snes_addr!(0:0x8000)), 0);
+        assert_eq!(rom.read(snes_addr!(0:0x8000)).unwrap(), 0);
     }
 
     #[test]
@@ -234,7 +234,7 @@ mod tests {
 
         let rom = Rom::load_from_file(path).unwrap();
         assert_eq!(rom.map, MappingMode::HiRom);
-        assert_eq!(rom.read(snes_addr!(0:0x8000)), 0);
+        assert_eq!(rom.read(snes_addr!(0:0x8000)).unwrap(), 0);
     }
 
     #[test]
@@ -276,26 +276,29 @@ mod tests {
 
         let addr = snes_addr!(0:0x8000);
         rom.write(addr, 0x99);
-        assert_eq!(rom.read(addr), 0);
+        assert_eq!(rom.read(addr).unwrap(), 0);
     }
 
     #[test]
     fn test_lorom_offset_first_quarter() {
         let mut addr = snes_addr!(0:0x8000);
-        assert_eq!(Rom::get_lorom_offset(addr), 0);
+        assert_eq!(Rom::get_lorom_offset(addr).unwrap(), 0);
 
         addr.addr = 0xFFFF;
-        assert_eq!(Rom::get_lorom_offset(addr), 0x8000 - 1);
+        assert_eq!(Rom::get_lorom_offset(addr).unwrap(), 0x8000 - 1);
 
         addr.bank = 0x01;
         addr.addr = 0x8000;
-        assert_eq!(Rom::get_lorom_offset(addr), 0x8000);
+        assert_eq!(Rom::get_lorom_offset(addr).unwrap(), 0x8000);
 
         addr.addr = 0xFFFF;
-        assert_eq!(Rom::get_lorom_offset(addr), 0x10000 - 1);
+        assert_eq!(Rom::get_lorom_offset(addr).unwrap(), 0x10000 - 1);
 
         addr.bank = 0x3F;
-        assert_eq!(Rom::get_lorom_offset(addr), 0x8000 * (0x3F + 1) - 1);
+        assert_eq!(
+            Rom::get_lorom_offset(addr).unwrap(),
+            0x8000 * (0x3F + 1) - 1
+        );
     }
 
     #[test]
@@ -304,55 +307,64 @@ mod tests {
         let mut mirror_addr = snes_addr!(0x40:0x0);
 
         assert_eq!(
-            Rom::get_lorom_offset(addr),
-            Rom::get_lorom_offset(mirror_addr)
+            Rom::get_lorom_offset(addr).unwrap(),
+            Rom::get_lorom_offset(mirror_addr).unwrap()
         );
-        assert_eq!(Rom::get_lorom_offset(addr), 0x8000 * (0x40));
+        assert_eq!(Rom::get_lorom_offset(addr).unwrap(), 0x8000 * (0x40));
 
         addr.addr = 0xFFFF;
         mirror_addr.addr = 0x7FFF;
         assert_eq!(
-            Rom::get_lorom_offset(addr),
-            Rom::get_lorom_offset(mirror_addr)
+            Rom::get_lorom_offset(addr).unwrap(),
+            Rom::get_lorom_offset(mirror_addr).unwrap()
         );
-        assert_eq!(Rom::get_lorom_offset(addr), 0x8000 * (0x40 + 1) - 1);
+        assert_eq!(
+            Rom::get_lorom_offset(addr).unwrap(),
+            0x8000 * (0x40 + 1) - 1
+        );
 
         addr.addr = 0x8000;
         mirror_addr.addr = 0x0000;
         addr.bank = 0x7D;
         mirror_addr.bank = 0x7D;
         assert_eq!(
-            Rom::get_lorom_offset(addr),
-            Rom::get_lorom_offset(mirror_addr)
+            Rom::get_lorom_offset(addr).unwrap(),
+            Rom::get_lorom_offset(mirror_addr).unwrap()
         );
-        assert_eq!(Rom::get_lorom_offset(addr), 0x8000 * (0x7D));
+        assert_eq!(Rom::get_lorom_offset(addr).unwrap(), 0x8000 * (0x7D));
 
         addr.addr = 0xFFFF;
         mirror_addr.addr = 0x7FFF;
         assert_eq!(
-            Rom::get_lorom_offset(addr),
-            Rom::get_lorom_offset(mirror_addr)
+            Rom::get_lorom_offset(addr).unwrap(),
+            Rom::get_lorom_offset(mirror_addr).unwrap()
         );
-        assert_eq!(Rom::get_lorom_offset(addr), 0x8000 * (0x7D + 1) - 1);
+        assert_eq!(
+            Rom::get_lorom_offset(addr).unwrap(),
+            0x8000 * (0x7D + 1) - 1
+        );
     }
 
     #[test]
     fn test_lorom_offset_third_quarter() {
         let mut addr = snes_addr!(0x80:0x8000);
-        assert_eq!(Rom::get_lorom_offset(addr), 0);
+        assert_eq!(Rom::get_lorom_offset(addr).unwrap(), 0);
 
         addr.addr = 0xFFFF;
-        assert_eq!(Rom::get_lorom_offset(addr), 0x8000 - 1);
+        assert_eq!(Rom::get_lorom_offset(addr).unwrap(), 0x8000 - 1);
 
         addr.bank = 0x81;
         addr.addr = 0x8000;
-        assert_eq!(Rom::get_lorom_offset(addr), 0x8000);
+        assert_eq!(Rom::get_lorom_offset(addr).unwrap(), 0x8000);
 
         addr.addr = 0xFFFF;
-        assert_eq!(Rom::get_lorom_offset(addr), 0x10000 - 1);
+        assert_eq!(Rom::get_lorom_offset(addr).unwrap(), 0x10000 - 1);
 
         addr.bank = 0xBF;
-        assert_eq!(Rom::get_lorom_offset(addr), 0x8000 * (0x3F + 1) - 1);
+        assert_eq!(
+            Rom::get_lorom_offset(addr).unwrap(),
+            0x8000 * (0x3F + 1) - 1
+        );
     }
 
     #[test]
@@ -361,57 +373,60 @@ mod tests {
         let mut mirror_addr = snes_addr!(0xC0:0x0);
 
         assert_eq!(
-            Rom::get_lorom_offset(addr),
-            Rom::get_lorom_offset(mirror_addr)
+            Rom::get_lorom_offset(addr).unwrap(),
+            Rom::get_lorom_offset(mirror_addr).unwrap()
         );
-        assert_eq!(Rom::get_lorom_offset(addr), 0x8000 * (0x40));
+        assert_eq!(Rom::get_lorom_offset(addr).unwrap(), 0x8000 * (0x40));
 
         addr.addr = 0xFFFF;
         mirror_addr.addr = 0x7FFF;
         assert_eq!(
-            Rom::get_lorom_offset(addr),
-            Rom::get_lorom_offset(mirror_addr)
+            Rom::get_lorom_offset(addr).unwrap(),
+            Rom::get_lorom_offset(mirror_addr).unwrap()
         );
-        assert_eq!(Rom::get_lorom_offset(addr), 0x8000 * (0x40 + 1) - 1);
+        assert_eq!(
+            Rom::get_lorom_offset(addr).unwrap(),
+            0x8000 * (0x40 + 1) - 1
+        );
 
         addr.addr = 0x8000;
         mirror_addr.addr = 0x0000;
         addr.bank = 0xFF;
         mirror_addr.bank = 0xFF;
         assert_eq!(
-            Rom::get_lorom_offset(addr),
-            Rom::get_lorom_offset(mirror_addr)
+            Rom::get_lorom_offset(addr).unwrap(),
+            Rom::get_lorom_offset(mirror_addr).unwrap()
         );
-        assert_eq!(Rom::get_lorom_offset(addr), 0x8000 * (0x7D + 2));
+        assert_eq!(Rom::get_lorom_offset(addr).unwrap(), 0x8000 * (0x7D + 2));
 
         addr.addr = 0xFFFF;
         mirror_addr.addr = 0x7FFF;
         assert_eq!(
-            Rom::get_lorom_offset(addr),
-            Rom::get_lorom_offset(mirror_addr)
+            Rom::get_lorom_offset(addr).unwrap(),
+            Rom::get_lorom_offset(mirror_addr).unwrap()
         );
-        assert_eq!(Rom::get_lorom_offset(addr), 0x8000 * (0x7D + 3) - 1);
+        assert_eq!(
+            Rom::get_lorom_offset(addr).unwrap(),
+            0x8000 * (0x7D + 3) - 1
+        );
     }
 
     #[test]
-    #[should_panic(expected = "Incorrect access to the ROM at address: 004000")]
     fn test_lorom_incorrect_address() {
         let addr = snes_addr!(0:0x4000);
-        assert_eq!(Rom::get_lorom_offset(addr), 0);
+        assert_eq!(Rom::get_lorom_offset(addr), None);
     }
 
     #[test]
-    #[should_panic(expected = "Incorrect access to the ROM at address: 804000")]
     fn test_lorom_incorrect_address2() {
         let addr = snes_addr!(0x80:0x4000);
-        assert_eq!(Rom::get_lorom_offset(addr), 0);
+        assert_eq!(Rom::get_lorom_offset(addr), None);
     }
 
     #[test]
-    #[should_panic(expected = "Incorrect access to the ROM at address: 7E4000")]
     fn test_lorom_incorrect_address3() {
         let addr = snes_addr!(0x7E:0x4000);
-        assert_eq!(Rom::get_lorom_offset(addr), 0);
+        assert_eq!(Rom::get_lorom_offset(addr), None);
     }
 
     #[test]
@@ -420,67 +435,79 @@ mod tests {
         let mut mirror_addr = snes_addr!(0:0x8000);
 
         assert_eq!(
-            Rom::get_hirom_offset(addr),
-            Rom::get_hirom_offset(mirror_addr)
+            Rom::get_hirom_offset(addr).unwrap(),
+            Rom::get_hirom_offset(mirror_addr).unwrap()
         );
-        assert_eq!(Rom::get_hirom_offset(addr), 0x8000);
+        assert_eq!(Rom::get_hirom_offset(addr).unwrap(), 0x8000);
 
         addr.addr = 0xFFFF;
         mirror_addr.addr = 0xFFFF;
         assert_eq!(
-            Rom::get_hirom_offset(addr),
-            Rom::get_hirom_offset(mirror_addr)
+            Rom::get_hirom_offset(addr).unwrap(),
+            Rom::get_hirom_offset(mirror_addr).unwrap()
         );
-        assert_eq!(Rom::get_hirom_offset(addr), 0xFFFF);
+        assert_eq!(Rom::get_hirom_offset(addr).unwrap(), 0xFFFF);
 
         addr.addr = 0x8000;
         mirror_addr.addr = 0x8000;
         addr.bank = 0x7D;
         mirror_addr.bank = 0x3D;
         assert_eq!(
-            Rom::get_hirom_offset(addr),
-            Rom::get_hirom_offset(mirror_addr)
+            Rom::get_hirom_offset(addr).unwrap(),
+            Rom::get_hirom_offset(mirror_addr).unwrap()
         );
-        assert_eq!(Rom::get_hirom_offset(addr), 0x10000 * (0x3D) + 0x8000);
+        assert_eq!(
+            Rom::get_hirom_offset(addr).unwrap(),
+            0x10000 * (0x3D) + 0x8000
+        );
 
         addr.addr = 0xFFFF;
         mirror_addr.addr = 0xFFFF;
         addr.bank = 0x7D;
         mirror_addr.bank = 0x3D;
         assert_eq!(
-            Rom::get_hirom_offset(addr),
-            Rom::get_hirom_offset(mirror_addr)
+            Rom::get_hirom_offset(addr).unwrap(),
+            Rom::get_hirom_offset(mirror_addr).unwrap()
         );
-        assert_eq!(Rom::get_hirom_offset(addr), 0x10000 * (0x3D) + 0xFFFF);
+        assert_eq!(
+            Rom::get_hirom_offset(addr).unwrap(),
+            0x10000 * (0x3D) + 0xFFFF
+        );
 
         addr.addr = 0xFFFF;
         mirror_addr.addr = 0xFFFF;
         addr.bank = 0xFF;
         mirror_addr.bank = 0x3F;
         assert_eq!(
-            Rom::get_hirom_offset(addr),
-            Rom::get_hirom_offset(mirror_addr)
+            Rom::get_hirom_offset(addr).unwrap(),
+            Rom::get_hirom_offset(mirror_addr).unwrap()
         );
-        assert_eq!(Rom::get_hirom_offset(addr), 0x10000 * (0x3F) + 0xFFFF);
+        assert_eq!(
+            Rom::get_hirom_offset(addr).unwrap(),
+            0x10000 * (0x3F) + 0xFFFF
+        );
     }
 
     #[test]
     fn test_hirom_offset_second_quarter() {
         let mut addr = snes_addr!(0x40:0x0000);
-        assert_eq!(Rom::get_hirom_offset(addr), 0);
+        assert_eq!(Rom::get_hirom_offset(addr).unwrap(), 0);
 
         addr.addr = 0xFFFF;
-        assert_eq!(Rom::get_hirom_offset(addr), 0xFFFF);
+        assert_eq!(Rom::get_hirom_offset(addr).unwrap(), 0xFFFF);
 
         addr.bank = 0x41;
         addr.addr = 0x0000;
-        assert_eq!(Rom::get_hirom_offset(addr), 0x10000);
+        assert_eq!(Rom::get_hirom_offset(addr).unwrap(), 0x10000);
 
         addr.addr = 0xFFFF;
-        assert_eq!(Rom::get_hirom_offset(addr), 0x10000 * 2 - 1);
+        assert_eq!(Rom::get_hirom_offset(addr).unwrap(), 0x10000 * 2 - 1);
 
         addr.bank = 0x7D;
-        assert_eq!(Rom::get_hirom_offset(addr), 0x10000 * (0x3D + 1) - 1);
+        assert_eq!(
+            Rom::get_hirom_offset(addr).unwrap(),
+            0x10000 * (0x3D + 1) - 1
+        );
     }
 
     #[test]
@@ -489,58 +516,61 @@ mod tests {
         let mut mirror_addr = snes_addr!(0x80:0x8000);
 
         assert_eq!(
-            Rom::get_hirom_offset(addr),
-            Rom::get_hirom_offset(mirror_addr)
+            Rom::get_hirom_offset(addr).unwrap(),
+            Rom::get_hirom_offset(mirror_addr).unwrap()
         );
-        assert_eq!(Rom::get_hirom_offset(addr), 0x8000);
+        assert_eq!(Rom::get_hirom_offset(addr).unwrap(), 0x8000);
 
         addr.addr = 0xFFFF;
         mirror_addr.addr = 0xFFFF;
         assert_eq!(
-            Rom::get_hirom_offset(addr),
-            Rom::get_hirom_offset(mirror_addr)
+            Rom::get_hirom_offset(addr).unwrap(),
+            Rom::get_hirom_offset(mirror_addr).unwrap()
         );
-        assert_eq!(Rom::get_hirom_offset(addr), 0xFFFF);
+        assert_eq!(Rom::get_hirom_offset(addr).unwrap(), 0xFFFF);
 
         addr.addr = 0x8000;
         mirror_addr.addr = 0x8000;
         addr.bank = 0xFF;
         mirror_addr.bank = 0xBF;
         assert_eq!(
-            Rom::get_hirom_offset(addr),
-            Rom::get_hirom_offset(mirror_addr)
+            Rom::get_hirom_offset(addr).unwrap(),
+            Rom::get_hirom_offset(mirror_addr).unwrap()
         );
-        assert_eq!(Rom::get_hirom_offset(addr), 0x10000 * (0x3F) + 0x8000);
+        assert_eq!(
+            Rom::get_hirom_offset(addr).unwrap(),
+            0x10000 * (0x3F) + 0x8000
+        );
 
         addr.addr = 0xFFFF;
         mirror_addr.addr = 0xFFFF;
         addr.bank = 0xFF;
         mirror_addr.bank = 0xBF;
         assert_eq!(
-            Rom::get_hirom_offset(addr),
-            Rom::get_hirom_offset(mirror_addr)
+            Rom::get_hirom_offset(addr).unwrap(),
+            Rom::get_hirom_offset(mirror_addr).unwrap()
         );
-        assert_eq!(Rom::get_hirom_offset(addr), 0x10000 * (0x3F) + 0xFFFF);
+        assert_eq!(
+            Rom::get_hirom_offset(addr).unwrap(),
+            0x10000 * (0x3F) + 0xFFFF
+        );
     }
 
     #[test]
-    #[should_panic(expected = "Incorrect access to the ROM at address: 004000")]
     fn test_hirom_incorrect_address() {
         let addr = snes_addr!(0:0x4000);
-        assert_eq!(Rom::get_hirom_offset(addr), 0);
+        assert_eq!(Rom::get_hirom_offset(addr), None);
     }
 
     #[test]
-    #[should_panic(expected = "Incorrect access to the ROM at address: 804000")]
     fn test_hirom_incorrect_address2() {
         let addr = snes_addr!(0x80:0x4000);
-        assert_eq!(Rom::get_hirom_offset(addr), 0);
+        assert_eq!(Rom::get_hirom_offset(addr), None);
     }
 
     #[test]
-    #[should_panic(expected = "Incorrect access to the ROM at address: 7E4000")]
     fn test_hirom_incorrect_address3() {
         let addr = snes_addr!(0x7E:0x4000);
-        assert_eq!(Rom::get_hirom_offset(addr), 0);
+        assert_eq!(Rom::get_hirom_offset(addr), None);
     }
 }
