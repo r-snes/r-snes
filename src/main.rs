@@ -28,7 +28,12 @@ type IdleExit = RSnesEvent;
 fn set_button(emu: &mut RSnesEmu, button: SnesButton, pressed: bool) {
     let mut core = emu.core_mut();
     core.bus.io.set_joypad1_button(button.mask(), pressed);
-    println!("joypad1 = {:016b}", core.bus.io.joypad1);
+    println!(
+        "joypad1: {:?} {} -> {:016b}",
+        button,
+        if pressed { "pressed" } else { "released" },
+        core.bus.io.joypad1
+    );
 }
 
 fn gui_emu_loop(
