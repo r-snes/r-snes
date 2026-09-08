@@ -4,12 +4,10 @@ mod rsnes_plugin;
 use crate::dma::*;
 use apu::Apu;
 use bus::Bus;
+use bus::cartridge::header::RomHeader;
 use bus::io::IrqMode;
-use bus::rom::header::RomHeader;
 use cpu::cpu::CPU;
 use cpu::cpu::CycleResult;
-
-use bus::cartridge::header::RomHeader;
 #[cfg(feature = "plugins")]
 use plugins::plugin::Plugin;
 use ppu::constants::*;
