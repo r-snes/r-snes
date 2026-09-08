@@ -417,6 +417,7 @@ impl Gui {
                     continue;
                 }
                 SdlEvent::ControllerDeviceRemoved { which, .. } => {
+                    println!("Controller removed: index {which}");
                     if self
                         .controller
                         .as_ref()
