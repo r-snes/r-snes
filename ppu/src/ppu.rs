@@ -1,5 +1,6 @@
 use crate::cgram::CGRAM;
 use crate::constants::*;
+use crate::oam::OAM;
 use crate::registers::PPURegisters;
 use crate::vram::VRAM;
 use common::u16_split::U16Split;
@@ -28,6 +29,7 @@ pub struct PPU {
     pub regs: PPURegisters,
     pub vram: VRAM,
     pub cgram: CGRAM,
+    pub oam: OAM,
 
     // Timing
     pub scanline: u16,
@@ -49,6 +51,7 @@ impl PPU {
             regs: PPURegisters::new(),
             vram: VRAM::new(),
             cgram: CGRAM::new(),
+            oam: OAM::new(),
             scanline: 0,
             h_cycles: 0,
             frame: 0,
@@ -67,10 +70,16 @@ impl PPU {
             // ==========================
             // OAM
             // ==========================
-            0x2101 => self.regs.objsel = value,           // TODO
-            0x2102 => *self.regs.oamadd.lo_mut() = value, // TODO
-            0x2103 => *self.regs.oamadd.hi_mut() = value & 0x01, // TODO
-            0x2104 => self.regs.oamdata = value,          // TODO
+            0x2101 => self.regs.objsel = value,
+            0x2102 => {
+                *self.regs.oamadd.lo_mut() = value;
+                self.oam.write_addr(self.regs.oamadd);
+            }
+            0x2103 => {
+                *self.regs.oamadd.hi_mut() = value & 0x81;
+                self.oam.write_addr(self.regs.oamadd);
+            }
+            0x2104 => self.oam.write_data(value),
 
             // ==========================
             // BACKGROUNDS
@@ -281,7 +290,7 @@ impl PPU {
             // ==========================
             // OAM
             // ==========================
-            0x2138 => Self::unimplemented_read_only(addr), // TODO
+            0x2138 => self.oam.read_data(),
 
             // ==========================
             // VRAM
@@ -304,7 +313,16 @@ impl PPU {
             // ==========================
             // Status
             // ==========================
-            0x213E => Self::unimplemented_read_only(addr), // TODO
+            0x213E => {
+                let mut val: u8 = 0x01; // PPU1 version
+                if self.oam.time_over {
+                    val |= 0x80;
+                }
+                if self.oam.range_over {
+                    val |= 0x40;
+                }
+                val
+            }
             0x213F => Self::unimplemented_read_only(addr), // TODO
 
             _ => {
@@ -354,6 +372,14 @@ impl PPU {
 
         if self.h_cycles >= self.scanline_length() {
             self.h_cycles = 0;
+            // Update STAT77 sprite flags for the current line.
+            let objsel = self.regs.objsel;
+            let oamadd = self.regs.oamadd;
+            let (_, time_over, range_over) =
+                self.oam
+                    .eval_sprites_for_scanline(self.scanline as usize, objsel, oamadd);
+            self.oam.set_flags(time_over, range_over);
+
             self.scanline += 1;
 
             let kind = if self.scanline >= SCANLINES_PER_FRAME {
@@ -440,10 +466,9 @@ mod tests {
     // $2101–$2104 - OAM
     // ============================================================
 
-    /// Writing $2101 must update objsel.
-    /// Writing $2102 must update the low byte of oamadd.
-    /// Writing $2103 must update the high byte of oamadd (only bit 0 is valid).
-    /// Writing $2104 must update oamdata.
+    // Writing $2101 must update objsel.
+    // Writing $2102/$2103 must update oamadd (only bit 0 of the high byte is valid).
+    // Writing $2104 twice must commit a table-1 word, readable back via $2138.
     #[test]
     fn test_write_oam_registers() {
         let mut ppu = PPU::new();
@@ -457,8 +482,18 @@ mod tests {
         ppu.write(0x2103, 0x01);
         assert_eq!(*ppu.regs.oamadd.hi(), 0x01);
 
-        ppu.write(0x2104, 0xBE);
-        assert_eq!(ppu.regs.oamdata, 0xBE);
+        // Point at OAM address 0 and write a full table-1 word (write-twice:
+        // low byte latched, high byte commits both). Then read it back.
+        ppu.write(0x2102, 0x00);
+        ppu.write(0x2103, 0x00);
+        ppu.write(0x2104, 0xBE); // low byte -> latched
+        ppu.write(0x2104, 0xEF); // high byte -> commits (0xBE, 0xEF)
+
+        // Reset the read address to 0 and read the two bytes back.
+        ppu.write(0x2102, 0x00);
+        ppu.write(0x2103, 0x00);
+        assert_eq!(ppu.read(0x2138), 0xBE);
+        assert_eq!(ppu.read(0x2138), 0xEF);
     }
 
     // ============================================================

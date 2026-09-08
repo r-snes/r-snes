@@ -1,6 +1,6 @@
 use crate::constants::*;
 use crate::ppu::PPU;
-use crate::rendering::renderer::Renderer;
+use crate::rendering::renderer::{Renderer, Z_BG1_HIGH, Z_BG1_LOW};
 use crate::vram::RawVRAM;
 
 impl Renderer {
@@ -12,12 +12,6 @@ impl Renderer {
         // BG1 scroll registers
         let scroll_x = ppu.regs.bg1hofs as usize;
         let scroll_y = ppu.regs.bg1vofs as usize;
-
-        let backdrop = ppu.cgram.read(0);
-        let (br, bg, bb) = Self::apply_brightness(backdrop, self.current_brightness as u16);
-        for x in 0..SCREEN_WIDTH {
-            self.set_pixel(x, y, br, bg, bb);
-        }
 
         for x in 0..SCREEN_WIDTH {
             // ============================================================
@@ -39,7 +33,7 @@ impl Renderer {
 
             let tile_index = entry & 0x03FF; // bits 9:0
             let palette_num = (entry >> 10) & 0x07; // bits 12:10
-            let _priority = (entry & 0x2000) != 0; // bit 13
+            let priority = (entry & 0x2000) != 0; // bit 13
             let flip_x = (entry & 0x4000) != 0; // bit 14
             let flip_y = (entry & 0x8000) != 0; // bit 15
 
@@ -63,11 +57,12 @@ impl Renderer {
             let color = ppu.cgram.read(palette_entry);
 
             let (r, g, b) = Self::apply_brightness(color, self.current_brightness as u16);
-            self.set_pixel(x, y, r, g, b);
+            let z = if priority { Z_BG1_HIGH } else { Z_BG1_LOW };
+            self.set_pixel_z(x, y, r, g, b, z);
         }
     }
 
-    fn decode_4bpp_tile_pixel_from(
+    pub fn decode_4bpp_tile_pixel_from(
         vram: &RawVRAM,
         tile_word_base: usize,
         x: usize,
@@ -234,23 +229,19 @@ mod tests {
     // render_scanline_mode1 - transparent pixels
     // ============================================================
 
-    /// A fully transparent tile must leave pixels filled with the backdrop color (CGRAM entry 0).
+    /// A fully transparent tile must leave pixels showing the backdrop color.
     #[test]
     fn test_render_mode1_transparent_tile_leaves_framebuffer() {
         let mut renderer = Renderer::new();
         renderer.current_brightness = 15;
-        // Pre-fill framebuffer with a sentinel value
-        for b in renderer.framebuffer.iter_mut() {
-            *b = 0xAA;
-        }
 
         let mut ppu = make_ppu_mode1();
-        // Tilemap entry at (0,0): tile 0, palette 0 - CHR data is all zero -> transparent
+        // Tilemap entry at (0,0): tile 0, all-zero CHR -> transparent
         ppu.vram.memory[0] = 0x0000;
 
-        renderer.render_scanline_mode1(&ppu, 0);
+        // Use the full render_scanline so the backdrop is drawn.
+        renderer.render_scanline(&ppu, 0);
 
-        // All pixels on scanline 0 must be the backdrop color
         let (br, bg, bb) = Renderer::apply_brightness(ppu.cgram.read(0), 15);
         for x in 0..SCREEN_WIDTH {
             let idx = x * 3;
