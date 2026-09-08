@@ -7,10 +7,10 @@ use std::path::PathBuf;
 use egui_sdl2::canvas::EguiCanvas;
 use egui_sdl2::{egui, sdl2};
 use sdl2::audio::{AudioQueue, AudioSpecDesired};
+use sdl2::controller::{Button as ControllerButton, GameController};
 use sdl2::event::Event as SdlEvent;
 use sdl2::keyboard::Keycode;
 use sdl2::render::Texture;
-use sdl2::controller::{Button as ControllerButton, GameController};
 
 use ppu::constants::{SCREEN_HEIGHT, SCREEN_WIDTH};
 
@@ -340,10 +340,10 @@ impl Gui {
             }
 
             SdlEvent::ControllerButtonDown { button, .. } => {
-                return Self::map_controller_button(*button).map(RSnesEvent::ButtonDown)
+                return Self::map_controller_button(*button).map(RSnesEvent::ButtonDown);
             }
             SdlEvent::ControllerButtonUp { button, .. } => {
-                return Self::map_controller_button(*button).map(RSnesEvent::ButtonUp)
+                return Self::map_controller_button(*button).map(RSnesEvent::ButtonUp);
             }
 
             _ => {}
@@ -417,7 +417,11 @@ impl Gui {
                     continue;
                 }
                 SdlEvent::ControllerDeviceRemoved { which, .. } => {
-                    if self.controller.as_ref().is_some_and(|c| c.instance_id() == *which) {
+                    if self
+                        .controller
+                        .as_ref()
+                        .is_some_and(|c| c.instance_id() == *which)
+                    {
                         self.controller = None;
                     }
                     continue;
