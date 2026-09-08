@@ -1,14 +1,14 @@
 use std::fmt;
 
+use crate::cartridge::header::cartridge_hardware::CartridgeHardware;
+use crate::cartridge::header::country::{Country, VideoStandard};
+use crate::cartridge::header::mapping_mode::{MappingMode, RomSpeed, SpeedAndMappingMode};
 use crate::constants::{
     HEADER_CHECKSUM_COMPLEMENT_OFFSET, HEADER_CHECKSUM_OFFSET, HEADER_COUNTRY_OFFSET,
     HEADER_DEVELOPER_ID_OFFSET, HEADER_RAM_SIZE_OFFSET, HEADER_ROM_HARDWARE_OFFSET,
     HEADER_ROM_SIZE_OFFSET, HEADER_ROM_VERSION_OFFSET, HEADER_SIZE, HEADER_SPEED_MAP_OFFSET,
     HEADER_TITLE_LEN, SRAM_MAX_SIZE_EXP,
 };
-use crate::cartridge::header::cartridge_hardware::CartridgeHardware;
-use crate::cartridge::header::country::{Country, VideoStandard};
-use crate::cartridge::header::mapping_mode::{MappingMode, RomSpeed, SpeedAndMappingMode};
 
 /// Represents the header of a SNES ROM.
 ///
@@ -130,8 +130,8 @@ impl fmt::Display for RomHeader {
 #[cfg(test)]
 mod tests {
     use crate::{
-        constants::HIROM_BANK_SIZE,
         cartridge::header::cartridge_hardware::{Coprocessor, HardwareLayout},
+        constants::HIROM_BANK_SIZE,
     };
 
     use super::*;

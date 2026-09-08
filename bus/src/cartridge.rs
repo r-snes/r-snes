@@ -1,8 +1,14 @@
-use crate::constants::{BANK_SIZE, COPIER_HEADER_SIZE, LOROM_BANK_SIZE};
+pub mod error;
+pub mod header;
+pub mod sram;
+
+pub mod test_rom;
+
 use crate::cartridge::error::RomError;
 use crate::cartridge::header::RomHeader;
 use crate::cartridge::header::mapping_mode::MappingMode;
 use crate::cartridge::sram::Sram;
+use crate::constants::{BANK_SIZE, COPIER_HEADER_SIZE, LOROM_BANK_SIZE};
 use common::snes_address::SnesAddress;
 use std::fs::File;
 use std::io::Read;
@@ -213,9 +219,9 @@ impl Cartridge {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::constants::{COPIER_HEADER_SIZE, HIROM_BANK_SIZE, LOROM_BANK_SIZE};
     use crate::cartridge::header::mapping_mode::MappingMode;
     use crate::cartridge::test_rom::*;
+    use crate::constants::{COPIER_HEADER_SIZE, HIROM_BANK_SIZE, LOROM_BANK_SIZE};
     use common::snes_address::snes_addr;
 
     #[test]

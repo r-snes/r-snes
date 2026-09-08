@@ -1,12 +1,12 @@
 //! Module which contains utility functions for
 //! writing unit tests needing ROM objects
 
+use crate::cartridge::Cartridge;
+use crate::cartridge::header::mapping_mode::MappingMode;
 use crate::constants::{
     HEADER_RAM_SIZE_OFFSET, HEADER_ROM_HARDWARE_OFFSET, HEADER_SIZE, HIROM_BANK_SIZE,
     HIROM_HEADER_OFFSET, LOROM_BANK_SIZE, LOROM_HEADER_OFFSET,
 };
-use crate::cartridge::Cartridge;
-use crate::cartridge::header::mapping_mode::MappingMode;
 use common::u16_split::*;
 use std::io::Write;
 use tempfile::tempdir;
