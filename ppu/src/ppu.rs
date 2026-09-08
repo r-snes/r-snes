@@ -651,12 +651,7 @@ mod tests {
         ppu.write(0x2111, 0x03);
         assert_eq!(ppu.regs.bghofs[1], 0x0330);
 
-        // BG3VOFS ($2112)
-        ppu.write(0x2112, 0x40);
-        ppu.write(0x2112, 0x04);
-        // Note: hi is masked to bits[1:0] -> 0x04 & 0x03 = 0x00... wait, 0x04 & 0x03 = 0x00
-        // Actually it's 0x00 since 0x04 & 0x03 == 0x00
-        // Let's use a value that survives the mask
+        // BG3VOFS ($2112): hi masked to bits[1:0]; use a value that survives the mask
         let mut ppu2 = PPU::new();
         ppu2.write(0x2112, 0x40);
         ppu2.write(0x2112, 0x01);
@@ -759,7 +754,7 @@ mod tests {
     // $2121/$2122/$213B - CGRAM
     // ============================================================
 
-    /// Writing a colour via $2121/$2122 and reading it back via $213B must round-trip correctly.
+    /// Writing a colour via $2121/$2122 and reading it back via $213B must round-trip.
     #[test]
     fn test_cgram_write_read_via_ppu() {
         let mut ppu = PPU::new();

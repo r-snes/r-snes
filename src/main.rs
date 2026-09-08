@@ -1,12 +1,15 @@
 mod gui;
+
 mod rsnes;
 
 use crate::{
-    gui::{Gui, GuiFrameData, RSnesEvent},
+    gui::{Gui, GuiFrameData, RSnesEvent, SnesButton},
     rsnes::{RSnesCore, RSnesEmu},
 };
+
 #[cfg(feature = "cli")]
 use clap::Parser;
+
 #[cfg(feature = "plugins")]
 use plugins::plugin::Plugin;
 use std::{
@@ -18,6 +21,18 @@ use std::{
 type IdleExit = (RSnesEvent, Option<Plugin>);
 #[cfg(not(feature = "plugins"))]
 type IdleExit = RSnesEvent;
+
+/// Update the port-1 controller state for a single button. Goes through
+/// `core_mut()` so it works whether the core is held directly or behind an
+/// `Rc<RefCell<...>>` (plugins feature).
+fn set_button(emu: &mut RSnesEmu, button: SnesButton, pressed: bool) {
+    let core = &mut *emu.core_mut();
+    if pressed {
+        core.joypad1 |= button.mask();
+    } else {
+        core.joypad1 &= !button.mask();
+    }
+}
 
 fn gui_emu_loop(
     gui: &mut gui::Gui,
@@ -72,15 +87,11 @@ fn gui_emu_loop(
             match state_event {
                 RSnesEvent::Quit => break 'emu_loop Some(RSnesEvent::Quit),
                 RSnesEvent::Close => break 'emu_loop None,
-                RSnesEvent::ButtonDown => {
-                    let mut emu_mut = emu.core_mut();
-                    emu_mut.bus.io.hvbjoy = 0;
-                    emu_mut.bus.io.joy1 = !0;
+                RSnesEvent::ButtonDown(button) => {
+                    set_button(&mut emu, button, true);
                 }
-                RSnesEvent::ButtonUp => {
-                    let mut emu_mut = emu.core_mut();
-                    emu_mut.bus.io.hvbjoy = 0;
-                    emu_mut.bus.io.joy1 = 0;
+                RSnesEvent::ButtonUp(button) => {
+                    set_button(&mut emu, button, false);
                 }
 
                 #[cfg(feature = "plugins")]
@@ -116,7 +127,7 @@ fn gui_emu_loop(
 
 /// The no-ROM idle state: render the logo screen (plus any open overlays)
 /// at the normal frame rate, and after a few seconds start the waiting
-/// music — a real SPC700 driver uploaded into a standalone APU over the
+/// music - a real SPC700 driver uploaded into a standalone APU over the
 /// IPL boot protocol (see `apu::jingle`).
 ///
 /// Returns the first event the outer loop cares about. Input-only events
@@ -146,7 +157,7 @@ fn gui_idle_loop(gui: &mut Gui, default_framebuffer: &ppu::rendering::RawFramebu
         let frame_start = Instant::now();
 
         // Render the logo + overlays; this also polls input (routed
-        // through egui first). No ROM loaded, so no rom_info to show —
+        // through egui first). No ROM loaded, so no rom_info to show -
         // the overlay will say so if the user opens it.
         let events = gui.update(default_framebuffer, GuiFrameData::default());
 
@@ -162,7 +173,6 @@ fn gui_idle_loop(gui: &mut Gui, default_framebuffer: &ppu::rendering::RawFramebu
         if let Some(ev) = terminal {
             break ev;
         }
-
         // Boot the jingle APU once the delay has passed. A boot failure
         // is loudly logged but non-fatal: the emulator just stays silent.
         if jingle.is_none() && !jingle_failed && idle_start.elapsed() >= JINGLE_DELAY {

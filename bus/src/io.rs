@@ -445,6 +445,16 @@ impl Io {
     pub fn auto_joypad_busy(&self) -> bool {
         self.hvbjoy & Self::HVBJOY_AUTO_JOYPAD != 0
     }
+
+    // ================================================================
+    // Controller input
+    // ================================================================
+
+    /// Latch a caller-supplied controller snapshot into JOY1 ($4218/$4219).
+    /// The live pad state lives on [`RSnesCore`]
+    pub fn latch_joypad1(&mut self, live: u16) {
+        self.joy1 = live;
+    }
 }
 
 impl Io {
