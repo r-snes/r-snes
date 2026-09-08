@@ -48,6 +48,7 @@ pub struct RSnesCore {
     pub cpu_master_cycles_to_wait: u32,
     pub apu_cycle_debt: u64,
     auto_joypad: AutoJoypad,
+    pub joypad1: u16,
 }
 
 /// Snapshot of the loaded ROM's metadata for display in the GUI.
@@ -108,6 +109,7 @@ impl RSnesCore {
             cpu_master_cycles_to_wait: 0,
             apu_cycle_debt: 0,
             auto_joypad: AutoJoypad::Idle,
+            joypad1: 0,
         })
     }
 
@@ -251,7 +253,7 @@ impl RSnesCore {
             AutoJoypad::Pending(1) => {
                 // Strobe: snapshot the pads and raise the busy flag.
                 self.bus.io.set_auto_joypad_busy(true);
-                self.bus.io.latch_joypad1();
+                self.bus.io.latch_joypad1(self.joypad1);
                 AutoJoypad::Reading(Self::AUTO_JOYPAD_READ_CYCLES)
             }
             AutoJoypad::Pending(n) => AutoJoypad::Pending(n - 1),

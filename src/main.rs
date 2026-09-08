@@ -26,10 +26,12 @@ type IdleExit = RSnesEvent;
 /// `core_mut()` so it works whether the core is held directly or behind an
 /// `Rc<RefCell<...>>` (plugins feature).
 fn set_button(emu: &mut RSnesEmu, button: SnesButton, pressed: bool) {
-    emu.core_mut()
-        .bus
-        .io
-        .set_joypad1_button(button.mask(), pressed);
+    let core = &mut *emu.core_mut();
+    if pressed {
+        core.joypad1 |= button.mask();
+    } else {
+        core.joypad1 &= !button.mask();
+    }
 }
 
 fn gui_emu_loop(
