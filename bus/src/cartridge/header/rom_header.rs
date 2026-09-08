@@ -1,14 +1,14 @@
 use std::fmt;
 
+use crate::cartridge::header::cartridge_hardware::CartridgeHardware;
+use crate::cartridge::header::country::{Country, VideoStandard};
+use crate::cartridge::header::mapping_mode::{MappingMode, RomSpeed, SpeedAndMappingMode};
 use crate::constants::{
     HEADER_CHECKSUM_COMPLEMENT_OFFSET, HEADER_CHECKSUM_OFFSET, HEADER_COUNTRY_OFFSET,
     HEADER_DEVELOPER_ID_OFFSET, HEADER_RAM_SIZE_OFFSET, HEADER_ROM_HARDWARE_OFFSET,
     HEADER_ROM_SIZE_OFFSET, HEADER_ROM_VERSION_OFFSET, HEADER_SIZE, HEADER_SPEED_MAP_OFFSET,
-    HEADER_TITLE_LEN,
+    HEADER_TITLE_LEN, SRAM_MAX_SIZE_EXP,
 };
-use crate::rom::header::cartridge_hardware::CartridgeHardware;
-use crate::rom::header::country::{Country, VideoStandard};
-use crate::rom::header::mapping_mode::{MappingMode, RomSpeed, SpeedAndMappingMode};
 
 /// Represents the header of a SNES ROM.
 ///
@@ -75,6 +75,18 @@ impl RomHeader {
         }
     }
 
+    /// Size in bytes of the cartridge's S-RAM, `0` if the cartridge has none.
+    ///
+    /// The header encodes the size as an exponent: `1024 << n`. Values above
+    /// `SRAM_MAX_SIZE_EXP` are treated as 0.
+    pub fn ram_size_bytes(&self) -> usize {
+        match self.ram_size {
+            0 => 0,
+            n if n <= SRAM_MAX_SIZE_EXP => 1024 << n,
+            _ => 0,
+        }
+    }
+
     /// Prints the raw header bytes to the console in hexadecimal format.
     ///
     /// Each line prints 8 bytes for readability.
@@ -118,8 +130,8 @@ impl fmt::Display for RomHeader {
 #[cfg(test)]
 mod tests {
     use crate::{
+        cartridge::header::cartridge_hardware::{Coprocessor, HardwareLayout},
         constants::HIROM_BANK_SIZE,
-        rom::header::cartridge_hardware::{Coprocessor, HardwareLayout},
     };
 
     use super::*;

@@ -52,6 +52,40 @@ pub enum Coprocessor {
     Custom,
 }
 
+impl HardwareLayout {
+    /// Returns true if this cartridge has RAM
+    pub fn has_ram(&self) -> bool {
+        matches!(
+            self,
+            HardwareLayout::RomRam
+                | HardwareLayout::RomRamBattery
+                | HardwareLayout::RomCoprocessorRam
+                | HardwareLayout::RomCoprocessorRamBattery
+        )
+    }
+
+    /// Returns true if this cartridge has a battery
+    pub fn has_battery(&self) -> bool {
+        matches!(
+            self,
+            HardwareLayout::RomRamBattery
+                | HardwareLayout::RomCoprocessorRamBattery
+                | HardwareLayout::RomCoprocessorBattery
+        )
+    }
+
+    /// Returns true if this cartridge contains a coprocessor
+    pub fn has_coprocessor(&self) -> bool {
+        matches!(
+            self,
+            HardwareLayout::RomCoprocessor
+                | HardwareLayout::RomCoprocessorRam
+                | HardwareLayout::RomCoprocessorRamBattery
+                | HardwareLayout::RomCoprocessorBattery
+        )
+    }
+}
+
 impl CartridgeHardware {
     /// Creates a `CartridgeHardware` value from a byte extracted from the ROM header.
     ///
@@ -72,16 +106,20 @@ impl CartridgeHardware {
             _ => panic!("ERROR: Could not identify hardware of ROM"),
         };
 
-        let coprocessor = match (byte & 0xF0) >> 4 {
-            0x0 => Some(Coprocessor::DSP(1)),
-            0x1 => Some(Coprocessor::GSU),
-            0x2 => Some(Coprocessor::OBC1),
-            0x3 => Some(Coprocessor::SA1),
-            0x4 => Some(Coprocessor::SDD1),
-            0x5 => Some(Coprocessor::SRTC),
-            0xE => Some(Coprocessor::Other),
-            0xF => Some(Coprocessor::Custom),
-            _ => None,
+        let coprocessor = if layout.has_coprocessor() {
+            match (byte & 0xF0) >> 4 {
+                0x0 => Some(Coprocessor::DSP(1)),
+                0x1 => Some(Coprocessor::GSU),
+                0x2 => Some(Coprocessor::OBC1),
+                0x3 => Some(Coprocessor::SA1),
+                0x4 => Some(Coprocessor::SDD1),
+                0x5 => Some(Coprocessor::SRTC),
+                0xE => Some(Coprocessor::Other),
+                0xF => Some(Coprocessor::Custom),
+                _ => None,
+            }
+        } else {
+            None
         };
 
         CartridgeHardware {
@@ -92,34 +130,17 @@ impl CartridgeHardware {
 
     /// Returns true if this cartridge has RAM
     pub fn has_ram(&self) -> bool {
-        matches!(
-            self.layout,
-            HardwareLayout::RomRam
-                | HardwareLayout::RomRamBattery
-                | HardwareLayout::RomCoprocessorRam
-                | HardwareLayout::RomCoprocessorRamBattery
-        )
+        self.layout.has_ram()
     }
 
     /// Returns true if this cartridge has a battery
     pub fn has_battery(&self) -> bool {
-        matches!(
-            self.layout,
-            HardwareLayout::RomRamBattery
-                | HardwareLayout::RomCoprocessorRamBattery
-                | HardwareLayout::RomCoprocessorBattery
-        )
+        self.layout.has_battery()
     }
 
     /// Returns true if this cartridge contains a coprocessor
     pub fn has_coprocessor(&self) -> bool {
-        matches!(
-            self.layout,
-            HardwareLayout::RomCoprocessor
-                | HardwareLayout::RomCoprocessorRam
-                | HardwareLayout::RomCoprocessorRamBattery
-                | HardwareLayout::RomCoprocessorBattery
-        )
+        self.layout.has_coprocessor()
     }
 }
 
@@ -197,14 +218,14 @@ mod tests {
     #[test]
     fn test_coprocessor_from_byte_valid() {
         let mappings = [
-            (0x00, Some(Coprocessor::DSP(1))),
-            (0x10, Some(Coprocessor::GSU)),
-            (0x20, Some(Coprocessor::OBC1)),
-            (0x30, Some(Coprocessor::SA1)),
-            (0x40, Some(Coprocessor::SDD1)),
-            (0x50, Some(Coprocessor::SRTC)),
-            (0xE0, Some(Coprocessor::Other)),
-            (0xF0, Some(Coprocessor::Custom)),
+            (0x00, None),
+            (0x10, None),
+            (0x20, None),
+            (0x30, None),
+            (0x40, None),
+            (0x50, None),
+            (0xE0, None),
+            (0xF0, None),
             // Tens digit changed
             (0x04, Some(Coprocessor::DSP(1))),
             (0x14, Some(Coprocessor::GSU)),
