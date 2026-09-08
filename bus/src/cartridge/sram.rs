@@ -1,4 +1,4 @@
-use crate::rom::header::RomHeader;
+use crate::cartridge::header::RomHeader;
 
 /// Static RAM on the cartridge board.
 ///

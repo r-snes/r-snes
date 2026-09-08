@@ -1,5 +1,5 @@
+use crate::cartridge::Cartridge;
 use crate::io::Io;
-use crate::rom::Cartridge;
 use crate::wram::Wram;
 use apu::Apu;
 use common::snes_address::SnesAddress;
@@ -46,7 +46,7 @@ impl Bus {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rom::test_rom::*;
+    use crate::cartridge::test_rom::*;
     use common::snes_address::snes_addr;
 
     fn init_extern_components() -> (PPU, Apu) {

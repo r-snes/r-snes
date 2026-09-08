@@ -16,7 +16,7 @@ use common::snes_address::SnesAddress;
 use cpu::cpu::CPU;
 use cpu::cpu::CycleResult;
 
-use bus::rom::header::RomHeader;
+use bus::cartridge::header::RomHeader;
 use ppu::ppu::PPU;
 use std::error::Error;
 use std::path::Path;
@@ -447,8 +447,8 @@ mod tests {
     use std::ops::Deref;
 
     use super::*;
-    use bus::rom::{Rom, test_rom::*};
-    use common::{snes_addr, u16_split::U16Split};
+    use bus::cartridge::test_rom::*;
+    use common::snes_addr;
     use cpu::registers::RegisterP;
     use duplicate::duplicate_item;
     use ppu::constants::*;
@@ -739,7 +739,7 @@ mod tests {
     fn test_cpu_update_function() {
         let mut rsnes = make_rsnes();
 
-        let reset_addr = bus::rom::Cartridge::get_lorom_offset(snes_addr!(0:0xFFFC)).unwrap();
+        let reset_addr = bus::cartridge::Cartridge::get_lorom_offset(snes_addr!(0:0xFFFC)).unwrap();
         rsnes.bus.rom.rom[reset_addr] = 0x00;
         rsnes.bus.rom.rom[reset_addr + 1] = 0x80;
 
