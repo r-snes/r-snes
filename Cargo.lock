@@ -2934,6 +2934,7 @@ dependencies = [
  "clap",
  "common",
  "cpu",
+ "duplicate",
  "egui-sdl2",
  "piccolo",
  "piccolo-util",
