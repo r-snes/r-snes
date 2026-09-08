@@ -23,8 +23,6 @@ use std::path::PathBuf;
 #[cfg(feature = "plugins")]
 use std::{cell::RefCell, rc::Rc};
 
-use crate::dma::*;
-
 // Once-per-frame auto-joypad read, split into its two hardware phases.
 // Copy so update_auto_joypad can match it by value while still touching self.
 #[derive(Clone, Copy)]
@@ -125,6 +123,7 @@ impl RSnesCore {
     pub fn update(&mut self) {
         self.update_ppu_cycles();
         self.update_apu_cycles();
+        self.update_auto_joypad();
 
         self.poll_hdma_start();
         self.poll_nmi();
@@ -182,16 +181,6 @@ impl RSnesCore {
         }
     }
 
-    /// This function will be called every master cycle, it will update the CPU, PPU and APU state accordingly
-    pub fn update(&mut self) {
-        self.update_cpu_cycles();
-        self.update_apu_cycles();
-        self.update_ppu_cycles();
-        self.update_auto_joypad();
-
-        self.master_cycles += 1;
-    }
-
     // Drive the two-phase auto-joypad read one master cycle: count down to the strobe,
     // then hold HVBJOY bit 0 busy until the 16-bit read completes.
     fn update_auto_joypad(&mut self) {
@@ -214,7 +203,7 @@ impl RSnesCore {
 
     fn update_ppu_cycles(&mut self) {
         match self.ppu.tick() {
-            None => return,
+            None => {}
             Some(PpuEvent::DotStart) => {}
             Some(PpuEvent::HBlankStart) => self.on_hblank_start(),
             Some(PpuEvent::ScanlineStart(kind)) => {
@@ -229,6 +218,7 @@ impl RSnesCore {
     }
 
     /// Start of H-Blank (dot 274) on the current scanline.
+    /// H-DMA starts later at dot 278, see [`poll_hdma_start`](Self::poll_hdma_start).
     fn on_hblank_start(&mut self) {
         self.bus.io.set_hblank(true);
 
@@ -253,10 +243,6 @@ impl RSnesCore {
         if self.bus.io.auto_joypad_enabled() {
             self.auto_joypad = AutoJoypad::Pending(Self::AUTO_JOYPAD_START_DELAY);
         }
-
-        if self.bus.io.nmi_enabled() {
-            self.cpu.nmi();
-        }
     }
 
     /// Scanline 0: V-Blank ends and a new frame begins. Scanline 0 is the
@@ -280,7 +266,7 @@ impl RSnesCore {
     fn poll_nmi(&mut self) {
         let line = self.bus.io.nmi_enabled() && self.bus.io.nmi_flag();
         if line && !self.nmi_line {
-            self.nmi_pending = true;
+            self.cpu.nmi();
         }
         self.nmi_line = line;
     }
@@ -511,7 +497,7 @@ mod tests {
         }
     }
 
-    /// Ticks the core without letting the CPU run.
+    /// Ticks the core emulator for a given number of master cycles
     fn tick_core(rsnes: &mut RSnesCore, cycles: u64) {
         for _ in 0..cycles {
             rsnes.update();
@@ -723,7 +709,6 @@ mod tests {
     // ============================================================
 
     /// With NMITIMEN bit 7 set, entering V-Blank must request an NMI.
-    /// Becomes a `nmi_pending` assertion once the CPU can take interrupts.
     #[test]
     fn test_vblank_nmi_requested_when_enabled() {
         let mut rsnes = RSnesCoreInterruptDetector::new();
@@ -771,7 +756,7 @@ mod tests {
         rsnes.bus.io.nmitimen = 0b0001_0000;
         rsnes.bus.io.htime = 100;
 
-        tick_core(&mut rsnes, 100 * 4);
+        tick_core(&mut rsnes, 100 * 4 + IRQ_TRIGGER_OFFSET as u64);
         assert!(rsnes.has_irq_occured());
     }
 
@@ -894,12 +879,12 @@ mod tests {
     /// A transfer is requested in the H-Blank of every visible scanline
     /// while HDMAEN is non-zero.
     #[test]
-    #[should_panic(expected = "HDMA transfer")]
     fn test_hdma_transfer_requested_during_visible_lines() {
         let mut rsnes = make_rsnes();
         rsnes.bus.io.hdmaen = 0b0000_0001;
 
-        tick_core(&mut rsnes, HBLANK_START_DOT as u64 * 4);
+        tick_core(&mut rsnes, HDMA_START_DOT as u64 * 4);
+        assert!(rsnes.dma.hdma_pending || rsnes.dma.state == DmaState::Hdma);
     }
 
     /// HDMA never runs during V-Blank — that window belongs to the ROM.
@@ -915,13 +900,13 @@ mod tests {
 
     /// Channels are re-initialised at the top of each frame.
     #[test]
-    #[should_panic(expected = "HDMA init")]
     fn test_hdma_init_requested_at_frame_start() {
         let mut rsnes = make_rsnes();
         advance_core_to_scanline(&mut rsnes, VBLANK_START_LINE);
         rsnes.bus.io.hdmaen = 0b0000_0001;
 
         advance_core_to_scanline(&mut rsnes, 0);
+        assert!(rsnes.dma.hdma_init || rsnes.dma.state == DmaState::Hdma);
     }
 
     /// Nothing is requested when HDMAEN is clear.
