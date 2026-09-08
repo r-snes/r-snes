@@ -6,7 +6,6 @@ use apu::Apu;
 use bus::Bus;
 use bus::io::IrqMode;
 use bus::rom::header::RomHeader;
-use common::snes_address::SnesAddress;
 use cpu::cpu::CPU;
 use cpu::cpu::CycleResult;
 
@@ -415,10 +414,10 @@ mod tests {
     use super::*;
     use bus::cartridge::{Cartridge, test_rom::*};
     use common::snes_addr;
+    use common::snes_address::SnesAddress;
     use common::u16_split::U16Split;
     use cpu::registers::RegisterP;
     use duplicate::duplicate_item;
-    use ppu::constants::*;
 
     struct RSnesCoreInterruptDetector(RSnesCore);
     impl AsRef<RSnesCore> for RSnesCoreInterruptDetector {
@@ -535,22 +534,6 @@ mod tests {
         let rom_data = create_valid_lorom(0x20000);
         let (rom_path, _dir) = create_temp_rom(&rom_data);
         RSnesCore::load_rom(&rom_path).unwrap()
-    }
-
-    fn set_dma_channel(
-        rsnes: &mut RSnesCore,
-        channel: usize,
-        dmap: u8,
-        src_bank: u8,
-        src_addr: u16,
-        size: u16,
-    ) {
-        let ch = &mut rsnes.bus.io.dma_channels[channel];
-        ch.dmap = dmap;
-        ch.bbad = 0xFF; // 0x21FF: safe no-op destination because useful memory zones not implemented yet
-        ch.a1t.bank = src_bank;
-        ch.a1t.addr = src_addr;
-        ch.das = size;
     }
 
     #[test]
