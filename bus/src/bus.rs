@@ -1,5 +1,5 @@
+use crate::cartridge::Cartridge;
 use crate::io::Io;
-use crate::rom::Rom;
 use crate::wram::Wram;
 use apu::Apu;
 use common::snes_address::SnesAddress;
@@ -10,14 +10,14 @@ use std::path::Path;
 
 pub struct Bus {
     pub wram: Wram,
-    pub rom: Rom,
+    pub cart: Cartridge,
     pub io: Io,
 }
 
 impl Bus {
     pub fn new<P: AsRef<Path>>(rom_path: P) -> Result<Self, Box<dyn Error>> {
         Ok(Self {
-            rom: Rom::load_from_file(rom_path)?,
+            cart: Cartridge::load_from_file(rom_path)?,
             wram: Wram::default(),
             io: Io::default(),
         })
@@ -25,20 +25,19 @@ impl Bus {
 
     duplicate! {
         [
-            DUP_method  DUP_parameters                                  DUP_return_t    DUP_method_param;
-            [ read ]    [ &mut self, addr: SnesAddress ]                [ u8 ]          [ addr ];
-            [ write ]   [ &mut self, addr: SnesAddress, value: u8 ]     [ () ]          [ addr, value ];
+            DUP_method DUP_parameters                            DUP_return_t DUP_method_param DUP_cart;
+            [read]     [&mut self, addr: SnesAddress]            [u8]         [addr]           [self.cart.read(addr).unwrap_or(self.io.open_bus)];
+            [write]    [&mut self, addr: SnesAddress, value: u8] [()]         [addr, value]    [self.cart.write(addr, value)];
         ]
         pub fn DUP_method(DUP_parameters, ppu: &mut PPU, apu: &mut Apu) -> DUP_return_t {
             match addr.bank {
                 0x00..=0x3F | 0x80..=0xBF => match addr.addr {
                     0x0000..0x2000 => self.wram.DUP_method(DUP_method_param),
-                    0x2000..0x6000 => self.io.DUP_method(DUP_method_param, ppu, apu),
-                    0x6000..0x8000 => self.rom.DUP_method(DUP_method_param), // TODO : Expansion port
-                    0x8000..=0xFFFF => self.rom.DUP_method(DUP_method_param),
+                    0x2000..0x6000 => self.io.DUP_method(DUP_method_param, &mut self.wram, ppu, apu),
+                    0x6000..=0xFFFF => DUP_cart,
                 },
                 0x7E..=0x7F => self.wram.DUP_method(DUP_method_param),
-                0x40..=0x7D | 0xC0..=0xFF => self.rom.DUP_method(DUP_method_param),
+                0x40..=0x7D | 0xC0..=0xFF => DUP_cart,
             }
         }
     }
@@ -47,7 +46,7 @@ impl Bus {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rom::test_rom::*;
+    use crate::cartridge::test_rom::*;
     use common::snes_address::snes_addr;
 
     fn init_extern_components() -> (PPU, Apu) {
@@ -118,8 +117,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "ERROR: Couldn't extract value from ROM")]
-    fn test_rom_read_out_of_range_panics() {
+    fn test_rom_read_out_of_range() {
         let (mut ppu, mut apu) = init_extern_components();
         let rom_data = create_valid_lorom(0x20000);
         let (rom_path, _dir) = create_temp_rom(&rom_data);
@@ -127,7 +125,8 @@ mod tests {
 
         // Create an address mapped to an offset beyond the 128 KiB dummy ROM.
         let addr = snes_addr!(0x7D:0xFFFF);
-        bus.read(addr, &mut ppu, &mut apu);
+        bus.io.open_bus = 123;
+        assert_eq!(bus.read(addr, &mut ppu, &mut apu), 123);
     }
 
     // ---- APU communication port tests (from the APU link branch) ----

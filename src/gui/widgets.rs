@@ -1,6 +1,6 @@
 use std::error::Error;
 
-use bus::rom::header::RomHeader;
+use bus::cartridge::header::RomHeader;
 use egui_sdl2::egui::{self, RichText};
 
 use crate::rsnes::RomInfo;

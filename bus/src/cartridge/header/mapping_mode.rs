@@ -160,7 +160,7 @@ impl MappingMode {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rom::test_rom::*;
+    use crate::cartridge::test_rom::*;
 
     #[test]
     fn detect_lorom() {

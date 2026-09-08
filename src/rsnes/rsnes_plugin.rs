@@ -154,31 +154,49 @@ impl RSnesCore {
     fn create_input_table<'gc>(ctx: Context<'gc>, emu: &Rc<RefCell<Self>>) -> Table<'gc> {
         let ret = Table::new(ctx.mutation());
 
-        let clone = emu.clone();
-        ret.set_field(
-            ctx,
-            "press_a",
-            Callback::from_fn(ctx.mutation(), move |_, _, _| {
-                let mut emu = clone.borrow_mut();
+        macro_rules! create_press_release {
+            ( $key:tt, $bit:tt ) => {
+                let clone = emu.clone();
+                ret.set_field(
+                    ctx,
+                    concat!("press_", $key),
+                    Callback::from_fn(ctx.mutation(), move |_, _, _| {
+                        let mut emu = clone.borrow_mut();
 
-                emu.bus.io.hvbjoy = 0;
-                emu.bus.io.joy1 = !0;
-                Ok(piccolo::CallbackReturn::Return)
-            }),
-        );
+                        emu.bus.io.hvbjoy = 0;
+                        emu.bus.io.joy1 |= 1 << $bit;
+                        Ok(piccolo::CallbackReturn::Return)
+                    }),
+                );
 
-        let clone = emu.clone();
-        ret.set_field(
-            ctx,
-            "release_a",
-            Callback::from_fn(ctx.mutation(), move |_, _, _| {
-                let mut emu = clone.borrow_mut();
+                let clone = emu.clone();
+                ret.set_field(
+                    ctx,
+                    concat!("release_", $key),
+                    Callback::from_fn(ctx.mutation(), move |_, _, _| {
+                        let mut emu = clone.borrow_mut();
 
-                emu.bus.io.hvbjoy = 0;
-                emu.bus.io.joy1 = 0;
-                Ok(piccolo::CallbackReturn::Return)
-            }),
-        );
+                        emu.bus.io.hvbjoy = 0;
+                        emu.bus.io.joy1 &= !(1 << $bit);
+                        Ok(piccolo::CallbackReturn::Return)
+                    }),
+                );
+            };
+        }
+
+        create_press_release!("b", 15);
+        create_press_release!("y", 14);
+        create_press_release!("select", 13);
+        create_press_release!("start", 12);
+        create_press_release!("start", 12);
+        create_press_release!("up", 11);
+        create_press_release!("down", 10);
+        create_press_release!("left", 9);
+        create_press_release!("right", 8);
+        create_press_release!("a", 7);
+        create_press_release!("x", 6);
+        create_press_release!("l", 5);
+        create_press_release!("r", 4);
 
         ret
     }
