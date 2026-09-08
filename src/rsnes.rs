@@ -54,7 +54,7 @@ impl RSnesCore {
     pub fn rom_info(&self) -> RomInfo {
         RomInfo {
             path: self._rom_path.clone(),
-            file_size_kb: self.bus.rom.data.len() / 1024,
+            file_size_kb: self.bus.rom.rom.len() / 1024,
             header: self.bus.rom.header.clone(),
         }
     }
@@ -695,16 +695,16 @@ mod tests {
     fn test_cpu_update_function() {
         let mut rsnes = make_rsnes();
 
-        let reset_addr = bus::rom::Rom::get_lorom_offset(snes_addr!(0:0xFFFC)).unwrap();
-        rsnes.bus.rom.data[reset_addr] = 0x00;
-        rsnes.bus.rom.data[reset_addr + 1] = 0x80;
+        let reset_addr = bus::rom::Cartridge::get_lorom_offset(snes_addr!(0:0xFFFC)).unwrap();
+        rsnes.bus.rom.rom[reset_addr] = 0x00;
+        rsnes.bus.rom.rom[reset_addr + 1] = 0x80;
 
-        rsnes.bus.rom.data[0] = 0xEA;
-        rsnes.bus.rom.data[1] = 0xA9;
-        rsnes.bus.rom.data[2] = 0x42;
-        rsnes.bus.rom.data[3] = 0x8D;
-        rsnes.bus.rom.data[4] = 0x34;
-        rsnes.bus.rom.data[5] = 0x12;
+        rsnes.bus.rom.rom[0] = 0xEA;
+        rsnes.bus.rom.rom[1] = 0xA9;
+        rsnes.bus.rom.rom[2] = 0x42;
+        rsnes.bus.rom.rom[3] = 0x8D;
+        rsnes.bus.rom.rom[4] = 0x34;
+        rsnes.bus.rom.rom[5] = 0x12;
 
         rsnes.update();
         assert_eq!(rsnes.cpu_master_cycles_to_wait, 6);

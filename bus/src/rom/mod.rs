@@ -5,4 +5,4 @@ pub mod sram;
 
 pub mod test_rom;
 
-pub use cartridge::Rom;
+pub use cartridge::Cartridge;

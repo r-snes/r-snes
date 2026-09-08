@@ -21,8 +21,8 @@ use std::path::Path;
 /// which is removed on load.
 /// ROM data is read-only and any write attempts are ignored.
 #[derive(PartialEq)]
-pub struct Rom {
-    pub data: Vec<u8>,
+pub struct Cartridge {
+    pub rom: Vec<u8>,
     pub map: MappingMode,
     pub header: RomHeader,
     pub sram: Sram,
@@ -40,7 +40,7 @@ enum CartridgeTarget {
     Unmapped,
 }
 
-impl Rom {
+impl Cartridge {
     pub fn load_from_file<P: AsRef<Path>>(path: P) -> Result<Self, RomError> {
         let mut file = File::open(path).map_err(RomError::IoError)?;
         let mut buffer = Vec::new();
@@ -67,8 +67,8 @@ impl Rom {
             return Err(RomError::IncorrectMapping);
         }
 
-        Ok(Rom {
-            data: rom_data,
+        Ok(Cartridge {
+            rom: rom_data,
             map: map_mode,
             sram: Sram::new(&header),
             header,
@@ -188,14 +188,14 @@ impl Rom {
     }
 }
 
-impl Rom {
+impl Cartridge {
     /// Reads a byte from the cartridge at the given `SnesAddress`.
     ///
     /// Returns `None` when no chip on the board responds, leaving the caller
     /// to return open bus.
     pub fn read(&self, addr: SnesAddress) -> Option<u8> {
         match self.decode(addr) {
-            CartridgeTarget::Rom(offset) => self.data.get(offset).copied(),
+            CartridgeTarget::Rom(offset) => self.rom.get(offset).copied(),
             CartridgeTarget::Sram(linear) => self.sram.read(linear),
             CartridgeTarget::Unmapped => None,
         }
@@ -223,7 +223,7 @@ mod tests {
         let data = create_valid_lorom(0x10000);
         let (path, _dir) = create_temp_rom(&data);
 
-        let rom = Rom::load_from_file(path).unwrap();
+        let rom = Cartridge::load_from_file(path).unwrap();
         assert_eq!(rom.map, MappingMode::LoRom);
         assert_eq!(rom.read(snes_addr!(0:0x8000)).unwrap(), 0);
     }
@@ -233,7 +233,7 @@ mod tests {
         let data = create_valid_hirom(0x10000);
         let (path, _dir) = create_temp_rom(&data);
 
-        let rom = Rom::load_from_file(path).unwrap();
+        let rom = Cartridge::load_from_file(path).unwrap();
         assert_eq!(rom.map, MappingMode::HiRom);
         assert_eq!(rom.read(snes_addr!(0:0x8000)).unwrap(), 0);
     }
@@ -243,8 +243,8 @@ mod tests {
         let data = create_valid_lorom(0x10000);
         let (path, _dir) = create_temp_rom(&data);
 
-        let rom = Rom::load_from_file(&path).unwrap();
-        assert_eq!(rom.data.len(), data.len());
+        let rom = Cartridge::load_from_file(&path).unwrap();
+        assert_eq!(rom.rom.len(), data.len());
     }
 
     #[test]
@@ -254,18 +254,18 @@ mod tests {
         copier_header_data.extend_from_slice(&data);
 
         let (path, _dir) = create_temp_rom(&copier_header_data);
-        let rom = Rom::load_from_file(&path).unwrap();
+        let rom = Cartridge::load_from_file(&path).unwrap();
 
         // Check copier header removed
-        assert_eq!(rom.data.len(), HIROM_BANK_SIZE);
-        assert_eq!(rom.data[0], 0);
+        assert_eq!(rom.rom.len(), HIROM_BANK_SIZE);
+        assert_eq!(rom.rom[0], 0);
     }
 
     #[test]
     fn test_load_rom_too_small() {
         let data = vec![0x00; LOROM_BANK_SIZE - 1];
         let (path, _dir) = create_temp_rom(&data);
-        let result = Rom::load_from_file(&path);
+        let result = Cartridge::load_from_file(&path);
         assert!(matches!(result, Err(RomError::FileTooSmall)));
     }
 
@@ -273,7 +273,7 @@ mod tests {
     fn test_write_is_ignored() {
         let data = create_valid_lorom(0x10000);
         let (path, _dir) = create_temp_rom(&data);
-        let mut rom = Rom::load_from_file(&path).unwrap();
+        let mut rom = Cartridge::load_from_file(&path).unwrap();
 
         let addr = snes_addr!(0:0x8000);
         rom.write(addr, 0x99);
@@ -283,21 +283,21 @@ mod tests {
     #[test]
     fn test_lorom_offset_first_quarter() {
         let mut addr = snes_addr!(0:0x8000);
-        assert_eq!(Rom::get_lorom_offset(addr).unwrap(), 0);
+        assert_eq!(Cartridge::get_lorom_offset(addr).unwrap(), 0);
 
         addr.addr = 0xFFFF;
-        assert_eq!(Rom::get_lorom_offset(addr).unwrap(), 0x8000 - 1);
+        assert_eq!(Cartridge::get_lorom_offset(addr).unwrap(), 0x8000 - 1);
 
         addr.bank = 0x01;
         addr.addr = 0x8000;
-        assert_eq!(Rom::get_lorom_offset(addr).unwrap(), 0x8000);
+        assert_eq!(Cartridge::get_lorom_offset(addr).unwrap(), 0x8000);
 
         addr.addr = 0xFFFF;
-        assert_eq!(Rom::get_lorom_offset(addr).unwrap(), 0x10000 - 1);
+        assert_eq!(Cartridge::get_lorom_offset(addr).unwrap(), 0x10000 - 1);
 
         addr.bank = 0x3F;
         assert_eq!(
-            Rom::get_lorom_offset(addr).unwrap(),
+            Cartridge::get_lorom_offset(addr).unwrap(),
             0x8000 * (0x3F + 1) - 1
         );
     }
@@ -308,19 +308,19 @@ mod tests {
         let mut mirror_addr = snes_addr!(0x40:0x0);
 
         assert_eq!(
-            Rom::get_lorom_offset(addr).unwrap(),
-            Rom::get_lorom_offset(mirror_addr).unwrap()
+            Cartridge::get_lorom_offset(addr).unwrap(),
+            Cartridge::get_lorom_offset(mirror_addr).unwrap()
         );
-        assert_eq!(Rom::get_lorom_offset(addr).unwrap(), 0x8000 * (0x40));
+        assert_eq!(Cartridge::get_lorom_offset(addr).unwrap(), 0x8000 * (0x40));
 
         addr.addr = 0xFFFF;
         mirror_addr.addr = 0x7FFF;
         assert_eq!(
-            Rom::get_lorom_offset(addr).unwrap(),
-            Rom::get_lorom_offset(mirror_addr).unwrap()
+            Cartridge::get_lorom_offset(addr).unwrap(),
+            Cartridge::get_lorom_offset(mirror_addr).unwrap()
         );
         assert_eq!(
-            Rom::get_lorom_offset(addr).unwrap(),
+            Cartridge::get_lorom_offset(addr).unwrap(),
             0x8000 * (0x40 + 1) - 1
         );
 
@@ -329,19 +329,19 @@ mod tests {
         addr.bank = 0x7D;
         mirror_addr.bank = 0x7D;
         assert_eq!(
-            Rom::get_lorom_offset(addr).unwrap(),
-            Rom::get_lorom_offset(mirror_addr).unwrap()
+            Cartridge::get_lorom_offset(addr).unwrap(),
+            Cartridge::get_lorom_offset(mirror_addr).unwrap()
         );
-        assert_eq!(Rom::get_lorom_offset(addr).unwrap(), 0x8000 * (0x7D));
+        assert_eq!(Cartridge::get_lorom_offset(addr).unwrap(), 0x8000 * (0x7D));
 
         addr.addr = 0xFFFF;
         mirror_addr.addr = 0x7FFF;
         assert_eq!(
-            Rom::get_lorom_offset(addr).unwrap(),
-            Rom::get_lorom_offset(mirror_addr).unwrap()
+            Cartridge::get_lorom_offset(addr).unwrap(),
+            Cartridge::get_lorom_offset(mirror_addr).unwrap()
         );
         assert_eq!(
-            Rom::get_lorom_offset(addr).unwrap(),
+            Cartridge::get_lorom_offset(addr).unwrap(),
             0x8000 * (0x7D + 1) - 1
         );
     }
@@ -349,21 +349,21 @@ mod tests {
     #[test]
     fn test_lorom_offset_third_quarter() {
         let mut addr = snes_addr!(0x80:0x8000);
-        assert_eq!(Rom::get_lorom_offset(addr).unwrap(), 0);
+        assert_eq!(Cartridge::get_lorom_offset(addr).unwrap(), 0);
 
         addr.addr = 0xFFFF;
-        assert_eq!(Rom::get_lorom_offset(addr).unwrap(), 0x8000 - 1);
+        assert_eq!(Cartridge::get_lorom_offset(addr).unwrap(), 0x8000 - 1);
 
         addr.bank = 0x81;
         addr.addr = 0x8000;
-        assert_eq!(Rom::get_lorom_offset(addr).unwrap(), 0x8000);
+        assert_eq!(Cartridge::get_lorom_offset(addr).unwrap(), 0x8000);
 
         addr.addr = 0xFFFF;
-        assert_eq!(Rom::get_lorom_offset(addr).unwrap(), 0x10000 - 1);
+        assert_eq!(Cartridge::get_lorom_offset(addr).unwrap(), 0x10000 - 1);
 
         addr.bank = 0xBF;
         assert_eq!(
-            Rom::get_lorom_offset(addr).unwrap(),
+            Cartridge::get_lorom_offset(addr).unwrap(),
             0x8000 * (0x3F + 1) - 1
         );
     }
@@ -374,19 +374,19 @@ mod tests {
         let mut mirror_addr = snes_addr!(0xC0:0x0);
 
         assert_eq!(
-            Rom::get_lorom_offset(addr).unwrap(),
-            Rom::get_lorom_offset(mirror_addr).unwrap()
+            Cartridge::get_lorom_offset(addr).unwrap(),
+            Cartridge::get_lorom_offset(mirror_addr).unwrap()
         );
-        assert_eq!(Rom::get_lorom_offset(addr).unwrap(), 0x8000 * (0x40));
+        assert_eq!(Cartridge::get_lorom_offset(addr).unwrap(), 0x8000 * (0x40));
 
         addr.addr = 0xFFFF;
         mirror_addr.addr = 0x7FFF;
         assert_eq!(
-            Rom::get_lorom_offset(addr).unwrap(),
-            Rom::get_lorom_offset(mirror_addr).unwrap()
+            Cartridge::get_lorom_offset(addr).unwrap(),
+            Cartridge::get_lorom_offset(mirror_addr).unwrap()
         );
         assert_eq!(
-            Rom::get_lorom_offset(addr).unwrap(),
+            Cartridge::get_lorom_offset(addr).unwrap(),
             0x8000 * (0x40 + 1) - 1
         );
 
@@ -395,19 +395,22 @@ mod tests {
         addr.bank = 0xFF;
         mirror_addr.bank = 0xFF;
         assert_eq!(
-            Rom::get_lorom_offset(addr).unwrap(),
-            Rom::get_lorom_offset(mirror_addr).unwrap()
+            Cartridge::get_lorom_offset(addr).unwrap(),
+            Cartridge::get_lorom_offset(mirror_addr).unwrap()
         );
-        assert_eq!(Rom::get_lorom_offset(addr).unwrap(), 0x8000 * (0x7D + 2));
+        assert_eq!(
+            Cartridge::get_lorom_offset(addr).unwrap(),
+            0x8000 * (0x7D + 2)
+        );
 
         addr.addr = 0xFFFF;
         mirror_addr.addr = 0x7FFF;
         assert_eq!(
-            Rom::get_lorom_offset(addr).unwrap(),
-            Rom::get_lorom_offset(mirror_addr).unwrap()
+            Cartridge::get_lorom_offset(addr).unwrap(),
+            Cartridge::get_lorom_offset(mirror_addr).unwrap()
         );
         assert_eq!(
-            Rom::get_lorom_offset(addr).unwrap(),
+            Cartridge::get_lorom_offset(addr).unwrap(),
             0x8000 * (0x7D + 3) - 1
         );
     }
@@ -415,19 +418,19 @@ mod tests {
     #[test]
     fn test_lorom_incorrect_address() {
         let addr = snes_addr!(0:0x4000);
-        assert_eq!(Rom::get_lorom_offset(addr), None);
+        assert_eq!(Cartridge::get_lorom_offset(addr), None);
     }
 
     #[test]
     fn test_lorom_incorrect_address2() {
         let addr = snes_addr!(0x80:0x4000);
-        assert_eq!(Rom::get_lorom_offset(addr), None);
+        assert_eq!(Cartridge::get_lorom_offset(addr), None);
     }
 
     #[test]
     fn test_lorom_incorrect_address3() {
         let addr = snes_addr!(0x7E:0x4000);
-        assert_eq!(Rom::get_lorom_offset(addr), None);
+        assert_eq!(Cartridge::get_lorom_offset(addr), None);
     }
 
     #[test]
@@ -436,29 +439,29 @@ mod tests {
         let mut mirror_addr = snes_addr!(0:0x8000);
 
         assert_eq!(
-            Rom::get_hirom_offset(addr).unwrap(),
-            Rom::get_hirom_offset(mirror_addr).unwrap()
+            Cartridge::get_hirom_offset(addr).unwrap(),
+            Cartridge::get_hirom_offset(mirror_addr).unwrap()
         );
-        assert_eq!(Rom::get_hirom_offset(addr).unwrap(), 0x8000);
+        assert_eq!(Cartridge::get_hirom_offset(addr).unwrap(), 0x8000);
 
         addr.addr = 0xFFFF;
         mirror_addr.addr = 0xFFFF;
         assert_eq!(
-            Rom::get_hirom_offset(addr).unwrap(),
-            Rom::get_hirom_offset(mirror_addr).unwrap()
+            Cartridge::get_hirom_offset(addr).unwrap(),
+            Cartridge::get_hirom_offset(mirror_addr).unwrap()
         );
-        assert_eq!(Rom::get_hirom_offset(addr).unwrap(), 0xFFFF);
+        assert_eq!(Cartridge::get_hirom_offset(addr).unwrap(), 0xFFFF);
 
         addr.addr = 0x8000;
         mirror_addr.addr = 0x8000;
         addr.bank = 0x7D;
         mirror_addr.bank = 0x3D;
         assert_eq!(
-            Rom::get_hirom_offset(addr).unwrap(),
-            Rom::get_hirom_offset(mirror_addr).unwrap()
+            Cartridge::get_hirom_offset(addr).unwrap(),
+            Cartridge::get_hirom_offset(mirror_addr).unwrap()
         );
         assert_eq!(
-            Rom::get_hirom_offset(addr).unwrap(),
+            Cartridge::get_hirom_offset(addr).unwrap(),
             0x10000 * (0x3D) + 0x8000
         );
 
@@ -467,11 +470,11 @@ mod tests {
         addr.bank = 0x7D;
         mirror_addr.bank = 0x3D;
         assert_eq!(
-            Rom::get_hirom_offset(addr).unwrap(),
-            Rom::get_hirom_offset(mirror_addr).unwrap()
+            Cartridge::get_hirom_offset(addr).unwrap(),
+            Cartridge::get_hirom_offset(mirror_addr).unwrap()
         );
         assert_eq!(
-            Rom::get_hirom_offset(addr).unwrap(),
+            Cartridge::get_hirom_offset(addr).unwrap(),
             0x10000 * (0x3D) + 0xFFFF
         );
 
@@ -480,11 +483,11 @@ mod tests {
         addr.bank = 0xFF;
         mirror_addr.bank = 0x3F;
         assert_eq!(
-            Rom::get_hirom_offset(addr).unwrap(),
-            Rom::get_hirom_offset(mirror_addr).unwrap()
+            Cartridge::get_hirom_offset(addr).unwrap(),
+            Cartridge::get_hirom_offset(mirror_addr).unwrap()
         );
         assert_eq!(
-            Rom::get_hirom_offset(addr).unwrap(),
+            Cartridge::get_hirom_offset(addr).unwrap(),
             0x10000 * (0x3F) + 0xFFFF
         );
     }
@@ -492,21 +495,21 @@ mod tests {
     #[test]
     fn test_hirom_offset_second_quarter() {
         let mut addr = snes_addr!(0x40:0x0000);
-        assert_eq!(Rom::get_hirom_offset(addr).unwrap(), 0);
+        assert_eq!(Cartridge::get_hirom_offset(addr).unwrap(), 0);
 
         addr.addr = 0xFFFF;
-        assert_eq!(Rom::get_hirom_offset(addr).unwrap(), 0xFFFF);
+        assert_eq!(Cartridge::get_hirom_offset(addr).unwrap(), 0xFFFF);
 
         addr.bank = 0x41;
         addr.addr = 0x0000;
-        assert_eq!(Rom::get_hirom_offset(addr).unwrap(), 0x10000);
+        assert_eq!(Cartridge::get_hirom_offset(addr).unwrap(), 0x10000);
 
         addr.addr = 0xFFFF;
-        assert_eq!(Rom::get_hirom_offset(addr).unwrap(), 0x10000 * 2 - 1);
+        assert_eq!(Cartridge::get_hirom_offset(addr).unwrap(), 0x10000 * 2 - 1);
 
         addr.bank = 0x7D;
         assert_eq!(
-            Rom::get_hirom_offset(addr).unwrap(),
+            Cartridge::get_hirom_offset(addr).unwrap(),
             0x10000 * (0x3D + 1) - 1
         );
     }
@@ -517,29 +520,29 @@ mod tests {
         let mut mirror_addr = snes_addr!(0x80:0x8000);
 
         assert_eq!(
-            Rom::get_hirom_offset(addr).unwrap(),
-            Rom::get_hirom_offset(mirror_addr).unwrap()
+            Cartridge::get_hirom_offset(addr).unwrap(),
+            Cartridge::get_hirom_offset(mirror_addr).unwrap()
         );
-        assert_eq!(Rom::get_hirom_offset(addr).unwrap(), 0x8000);
+        assert_eq!(Cartridge::get_hirom_offset(addr).unwrap(), 0x8000);
 
         addr.addr = 0xFFFF;
         mirror_addr.addr = 0xFFFF;
         assert_eq!(
-            Rom::get_hirom_offset(addr).unwrap(),
-            Rom::get_hirom_offset(mirror_addr).unwrap()
+            Cartridge::get_hirom_offset(addr).unwrap(),
+            Cartridge::get_hirom_offset(mirror_addr).unwrap()
         );
-        assert_eq!(Rom::get_hirom_offset(addr).unwrap(), 0xFFFF);
+        assert_eq!(Cartridge::get_hirom_offset(addr).unwrap(), 0xFFFF);
 
         addr.addr = 0x8000;
         mirror_addr.addr = 0x8000;
         addr.bank = 0xFF;
         mirror_addr.bank = 0xBF;
         assert_eq!(
-            Rom::get_hirom_offset(addr).unwrap(),
-            Rom::get_hirom_offset(mirror_addr).unwrap()
+            Cartridge::get_hirom_offset(addr).unwrap(),
+            Cartridge::get_hirom_offset(mirror_addr).unwrap()
         );
         assert_eq!(
-            Rom::get_hirom_offset(addr).unwrap(),
+            Cartridge::get_hirom_offset(addr).unwrap(),
             0x10000 * (0x3F) + 0x8000
         );
 
@@ -548,11 +551,11 @@ mod tests {
         addr.bank = 0xFF;
         mirror_addr.bank = 0xBF;
         assert_eq!(
-            Rom::get_hirom_offset(addr).unwrap(),
-            Rom::get_hirom_offset(mirror_addr).unwrap()
+            Cartridge::get_hirom_offset(addr).unwrap(),
+            Cartridge::get_hirom_offset(mirror_addr).unwrap()
         );
         assert_eq!(
-            Rom::get_hirom_offset(addr).unwrap(),
+            Cartridge::get_hirom_offset(addr).unwrap(),
             0x10000 * (0x3F) + 0xFFFF
         );
     }
@@ -560,19 +563,19 @@ mod tests {
     #[test]
     fn test_hirom_incorrect_address() {
         let addr = snes_addr!(0:0x4000);
-        assert_eq!(Rom::get_hirom_offset(addr), None);
+        assert_eq!(Cartridge::get_hirom_offset(addr), None);
     }
 
     #[test]
     fn test_hirom_incorrect_address2() {
         let addr = snes_addr!(0x80:0x4000);
-        assert_eq!(Rom::get_hirom_offset(addr), None);
+        assert_eq!(Cartridge::get_hirom_offset(addr), None);
     }
 
     #[test]
     fn test_hirom_incorrect_address3() {
         let addr = snes_addr!(0x7E:0x4000);
-        assert_eq!(Rom::get_hirom_offset(addr), None);
+        assert_eq!(Cartridge::get_hirom_offset(addr), None);
     }
 
     // --- ram_size_bytes -------------------------------------------------------
@@ -588,7 +591,7 @@ mod tests {
     fn test_ram_size_bytes_none() {
         let data = create_valid_lorom(0x10000);
         let (path, _dir) = create_temp_rom(&data);
-        let rom = Rom::load_from_file(path).unwrap();
+        let rom = Cartridge::load_from_file(path).unwrap();
 
         assert_eq!(rom.header.ram_size_bytes(), 0);
         assert!(!rom.sram.is_present());
@@ -632,7 +635,7 @@ mod tests {
     fn test_lorom_decode_without_sram_falls_through_to_rom() {
         let data = create_valid_lorom(0x10000);
         let (path, _dir) = create_temp_rom(&data);
-        let rom = Rom::load_from_file(path).unwrap();
+        let rom = Cartridge::load_from_file(path).unwrap();
 
         assert_eq!(
             rom.decode_lorom(snes_addr!(0x70:0x0000)),
@@ -643,32 +646,32 @@ mod tests {
     #[test]
     fn test_hirom_decode_sram_bank_selects_chunk() {
         assert_eq!(
-            Rom::decode_hirom(snes_addr!(0x20:0x6000)),
+            Cartridge::decode_hirom(snes_addr!(0x20:0x6000)),
             CartridgeTarget::Sram(0x20 << 13)
         );
         assert_eq!(
-            Rom::decode_hirom(snes_addr!(0x21:0x6000)),
+            Cartridge::decode_hirom(snes_addr!(0x21:0x6000)),
             CartridgeTarget::Sram(0x21 << 13)
         );
         // $A0-$BF folds back onto $20-$3F
         assert_eq!(
-            Rom::decode_hirom(snes_addr!(0xA0:0x6000)),
-            Rom::decode_hirom(snes_addr!(0x20:0x6000))
+            Cartridge::decode_hirom(snes_addr!(0xA0:0x6000)),
+            Cartridge::decode_hirom(snes_addr!(0x20:0x6000))
         );
     }
 
     #[test]
     fn test_hirom_decode_outside_sram_window() {
         assert_eq!(
-            Rom::decode_hirom(snes_addr!(0x1F:0x6000)),
+            Cartridge::decode_hirom(snes_addr!(0x1F:0x6000)),
             CartridgeTarget::Unmapped
         );
         assert_eq!(
-            Rom::decode_hirom(snes_addr!(0x20:0x5FFF)),
+            Cartridge::decode_hirom(snes_addr!(0x20:0x5FFF)),
             CartridgeTarget::Unmapped
         );
         assert_eq!(
-            Rom::decode_hirom(snes_addr!(0x20:0x8000)),
+            Cartridge::decode_hirom(snes_addr!(0x20:0x8000)),
             CartridgeTarget::Rom(0x20 * BANK_SIZE + 0x8000)
         );
     }
