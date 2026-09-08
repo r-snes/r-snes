@@ -1,26 +1,27 @@
 #[cfg(feature = "plugins")]
 mod rsnes_plugin;
 
-use bus::io::IrqMode;
-#[cfg(feature = "plugins")]
-use plugins::plugin::Plugin;
-use ppu::ppu::PpuEvent;
-use ppu::ppu::ScanlineKind;
-use std::ops::DerefMut;
-#[cfg(feature = "plugins")]
-use std::{cell::RefCell, rc::Rc};
-
 use apu::Apu;
 use bus::Bus;
+use bus::io::IrqMode;
+use bus::rom::header::RomHeader;
 use common::snes_address::SnesAddress;
 use cpu::cpu::CPU;
 use cpu::cpu::CycleResult;
 
 use bus::cartridge::header::RomHeader;
+#[cfg(feature = "plugins")]
+use plugins::plugin::Plugin;
+use ppu::constants::*;
 use ppu::ppu::PPU;
+use ppu::ppu::PpuEvent;
+use ppu::ppu::ScanlineKind;
 use std::error::Error;
+use std::ops::DerefMut;
 use std::path::Path;
 use std::path::PathBuf;
+#[cfg(feature = "plugins")]
+use std::{cell::RefCell, rc::Rc};
 
 use crate::dma::*;
 
@@ -50,6 +51,7 @@ pub struct RSnesCore {
     pub cpu_master_cycles_to_wait: u32,
     pub apu_cycle_debt: u64,
     pub dma: Dma,
+    pub nmi_line: bool,
     auto_joypad: AutoJoypad,
     pub joypad1: u16,
 }
@@ -114,6 +116,7 @@ impl RSnesCore {
             auto_joypad: AutoJoypad::Idle,
             joypad1: 0,
             dma: Dma::default(),
+            nmi_line: false,
         })
     }
 
@@ -122,6 +125,10 @@ impl RSnesCore {
     pub fn update(&mut self) {
         self.update_ppu_cycles();
         self.update_apu_cycles();
+
+        self.poll_hdma_start();
+        self.poll_nmi();
+        self.check_hv_irq();
 
         // DMA holds the bus while it is active, so the CPU does not run during that time.
         if !self.update_dma_cycles() {
@@ -232,9 +239,10 @@ impl RSnesCore {
                 0 => {
                     self.dma.dma_running = false;
                     self.dma.state = DmaState::Idle;
-                    // Sync back to a whole CPU clock since the pause
-                    // before the S-CPU resumes: 2-8 master cycles.
-                    self.dma.wait = 8 - (self.master_cycles % 8).max(2) as u32;
+
+                    // TODO: hardware waits 2-8 master cycles here to reach
+                    // a whole CPU clock since the pause. Needs the CPU
+                    // clock period (6/8/12 by MEMSEL and memory region) to compute.
                 }
                 // Channels run lowest bit first, one fully at a time.
                 mask => {
@@ -253,8 +261,8 @@ impl RSnesCore {
 
         let ch = &mut self.bus.io.dma_channels[progress.channel as usize];
 
-        // DAS is a live down-counter, so a starting value of 0 naturally
-        // yields 65 536 bytes: it wraps to 0xFFFF on the first decrement
+        // DAS is a live down-counter, so a starting value of 0 gives
+        // 65 536 bytes, it wraps to 0xFFFF on the first decrement
         // and only reaches 0 after a full lap.
         ch.das = ch.das.wrapping_sub(1);
 
@@ -308,11 +316,9 @@ impl RSnesCore {
         if self.dma.hdma_queue == 0 {
             self.dma.hdma_init = false;
 
-            // A preempted general-purpose transfer picks up exactly where
-            // it paused.
+            // A stopped DMA transfer picks up exactly where it paused.
             if self.dma.dma_running {
                 self.dma.state = DmaState::Dma;
-                self.dma.wait = DMA_RESUME_COST - 1;
             } else {
                 self.dma.state = DmaState::Idle;
             }
@@ -342,7 +348,7 @@ impl RSnesCore {
 
         if counter == 0 {
             state.finished = true;
-            self.dma.wait = HDMA_RELOAD_COST - 1;
+            self.dma.wait = HDMA_INIT_DIRECT_COST - 1;
             return;
         }
 
@@ -353,9 +359,9 @@ impl RSnesCore {
             let lo = self.hdma_read_table(channel);
             let hi = self.hdma_read_table(channel);
             self.bus.io.dma_channels[channel as usize].das = u16::from_le_bytes([lo, hi]);
-            HDMA_RELOAD_INDIRECT_COST
+            HDMA_INIT_INDIRECT_COST
         } else {
-            HDMA_RELOAD_COST
+            HDMA_INIT_DIRECT_COST
         };
 
         self.dma.wait = cost - 1;
@@ -378,7 +384,7 @@ impl RSnesCore {
             // the frame — it does not mean 256.
             if counter == 0 {
                 self.dma.channels[channel as usize].finished = true;
-                self.dma.wait = HDMA_RELOAD_COST - 1;
+                self.dma.wait = cost - 1;
                 return;
             }
 
@@ -390,9 +396,7 @@ impl RSnesCore {
                 let lo = self.hdma_read_table(channel);
                 let hi = self.hdma_read_table(channel);
                 self.bus.io.dma_channels[channel as usize].das = u16::from_le_bytes([lo, hi]);
-                cost += HDMA_RELOAD_INDIRECT_COST;
-            } else {
-                cost += HDMA_RELOAD_COST;
+                cost += HDMA_INDIRECT_LOAD_COST;
             }
         }
 
@@ -519,10 +523,6 @@ impl RSnesCore {
                 }
             }
         }
-
-        // Everything below is implied by "a new dot began", which every
-        // variant except `None` guarantees.
-        self.check_hv_irq();
     }
 
     /// Start of H-Blank (dot 274) on the current scanline.
@@ -531,12 +531,6 @@ impl RSnesCore {
 
         if let Some(y) = self.ppu.visible_line() {
             self.ppu_renderer.render_scanline(&self.ppu, y);
-        }
-
-        // HDMA runs in the H-Blank of scanlines 0 through the last
-        // visible one, never during V-Blank
-        if self.ppu.scanline < self.ppu.vblank_start_line() && self.bus.io.hdmaen != 0 {
-            self.dma.hdma_pending = true;
         }
     }
 
@@ -579,18 +573,53 @@ impl RSnesCore {
         }
     }
 
+    /// Check if an NMI should be triggered.
+    fn poll_nmi(&mut self) {
+        let line = self.bus.io.nmi_enabled() && self.bus.io.nmi_flag();
+        if line && !self.nmi_line {
+            self.nmi_pending = true;
+        }
+        self.nmi_line = line;
+    }
+
+    /// Check for the start of an HDMA pass
+    fn poll_hdma_start(&mut self) {
+        // HDMA transfers begin at dot 278 of every non-V-Blank scanline.
+        if self.ppu.h_cycles == HDMA_START_DOT as u32 * 4
+            && self.ppu.scanline < self.ppu.vblank_start_line()
+            && self.bus.io.hdmaen != 0
+        {
+            self.dma.hdma_pending = true;
+        }
+    }
+
     /// NMITIMEN bits 5-4 select the H/V timer mode.
     fn check_hv_irq(&mut self) {
-        let (h, v) = (self.ppu.dot(), self.ppu.scanline);
+        let v = self.ppu.scanline;
+        let h = self.bus.io.htime;
 
-        let hit = match self.bus.io.irq_mode() {
+        let target = match self.bus.io.irq_mode() {
             IrqMode::Disabled => return,
-            IrqMode::H => h == self.bus.io.htime,
-            IrqMode::V => v == self.bus.io.vtime && h == 0,
-            IrqMode::HV => v == self.bus.io.vtime && h == self.bus.io.htime,
+            IrqMode::H => IRQ_TRIGGER_OFFSET + h as u32 * 4,
+            IrqMode::V => {
+                if v != self.bus.io.vtime {
+                    return;
+                }
+                V_IRQ_TRIGGER_CYCLES
+            }
+            IrqMode::HV => {
+                if v != self.bus.io.vtime {
+                    return;
+                }
+                if h == 0 {
+                    V_IRQ_TRIGGER_CYCLES
+                } else {
+                    IRQ_TRIGGER_OFFSET + h as u32 * 4
+                }
+            }
         };
 
-        if hit {
+        if self.ppu.h_cycles == target {
             self.bus.io.set_timer_flag(true);
             self.cpu.irq();
         }

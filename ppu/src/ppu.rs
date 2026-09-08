@@ -342,8 +342,8 @@ impl PPU {
 
     /// Non-interlace odd frames shorten scanline 240 to 1360 cycles instead of 1364
     fn scanline_length(&self) -> u32 {
-        if self.odd_frame && self.scanline == 240 {
-            MASTER_CYCLES_PER_SCANLINE - 4
+        if self.odd_frame && self.scanline == SHORT_SCANLINE {
+            MASTER_CYCLES_SHORT_SCANLINE
         } else {
             MASTER_CYCLES_PER_SCANLINE
         }
