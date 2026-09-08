@@ -91,13 +91,13 @@ impl Rom {
     /// Returns the selected chip and the offset within it, or
     /// `CartridgeTarget::Unmapped` if no chip drives the data bus.
     fn decode_lorom(&self, addr: SnesAddress) -> CartridgeTarget {
-        if self.sram.is_present() {
-            if matches!(
+        if self.sram.is_present()
+            && matches!(
                 (addr.bank, addr.addr),
                 (0x70..=0x7D | 0xF0..=0xFF, 0x0000..=0x7FFF)
-            ) {
-                return CartridgeTarget::Sram(addr.addr as usize);
-            }
+            )
+        {
+            return CartridgeTarget::Sram(addr.addr as usize);
         }
 
         match Self::get_lorom_offset(addr) {
