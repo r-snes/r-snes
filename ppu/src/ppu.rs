@@ -55,7 +55,7 @@ impl PPU {
     }
 
     pub fn odd_frame(&self) -> bool {
-        self.frame % 2 != 0
+        !self.frame.is_multiple_of(2)
     }
 
     pub fn write(&mut self, addr: u16, value: u8) {
