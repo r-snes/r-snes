@@ -68,8 +68,8 @@ impl RSnesCore {
     pub fn rom_info(&self) -> RomInfo {
         RomInfo {
             path: self._rom_path.clone(),
-            file_size_kb: self.bus.rom.rom.len() / 1024,
-            header: self.bus.rom.header.clone(),
+            file_size_kb: self.bus.cart.rom.len() / 1024,
+            header: self.bus.cart.header.clone(),
         }
     }
 }
@@ -447,8 +447,9 @@ mod tests {
     use std::ops::Deref;
 
     use super::*;
-    use bus::cartridge::test_rom::*;
+    use bus::cartridge::{Cartridge, test_rom::*};
     use common::snes_addr;
+    use common::u16_split::U16Split;
     use cpu::registers::RegisterP;
     use duplicate::duplicate_item;
     use ppu::constants::*;
@@ -519,9 +520,10 @@ mod tests {
                 (0xFFEE, 1200_u16, &interrupt_handler(Self::IRQ_MARKER_ADDR)), // irq native
                 (0xFFFE, 1200_u16, &interrupt_handler(Self::IRQ_MARKER_ADDR)), // irq emu
             ] {
-                let int_vec_addr = Rom::get_lorom_offset(snes_addr!(0:interrupt_vec));
-                core.bus.rom.data[int_vec_addr] = *routine_addr.lo();
-                core.bus.rom.data[int_vec_addr + 1] = *routine_addr.hi();
+                let int_vec_addr =
+                    Cartridge::get_lorom_offset(snes_addr!(0:interrupt_vec)).unwrap();
+                core.bus.cart.rom[int_vec_addr] = *routine_addr.lo();
+                core.bus.cart.rom[int_vec_addr + 1] = *routine_addr.hi();
                 core.bus.wram.data
                     [routine_addr as usize..routine_addr as usize + interrupt_code.len()]
                     .copy_from_slice(interrupt_code);
@@ -740,15 +742,15 @@ mod tests {
         let mut rsnes = make_rsnes();
 
         let reset_addr = bus::cartridge::Cartridge::get_lorom_offset(snes_addr!(0:0xFFFC)).unwrap();
-        rsnes.bus.rom.rom[reset_addr] = 0x00;
-        rsnes.bus.rom.rom[reset_addr + 1] = 0x80;
+        rsnes.bus.cart.rom[reset_addr] = 0x00;
+        rsnes.bus.cart.rom[reset_addr + 1] = 0x80;
 
-        rsnes.bus.rom.rom[0] = 0xEA;
-        rsnes.bus.rom.rom[1] = 0xA9;
-        rsnes.bus.rom.rom[2] = 0x42;
-        rsnes.bus.rom.rom[3] = 0x8D;
-        rsnes.bus.rom.rom[4] = 0x34;
-        rsnes.bus.rom.rom[5] = 0x12;
+        rsnes.bus.cart.rom[0] = 0xEA;
+        rsnes.bus.cart.rom[1] = 0xA9;
+        rsnes.bus.cart.rom[2] = 0x42;
+        rsnes.bus.cart.rom[3] = 0x8D;
+        rsnes.bus.cart.rom[4] = 0x34;
+        rsnes.bus.cart.rom[5] = 0x12;
 
         rsnes.update();
         assert_eq!(rsnes.cpu_master_cycles_to_wait, 6);

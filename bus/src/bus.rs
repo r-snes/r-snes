@@ -10,14 +10,14 @@ use std::path::Path;
 
 pub struct Bus {
     pub wram: Wram,
-    pub rom: Cartridge,
+    pub cart: Cartridge,
     pub io: Io,
 }
 
 impl Bus {
     pub fn new<P: AsRef<Path>>(rom_path: P) -> Result<Self, Box<dyn Error>> {
         Ok(Self {
-            rom: Cartridge::load_from_file(rom_path)?,
+            cart: Cartridge::load_from_file(rom_path)?,
             wram: Wram::default(),
             io: Io::default(),
         })
@@ -26,8 +26,8 @@ impl Bus {
     duplicate! {
         [
             DUP_method DUP_parameters                            DUP_return_t DUP_method_param DUP_cart;
-            [read]     [&mut self, addr: SnesAddress]            [u8]         [addr]           [self.rom.read(addr).unwrap_or(self.io.open_bus)];
-            [write]    [&mut self, addr: SnesAddress, value: u8] [()]         [addr, value]    [self.rom.write(addr, value)];
+            [read]     [&mut self, addr: SnesAddress]            [u8]         [addr]           [self.cart.read(addr).unwrap_or(self.io.open_bus)];
+            [write]    [&mut self, addr: SnesAddress, value: u8] [()]         [addr, value]    [self.cart.write(addr, value)];
         ]
         pub fn DUP_method(DUP_parameters, ppu: &mut PPU, apu: &mut Apu) -> DUP_return_t {
             match addr.bank {
