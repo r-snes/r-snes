@@ -19,7 +19,7 @@ pub struct Io {
     ///
     /// # Reference
     /// [SNESdev Wiki - WMADD](https://snes.nesdev.org/wiki/MMIO_registers#WMADD)
-    pub wmadd: SnesAddress,
+    pub wmadd: WmAddress,
 
     /// **NMITIMEN** (`0x4200`, W) - Enables NMI on V-Blank, H/V IRQ, and
     /// joypad auto-read. Bit 7 = NMI, bits 5–4 = IRQ mode, bit 0 = auto-read.
@@ -178,6 +178,20 @@ pub struct Io {
     pub open_bus: u8,
 }
 
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+#[repr(u8)]
+pub enum WmAddBank {
+    #[default]
+    Bank7E = 0x7E,
+    Bank7F = 0x7F,
+}
+
+#[derive(Copy, Clone, Debug, Default)]
+pub struct WmAddress {
+    pub bank: WmAddBank,
+    pub addr: u16,
+}
+
 /// Register state for a single SNES DMA/HDMA channel.
 ///
 /// Each of the 8 channels occupies a 16-byte window at `0x43n0–0x43nF`.
@@ -287,10 +301,47 @@ impl Default for DMAChannel {
     }
 }
 
+impl From<u8> for WmAddBank {
+    fn from(value: u8) -> Self {
+        if value.is_multiple_of(2) {
+            Self::Bank7E
+        } else {
+            Self::Bank7F
+        }
+    }
+}
+
+impl WmAddBank {
+    pub fn flipped(self) -> Self {
+        match self {
+            Self::Bank7E => Self::Bank7F,
+            Self::Bank7F => Self::Bank7E,
+        }
+    }
+    pub fn flip(&mut self) {
+        *self = self.flipped();
+    }
+}
+
+impl WmAddress {
+    pub fn to_snes_addr(self) -> SnesAddress {
+        snes_addr!((self.bank as u8):self.addr)
+    }
+
+    pub fn inc(&mut self) {
+        let (addr, v) = self.addr.overflowing_add(1);
+
+        self.addr = addr;
+        if v {
+            self.bank.flip();
+        }
+    }
+}
+
 impl Default for Io {
     fn default() -> Self {
         Self {
-            wmadd: snes_addr!(0:0),
+            wmadd: Default::default(),
             nmitimen: 0,
             wrio: 0xFF,
 
@@ -475,24 +526,6 @@ impl Io {
         );
     }
 
-    /// Current WMADD value as an address in WRAM banks `0x7E–0x7F`.
-    fn wmadd_addr(&self) -> SnesAddress {
-        SnesAddress {
-            bank: 0x7E + self.wmadd.bank,
-            addr: self.wmadd.addr,
-        }
-    }
-
-    /// Advance WMADD by one byte, wrapping from `1:FFFF` back to `0:0000`.
-    fn advance_wmadd(&mut self) {
-        let (next, carry) = self.wmadd.addr.overflowing_add(1);
-
-        self.wmadd.addr = next;
-        if carry {
-            self.wmadd.bank ^= 1;
-        }
-    }
-
     fn read_cpu(&mut self, addr: SnesAddress, wram: &mut Wram, apu: &mut Apu) -> u8 {
         match addr.addr {
             // $2140-$2143 — APU communication ports (CPUIO0-3), mirrored
@@ -505,8 +538,8 @@ impl Io {
 
             // WMDATA - WRAM access port. Reads the byte at WMADD, then advances it.
             0x2180 => {
-                let value = wram.read(self.wmadd_addr());
-                self.advance_wmadd();
+                let value = wram.read(self.wmadd.to_snes_addr());
+                self.wmadd.inc();
                 value
             }
 
@@ -591,14 +624,14 @@ impl Io {
 
             // WMDATA - WRAM access port. Writes at WMADD, then advances it.
             0x2180 => {
-                wram.write(self.wmadd_addr(), value);
-                self.advance_wmadd();
+                wram.write(self.wmadd.to_snes_addr(), value);
+                self.wmadd.inc();
             }
 
             // WMADDL/M/H - 17-bit WRAM pointer. Only bit 0 of WMADDH is wired.
             0x2181 => *self.wmadd.addr.lo_mut() = value,
             0x2182 => *self.wmadd.addr.hi_mut() = value,
-            0x2183 => self.wmadd.bank = value & 1,
+            0x2183 => self.wmadd.bank = value.into(),
 
             // JOYOUT - manual controller reading not implemented
             #[cfg(not(tarpaulin_include))]
@@ -764,7 +797,7 @@ mod tests {
         );
 
         assert_eq!(io.wmadd.addr, 0x1234);
-        assert_eq!(io.wmadd.bank, 0x01);
+        assert_eq!(io.wmadd.bank, WmAddBank::Bank7F);
     }
 
     #[test]
@@ -772,10 +805,10 @@ mod tests {
         let (mut io, mut wram, mut ppu, mut apu) = init_all();
 
         io.write(snes_addr!(0:0x2183), 0xFE, &mut wram, &mut ppu, &mut apu);
-        assert_eq!(io.wmadd.bank, 0x00);
+        assert_eq!(io.wmadd.bank, WmAddBank::Bank7E);
 
         io.write(snes_addr!(0:0x2183), 0xFF, &mut wram, &mut ppu, &mut apu);
-        assert_eq!(io.wmadd.bank, 0x01);
+        assert_eq!(io.wmadd.bank, WmAddBank::Bank7F);
     }
 
     #[test]
@@ -913,7 +946,7 @@ mod tests {
 
         assert_eq!(wram.read(snes_addr!(0x7E:0xFFFF)), 0x11);
         assert_eq!(wram.read(snes_addr!(0x7F:0x0000)), 0x22);
-        assert_eq!(io.wmadd.bank, 0x01);
+        assert_eq!(io.wmadd.bank, WmAddBank::Bank7F);
         assert_eq!(io.wmadd.addr, 0x0001);
     }
 
@@ -933,7 +966,7 @@ mod tests {
 
         assert_eq!(wram.read(snes_addr!(0x7F:0xFFFF)), 0x11);
         assert_eq!(wram.read(snes_addr!(0x7E:0x0000)), 0x22);
-        assert_eq!(io.wmadd.bank, 0x00);
+        assert_eq!(io.wmadd.bank, WmAddBank::Bank7E);
         assert_eq!(io.wmadd.addr, 0x0001);
     }
 
