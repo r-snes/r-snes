@@ -142,7 +142,9 @@ pub(crate) use stp::*;
 mod stp {
     use crate::instrs::prelude::*;
 
-    pub(crate) fn stp_cyc1(_: &mut CPU) -> (CycleResult, InstrCycle) {
+    pub(crate) fn stp_cyc1(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
+        cpu.state = crate::cpu::CPUState::Stopped;
+
         // just return internal cycles indefinitely
         (Internal, InstrCycle(stp_cyc1))
     }
