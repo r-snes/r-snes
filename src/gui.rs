@@ -60,18 +60,18 @@ pub struct GuiFrameData<'a> {
 /// needs to know the hardware bit order.
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub enum SnesButton {
+    R = 4,
+    L,
     X,
-    Y,
     A,
-    B,
+    Right,
+    Left,
+    Down,
+    Up,
     Start,
     Select,
-    Up,
-    Down,
-    Left,
-    Right,
-    R,
-    L,
+    Y,
+    B,
 }
 
 impl SnesButton {
@@ -81,21 +81,7 @@ impl SnesButton {
     /// B, Y, Select, Start, Up, Down, Left, Right, A, X, L, R.
     /// The low 4 bits are unused on a standard controller.
     pub fn mask(self) -> u16 {
-        let bit = match self {
-            SnesButton::B => 15,
-            SnesButton::Y => 14,
-            SnesButton::Select => 13,
-            SnesButton::Start => 12,
-            SnesButton::Up => 11,
-            SnesButton::Down => 10,
-            SnesButton::Left => 9,
-            SnesButton::Right => 8,
-            SnesButton::A => 7,
-            SnesButton::X => 6,
-            SnesButton::L => 5,
-            SnesButton::R => 4,
-        };
-        1 << bit
+        1 << self as u16
     }
 }
 
