@@ -259,7 +259,7 @@ impl Gui {
         Some(match keycode {
             Keycode::Z => SnesButton::X,
             Keycode::Q => SnesButton::Y,
-            Keycode::E => SnesButton::A,
+            Keycode::D => SnesButton::A,
             Keycode::S => SnesButton::B,
             Keycode::Return => SnesButton::Start,
             Keycode::RShift => SnesButton::Select,
@@ -268,7 +268,7 @@ impl Gui {
             Keycode::Left => SnesButton::Left,
             Keycode::Right => SnesButton::Right,
             Keycode::A => SnesButton::L,
-            Keycode::R => SnesButton::R,
+            Keycode::E => SnesButton::R,
             _ => return None,
         })
     }
