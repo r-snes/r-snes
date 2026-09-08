@@ -239,8 +239,8 @@ impl Gui {
     /// isn't bound. This is the single place to change the key layout.
     ///
     /// Current layout:
-    ///   Arrows = D-pad, Z = X, Q = Y, E = A, S = B
-    ///   A = L, R = R, Return = Start, Right Shift = Select.
+    ///   Arrows = D-pad, Z = X, Q = Y, D = A, S = B
+    ///   A = L, E = R, Return = Start, Right Shift = Select.
     fn map_button(keycode: Keycode) -> Option<SnesButton> {
         Some(match keycode {
             Keycode::Z => SnesButton::X,
