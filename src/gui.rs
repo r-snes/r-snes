@@ -39,6 +39,8 @@ pub struct Gui {
 
     _controller_subsystem: sdl2::GameControllerSubsystem,
     controller: Option<GameController>,
+    /// Which stick directions are currently held past the deadzone.
+    stick_dirs: StickDirs,
 
     /// Whether Ctrl+P is allowed to open the plugin picker. Only the idle
     /// loop enables it, since injection needs a running emu (handled by the
@@ -90,6 +92,16 @@ impl SnesButton {
     }
 }
 
+/// Latched state of the left analog stick's four cardinal directions,
+/// so axis-motion events can be turned into press/release edges.
+#[derive(Default, Clone, Copy)]
+struct StickDirs {
+    up: bool,
+    down: bool,
+    left: bool,
+    right: bool,
+}
+
 #[derive(PartialEq, Eq, Debug)]
 pub enum RSnesEvent {
     /// Load a new ROM, showing a file picker (closes current game)
@@ -124,6 +136,7 @@ enum GuiAction {
 impl Gui {
     pub const FRAME_RATE: u16 = 60;
     pub const FRAME_DURATION: f64 = 1.0 / Self::FRAME_RATE as f64;
+    const STICK_DEADZONE: i16 = 13_000; // Deadzone for the analog stick, ~40% of the i16 range
 
     pub fn new() -> Result<Self, String> {
         let sdl_ctx = sdl2::init()?;
@@ -149,11 +162,12 @@ impl Gui {
         // queue always accepts our 32 kHz stereo i16 regardless.
         let audio_queue = audio_subsystem.open_queue::<i16, _>(None, &desired)?;
 
+        // Controller subsystem. `set_event_state(true)` is required for SDL  to actually push button/axis events
+        // into the pump, without it the pad opens fine but never emits anything.
         let controller_subsystem = sdl_ctx.game_controller()?;
         controller_subsystem.set_event_state(true);
         let controller = (0..controller_subsystem.num_joysticks().unwrap_or(0))
             .find_map(|i| controller_subsystem.open(i).ok());
-
         println!(
             "Controller: {} joystick(s) found, opened: {}",
             controller_subsystem.num_joysticks().unwrap_or(0),
@@ -169,6 +183,7 @@ impl Gui {
             state: GuiState::default(),
             _controller_subsystem: controller_subsystem,
             controller,
+            stick_dirs: StickDirs::default(),
             #[cfg(feature = "plugins")]
             plugin_loading_enabled: false,
         })
@@ -296,6 +311,61 @@ impl Gui {
             ControllerButton::DPadRight => SnesButton::Right,
             _ => return None,
         })
+    }
+
+    /// Turns a left-stick axis motion into button press/release edges.
+    /// The stick acts as a digital D-pad substitute: the X axis drives Left/Right,
+    /// the Y axis Up/Down (SDL's Y is positive-down). Axis motion arrives continuously,
+    // so this compares the new position against the latched `stick_dirs`
+    // and emits an event only when a direction crosses the deadzone, never on every motion sample.
+    fn map_stick_motion(&mut self, axis: sdl2::controller::Axis, value: i16) -> Vec<RSnesEvent> {
+        use sdl2::controller::Axis;
+
+        let dz = Self::STICK_DEADZONE;
+        let mut out = Vec::new();
+
+        match axis {
+            Axis::LeftX => {
+                Self::edge(
+                    &mut out,
+                    &mut self.stick_dirs.left,
+                    value < -dz,
+                    SnesButton::Left,
+                );
+                Self::edge(
+                    &mut out,
+                    &mut self.stick_dirs.right,
+                    value > dz,
+                    SnesButton::Right,
+                );
+            }
+            Axis::LeftY => {
+                Self::edge(
+                    &mut out,
+                    &mut self.stick_dirs.up,
+                    value < -dz,
+                    SnesButton::Up,
+                );
+                Self::edge(
+                    &mut out,
+                    &mut self.stick_dirs.down,
+                    value > dz,
+                    SnesButton::Down,
+                );
+            }
+            _ => {}
+        }
+        out
+    }
+
+    /// Emits a press or release edge when `now` differs from the latched `held` state, then updates `held`.
+    fn edge(out: &mut Vec<RSnesEvent>, held: &mut bool, now: bool, button: SnesButton) {
+        if now && !*held {
+            out.push(RSnesEvent::ButtonDown(button));
+        } else if !now && *held {
+            out.push(RSnesEvent::ButtonUp(button));
+        }
+        *held = now;
     }
 
     fn map_event(event: &SdlEvent) -> Option<RSnesEvent> {
@@ -428,6 +498,13 @@ impl Gui {
                     continue;
                 }
                 _ => {}
+            }
+
+            // Analog stick needs &mut self (latched edge state) and can emit several events at once,
+            // so it's handled here rather than in the stateless `map_event`.
+            if let SdlEvent::ControllerAxisMotion { axis, value, .. } = &event {
+                out.extend(self.map_stick_motion(*axis, *value));
+                continue;
             }
 
             // GUI actions take priority over emulator events. This is why
