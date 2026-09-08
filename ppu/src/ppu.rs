@@ -34,7 +34,6 @@ pub struct PPU {
     /// Master cycles elapsed inside the current scanline (0..1364).
     pub h_cycles: u32,
     pub frame: u64,
-    pub odd_frame: bool,
 }
 
 impl Default for PPU {
@@ -52,8 +51,11 @@ impl PPU {
             scanline: 0,
             h_cycles: 0,
             frame: 0,
-            odd_frame: false,
         }
+    }
+
+    pub fn odd_frame(&self) -> bool {
+        self.frame % 2 != 0
     }
 
     pub fn write(&mut self, addr: u16, value: u8) {
@@ -324,7 +326,7 @@ impl PPU {
 
     /// Non-interlace odd frames shorten scanline 240 to 1360 cycles.
     fn scanline_length(&self) -> u32 {
-        if self.odd_frame && self.scanline == 240 {
+        if self.odd_frame() && self.scanline == 240 {
             MASTER_CYCLES_PER_SCANLINE - 4
         } else {
             MASTER_CYCLES_PER_SCANLINE
@@ -359,7 +361,6 @@ impl PPU {
             let kind = if self.scanline >= SCANLINES_PER_FRAME {
                 self.scanline = 0;
                 self.frame += 1;
-                self.odd_frame = !self.odd_frame;
                 ScanlineKind::FrameStart
             } else if self.scanline == self.vblank_start_line() {
                 ScanlineKind::VBlankStart
@@ -412,7 +413,7 @@ mod tests {
         assert_eq!(ppu.h_cycles, 0);
         assert_eq!(ppu.dot(), 0);
         assert_eq!(ppu.frame, 0);
-        assert!(!ppu.odd_frame);
+        assert!(!ppu.odd_frame());
     }
 
     // ============================================================
@@ -967,11 +968,11 @@ mod tests {
         );
         assert_eq!(ppu.scanline, 0);
         assert_eq!(ppu.frame, 1);
-        assert!(ppu.odd_frame);
+        assert!(ppu.odd_frame());
 
         advance_to_scanline_start(&mut ppu, 0);
         assert_eq!(ppu.frame, 2);
-        assert!(!ppu.odd_frame);
+        assert!(!ppu.odd_frame());
     }
 
     /// Ordinary scanlines raise ScanlineKind::Normal, not a boundary kind.
@@ -991,10 +992,10 @@ mod tests {
         let full = SCANLINES_PER_FRAME as u32 * MASTER_CYCLES_PER_SCANLINE;
 
         assert_eq!(count_frame_cycles(&mut ppu), full);
-        assert!(ppu.odd_frame);
+        assert!(ppu.odd_frame());
 
         assert_eq!(count_frame_cycles(&mut ppu), full - 4);
-        assert!(!ppu.odd_frame);
+        assert!(!ppu.odd_frame());
 
         assert_eq!(count_frame_cycles(&mut ppu), full);
     }
