@@ -493,7 +493,7 @@ mod tests {
         )]
         pub fn DUP_name(&mut self) -> bool {
             // let the CPU complete an interrupt routine in case one was just requested
-            for _ in 0..100000 {
+            for _ in 0..5000 {
                 self.0.update_cpu_cycles();
             }
             self.0.bus.wram.read(DUP_addr) == 0x99
