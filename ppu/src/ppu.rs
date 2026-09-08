@@ -373,14 +373,14 @@ impl PPU {
         if self.h_cycles >= self.scanline_length() {
             self.h_cycles = 0;
             // Update STAT77 sprite flags for the current line.
-        let objsel = self.regs.objsel;
-        let oamadd = self.regs.oamadd;
-        let (_, time_over, range_over) =
-            self.oam
-                .eval_sprites_for_scanline(self.scanline as usize, objsel, oamadd);
-        self.oam.set_flags(time_over, range_over);
+            let objsel = self.regs.objsel;
+            let oamadd = self.regs.oamadd;
+            let (_, time_over, range_over) =
+                self.oam
+                    .eval_sprites_for_scanline(self.scanline as usize, objsel, oamadd);
+            self.oam.set_flags(time_over, range_over);
 
-        self.scanline += 1;
+            self.scanline += 1
 
             let kind = if self.scanline >= SCANLINES_PER_FRAME {
                 self.scanline = 0;
