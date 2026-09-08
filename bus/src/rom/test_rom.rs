@@ -5,7 +5,7 @@ use crate::constants::{
     HEADER_RAM_SIZE_OFFSET, HEADER_ROM_HARDWARE_OFFSET, HEADER_SIZE, HIROM_BANK_SIZE,
     HIROM_HEADER_OFFSET, LOROM_BANK_SIZE, LOROM_HEADER_OFFSET,
 };
-use crate::rom::Rom;
+use crate::rom::Cartridge;
 use crate::rom::header::mapping_mode::MappingMode;
 use common::u16_split::*;
 use std::io::Write;
@@ -84,14 +84,14 @@ pub fn with_sram(mut data: Vec<u8>, header_offset: usize, size_exp: u8) -> Vec<u
     data
 }
 
-pub fn lorom_with_sram(size_exp: u8) -> Rom {
+pub fn lorom_with_sram(size_exp: u8) -> Cartridge {
     let data = with_sram(create_valid_lorom(0x10000), LOROM_HEADER_OFFSET, size_exp);
     let (path, _dir) = create_temp_rom(&data);
-    Rom::load_from_file(path).unwrap()
+    Cartridge::load_from_file(path).unwrap()
 }
 
-pub fn hirom_with_sram(size_exp: u8) -> Rom {
+pub fn hirom_with_sram(size_exp: u8) -> Cartridge {
     let data = with_sram(create_valid_hirom(0x10000), HIROM_HEADER_OFFSET, size_exp);
     let (path, _dir) = create_temp_rom(&data);
-    Rom::load_from_file(path).unwrap()
+    Cartridge::load_from_file(path).unwrap()
 }

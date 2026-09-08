@@ -1,5 +1,5 @@
 use crate::io::Io;
-use crate::rom::Rom;
+use crate::rom::Cartridge;
 use crate::wram::Wram;
 use apu::Apu;
 use common::snes_address::SnesAddress;
@@ -10,14 +10,14 @@ use std::path::Path;
 
 pub struct Bus {
     pub wram: Wram,
-    pub rom: Rom,
+    pub rom: Cartridge,
     pub io: Io,
 }
 
 impl Bus {
     pub fn new<P: AsRef<Path>>(rom_path: P) -> Result<Self, Box<dyn Error>> {
         Ok(Self {
-            rom: Rom::load_from_file(rom_path)?,
+            rom: Cartridge::load_from_file(rom_path)?,
             wram: Wram::default(),
             io: Io::default(),
         })
