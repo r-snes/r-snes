@@ -380,7 +380,7 @@ impl PPU {
                     .eval_sprites_for_scanline(self.scanline as usize, objsel, oamadd);
             self.oam.set_flags(time_over, range_over);
 
-            self.scanline += 1
+            self.scanline += 1;
 
             let kind = if self.scanline >= SCANLINES_PER_FRAME {
                 self.scanline = 0;
