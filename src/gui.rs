@@ -10,6 +10,7 @@ use sdl2::audio::{AudioQueue, AudioSpecDesired};
 use sdl2::event::Event as SdlEvent;
 use sdl2::keyboard::Keycode;
 use sdl2::render::Texture;
+use sdl2::controller::{Button as ControllerButton, GameController};
 
 use ppu::constants::{SCREEN_HEIGHT, SCREEN_WIDTH};
 
@@ -35,6 +36,10 @@ pub struct Gui {
     framebuffer_texture: Option<Texture>,
     /// Persistent overlay state — survives across frames.
     state: GuiState,
+
+    _controller_subsystem: sdl2::GameControllerSubsystem,
+    controller: Option<GameController>,
+
     /// Whether Ctrl+P is allowed to open the plugin picker. Only the idle
     /// loop enables it, since injection needs a running emu (handled by the
     /// emu loop, not here).
@@ -144,6 +149,17 @@ impl Gui {
         // queue always accepts our 32 kHz stereo i16 regardless.
         let audio_queue = audio_subsystem.open_queue::<i16, _>(None, &desired)?;
 
+        let controller_subsystem = sdl_ctx.game_controller()?;
+        controller_subsystem.set_event_state(true);
+        let controller = (0..controller_subsystem.num_joysticks().unwrap_or(0))
+            .find_map(|i| controller_subsystem.open(i).ok());
+
+        println!(
+            "Controller: {} joystick(s) found, opened: {}",
+            controller_subsystem.num_joysticks().unwrap_or(0),
+            controller.as_ref().map_or("none", |c| c.name().leak())
+        );
+
         Ok(Gui {
             _sdl_ctx: sdl_ctx,
             egui_canvas,
@@ -151,6 +167,8 @@ impl Gui {
             audio_queue,
             framebuffer_texture: None,
             state: GuiState::default(),
+            _controller_subsystem: controller_subsystem,
+            controller,
             #[cfg(feature = "plugins")]
             plugin_loading_enabled: false,
         })
@@ -259,6 +277,27 @@ impl Gui {
         })
     }
 
+    /// Maps an Xbox-style controller button to a SNES button. Positional
+    /// mapping: Xbox A = SNES B, Xbox B = SNES A, Xbox X = SNES Y, Xbox Y = SNES X,
+    /// and the rest are identicals.
+    fn map_controller_button(button: ControllerButton) -> Option<SnesButton> {
+        Some(match button {
+            ControllerButton::A => SnesButton::B,
+            ControllerButton::B => SnesButton::A,
+            ControllerButton::X => SnesButton::Y,
+            ControllerButton::Y => SnesButton::X,
+            ControllerButton::LeftShoulder => SnesButton::L,
+            ControllerButton::RightShoulder => SnesButton::R,
+            ControllerButton::Start => SnesButton::Start,
+            ControllerButton::Back => SnesButton::Select,
+            ControllerButton::DPadUp => SnesButton::Up,
+            ControllerButton::DPadDown => SnesButton::Down,
+            ControllerButton::DPadLeft => SnesButton::Left,
+            ControllerButton::DPadRight => SnesButton::Right,
+            _ => return None,
+        })
+    }
+
     fn map_event(event: &SdlEvent) -> Option<RSnesEvent> {
         use sdl2::keyboard::Mod;
 
@@ -298,6 +337,13 @@ impl Gui {
                 .intersects(Mod::LCTRLMOD | Mod::RCTRLMOD | Mod::LALTMOD | Mod::RALTMOD) =>
             {
                 return Some(RSnesEvent::RunPluginDefault);
+            }
+
+            SdlEvent::ControllerButtonDown { button, .. } => {
+                return Self::map_controller_button(*button).map(RSnesEvent::ButtonDown)
+            }
+            SdlEvent::ControllerButtonUp { button, .. } => {
+                return Self::map_controller_button(*button).map(RSnesEvent::ButtonUp)
             }
 
             _ => {}
@@ -360,6 +406,23 @@ impl Gui {
         for event in pending {
             if self.egui_canvas.on_event(&event).consumed {
                 continue;
+            }
+
+            match &event {
+                SdlEvent::ControllerDeviceAdded { which, .. } => {
+                    println!("Controller added: index {which}");
+                    if self.controller.is_none() {
+                        self.controller = self._controller_subsystem.open(*which).ok();
+                    }
+                    continue;
+                }
+                SdlEvent::ControllerDeviceRemoved { which, .. } => {
+                    if self.controller.as_ref().is_some_and(|c| c.instance_id() == *which) {
+                        self.controller = None;
+                    }
+                    continue;
+                }
+                _ => {}
             }
 
             // GUI actions take priority over emulator events. This is why
