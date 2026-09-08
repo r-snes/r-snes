@@ -7,18 +7,15 @@ pub const BYTE_COST: u32 = 8;
 pub const DMA_START_COST: u32 = 8;
 /// Cost when a DMA channel begins, paid once per channel.
 pub const DMA_CHANNEL_COST: u32 = 8;
-/// Cost of resuming a DMA that HDMA preempted.
-pub const DMA_RESUME_COST: u32 = 8;
 /// Per-scanline cost when any HDMA channel is enabled.
 pub const HDMA_LINE_COST: u32 = 18;
 /// Per-channel cost when a channel does anything on a line.
 pub const HDMA_CHANNEL_COST: u32 = 8;
-/// Extra cost when a channel loads a new table entry.
-pub const HDMA_RELOAD_COST: u32 = 16;
-/// As above, for indirect channels (two more table bytes).
-pub const HDMA_RELOAD_INDIRECT_COST: u32 = 24;
+/// Extra cost, only when a new indirect address must be loaded.
 pub const HDMA_INDIRECT_LOAD_COST: u32 = 16;
+/// Frame-start init, per direct channel.
 pub const HDMA_INIT_DIRECT_COST: u32 = 8;
+/// Frame-start init, per indirect channel.
 pub const HDMA_INIT_INDIRECT_COST: u32 = 24;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
