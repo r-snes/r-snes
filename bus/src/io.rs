@@ -1,3 +1,4 @@
+use crate::wram::Wram;
 use apu::Apu;
 use common::{snes_addr, snes_address::SnesAddress, u16_split::U16Split};
 use ppu::ppu::PPU;
@@ -12,6 +13,14 @@ use ppu::ppu::PPU;
 /// # Reference
 /// [SNESdev Wiki - MMIO registers](https://snes.nesdev.org/wiki/MMIO_registers)
 pub struct Io {
+    /// **WMADDL/M/H** (`0x2181–0x2183`, W) - 17-bit WRAM address used by
+    /// **WMDATA** (`0x2180`, R/W) when reading/writing WRAM through it.
+    /// We use SnesAddress to represent the 17-bit address, but the bank is always 0 or 1.
+    ///
+    /// # Reference
+    /// [SNESdev Wiki - WMADD](https://snes.nesdev.org/wiki/MMIO_registers#WMADD)
+    pub wmadd: SnesAddress,
+
     /// **NMITIMEN** (`0x4200`, W) - Enables NMI on V-Blank, H/V IRQ, and
     /// joypad auto-read. Bit 7 = NMI, bits 5–4 = IRQ mode, bit 0 = auto-read.
     ///
@@ -281,6 +290,7 @@ impl Default for DMAChannel {
 impl Default for Io {
     fn default() -> Self {
         Self {
+            wmadd: snes_addr!(0:0),
             nmitimen: 0,
             wrio: 0xFF,
 
@@ -465,7 +475,25 @@ impl Io {
         );
     }
 
-    fn read_cpu(&mut self, addr: SnesAddress, apu: &mut Apu) -> u8 {
+    /// Current WMADD value as an address in WRAM banks `0x7E–0x7F`.
+    fn wmadd_addr(&self) -> SnesAddress {
+        SnesAddress {
+            bank: 0x7E + self.wmadd.bank,
+            addr: self.wmadd.addr,
+        }
+    }
+
+    /// Advance WMADD by one byte, wrapping from `1:FFFF` back to `0:0000`.
+    fn advance_wmadd(&mut self) {
+        let (next, carry) = self.wmadd.addr.overflowing_add(1);
+
+        self.wmadd.addr = next;
+        if carry {
+            self.wmadd.bank ^= 1;
+        }
+    }
+
+    fn read_cpu(&mut self, addr: SnesAddress, wram: &mut Wram, apu: &mut Apu) -> u8 {
         match addr.addr {
             // $2140-$2143 — APU communication ports (CPUIO0-3), mirrored
             // every 4 bytes up to $217F. The main CPU reads what the
@@ -475,9 +503,12 @@ impl Io {
                 apu.memory.cpu_port_read(port)
             }
 
-            // S-WRAM Data Registers (Expansion port not implemented yet)
-            #[cfg(not(tarpaulin_include))]
-            0x2180 => todo!("0x2180-0x2183 : Implement Rom S-WRAM reads"),
+            // WMDATA - WRAM access port. Reads the byte at WMADD, then advances it.
+            0x2180 => {
+                let value = wram.read(self.wmadd_addr());
+                self.advance_wmadd();
+                value
+            }
 
             // JOYSER0/JOYSER1 - manual controller reading not implemented
             #[cfg(not(tarpaulin_include))]
@@ -548,7 +579,7 @@ impl Io {
         }
     }
 
-    fn write_cpu(&mut self, value: u8, addr: SnesAddress, apu: &mut Apu) {
+    fn write_cpu(&mut self, value: u8, addr: SnesAddress, wram: &mut Wram, apu: &mut Apu) {
         match addr.addr {
             // $2140-$2143 — APU communication ports (CPUIO0-3), mirrored
             // every 4 bytes up to $217F. Main CPU writes land in port_in,
@@ -558,9 +589,16 @@ impl Io {
                 apu.memory.cpu_port_write(port, value);
             }
 
-            // S-WRAM Data Registers (Expansion port not implemented yet)
-            #[cfg(not(tarpaulin_include))]
-            0x2180..=0x2183 => todo!("0x2180-0x2183 : Implement Rom S-WRAM writes"),
+            // WMDATA - WRAM access port. Writes at WMADD, then advances it.
+            0x2180 => {
+                wram.write(self.wmadd_addr(), value);
+                self.advance_wmadd();
+            }
+
+            // WMADDL/M/H - 17-bit WRAM pointer. Only bit 0 of WMADDH is wired.
+            0x2181 => *self.wmadd.addr.lo_mut() = value,
+            0x2182 => *self.wmadd.addr.hi_mut() = value,
+            0x2183 => self.wmadd.bank = value & 1,
 
             // JOYOUT - manual controller reading not implemented
             #[cfg(not(tarpaulin_include))]
@@ -648,12 +686,12 @@ impl Io {
     ///
     /// # Panics
     /// Panics if the address does not map to a valid I/O memory location.
-    pub fn read(&mut self, addr: SnesAddress, ppu: &mut PPU, apu: &mut Apu) -> u8 {
+    pub fn read(&mut self, addr: SnesAddress, wram: &mut Wram, ppu: &mut PPU, apu: &mut Apu) -> u8 {
         self.open_bus = match addr.bank {
             0x00..=0x3F | 0x80..=0xBF => match addr.addr {
                 0x2000..0x2100 => self.open_bus,
                 0x2100..0x2140 => ppu.read(addr.addr),
-                0x2140..0x4380 => self.read_cpu(addr, apu),
+                0x2140..0x4380 => self.read_cpu(addr, wram, apu),
                 0x4380..0x6000 => self.open_bus,
 
                 _ => Self::panic_invalid_addr(addr),
@@ -669,13 +707,20 @@ impl Io {
     ///
     /// # Panics
     /// Panics if the address does not map to a valid I/O memory location.
-    pub fn write(&mut self, addr: SnesAddress, value: u8, ppu: &mut PPU, apu: &mut Apu) {
+    pub fn write(
+        &mut self,
+        addr: SnesAddress,
+        value: u8,
+        wram: &mut Wram,
+        ppu: &mut PPU,
+        apu: &mut Apu,
+    ) {
         self.open_bus = value;
         match addr.bank {
             0x00..=0x3F | 0x80..=0xBF => match addr.addr {
                 0x2000..0x2100 => {}
                 0x2100..0x2140 => ppu.write(addr.addr, value),
-                0x2140..0x4380 => self.write_cpu(value, addr, apu),
+                0x2140..0x4380 => self.write_cpu(value, addr, wram, apu),
                 0x4380..0x6000 => {}
 
                 _ => Self::panic_invalid_addr(addr),
