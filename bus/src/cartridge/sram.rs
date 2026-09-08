@@ -15,7 +15,7 @@ impl Sram {
         let size = header.ram_size_bytes();
 
         Self {
-            // Real S-RAM chips default is undefined but OxFF should be fine.
+            // Real S-RAM chips default is undefined but 0xFF should be fine.
             data: vec![0xFF; size],
             mask: size.saturating_sub(1),
         }
@@ -25,7 +25,7 @@ impl Sram {
         !self.data.is_empty()
     }
 
-    /// Reads a byte, `None` if the cartridge has no save RAM.
+    /// Reads a byte, `None` if the cartridge has no S-RAM.
     ///
     /// `linear` is the address on the chip's side of the board; masking here
     /// reproduces the mirroring caused by the chip's unconnected address lines.
