@@ -52,6 +52,40 @@ pub enum Coprocessor {
     Custom,
 }
 
+impl HardwareLayout {
+    /// Returns true if this cartridge has RAM
+    pub fn has_ram(&self) -> bool {
+        matches!(
+            self,
+            HardwareLayout::RomRam
+                | HardwareLayout::RomRamBattery
+                | HardwareLayout::RomCoprocessorRam
+                | HardwareLayout::RomCoprocessorRamBattery
+        )
+    }
+
+    /// Returns true if this cartridge has a battery
+    pub fn has_battery(&self) -> bool {
+        matches!(
+            self,
+            HardwareLayout::RomRamBattery
+                | HardwareLayout::RomCoprocessorRamBattery
+                | HardwareLayout::RomCoprocessorBattery
+        )
+    }
+
+    /// Returns true if this cartridge contains a coprocessor
+    pub fn has_coprocessor(&self) -> bool {
+        matches!(
+            self,
+            HardwareLayout::RomCoprocessor
+                | HardwareLayout::RomCoprocessorRam
+                | HardwareLayout::RomCoprocessorRamBattery
+                | HardwareLayout::RomCoprocessorBattery
+        )
+    }
+}
+
 impl CartridgeHardware {
     /// Creates a `CartridgeHardware` value from a byte extracted from the ROM header.
     ///
@@ -72,13 +106,7 @@ impl CartridgeHardware {
             _ => panic!("ERROR: Could not identify hardware of ROM"),
         };
 
-        let coprocessor = if matches!(
-            layout,
-            HardwareLayout::RomCoprocessor
-                | HardwareLayout::RomCoprocessorRam
-                | HardwareLayout::RomCoprocessorRamBattery
-                | HardwareLayout::RomCoprocessorBattery
-        ) {
+        let coprocessor = if layout.has_coprocessor() {
             match (byte & 0xF0) >> 4 {
                 0x0 => Some(Coprocessor::DSP(1)),
                 0x1 => Some(Coprocessor::GSU),
@@ -102,34 +130,17 @@ impl CartridgeHardware {
 
     /// Returns true if this cartridge has RAM
     pub fn has_ram(&self) -> bool {
-        matches!(
-            self.layout,
-            HardwareLayout::RomRam
-                | HardwareLayout::RomRamBattery
-                | HardwareLayout::RomCoprocessorRam
-                | HardwareLayout::RomCoprocessorRamBattery
-        )
+        self.layout.has_ram()
     }
 
     /// Returns true if this cartridge has a battery
     pub fn has_battery(&self) -> bool {
-        matches!(
-            self.layout,
-            HardwareLayout::RomRamBattery
-                | HardwareLayout::RomCoprocessorRamBattery
-                | HardwareLayout::RomCoprocessorBattery
-        )
+        self.layout.has_battery()
     }
 
     /// Returns true if this cartridge contains a coprocessor
     pub fn has_coprocessor(&self) -> bool {
-        matches!(
-            self.layout,
-            HardwareLayout::RomCoprocessor
-                | HardwareLayout::RomCoprocessorRam
-                | HardwareLayout::RomCoprocessorRamBattery
-                | HardwareLayout::RomCoprocessorBattery
-        )
+        self.layout.has_coprocessor()
     }
 }
 
