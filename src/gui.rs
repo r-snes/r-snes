@@ -316,8 +316,8 @@ impl Gui {
     /// Turns a left-stick axis motion into button press/release edges.
     /// The stick acts as a digital D-pad substitute: the X axis drives Left/Right,
     /// the Y axis Up/Down (SDL's Y is positive-down). Axis motion arrives continuously,
-    // so this compares the new position against the latched `stick_dirs`
-    // and emits an event only when a direction crosses the deadzone, never on every motion sample.
+    /// so this compares the new position against the latched `stick_dirs`
+    /// and emits an event only when a direction crosses the deadzone, never on every motion sample.
     fn map_stick_motion(&mut self, axis: sdl2::controller::Axis, value: i16) -> Vec<RSnesEvent> {
         use sdl2::controller::Axis;
 
