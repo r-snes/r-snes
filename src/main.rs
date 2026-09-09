@@ -249,7 +249,7 @@ fn gui_loop(
                             plugin = new_plugin;
                         }
                         ev
-                    },
+                    }
                     _ => idle_exit,
                 }
             }
@@ -297,14 +297,16 @@ struct Cli {
 fn main() -> Result<(), String> {
     let cli = cfg_select! {
         feature = "cli" => Cli::parse(),
-        _ => {{
-            // args() always contains at least the program name, so only
-            // warn when the user actually passed extra arguments
-            if std::env::args().len() > 1 {
-                eprintln!("CLI feature disabled at compile time, CLI arguments are ignored");
+        _ => {
+            {
+                // args() always contains at least the program name, so only
+                // warn when the user actually passed extra arguments
+                if std::env::args().len() > 1 {
+                    eprintln!("CLI feature disabled at compile time, CLI arguments are ignored");
+                }
+                Cli::default()
             }
-            Cli::default()
-        }}
+        }
     };
 
     let emu = match cli.rom {
@@ -315,8 +317,9 @@ fn main() -> Result<(), String> {
     cfg_select! {
         feature = "plugins" => gui_loop(
             emu,
-            cli.load_plugin_noconfirm.map(|p| Plugin::load_from_file(&p).unwrap())
+            cli.load_plugin_noconfirm
+                .map(|p| Plugin::load_from_file(&p).unwrap()),
         ),
-        _ => gui_loop(emu)
+        _ => gui_loop(emu),
     }
 }
