@@ -637,7 +637,15 @@ mod test {
 
         let mut run_lua = |f| {
             Plugin::run_lua::<_, ()>(&mut plugin.lua, f).unwrap();
+            // we have to wait until a new frame is
+            // rendered for the autoread to go through
+            for _ in 0..500000 {
+                core.borrow_mut().update();
+            }
         };
+
+        // enable joypad autoread
+        core.borrow_mut().bus.io.nmitimen |= 1;
 
         core.borrow_mut().bus.io.joy1 = 0;
         assert!(core.borrow().bus.io.joy1 & (1 << 7) == 0);
