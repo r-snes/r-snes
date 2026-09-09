@@ -834,7 +834,10 @@ mod tests {
         plugin.run_on_real_interval(10.0).unwrap();
 
         plugin.lua.enter(|ctx| {
-            assert!(matches!(ctx.get_global_value("emu_count"), Value::Integer(1)));
+            assert!(matches!(
+                ctx.get_global_value("emu_count"),
+                Value::Integer(1)
+            ));
             assert!(matches!(
                 ctx.get_global_value("real_count"),
                 Value::Integer(2)

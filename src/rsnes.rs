@@ -485,7 +485,9 @@ impl RSnesEmu {
                     .expect("checked is_some above")
                     .interval_seconds,
             );
-            let next = *plugin.next_real_interval_instant.get_or_insert(now + interval);
+            let next = *plugin
+                .next_real_interval_instant
+                .get_or_insert(now + interval);
 
             if now >= next {
                 plugin.next_real_interval_instant = Some(next + interval);
