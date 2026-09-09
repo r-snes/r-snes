@@ -163,8 +163,7 @@ impl RSnesCore {
                     Callback::from_fn(ctx.mutation(), move |_, _, _| {
                         let mut emu = clone.borrow_mut();
 
-                        emu.bus.io.hvbjoy = 0;
-                        emu.bus.io.joy1 |= 1 << $bit;
+                        emu.joypad1 |= 1 << $bit;
                         Ok(piccolo::CallbackReturn::Return)
                     }),
                 );
@@ -176,8 +175,7 @@ impl RSnesCore {
                     Callback::from_fn(ctx.mutation(), move |_, _, _| {
                         let mut emu = clone.borrow_mut();
 
-                        emu.bus.io.hvbjoy = 0;
-                        emu.bus.io.joy1 &= !(1 << $bit);
+                        emu.joypad1 &= !(1 << $bit);
                         Ok(piccolo::CallbackReturn::Return)
                     }),
                 );
