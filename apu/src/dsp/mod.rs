@@ -31,6 +31,13 @@ pub struct Dsp {
 
     /// $1C MVOLR — master right volume, signed (-128..+127).
     master_vol_right: i8,
+
+    /// $6C FLG — global DSP flags:
+    ///   bit 7: soft RESET
+    ///   bit 6: MUTE
+    ///   bit 5: disable echo writes (echo isn't implemented)
+    ///   bits 4-0: noise clock (noise isn't implemented)
+    flg: u8,
 }
 
 impl Default for Dsp {
@@ -48,6 +55,7 @@ impl Dsp {
             // Hardware resets master volume to 0; game code sets it during boot.
             master_vol_left: 0,
             master_vol_right: 0,
+            flg: 0,
         }
     }
 
@@ -133,11 +141,14 @@ impl Dsp {
 
             // ---- Global registers ----
             _ => match idx {
-                // $4C: KON — key on, one bit per voice (bit 0 = voice 0)
+                // $4C: KON — key on, one bit per voice (bit 0 = voice 0).
+                // Ignored while FLG's RESET bit is set
                 0x4C => {
-                    for v in 0..8usize {
-                        if value & (1 << v) != 0 {
-                            self.key_on_voice(v);
+                    if self.flg & 0x80 == 0 {
+                        for v in 0..8usize {
+                            if value & (1 << v) != 0 {
+                                self.key_on_voice(v);
+                            }
                         }
                     }
                 }
@@ -160,6 +171,20 @@ impl Dsp {
 
                 // $5D: DIR — sample directory base page
                 0x5D => self.dir_base = value,
+
+                // $6C: FLG — noise clock / echo-write-disable / mute / reset.
+                0x6C => {
+                    self.flg = value;
+                    if value & 0x80 != 0 {
+                        // RESET: hardware silences every voice immediately
+                        self.registers[0x7C] = 0;
+                        for voice in self.voices.iter_mut() {
+                            voice.key_on = false;
+                            voice.adsr.envelope_phase = EnvelopePhase::Off;
+                            voice.adsr.envelope_level = 0;
+                        }
+                    }
+                }
 
                 // All other registers (echo, FIR, noise, etc.) not yet implemented
                 _ => {}
@@ -231,6 +256,13 @@ impl Dsp {
     /// Volumes are signed i8; samples and envelope are 16-bit.
     /// The accumulator is i32 to prevent overflow during summation.
     pub fn render_audio_single(&self) -> (i16, i16) {
+        // MUTE (bit6) and RESET (bit7, which forces mute too) silence the
+        // final output stage only, voices keep decoding/enveloping
+        // underneath
+        if self.flg & 0xC0 != 0 {
+            return (0, 0);
+        }
+
         let mut left: i32 = 0;
         let mut right: i32 = 0;
 
@@ -260,5 +292,75 @@ impl Dsp {
             left.clamp(i16::MIN as i32, i16::MAX as i32) as i16,
             right.clamp(i16::MIN as i32, i16::MAX as i32) as i16,
         )
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Give voice 0 a directly-audible state (no BRR/RAM needed —
+    /// render_audio_single only reads current_sample/envelope/volumes).
+    fn make_audible_voice() -> Voice {
+        Voice {
+            left_vol: 100,
+            right_vol: 100,
+            current_sample: 1000,
+            adsr: Adsr {
+                envelope_phase: EnvelopePhase::Sustain,
+                envelope_level: 0x7FF,
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn reset_silences_voices_clears_endx_and_blocks_kon() {
+        let mut dsp = Dsp::new();
+        dsp.voices[0] = make_audible_voice();
+        dsp.voices[0].key_on = true;
+        dsp.write_reg(0x7C, 0xFF); // pretend ENDX already has bits set
+
+        // Assert RESET (FLG bit 7).
+        dsp.write_reg(0x6C, 0x80);
+
+        assert!(!dsp.voices[0].key_on, "RESET must silence key-on voices");
+        assert_eq!(
+            dsp.voices[0].adsr.envelope_phase,
+            EnvelopePhase::Off,
+            "RESET must force the envelope off immediately, not fade it"
+        );
+        assert_eq!(dsp.read_reg(0x7C), 0, "RESET must clear ENDX");
+
+        // KON while still in reset must be ignored.
+        dsp.write_reg(0x4C, 0x01);
+        assert!(!dsp.voices[0].key_on, "KON must be ignored while RESET is set");
+
+        // Clearing RESET lets KON work again.
+        dsp.write_reg(0x6C, 0x00);
+        dsp.write_reg(0x4C, 0x01);
+        assert!(dsp.voices[0].key_on, "KON must work again once RESET clears");
+    }
+
+    #[test]
+    fn mute_silences_output_without_touching_voice_state() {
+        let mut dsp = Dsp::new();
+        dsp.voices[0] = make_audible_voice();
+        dsp.write_reg(0x0C, 100); // MVOLL
+        dsp.write_reg(0x1C, 100); // MVOLR
+
+        let (l, r) = dsp.render_audio_single();
+        assert!(l != 0 || r != 0, "sanity check: voice must be audible before mute");
+
+        dsp.write_reg(0x6C, 0x40); // MUTE only, not RESET
+
+        assert_eq!(dsp.render_audio_single(), (0, 0), "MUTE must force output to silence");
+        assert_eq!(
+            dsp.voices[0].adsr.envelope_phase,
+            EnvelopePhase::Sustain,
+            "MUTE must not touch voice/envelope state — only the final output stage"
+        );
     }
 }
