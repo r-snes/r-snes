@@ -1,64 +1,52 @@
 use crate::constants::*;
 use crate::ppu::PPU;
-use crate::rendering::renderer::{Renderer, Z_BG1_HIGH, Z_BG1_LOW};
+use crate::rendering::renderer::{
+    BgParams, Renderer, Z_BG1_HIGH, Z_BG1_LOW, Z_BG2_HIGH, Z_BG2_LOW, Z_BG3_HIGH, Z_BG3_LOW,
+    Z_BG3_PRIO,
+};
 use crate::vram::RawVRAM;
 
 impl Renderer {
     pub fn render_scanline_mode1(&mut self, ppu: &PPU, y: usize) {
-        // VRAM word addresses
-        let tilemap_base = ppu.regs.bg1_tilemap_addr(); // tilemap
-        let tiledata_base = ppu.regs.bg1_tiledata_addr(); // CHR data
+        // Mode 1: BG1/BG2 4bpp, BG3 2bpp. No per-layer palette offset.
+        // BGMODE bit3 lifts BG3 high-priority tiles above every other layer.
+        let bg3_high = if ppu.regs.bgmode & 0x08 != 0 {
+            Z_BG3_PRIO
+        } else {
+            Z_BG3_HIGH
+        };
 
-        // BG1 scroll registers
-        let scroll_x = ppu.regs.bg1hofs as usize;
-        let scroll_y = ppu.regs.bg1vofs as usize;
+        // (bg_index, bpp, z_low, z_high)
+        let layers = [
+            (0usize, 4u8, Z_BG1_LOW, Z_BG1_HIGH),
+            (1, 4, Z_BG2_LOW, Z_BG2_HIGH),
+            (2, 2, Z_BG3_LOW, bg3_high),
+        ];
 
-        for x in 0..SCREEN_WIDTH {
-            // ============================================================
-            // Screen pixel -> tile coordinates
-            // ============================================================
-            let px = (x + scroll_x) & 0xFF;
-            let py = (y + scroll_y) & 0xFF;
-
-            let tile_col = px >> 3;
-            let tile_row = py >> 3;
-            let fine_x = px & 7;
-            let fine_y = py & 7;
-
-            // ==========================================================================
-            // Read tilemap entry
-            // ==========================================================================
-            let map_word_addr = tilemap_base as usize + tile_row * 32 + tile_col;
-            let entry = ppu.vram.memory[map_word_addr];
-
-            let tile_index = entry & 0x03FF; // bits 9:0
-            let palette_num = (entry >> 10) & 0x07; // bits 12:10
-            let priority = (entry & 0x2000) != 0; // bit 13
-            let flip_x = (entry & 0x4000) != 0; // bit 14
-            let flip_y = (entry & 0x8000) != 0; // bit 15
-
-            // Apply flip
-            let fx = if flip_x { 7 - fine_x } else { fine_x };
-            let fy = if flip_y { 7 - fine_y } else { fine_y };
-
-            // ============================================================
-            // Decode 4bpp pixel from CHR data
-            // ============================================================
-            let tile_word_base = tiledata_base as usize + tile_index as usize * 16;
-            let color_index =
-                Self::decode_4bpp_tile_pixel_from(&ppu.vram.memory, tile_word_base, fx, fy);
-
-            // Transparent pixel -> do nothing
-            if color_index == 0 {
+        for (bg, bpp, z_low, z_high) in layers {
+            if ppu.regs.tm & (1 << bg) == 0 {
                 continue;
             }
 
-            let palette_entry = ((palette_num as u8) << 4) | color_index;
-            let color = ppu.cgram.read(palette_entry);
+            let (w64, h64) = ppu.regs.bg_tilemap_size(bg);
+            let (scroll_x, scroll_y) = ppu.regs.bg_scroll(bg);
 
-            let (r, g, b) = Self::apply_brightness(color, self.current_brightness as u16);
-            let z = if priority { Z_BG1_HIGH } else { Z_BG1_LOW };
-            self.set_pixel_z(x, y, r, g, b, z);
+            self.render_bg_scanline(
+                ppu,
+                y,
+                &BgParams {
+                    tilemap_base: ppu.regs.bg_tilemap_addr(bg),
+                    tiledata_base: ppu.regs.bg_tiledata_addr(bg),
+                    scroll_x,
+                    scroll_y,
+                    bpp,
+                    palette_base: 0,
+                    w64,
+                    h64,
+                    z_low,
+                    z_high,
+                },
+            );
         }
     }
 
