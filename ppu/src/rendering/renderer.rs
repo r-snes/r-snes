@@ -5,23 +5,35 @@ use crate::ppu::PPU;
 pub type RawFramebuffer = [u8; SCREEN_WIDTH * SCREEN_HEIGHT * 3];
 
 // ============================================================
-// Z-order (priority) values, mode 1 (BG1 + OBJ subset).
-// Higher = closer to the front. A pixel is only overwritten when the
-// incoming z is >= the z already stored for that column.
+// Z-order (priority) values. Higher = closer to the front.
+// A pixel is only overwritten when the incoming z is >= the z stored
+// for that column. Every (layer, priority) pair gets a UNIQUE value, so
+// draw order between layers is irrelevant and one scale serves both modes.
 //
-// Full mode-1 order (front to back), for reference:
-//   OBJ.3 > BG1.1 > BG2.1 > OBJ.2 > BG1.0 > BG2.0 > OBJ.1 >
-//   BG3.1 > BG4.1 > OBJ.0 > BG3.0 > BG4.0 > backdrop
-// Only BG1 and OBJ are rendered for now; the values are spaced so the other
-// layers slot in later without renumbering.
+// Mode 0 (front -> back):
+//   OBJ3 > BG1.1 > BG2.1 > OBJ2 > BG1.0 > BG2.0 > OBJ1 >
+//   BG3.1 > BG4.1 > OBJ0 > BG3.0 > BG4.0 > backdrop
+//
+// Mode 1, BGMODE bit3 = 0 (front -> back):
+//   OBJ3 > BG1.1 > BG2.1 > OBJ2 > BG1.0 > BG2.0 > OBJ1 >
+//   BG3.1 > OBJ0 > BG3.0 > backdrop
+//
+// Mode 1, BGMODE bit3 = 1: BG3.1 is lifted above everything (Z_BG3_PRIO).
 // ============================================================
 pub const Z_BACKDROP: u8 = 0;
+pub const Z_BG4_LOW: u8 = 1;
+pub const Z_BG3_LOW: u8 = 2;
 pub const Z_OBJ0: u8 = 3;
+pub const Z_BG4_HIGH: u8 = 4;
+pub const Z_BG3_HIGH: u8 = 5;
 pub const Z_OBJ1: u8 = 6;
+pub const Z_BG2_LOW: u8 = 7;
 pub const Z_BG1_LOW: u8 = 8;
 pub const Z_OBJ2: u8 = 9;
+pub const Z_BG2_HIGH: u8 = 10;
 pub const Z_BG1_HIGH: u8 = 11;
 pub const Z_OBJ3: u8 = 12;
+pub const Z_BG3_PRIO: u8 = 13; // mode 1, BGMODE bit3: BG3 high-prio above all
 
 pub struct Renderer {
     pub framebuffer: Box<RawFramebuffer>, // back buffer, PPU writes here
