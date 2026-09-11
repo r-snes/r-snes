@@ -55,3 +55,6 @@ default = ["cli", "plugins"]
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)'] }
+
+[build-dependencies]
+winresource = "0.1.31"
