@@ -360,4 +360,30 @@ impl PPURegisters {
     pub fn bg4_tiledata_addr(&self) -> u16 {
         (self.bg34nba as u16 >> 4) << 12
     }
+
+    // ------------------------------
+
+    pub fn bg_tilemap_addr(&self, bg: usize) -> u16 {
+        (self.bgsc[bg] as u16 >> 2) * 0x400
+    }
+
+    pub fn bg_tiledata_addr(&self, bg: usize) -> u16 {
+        let nib = match bg {
+            0 => self.bg12nba & 0x0F,
+            1 => self.bg12nba >> 4,
+            2 => self.bg34nba & 0x0F,
+            _ => self.bg34nba >> 4,
+        };
+        (nib as u16) << 12
+    }
+
+    pub fn bg_tilemap_size(&self, bg: usize) -> (bool, bool) {
+        (self.bgsc[bg] & 0x01 != 0, self.bgsc[bg] & 0x02 != 0)
+    }
+
+    pub fn bg_scroll(&self, bg: usize) -> (usize, usize) {
+        let h = if bg == 0 { self.bg1hofs } else { self.bghofs[bg - 1] };
+        let v = if bg == 0 { self.bg1vofs } else { self.bgvofs[bg - 1] };
+        (h as usize, v as usize)
+    }
 }
