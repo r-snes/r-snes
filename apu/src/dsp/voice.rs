@@ -49,10 +49,9 @@ impl Voice {
             self.adsr.update_envelope();
         }
 
+        // A voice only goes fully idle once its envelope has actually
+        // reached Off.
         if !self.key_on && self.adsr.envelope_phase == EnvelopePhase::Off {
-            return;
-        }
-        if !self.key_on {
             return;
         }
 

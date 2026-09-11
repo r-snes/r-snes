@@ -154,3 +154,86 @@ fn test_all_8_voices_have_independent_registers() {
         assert_eq!(mem.dsp.voices[v].srcn, v as u8);
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A single BRR block, shift=12 filter=0 (each nibble decodes
+    /// independently of history), that loops to itself forever. Nibbles
+    /// alternate +7/-8, so decoded samples strictly alternate between a
+    /// large positive and large negative value — an easy signal to check
+    /// that playback is actually advancing sample-by-sample.
+    fn build_test_ram() -> Box<RawARAM> {
+        let mut ram: Box<RawARAM> = Box::new([0u8; 64 * 1024]);
+        // DIR entry at $0010: start=$0020, loop=$0020 (loops to itself).
+        ram[0x0010] = 0x20;
+        ram[0x0011] = 0x00;
+        ram[0x0012] = 0x20;
+        ram[0x0013] = 0x00;
+        // BRR header: shift=12 ($C), filter=0, loop=1, end=1 -> 0xC3.
+        ram[0x0020] = 0xC3;
+        for i in 0..8 {
+            ram[0x0021 + i] = 0x78; // nibbles 7, -8 repeating
+        }
+        ram
+    }
+
+    /// Regression test for the frozen-release bug: once KOFF clears
+    /// `key_on`, the voice must keep decoding/consuming BRR samples
+    /// under its fading envelope instead of freezing on whatever sample
+    /// happened to be current at the moment of key-off.
+    #[test]
+    fn release_keeps_consuming_samples_instead_of_freezing() {
+        let ram = build_test_ram();
+        let mut registers = [0u8; 128];
+        let mut voice = Voice {
+            key_on: true,
+            pitch: 0x1000, // exactly one decoded sample consumed per tick
+            ..Default::default()
+        };
+        voice.brr.addr = 0x0010; // DIR entry address, as key_on_voice sets it
+        voice.adsr.adsr_mode = true;
+        voice.adsr.attack_rate = 15; // instant attack, out of the way
+        voice.adsr.envelope_phase = EnvelopePhase::Attack;
+
+        // First tick: resolves the DIR entry, decodes the block, and
+        // consumes sample_buffer[0].
+        voice.step(0, &ram, &mut registers);
+
+        // Simulate KOFF exactly as Dsp::write_reg($5C) does.
+        voice.key_on = false;
+        voice.adsr.envelope_phase = EnvelopePhase::Release;
+
+        let mut samples = Vec::new();
+        for _ in 0..4 {
+            voice.step(0, &ram, &mut registers);
+            samples.push(voice.current_sample);
+        }
+
+        // The block's decoded samples strictly alternate sign, so
+        // continued playback must alternate too. The old code returned
+        // immediately once key_on was false, leaving current_sample
+        // pinned at its pre-KOFF value for every one of these calls.
+        assert_ne!(samples[0], samples[1], "sample must advance during release, not freeze");
+        assert_ne!(samples[1], samples[2], "sample must advance during release, not freeze");
+        assert_ne!(samples[2], samples[3], "sample must advance during release, not freeze");
+    }
+
+    /// A voice that never keys on, and one whose release has fully
+    /// finished (envelope reached Off), must both stay idle — the fix
+    /// should only unfreeze the *active* Release window, not resurrect
+    /// voices that are genuinely done.
+    #[test]
+    fn fully_off_voice_stays_idle() {
+        let ram = build_test_ram();
+        let mut registers = [0u8; 128];
+        let mut voice = Voice::default(); // key_on=false, phase=Off
+
+        voice.step(0, &ram, &mut registers);
+
+        assert_eq!(voice.current_sample, 0, "untouched voice must stay silent");
+        assert_eq!(voice.brr.buffer_fill, 0, "must never resolve DIR/decode for an idle voice");
+    }
+}
