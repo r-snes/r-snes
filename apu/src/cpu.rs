@@ -53,14 +53,18 @@ impl Spc700 {
         self.halted = false; // reset is the only thing that wakes SLEEP/STOP
     }
 
-    pub fn step(&mut self, mem: &mut Memory) {
+    /// Execute one instruction (or, while halted, advance time as the
+    /// parked core does) and return the number of real SPC700 cycles it
+    /// cost.
+    pub fn step(&mut self, mem: &mut Memory) -> u32 {
         if self.halted {
             // Parked by SLEEP/STOP: no fetch, PC frozen. Time still
-            // passes for the rest of the APU (timers, DSP), which keeps
-            // running around a halted core exactly as hardware does.
+            // passes for the rest of the APU (timers, DSP)
             self.cycles += 2;
-            return;
+            return 2;
         }
+
+        let start_cycles = self.cycles;
 
         let opcode = mem.read8_mut(self.regs.pc);
         self.regs.pc = self.regs.pc.wrapping_add(1);
@@ -326,6 +330,8 @@ impl Spc700 {
             0xFE => self.inst_dbnz_y(mem),         // DBNZ Y,rel
             0xFF => self.inst_stop(),              // STOP
         }
+
+        self.cycles - start_cycles
     }
 
     // Flag helpers

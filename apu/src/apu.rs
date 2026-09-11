@@ -83,6 +83,14 @@ pub struct Apu {
     /// Resets to 0 every DSP_CYCLES_PER_SAMPLE cycles.
     dsp_cycles: u32,
 
+    /// Cycles already executed beyond what the most recent `step(cycles)`
+    /// call asked for. An SPC700 instruction can't be interrupted partway
+    /// through, so the last instruction of a call will usually overrun
+    /// its budget by a few cycles; that overrun is banked here and
+    /// deducted from the next call's budget so a stream of `step` calls
+    /// stays in sync with real elapsed time instead of drifting.
+    cycle_debt: u32,
+
     /// Stereo frames `[left, right]` produced by the DSP, one per DSP
     /// tick, accumulated by `step`. Frames are arrays rather than tuples
     /// because array layout is guaranteed: `Vec<[i16; 2]>` is bit-identical
@@ -124,6 +132,7 @@ impl Apu {
             timers: Timers::new(),
             cycles: 0,
             dsp_cycles: 0,
+            cycle_debt: 0,
             sample_buf: Vec::new(),
             ipl: Some(IplHle::BootDelay {
                 cycles_left: IPL_BOOT_CYCLES,
@@ -309,21 +318,41 @@ impl Apu {
         }
     }
 
-    /// Step the APU forward by `cycles` CPU cycles.
+    /// Step the APU forward by `cycles` real SPC700 (1.024 MHz) cycles.
     ///
     /// Each call ticks:
     ///   - The SPC700 CPU  (every cycle; the HLE IPL while boot upload runs)
     ///   - The timers      (every cycle)
     ///   - The DSP         (once every 32 cycles → 32 kHz)
     ///
+    /// `Spc700::step` executes one whole instruction at a time and reports
+    /// how many cycles it actually cost (2-8, depending on the opcode), so
+    /// timers/DSP/elapsed-time are advanced by that many cycles per
+    /// instruction rather than by a flat 1 — otherwise a loop that ran
+    /// once per *instruction* would advance real-time bookkeeping as if
+    /// every instruction were a single cycle, running the whole APU
+    /// several times faster than real hardware once this is driven by an
+    /// actual elapsed-cycle budget instead of a fixed iteration count.
+    ///
+    /// Because an instruction can't be interrupted partway through, the
+    /// last instruction of a call may spend a few more cycles than the
+    /// requested budget; that overrun is carried in `cycle_debt` and
+    /// deducted from the next call so repeated calls don't drift.
+    ///
     /// All DSP access goes through `self.memory.dsp`; there is no
     /// separate Dsp field on Apu.
     pub fn step(&mut self, cycles: u32) {
-        for _ in 0..cycles {
-            if let Some(state) = self.ipl {
+        let mut budget = cycles as i64 - self.cycle_debt as i64;
+        self.cycle_debt = 0;
+
+        while budget > 0 {
+            let consumed: u32 = if let Some(state) = self.ipl {
                 // The real chip spends this time executing IPL code from
-                // the boot ROM; we run the HLE state machine instead.
+                // the boot ROM; we run the HLE state machine instead, one
+                // real cycle per HLE tick (IPL_BOOT_CYCLES and
+                // IPL_EXEC_DELAY_CYCLES are specified in real cycles).
                 self.ipl = self.ipl_step(state);
+                1
             } else if self.cpu.regs.pc >= 0xFFC0 && self.memory.control & 0x80 != 0 {
                 // Jumping into $FFC0-$FFFF *while CONTROL bit 7 (IPL ROM
                 // enable) is set* re-runs the boot ROM: drivers do this to
@@ -332,28 +361,37 @@ impl Apu {
                 // clear, $FFC0-$FFFF is ordinary RAM and executes normally
                 // — e.g. `pcall $FF` targets $FFFF (spc test #01B2).
                 self.reenter_ipl();
+                1
             } else {
-                self.cpu.step(&mut self.memory);
-            }
+                self.cpu.step(&mut self.memory)
+            };
 
-            self.timers.step(&mut self.memory);
+            for _ in 0..consumed {
+                self.timers.step(&mut self.memory);
 
-            self.dsp_cycles += 1;
-            if self.dsp_cycles >= DSP_CYCLES_PER_SAMPLE {
-                self.dsp_cycles = 0;
-                self.memory.dsp.step(&self.memory.ram);
+                self.dsp_cycles += 1;
+                if self.dsp_cycles >= DSP_CYCLES_PER_SAMPLE {
+                    self.dsp_cycles = 0;
+                    self.memory.dsp.step(&self.memory.ram);
 
-                // One output sample per DSP tick, straight into the
-                // buffer the host drains. Discard everything if nothing
-                // has drained for a full second (see MAX_BUFFERED_FRAMES).
-                if self.sample_buf.len() >= MAX_BUFFERED_FRAMES {
-                    self.sample_buf.clear();
+                    // One output sample per DSP tick, straight into the
+                    // buffer the host drains. Discard everything if nothing
+                    // has drained for a full second (see MAX_BUFFERED_FRAMES).
+                    if self.sample_buf.len() >= MAX_BUFFERED_FRAMES {
+                        self.sample_buf.clear();
+                    }
+                    let (l, r) = self.memory.dsp.render_audio_single();
+                    self.sample_buf.push([l, r]);
                 }
-                let (l, r) = self.memory.dsp.render_audio_single();
-                self.sample_buf.push([l, r]);
+
+                self.cycles += 1;
             }
 
-            self.cycles += 1;
+            budget -= consumed as i64;
+        }
+
+        if budget < 0 {
+            self.cycle_debt = (-budget) as u32;
         }
     }
 
