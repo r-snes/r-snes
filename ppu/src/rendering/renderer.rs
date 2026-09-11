@@ -5,23 +5,49 @@ use crate::ppu::PPU;
 pub type RawFramebuffer = [u8; SCREEN_WIDTH * SCREEN_HEIGHT * 3];
 
 // ============================================================
-// Z-order (priority) values, mode 1 (BG1 + OBJ subset).
-// Higher = closer to the front. A pixel is only overwritten when the
-// incoming z is >= the z already stored for that column.
+// Z-order (priority) values. Higher = closer to the front.
+// A pixel is only overwritten when the incoming z is >= the z stored
+// for that column. Every (layer, priority) pair gets a UNIQUE value, so
+// draw order between layers is irrelevant and one scale serves both modes.
 //
-// Full mode-1 order (front to back), for reference:
-//   OBJ.3 > BG1.1 > BG2.1 > OBJ.2 > BG1.0 > BG2.0 > OBJ.1 >
-//   BG3.1 > BG4.1 > OBJ.0 > BG3.0 > BG4.0 > backdrop
-// Only BG1 and OBJ are rendered for now; the values are spaced so the other
-// layers slot in later without renumbering.
+// Mode 0 (front -> back):
+//   OBJ3 > BG1.1 > BG2.1 > OBJ2 > BG1.0 > BG2.0 > OBJ1 >
+//   BG3.1 > BG4.1 > OBJ0 > BG3.0 > BG4.0 > backdrop
+//
+// Mode 1, BGMODE bit3 = 0 (front -> back):
+//   OBJ3 > BG1.1 > BG2.1 > OBJ2 > BG1.0 > BG2.0 > OBJ1 >
+//   BG3.1 > OBJ0 > BG3.0 > backdrop
+//
+// Mode 1, BGMODE bit3 = 1: BG3.1 is lifted above everything (Z_BG3_PRIO).
 // ============================================================
 pub const Z_BACKDROP: u8 = 0;
+pub const Z_BG4_LOW: u8 = 1;
+pub const Z_BG3_LOW: u8 = 2;
 pub const Z_OBJ0: u8 = 3;
+pub const Z_BG4_HIGH: u8 = 4;
+pub const Z_BG3_HIGH: u8 = 5;
 pub const Z_OBJ1: u8 = 6;
+pub const Z_BG2_LOW: u8 = 7;
 pub const Z_BG1_LOW: u8 = 8;
 pub const Z_OBJ2: u8 = 9;
+pub const Z_BG2_HIGH: u8 = 10;
 pub const Z_BG1_HIGH: u8 = 11;
 pub const Z_OBJ3: u8 = 12;
+pub const Z_BG3_PRIO: u8 = 13; // mode 1, BGMODE bit3: BG3 high-prio above all
+
+/// Parameters for rendering one BG layer on one scanline.
+pub struct BgParams {
+    pub tilemap_base: u16,
+    pub tiledata_base: u16,
+    pub scroll_x: usize,
+    pub scroll_y: usize,
+    pub bpp: u8,          // 2 or 4
+    pub palette_base: u8, // CGRAM colour offset (mode 0 per-layer); 0 otherwise
+    pub w64: bool,        // tilemap 64 tiles wide
+    pub h64: bool,        // tilemap 64 tiles tall
+    pub z_low: u8,
+    pub z_high: u8,
+}
 
 pub struct Renderer {
     pub framebuffer: Box<RawFramebuffer>, // back buffer, PPU writes here
@@ -78,19 +104,84 @@ impl Renderer {
             self.set_pixel(x, y, br, bg, bb);
         }
 
-        // Background layer
+        // Background layers
         match ppu.regs.bg_mode() {
             0 => self.render_scanline_mode0(ppu, y),
             1 => self.render_scanline_mode1(ppu, y),
             mode => {
-                self.render_full_black(y);
-                println!("PPU mode {} not implemented", mode);
+                if y == 0 {
+                    println!("bg_mode = {}", mode);
+                }
+                self.render_scanline_mode1(ppu, y); // TEMPORARY DEBUG - TODO
             }
         }
 
         // Sprites, if OBJ is enabled on the main screen (TM bit 4)
         if ppu.regs.tm & 0x10 != 0 {
             self.render_sprites(ppu, y);
+        }
+    }
+
+    /// Render one BG layer for one scanline. Handles 2bpp/4bpp, tilemap sizes,
+    /// per-tile flip/priority, and mode-0 palette offsets.
+    pub fn render_bg_scanline(&mut self, ppu: &PPU, y: usize, p: &BgParams) {
+        // if y == 0 {
+        //     println!(
+        //         "frame {} mode {} tm {:02X} ts {:02X} forceblank {} bright {}",
+        //         ppu.frame, ppu.regs.bg_mode(), ppu.regs.tm, ppu.regs.ts,
+        //         ppu.force_blank(), ppu.brightness()
+        //     );
+        // }
+        let map_w = if p.w64 { 512 } else { 256 };
+        let map_h = if p.h64 { 512 } else { 256 };
+        let screens_wide = if p.w64 { 2 } else { 1 };
+
+        let (tile_words, pal_shift) = if p.bpp == 2 { (8usize, 2u8) } else { (16, 4) };
+
+        for x in 0..SCREEN_WIDTH {
+            let px = (x + p.scroll_x) & (map_w - 1);
+            let py = (y + p.scroll_y) & (map_h - 1);
+
+            let tile_col = px >> 3;
+            let tile_row = py >> 3;
+            let fine_x = px & 7;
+            let fine_y = py & 7;
+
+            // Pick the 0x400-word sub-screen for maps larger than 32x32.
+            let screen = (tile_row >> 5) * screens_wide + (tile_col >> 5);
+            let map_word_addr = p.tilemap_base as usize
+                + screen * 0x400
+                + (tile_row & 0x1F) * 32
+                + (tile_col & 0x1F);
+
+            let entry = ppu.vram.memory[map_word_addr];
+            let tile_index = entry & 0x03FF; // bits 9:0
+            let palette_num = ((entry >> 10) & 0x07) as u8; // bits 12:10
+            let priority = (entry & 0x2000) != 0; // bit 13
+            let flip_x = (entry & 0x4000) != 0; // bit 14
+            let flip_y = (entry & 0x8000) != 0; // bit 15
+
+            let fx = if flip_x { 7 - fine_x } else { fine_x };
+            let fy = if flip_y { 7 - fine_y } else { fine_y };
+
+            let tile_word_base = p.tiledata_base as usize + tile_index as usize * tile_words;
+            let color_index = if p.bpp == 2 {
+                Self::decode_2bpp_tile_pixel_from(&ppu.vram.memory, tile_word_base, fx, fy)
+            } else {
+                Self::decode_4bpp_tile_pixel_from(&ppu.vram.memory, tile_word_base, fx, fy)
+            };
+
+            // Transparent pixel -> do nothing
+            if color_index == 0 {
+                continue;
+            }
+
+            let palette_entry = p.palette_base + (palette_num << pal_shift) + color_index;
+            let color = ppu.cgram.read(palette_entry);
+
+            let (r, g, b) = Self::apply_brightness(color, self.current_brightness as u16);
+            let z = if priority { p.z_high } else { p.z_low };
+            self.set_pixel_z(x, y, r, g, b, z);
         }
     }
 
