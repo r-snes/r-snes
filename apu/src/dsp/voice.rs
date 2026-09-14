@@ -1,7 +1,7 @@
 use crate::memory::RawARAM;
 
 use super::adsr::{Adsr, EnvelopePhase};
-use super::brr::{Brr, decode_brr_block, ram_read8};
+use super::brr::{Brr, GAUSS, decode_brr_block, ram_read8};
 
 /// One voice (channel) of the SNES APU DSP.
 #[derive(Debug, Clone, Copy, Default)]
@@ -26,8 +26,17 @@ pub struct Voice {
     /// Every 0x1000 units = 1 BRR sample consumed.
     pub pitch_counter: u16,
 
-    /// Most recently output sample (16-bit, pre-envelope).
+    /// Most recently output sample (16-bit, pre-envelope). This is the
+    /// *interpolated* output — see `interpolate` — not a raw decoded
+    /// BRR sample.
     pub current_sample: i16,
+
+    /// The 4 most recently decoded raw BRR samples, oldest to newest
+    /// (`history[3]` is the newest). Gaussian-interpolated every tick
+    /// against the fractional pitch position to produce `current_sample`.
+    /// Reset on key-on (see `Dsp::key_on_voice`) so a new note doesn't
+    /// interpolate against the previous note's tail.
+    pub history: [i16; 4],
 
     /// ADSR envelope sub-state.
     pub adsr: Adsr,
@@ -50,7 +59,11 @@ impl Voice {
         }
 
         // A voice only goes fully idle once its envelope has actually
-        // reached Off.
+        // reached Off. `key_on == false` alone (i.e. right after KOFF)
+        // is not enough to stop here: the voice is in Release and must
+        // keep decoding/consuming BRR samples while the envelope fades
+        // it out underneath, the same way real hardware keeps playing
+        // through a release instead of freezing on the last sample.
         if !self.key_on && self.adsr.envelope_phase == EnvelopePhase::Off {
             return;
         }
@@ -79,11 +92,12 @@ impl Voice {
         let samples_to_consume = self.pitch_counter / 0x1000;
         self.pitch_counter %= 0x1000;
 
-        // 4. Consume decoded samples from buffer.
+        // 4. Shift each newly-reached raw decoded sample into the
+        // 4-sample interpolation history as the pitch counter crosses it.
         for _ in 0..samples_to_consume {
             let idx = self.brr.nibble_idx as usize;
             if idx < self.brr.buffer_fill as usize {
-                self.current_sample = self.brr.sample_buffer[idx];
+                self.push_history(self.brr.sample_buffer[idx]);
                 self.brr.nibble_idx += 1;
             }
 
@@ -96,11 +110,52 @@ impl Voice {
             }
         }
 
-        // 5. Update read-only ENVX ($X8) and OUTX ($X9) registers.
+        // 5. Gaussian-interpolate this tick's output sample from the
+        // 4-sample history and the fractional part of the pitch counter
+        // (how far between the last and next raw sample we currently are).
+        self.current_sample = self.interpolate();
+
+        // 6. Update read-only ENVX ($X8) and OUTX ($X9) registers.
         //   ENVX = envelope_level >> 4  (11-bit → 7-bit)
         //   OUTX = current_sample  >> 8 (signed top byte)
         registers[(i << 4) | 0x8] = (self.adsr.envelope_level >> 4) as u8;
         registers[(i << 4) | 0x9] = (self.current_sample >> 8) as u8;
+    }
+
+    /// Shift a newly decoded raw sample into the 4-sample history,
+    /// oldest-to-newest (`history[3]` is always the most recent).
+    fn push_history(&mut self, sample: i16) {
+        self.history[0] = self.history[1];
+        self.history[1] = self.history[2];
+        self.history[2] = self.history[3];
+        self.history[3] = sample;
+    }
+
+    /// Gaussian-interpolate the current output sample from the 4-sample
+    /// history and the fractional part of the pitch counter.
+    ///
+    /// `pitch_counter` (0..0x1000 after the advance in `step`) is how far
+    /// past the last whole-sample boundary we are; its top 8 bits (>>4)
+    /// select one of 256 fractional positions into the DSP's 512-entry
+    /// Gaussian kernel, which is laid out as four 256-entry regions — one
+    /// per history tap — so each tap is weighted by how close the
+    /// fractional position is to it.
+    ///
+    /// The intermediate cast to i16 after the first three taps reproduces
+    /// a documented quirk of the real DSP's interpolator (it truncates to
+    /// 16 bits there before adding the fourth tap); this is required for
+    /// bit-accurate output, not a mistake.
+    fn interpolate(&self) -> i16 {
+        let index = ((self.pitch_counter >> 4) & 0xFF) as usize;
+        let h = &self.history;
+
+        let mut out: i32 = (GAUSS[255 - index] as i32 * h[0] as i32) >> 11;
+        out += (GAUSS[511 - index] as i32 * h[1] as i32) >> 11;
+        out += (GAUSS[index + 256] as i32 * h[2] as i32) >> 11;
+        out = out as i16 as i32; // hardware quirk: truncate before the 4th tap
+        out += (GAUSS[index] as i32 * h[3] as i32) >> 11;
+
+        out.clamp(i16::MIN as i32, i16::MAX as i32) as i16
     }
 
     /// Decode the next 9-byte BRR block and advance the BRR address.
@@ -131,5 +186,133 @@ impl Voice {
         } else {
             self.brr.addr = self.brr.addr.wrapping_add(9);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A single BRR block, shift=12 filter=0 (each nibble decodes
+    /// independently of history), that loops to itself forever. Nibbles
+    /// alternate +7/-8, so decoded samples strictly alternate between a
+    /// large positive and large negative value — an easy signal to check
+    /// that playback is actually advancing sample-by-sample.
+    fn build_test_ram() -> Box<RawARAM> {
+        let mut ram: Box<RawARAM> = Box::new([0u8; 64 * 1024]);
+        // DIR entry at $0010: start=$0020, loop=$0020 (loops to itself).
+        ram[0x0010] = 0x20;
+        ram[0x0011] = 0x00;
+        ram[0x0012] = 0x20;
+        ram[0x0013] = 0x00;
+        // BRR header: shift=12 ($C), filter=0, loop=1, end=1 -> 0xC3.
+        ram[0x0020] = 0xC3;
+        for i in 0..8 {
+            ram[0x0021 + i] = 0x78; // nibbles 7, -8 repeating
+        }
+        ram
+    }
+
+    /// Regression test for the frozen-release bug: once KOFF clears
+    /// `key_on`, the voice must keep decoding/consuming BRR samples
+    /// under its fading envelope instead of freezing on whatever sample
+    /// happened to be current at the moment of key-off.
+    #[test]
+    fn release_keeps_consuming_samples_instead_of_freezing() {
+        let ram = build_test_ram();
+        let mut registers = [0u8; 128];
+        let mut voice = Voice {
+            key_on: true,
+            pitch: 0x1000, // exactly one decoded sample consumed per tick
+            ..Default::default()
+        };
+        voice.brr.addr = 0x0010; // DIR entry address, as key_on_voice sets it
+        voice.adsr.adsr_mode = true;
+        voice.adsr.attack_rate = 15; // instant attack, out of the way
+        voice.adsr.envelope_phase = EnvelopePhase::Attack;
+
+        // First tick: resolves the DIR entry, decodes the block, and
+        // consumes sample_buffer[0].
+        voice.step(0, &ram, &mut registers);
+
+        // Simulate KOFF exactly as Dsp::write_reg($5C) does.
+        voice.key_on = false;
+        voice.adsr.envelope_phase = EnvelopePhase::Release;
+
+        let mut samples = Vec::new();
+        for _ in 0..4 {
+            voice.step(0, &ram, &mut registers);
+            samples.push(voice.current_sample);
+        }
+
+        // The block's decoded samples strictly alternate sign, so
+        // continued playback must alternate too. The old code returned
+        // immediately once key_on was false, leaving current_sample
+        // pinned at its pre-KOFF value for every one of these calls.
+        assert_ne!(samples[0], samples[1], "sample must advance during release, not freeze");
+        assert_ne!(samples[1], samples[2], "sample must advance during release, not freeze");
+        assert_ne!(samples[2], samples[3], "sample must advance during release, not freeze");
+    }
+
+    /// A voice that never keys on, and one whose release has fully
+    /// finished (envelope reached Off), must both stay idle — the fix
+    /// should only unfreeze the *active* Release window, not resurrect
+    /// voices that are genuinely done.
+    #[test]
+    fn fully_off_voice_stays_idle() {
+        let ram = build_test_ram();
+        let mut registers = [0u8; 128];
+        let mut voice = Voice::default(); // key_on=false, phase=Off
+
+        voice.step(0, &ram, &mut registers);
+
+        assert_eq!(voice.current_sample, 0, "untouched voice must stay silent");
+        assert_eq!(voice.brr.buffer_fill, 0, "must never resolve DIR/decode for an idle voice");
+    }
+
+    /// Every fractional pitch position (0..256, the full range `interpolate`
+    /// can be asked for) must produce a value without panicking. This is
+    /// mainly a bounds-safety regression test: the four GAUSS lookups
+    /// (`255-index`, `511-index`, `index+256`, `index`) would go
+    /// out-of-bounds for any index outside 0..=255.
+    #[test]
+    fn interpolate_never_panics_across_full_fraction_range() {
+        let mut voice = Voice {
+            history: [-30000, -10, 12345, 32000],
+            ..Default::default()
+        };
+        for index in 0u16..256 {
+            voice.pitch_counter = index << 4;
+            let _ = voice.interpolate();
+        }
+    }
+
+    /// Silence in must be silence out, at every fractional position —
+    /// every GAUSS tap is multiplied by 0, so there's no rounding
+    /// ambiguity here (unlike a general "constant signal" case, where the
+    /// real kernel's intentional intermediate 16-bit truncation means the
+    /// output isn't an exact identity).
+    #[test]
+    fn interpolate_of_silence_is_silence() {
+        let mut voice = Voice::default(); // history defaults to [0, 0, 0, 0]
+        for index in 0u16..256 {
+            voice.pitch_counter = index << 4;
+            assert_eq!(voice.interpolate(), 0);
+        }
+    }
+
+    /// `push_history` must be a FIFO shift: oldest sample drops off the
+    /// front, newest lands at `history[3]`.
+    #[test]
+    fn push_history_shifts_oldest_to_newest() {
+        let mut voice = Voice::default();
+        voice.push_history(1);
+        voice.push_history(2);
+        voice.push_history(3);
+        voice.push_history(4);
+        assert_eq!(voice.history, [1, 2, 3, 4]);
+
+        voice.push_history(5);
+        assert_eq!(voice.history, [2, 3, 4, 5]);
     }
 }

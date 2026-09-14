@@ -33,10 +33,14 @@ pub struct Dsp {
     master_vol_right: i8,
 
     /// $6C FLG — global DSP flags:
-    ///   bit 7: soft RESET
-    ///   bit 6: MUTE
-    ///   bit 5: disable echo writes (echo isn't implemented)
-    ///   bits 4-0: noise clock (noise isn't implemented)
+    ///   bit 7: soft RESET (also forces mute per hardware; silences every
+    ///          voice immediately, clears ENDX, and blocks new key-ons
+    ///          for as long as this bit stays set)
+    ///   bit 6: MUTE — forces final output to silence without touching
+    ///          voice/envelope state (unlike RESET, playback keeps running
+    ///          underneath, it just isn't heard)
+    ///   bit 5: disable echo writes (no effect yet — echo isn't implemented)
+    ///   bits 4-0: noise clock (no effect yet — noise isn't implemented)
     flg: u8,
 }
 
@@ -55,6 +59,10 @@ impl Dsp {
             // Hardware resets master volume to 0; game code sets it during boot.
             master_vol_left: 0,
             master_vol_right: 0,
+            // Real hardware powers up with RESET set; our HLE boot skips
+            // the IPL's own register init, so start "already booted"
+            // (not reset/muted) like the rest of the zero-initialized
+            // register file — the driver writes $6C itself during setup.
             flg: 0,
         }
     }
@@ -142,7 +150,9 @@ impl Dsp {
             // ---- Global registers ----
             _ => match idx {
                 // $4C: KON — key on, one bit per voice (bit 0 = voice 0).
-                // Ignored while FLG's RESET bit is set
+                // Ignored while FLG's RESET bit is set — real hardware
+                // blocks new key-ons for as long as the DSP is held in
+                // reset.
                 0x4C => {
                     if self.flg & 0x80 == 0 {
                         for v in 0..8usize {
@@ -173,10 +183,16 @@ impl Dsp {
                 0x5D => self.dir_base = value,
 
                 // $6C: FLG — noise clock / echo-write-disable / mute / reset.
+                // Noise and echo writes are stored but have no effect yet
+                // (neither feature is implemented). RESET and MUTE are
+                // handled here and in render_audio_single/$4C respectively.
                 0x6C => {
                     self.flg = value;
                     if value & 0x80 != 0 {
                         // RESET: hardware silences every voice immediately
+                        // (not a Release fade — a hard cut) and clears
+                        // ENDX. New key-ons stay blocked (see $4C) for as
+                        // long as this bit remains set.
                         self.registers[0x7C] = 0;
                         for voice in self.voices.iter_mut() {
                             voice.key_on = false;
@@ -225,6 +241,7 @@ impl Dsp {
         voice.adsr.tick_counter = 0;
 
         voice.current_sample = 0;
+        voice.history = [0; 4];
 
         // Clear this voice's bit in ENDX ($7C) so the CPU sees the new
         // key-on cleanly and doesn't mistake a leftover end flag for
@@ -257,8 +274,10 @@ impl Dsp {
     /// The accumulator is i32 to prevent overflow during summation.
     pub fn render_audio_single(&self) -> (i16, i16) {
         // MUTE (bit6) and RESET (bit7, which forces mute too) silence the
-        // final output stage only, voices keep decoding/enveloping
-        // underneath
+        // final output stage only — voices keep decoding/enveloping
+        // underneath (see `step`), they just aren't heard. This matches
+        // hardware: unmuting mid-note resumes wherever playback got to,
+        // it doesn't restart it.
         if self.flg & 0xC0 != 0 {
             return (0, 0);
         }
@@ -294,7 +313,6 @@ impl Dsp {
         )
     }
 }
-
 
 #[cfg(test)]
 mod tests {
