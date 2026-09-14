@@ -2,9 +2,11 @@ use apu::Memory;
 /// Voice and per-voice register mapping tests
 ///
 /// Covers Voice and Brr default state, all per-voice DSP register
-/// mappings (VOL, PITCH, SRCN, ADSR1, ADSR2), and independence
-/// across all 8 voices.
-use apu::dsp::{Brr, EnvelopePhase, Voice};
+/// mappings (VOL, PITCH, SRCN, ADSR1, ADSR2), independence across all
+/// 8 voices, Release-phase playback continuation, Gaussian
+/// interpolation, and the global FLG register's RESET/MUTE effects.
+use apu::dsp::{Adsr, Brr, Dsp, EnvelopePhase, Voice};
+use apu::memory::RawARAM;
 
 // ============================================================
 // Helpers
@@ -14,6 +16,42 @@ const DSP_BASE: u16 = 0xF200;
 
 fn dsp_vw(mem: &mut Memory, voice: u8, reg: u8, val: u8) {
     mem.write8(DSP_BASE + ((voice as u16) << 4) + reg as u16, val);
+}
+
+/// A single BRR block, shift=12 filter=0 (each nibble decodes
+/// independently of history), that loops to itself forever. Nibbles
+/// alternate +7/-8, so decoded samples strictly alternate between a
+/// large positive and large negative value — an easy signal to check
+/// that playback is actually advancing sample-by-sample.
+fn build_test_ram() -> Box<RawARAM> {
+    let mut ram: Box<RawARAM> = Box::new([0u8; 64 * 1024]);
+    // DIR entry at $0010: start=$0020, loop=$0020 (loops to itself).
+    ram[0x0010] = 0x20;
+    ram[0x0011] = 0x00;
+    ram[0x0012] = 0x20;
+    ram[0x0013] = 0x00;
+    // BRR header: shift=12 ($C), filter=0, loop=1, end=1 -> 0xC3.
+    ram[0x0020] = 0xC3;
+    for i in 0..8 {
+        ram[0x0021 + i] = 0x78; // nibbles 7, -8 repeating
+    }
+    ram
+}
+
+/// Give voice 0 a directly-audible state (no BRR/RAM needed —
+/// render_audio_single only reads current_sample/envelope/volumes).
+fn make_audible_voice() -> Voice {
+    Voice {
+        left_vol: 100,
+        right_vol: 100,
+        current_sample: 1000,
+        adsr: Adsr {
+            envelope_phase: EnvelopePhase::Sustain,
+            envelope_level: 0x7FF,
+            ..Default::default()
+        },
+        ..Default::default()
+    }
 }
 
 // ============================================================
@@ -155,213 +193,165 @@ fn test_all_8_voices_have_independent_registers() {
     }
 }
 
+// ============================================================
+// Voice — Release-phase playback (moved from voice.rs)
+// ============================================================
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+/// Regression test for the frozen-release bug: once KOFF clears
+/// `key_on`, the voice must keep decoding/consuming BRR samples
+/// under its fading envelope instead of freezing on whatever sample
+/// happened to be current at the moment of key-off.
+#[test]
+fn release_keeps_consuming_samples_instead_of_freezing() {
+    let ram = build_test_ram();
+    let mut registers = [0u8; 128];
+    let mut voice = Voice {
+        key_on: true,
+        pitch: 0x1000, // exactly one decoded sample consumed per tick
+        ..Default::default()
+    };
+    voice.brr.addr = 0x0010; // DIR entry address, as key_on_voice sets it
+    voice.adsr.adsr_mode = true;
+    voice.adsr.attack_rate = 15; // instant attack, out of the way
+    voice.adsr.envelope_phase = EnvelopePhase::Attack;
 
-    /// A single BRR block, shift=12 filter=0 (each nibble decodes
-    /// independently of history), that loops to itself forever. Nibbles
-    /// alternate +7/-8, so decoded samples strictly alternate between a
-    /// large positive and large negative value — an easy signal to check
-    /// that playback is actually advancing sample-by-sample.
-    fn build_test_ram() -> Box<RawARAM> {
-        let mut ram: Box<RawARAM> = Box::new([0u8; 64 * 1024]);
-        // DIR entry at $0010: start=$0020, loop=$0020 (loops to itself).
-        ram[0x0010] = 0x20;
-        ram[0x0011] = 0x00;
-        ram[0x0012] = 0x20;
-        ram[0x0013] = 0x00;
-        // BRR header: shift=12 ($C), filter=0, loop=1, end=1 -> 0xC3.
-        ram[0x0020] = 0xC3;
-        for i in 0..8 {
-            ram[0x0021 + i] = 0x78; // nibbles 7, -8 repeating
-        }
-        ram
+    // First tick: resolves the DIR entry, decodes the block, and
+    // consumes sample_buffer[0].
+    voice.step(0, &ram, &mut registers);
+
+    // Simulate KOFF exactly as Dsp::write_reg($5C) does.
+    voice.key_on = false;
+    voice.adsr.envelope_phase = EnvelopePhase::Release;
+
+    let mut samples = Vec::new();
+    for _ in 0..4 {
+        voice.step(0, &ram, &mut registers);
+        samples.push(voice.current_sample);
     }
 
-    /// Regression test for the frozen-release bug: once KOFF clears
-    /// `key_on`, the voice must keep decoding/consuming BRR samples
-    /// under its fading envelope instead of freezing on whatever sample
-    /// happened to be current at the moment of key-off.
-    #[test]
-    fn release_keeps_consuming_samples_instead_of_freezing() {
-        let ram = build_test_ram();
-        let mut registers = [0u8; 128];
-        let mut voice = Voice {
-            key_on: true,
-            pitch: 0x1000, // exactly one decoded sample consumed per tick
-            ..Default::default()
-        };
-        voice.brr.addr = 0x0010; // DIR entry address, as key_on_voice sets it
-        voice.adsr.adsr_mode = true;
-        voice.adsr.attack_rate = 15; // instant attack, out of the way
-        voice.adsr.envelope_phase = EnvelopePhase::Attack;
+    // The block's decoded samples strictly alternate sign, so
+    // continued playback must alternate too. The old code returned
+    // immediately once key_on was false, leaving current_sample
+    // pinned at its pre-KOFF value for every one of these calls.
+    assert_ne!(samples[0], samples[1], "sample must advance during release, not freeze");
+    assert_ne!(samples[1], samples[2], "sample must advance during release, not freeze");
+    assert_ne!(samples[2], samples[3], "sample must advance during release, not freeze");
+}
 
-        // First tick: resolves the DIR entry, decodes the block, and
-        // consumes sample_buffer[0].
-        voice.step(0, &ram, &mut registers);
+/// A voice that never keys on, and one whose release has fully
+/// finished (envelope reached Off), must both stay idle — the fix
+/// should only unfreeze the *active* Release window, not resurrect
+/// voices that are genuinely done.
+#[test]
+fn fully_off_voice_stays_idle() {
+    let ram = build_test_ram();
+    let mut registers = [0u8; 128];
+    let mut voice = Voice::default(); // key_on=false, phase=Off
 
-        // Simulate KOFF exactly as Dsp::write_reg($5C) does.
-        voice.key_on = false;
-        voice.adsr.envelope_phase = EnvelopePhase::Release;
+    voice.step(0, &ram, &mut registers);
 
-        let mut samples = Vec::new();
-        for _ in 0..4 {
-            voice.step(0, &ram, &mut registers);
-            samples.push(voice.current_sample);
-        }
+    assert_eq!(voice.current_sample, 0, "untouched voice must stay silent");
+    assert_eq!(voice.brr.buffer_fill, 0, "must never resolve DIR/decode for an idle voice");
+}
 
-        // The block's decoded samples strictly alternate sign, so
-        // continued playback must alternate too. The old code returned
-        // immediately once key_on was false, leaving current_sample
-        // pinned at its pre-KOFF value for every one of these calls.
-        assert_ne!(samples[0], samples[1], "sample must advance during release, not freeze");
-        assert_ne!(samples[1], samples[2], "sample must advance during release, not freeze");
-        assert_ne!(samples[2], samples[3], "sample must advance during release, not freeze");
-    }
+// ============================================================
+// Voice — Gaussian interpolation (moved from voice.rs)
+// ============================================================
 
-    /// A voice that never keys on, and one whose release has fully
-    /// finished (envelope reached Off), must both stay idle — the fix
-    /// should only unfreeze the *active* Release window, not resurrect
-    /// voices that are genuinely done.
-    #[test]
-    fn fully_off_voice_stays_idle() {
-        let ram = build_test_ram();
-        let mut registers = [0u8; 128];
-        let mut voice = Voice::default(); // key_on=false, phase=Off
-
-        voice.step(0, &ram, &mut registers);
-
-        assert_eq!(voice.current_sample, 0, "untouched voice must stay silent");
-        assert_eq!(voice.brr.buffer_fill, 0, "must never resolve DIR/decode for an idle voice");
+/// Every fractional pitch position (0..256, the full range `interpolate`
+/// can be asked for) must produce a value without panicking. This is
+/// mainly a bounds-safety regression test: the four GAUSS lookups
+/// (`255-index`, `511-index`, `index+256`, `index`) would go
+/// out-of-bounds for any index outside 0..=255.
+#[test]
+fn interpolate_never_panics_across_full_fraction_range() {
+    let mut voice = Voice {
+        history: [-30000, -10, 12345, 32000],
+        ..Default::default()
+    };
+    for index in 0u16..256 {
+        voice.pitch_counter = index << 4;
+        let _ = voice.interpolate();
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// A single BRR block, shift=12 filter=0 (each nibble decodes
-    /// independently of history), that loops to itself forever. Nibbles
-    /// alternate +7/-8, so decoded samples strictly alternate between a
-    /// large positive and large negative value — an easy signal to check
-    /// that playback is actually advancing sample-by-sample.
-    fn build_test_ram() -> Box<RawARAM> {
-        let mut ram: Box<RawARAM> = Box::new([0u8; 64 * 1024]);
-        // DIR entry at $0010: start=$0020, loop=$0020 (loops to itself).
-        ram[0x0010] = 0x20;
-        ram[0x0011] = 0x00;
-        ram[0x0012] = 0x20;
-        ram[0x0013] = 0x00;
-        // BRR header: shift=12 ($C), filter=0, loop=1, end=1 -> 0xC3.
-        ram[0x0020] = 0xC3;
-        for i in 0..8 {
-            ram[0x0021 + i] = 0x78; // nibbles 7, -8 repeating
-        }
-        ram
+/// Silence in must be silence out, at every fractional position —
+/// every GAUSS tap is multiplied by 0, so there's no rounding
+/// ambiguity here (unlike a general "constant signal" case, where the
+/// real kernel's intentional intermediate 16-bit truncation means the
+/// output isn't an exact identity).
+#[test]
+fn interpolate_of_silence_is_silence() {
+    let mut voice = Voice::default(); // history defaults to [0, 0, 0, 0]
+    for index in 0u16..256 {
+        voice.pitch_counter = index << 4;
+        assert_eq!(voice.interpolate(), 0);
     }
+}
 
-    /// Regression test for the frozen-release bug: once KOFF clears
-    /// `key_on`, the voice must keep decoding/consuming BRR samples
-    /// under its fading envelope instead of freezing on whatever sample
-    /// happened to be current at the moment of key-off.
-    #[test]
-    fn release_keeps_consuming_samples_instead_of_freezing() {
-        let ram = build_test_ram();
-        let mut registers = [0u8; 128];
-        let mut voice = Voice {
-            key_on: true,
-            pitch: 0x1000, // exactly one decoded sample consumed per tick
-            ..Default::default()
-        };
-        voice.brr.addr = 0x0010; // DIR entry address, as key_on_voice sets it
-        voice.adsr.adsr_mode = true;
-        voice.adsr.attack_rate = 15; // instant attack, out of the way
-        voice.adsr.envelope_phase = EnvelopePhase::Attack;
+/// `push_history` must be a FIFO shift: oldest sample drops off the
+/// front, newest lands at `history[3]`.
+#[test]
+fn push_history_shifts_oldest_to_newest() {
+    let mut voice = Voice::default();
+    voice.push_history(1);
+    voice.push_history(2);
+    voice.push_history(3);
+    voice.push_history(4);
+    assert_eq!(voice.history, [1, 2, 3, 4]);
 
-        // First tick: resolves the DIR entry, decodes the block, and
-        // consumes sample_buffer[0].
-        voice.step(0, &ram, &mut registers);
+    voice.push_history(5);
+    assert_eq!(voice.history, [2, 3, 4, 5]);
+}
 
-        // Simulate KOFF exactly as Dsp::write_reg($5C) does.
-        voice.key_on = false;
-        voice.adsr.envelope_phase = EnvelopePhase::Release;
+// ============================================================
+// Dsp — FLG register: RESET and MUTE (moved from dsp/mod.rs)
+// ============================================================
 
-        let mut samples = Vec::new();
-        for _ in 0..4 {
-            voice.step(0, &ram, &mut registers);
-            samples.push(voice.current_sample);
-        }
+#[test]
+fn reset_silences_voices_clears_endx_and_blocks_kon() {
+    let mut dsp = Dsp::new();
+    dsp.voices[0] = make_audible_voice();
+    dsp.voices[0].key_on = true;
+    dsp.write_reg(0x7C, 0xFF); // pretend ENDX already has bits set
 
-        // The block's decoded samples strictly alternate sign, so
-        // continued playback must alternate too. The old code returned
-        // immediately once key_on was false, leaving current_sample
-        // pinned at its pre-KOFF value for every one of these calls.
-        assert_ne!(samples[0], samples[1], "sample must advance during release, not freeze");
-        assert_ne!(samples[1], samples[2], "sample must advance during release, not freeze");
-        assert_ne!(samples[2], samples[3], "sample must advance during release, not freeze");
-    }
+    // Assert RESET (FLG bit 7).
+    dsp.write_reg(0x6C, 0x80);
 
-    /// A voice that never keys on, and one whose release has fully
-    /// finished (envelope reached Off), must both stay idle — the fix
-    /// should only unfreeze the *active* Release window, not resurrect
-    /// voices that are genuinely done.
-    #[test]
-    fn fully_off_voice_stays_idle() {
-        let ram = build_test_ram();
-        let mut registers = [0u8; 128];
-        let mut voice = Voice::default(); // key_on=false, phase=Off
+    assert!(!dsp.voices[0].key_on, "RESET must silence key-on voices");
+    assert_eq!(
+        dsp.voices[0].adsr.envelope_phase,
+        EnvelopePhase::Off,
+        "RESET must force the envelope off immediately, not fade it"
+    );
+    assert_eq!(dsp.read_reg(0x7C), 0, "RESET must clear ENDX");
 
-        voice.step(0, &ram, &mut registers);
+    // KON while still in reset must be ignored.
+    dsp.write_reg(0x4C, 0x01);
+    assert!(!dsp.voices[0].key_on, "KON must be ignored while RESET is set");
 
-        assert_eq!(voice.current_sample, 0, "untouched voice must stay silent");
-        assert_eq!(voice.brr.buffer_fill, 0, "must never resolve DIR/decode for an idle voice");
-    }
+    // Clearing RESET lets KON work again.
+    dsp.write_reg(0x6C, 0x00);
+    dsp.write_reg(0x4C, 0x01);
+    assert!(dsp.voices[0].key_on, "KON must work again once RESET clears");
+}
 
-    /// Every fractional pitch position (0..256, the full range `interpolate`
-    /// can be asked for) must produce a value without panicking. This is
-    /// mainly a bounds-safety regression test: the four GAUSS lookups
-    /// (`255-index`, `511-index`, `index+256`, `index`) would go
-    /// out-of-bounds for any index outside 0..=255.
-    #[test]
-    fn interpolate_never_panics_across_full_fraction_range() {
-        let mut voice = Voice {
-            history: [-30000, -10, 12345, 32000],
-            ..Default::default()
-        };
-        for index in 0u16..256 {
-            voice.pitch_counter = index << 4;
-            let _ = voice.interpolate();
-        }
-    }
+#[test]
+fn mute_silences_output_without_touching_voice_state() {
+    let mut dsp = Dsp::new();
+    dsp.voices[0] = make_audible_voice();
+    dsp.write_reg(0x0C, 100); // MVOLL
+    dsp.write_reg(0x1C, 100); // MVOLR
 
-    /// Silence in must be silence out, at every fractional position —
-    /// every GAUSS tap is multiplied by 0, so there's no rounding
-    /// ambiguity here (unlike a general "constant signal" case, where the
-    /// real kernel's intentional intermediate 16-bit truncation means the
-    /// output isn't an exact identity).
-    #[test]
-    fn interpolate_of_silence_is_silence() {
-        let mut voice = Voice::default(); // history defaults to [0, 0, 0, 0]
-        for index in 0u16..256 {
-            voice.pitch_counter = index << 4;
-            assert_eq!(voice.interpolate(), 0);
-        }
-    }
+    let (l, r) = dsp.render_audio_single();
+    assert!(l != 0 || r != 0, "sanity check: voice must be audible before mute");
 
-    /// `push_history` must be a FIFO shift: oldest sample drops off the
-    /// front, newest lands at `history[3]`.
-    #[test]
-    fn push_history_shifts_oldest_to_newest() {
-        let mut voice = Voice::default();
-        voice.push_history(1);
-        voice.push_history(2);
-        voice.push_history(3);
-        voice.push_history(4);
-        assert_eq!(voice.history, [1, 2, 3, 4]);
+    dsp.write_reg(0x6C, 0x40); // MUTE only, not RESET
 
-        voice.push_history(5);
-        assert_eq!(voice.history, [2, 3, 4, 5]);
-    }
+    assert_eq!(dsp.render_audio_single(), (0, 0), "MUTE must force output to silence");
+    assert_eq!(
+        dsp.voices[0].adsr.envelope_phase,
+        EnvelopePhase::Sustain,
+        "MUTE must not touch voice/envelope state — only the final output stage"
+    );
 }

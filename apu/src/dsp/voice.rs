@@ -124,7 +124,7 @@ impl Voice {
 
     /// Shift a newly decoded raw sample into the 4-sample history,
     /// oldest-to-newest (`history[3]` is always the most recent).
-    fn push_history(&mut self, sample: i16) {
+    pub fn push_history(&mut self, sample: i16) {
         self.history[0] = self.history[1];
         self.history[1] = self.history[2];
         self.history[2] = self.history[3];
@@ -145,7 +145,7 @@ impl Voice {
     /// a documented quirk of the real DSP's interpolator (it truncates to
     /// 16 bits there before adding the fourth tap); this is required for
     /// bit-accurate output, not a mistake.
-    fn interpolate(&self) -> i16 {
+    pub fn interpolate(&self) -> i16 {
         let index = ((self.pitch_counter >> 4) & 0xFF) as usize;
         let h = &self.history;
 
@@ -186,133 +186,5 @@ impl Voice {
         } else {
             self.brr.addr = self.brr.addr.wrapping_add(9);
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// A single BRR block, shift=12 filter=0 (each nibble decodes
-    /// independently of history), that loops to itself forever. Nibbles
-    /// alternate +7/-8, so decoded samples strictly alternate between a
-    /// large positive and large negative value — an easy signal to check
-    /// that playback is actually advancing sample-by-sample.
-    fn build_test_ram() -> Box<RawARAM> {
-        let mut ram: Box<RawARAM> = Box::new([0u8; 64 * 1024]);
-        // DIR entry at $0010: start=$0020, loop=$0020 (loops to itself).
-        ram[0x0010] = 0x20;
-        ram[0x0011] = 0x00;
-        ram[0x0012] = 0x20;
-        ram[0x0013] = 0x00;
-        // BRR header: shift=12 ($C), filter=0, loop=1, end=1 -> 0xC3.
-        ram[0x0020] = 0xC3;
-        for i in 0..8 {
-            ram[0x0021 + i] = 0x78; // nibbles 7, -8 repeating
-        }
-        ram
-    }
-
-    /// Regression test for the frozen-release bug: once KOFF clears
-    /// `key_on`, the voice must keep decoding/consuming BRR samples
-    /// under its fading envelope instead of freezing on whatever sample
-    /// happened to be current at the moment of key-off.
-    #[test]
-    fn release_keeps_consuming_samples_instead_of_freezing() {
-        let ram = build_test_ram();
-        let mut registers = [0u8; 128];
-        let mut voice = Voice {
-            key_on: true,
-            pitch: 0x1000, // exactly one decoded sample consumed per tick
-            ..Default::default()
-        };
-        voice.brr.addr = 0x0010; // DIR entry address, as key_on_voice sets it
-        voice.adsr.adsr_mode = true;
-        voice.adsr.attack_rate = 15; // instant attack, out of the way
-        voice.adsr.envelope_phase = EnvelopePhase::Attack;
-
-        // First tick: resolves the DIR entry, decodes the block, and
-        // consumes sample_buffer[0].
-        voice.step(0, &ram, &mut registers);
-
-        // Simulate KOFF exactly as Dsp::write_reg($5C) does.
-        voice.key_on = false;
-        voice.adsr.envelope_phase = EnvelopePhase::Release;
-
-        let mut samples = Vec::new();
-        for _ in 0..4 {
-            voice.step(0, &ram, &mut registers);
-            samples.push(voice.current_sample);
-        }
-
-        // The block's decoded samples strictly alternate sign, so
-        // continued playback must alternate too. The old code returned
-        // immediately once key_on was false, leaving current_sample
-        // pinned at its pre-KOFF value for every one of these calls.
-        assert_ne!(samples[0], samples[1], "sample must advance during release, not freeze");
-        assert_ne!(samples[1], samples[2], "sample must advance during release, not freeze");
-        assert_ne!(samples[2], samples[3], "sample must advance during release, not freeze");
-    }
-
-    /// A voice that never keys on, and one whose release has fully
-    /// finished (envelope reached Off), must both stay idle — the fix
-    /// should only unfreeze the *active* Release window, not resurrect
-    /// voices that are genuinely done.
-    #[test]
-    fn fully_off_voice_stays_idle() {
-        let ram = build_test_ram();
-        let mut registers = [0u8; 128];
-        let mut voice = Voice::default(); // key_on=false, phase=Off
-
-        voice.step(0, &ram, &mut registers);
-
-        assert_eq!(voice.current_sample, 0, "untouched voice must stay silent");
-        assert_eq!(voice.brr.buffer_fill, 0, "must never resolve DIR/decode for an idle voice");
-    }
-
-    /// Every fractional pitch position (0..256, the full range `interpolate`
-    /// can be asked for) must produce a value without panicking. This is
-    /// mainly a bounds-safety regression test: the four GAUSS lookups
-    /// (`255-index`, `511-index`, `index+256`, `index`) would go
-    /// out-of-bounds for any index outside 0..=255.
-    #[test]
-    fn interpolate_never_panics_across_full_fraction_range() {
-        let mut voice = Voice {
-            history: [-30000, -10, 12345, 32000],
-            ..Default::default()
-        };
-        for index in 0u16..256 {
-            voice.pitch_counter = index << 4;
-            let _ = voice.interpolate();
-        }
-    }
-
-    /// Silence in must be silence out, at every fractional position —
-    /// every GAUSS tap is multiplied by 0, so there's no rounding
-    /// ambiguity here (unlike a general "constant signal" case, where the
-    /// real kernel's intentional intermediate 16-bit truncation means the
-    /// output isn't an exact identity).
-    #[test]
-    fn interpolate_of_silence_is_silence() {
-        let mut voice = Voice::default(); // history defaults to [0, 0, 0, 0]
-        for index in 0u16..256 {
-            voice.pitch_counter = index << 4;
-            assert_eq!(voice.interpolate(), 0);
-        }
-    }
-
-    /// `push_history` must be a FIFO shift: oldest sample drops off the
-    /// front, newest lands at `history[3]`.
-    #[test]
-    fn push_history_shifts_oldest_to_newest() {
-        let mut voice = Voice::default();
-        voice.push_history(1);
-        voice.push_history(2);
-        voice.push_history(3);
-        voice.push_history(4);
-        assert_eq!(voice.history, [1, 2, 3, 4]);
-
-        voice.push_history(5);
-        assert_eq!(voice.history, [2, 3, 4, 5]);
     }
 }
