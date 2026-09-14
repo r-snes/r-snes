@@ -759,9 +759,19 @@ fn test_outx_positive_and_negative_samples() {
     mem.dsp.voices[0].adsr.sustain_rate = 0;
 
     // Force a positive sample into the buffer so step() outputs it.
+    //
+    // current_sample is Gaussian-interpolated from the voice's 4-sample
+    // `history`, not read straight out of `sample_buffer` — so `history`
+    // needs priming too, not just the buffer. At this exact pitch-counter
+    // phase (fresh key-on, index=0) the newest tap's weight (GAUSS[0]) is
+    // genuinely zero by design, so a single freshly-buffered sample alone
+    // wouldn't show up yet; setting all 4 history taps to the same sign
+    // makes the interpolated output unambiguously match that sign
+    // regardless of fractional phase.
     mem.dsp.voices[0].brr.sample_buffer = [0x0500i16; 16];
     mem.dsp.voices[0].brr.buffer_fill = 16;
     mem.dsp.voices[0].brr.nibble_idx = 0;
+    mem.dsp.voices[0].history = [0x0500i16; 4];
 
     mem.dsp.step(&mem.ram);
     let outx_pos = mem.dsp.read_reg(0x09) as i8;
@@ -771,6 +781,7 @@ fn test_outx_positive_and_negative_samples() {
     mem.dsp.voices[0].brr.sample_buffer = [(-0x0500i16); 16];
     mem.dsp.voices[0].brr.buffer_fill = 16;
     mem.dsp.voices[0].brr.nibble_idx = 0;
+    mem.dsp.voices[0].history = [-0x0500i16; 4];
 
     mem.dsp.step(&mem.ram);
     let outx_neg = mem.dsp.read_reg(0x09) as i8;
