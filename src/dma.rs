@@ -1,5 +1,5 @@
 use crate::rsnes::RSnesCore;
-use common::snes_address::SnesAddress;
+use common::{snes_addr, snes_address::SnesAddress};
 
 /// Master cycles per byte moved. Constant regardless of MEMSEL —
 /// FastROM does not speed up DMA.
@@ -91,10 +91,7 @@ impl Dma {
     /// B-bus address for a unit offset. The sum wraps inside the `$21xx`
     /// page rather than spilling into `$22xx`.
     pub fn b_address(bbad: u8, offset: u8) -> SnesAddress {
-        SnesAddress {
-            bank: 0x00,
-            addr: 0x2100 + bbad.wrapping_add(offset) as u16,
-        }
+        snes_addr!(0x00:0x2100 + bbad.wrapping_add(offset) as u16)
     }
 }
 
@@ -117,20 +114,14 @@ impl RSnesCore {
             return true;
         }
 
-        if self.dma.state == DmaState::Idle {
-            return false;
-        }
-
         if self.dma.wait > 0 {
             self.dma.wait -= 1;
             return true;
         }
 
         match self.dma.state {
-            DmaState::Idle => unreachable!("checked above"),
-            DmaState::Startup => {
-                self.dma.state = DmaState::Dma;
-            }
+            DmaState::Idle => return false,
+            DmaState::Startup => self.dma.state = DmaState::Dma,
             DmaState::Dma => self.dma_step(),
             DmaState::Hdma => self.hdma_step(),
         }
