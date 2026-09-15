@@ -62,6 +62,37 @@ pub struct Dsp {
     /// the period selected by FLG bits 0-4 (same tick-gating pattern as
     /// `Adsr::tick_due`).
     noise_tick_counter: u16,
+
+    // ---- Echo registers (Stage 1: storage/roundtrip only — the actual
+    // echo buffer, FIR filtering, and voice routing land in later stages;
+    // none of these affect audio output yet). ----
+    /// $0D EFB — echo feedback, signed (-128..+127). Scales the echo
+    /// buffer's own most recent output before it's written back into the
+    /// buffer, so echoes decay (or grow, or invert) over repetitions.
+    efb: i8,
+
+    /// $4D EON — one bit per voice; when set, that voice's dry output is
+    /// also summed into the echo buffer's input, in addition to the
+    /// normal dry mix.
+    eon: u8,
+
+    /// $6D ESA — echo buffer base page in APU RAM. Full base address =
+    /// esa * 0x100.
+    esa: u8,
+
+    /// $7D EDL — echo delay length, 0-15 (only the low nibble is
+    /// meaningful; upper bits are ignored, matching hardware). Buffer
+    /// size = edl * 512 stereo sample pairs (2 KB per unit). EDL=0 means
+    /// no delay buffer at all — echo is effectively bypassed.
+    edl: u8,
+
+    /// $0F/$1F/.../$7F — the 8-tap FIR filter coefficients, signed. Real
+    /// hardware quirk: these occupy the position that would be "voice N's
+    /// GAIN+8" register for each voice 0-7 (reg offset 0xF), but they
+    /// aren't per-voice data — together the 8 values form one global
+    /// filter applied to the echo buffer. `fir_coeff[N]` is tap N,
+    /// stored at register `N*0x10 + 0x0F`.
+    fir_coeff: [i8; 8],
 }
 
 impl Default for Dsp {
@@ -87,6 +118,11 @@ impl Dsp {
             non: 0,
             noise_lfsr: 0x4000,
             noise_tick_counter: 0,
+            efb: 0,
+            eon: 0,
+            esa: 0,
+            edl: 0,
+            fir_coeff: [0i8; 8],
         }
     }
 
@@ -170,6 +206,11 @@ impl Dsp {
             // envelopes and fades)
             (v, 0x7) => self.voices[v].adsr.gain_param = value,
 
+            // +0xF: FIR coefficient tap `v` — NOT per-voice data. This is
+            // the well-documented hardware quirk of sharing register
+            // space with the per-voice block; see `fir_coeff`'s doc.
+            (v, 0xF) => self.fir_coeff[v] = value as i8,
+
             // ---- Global registers ----
             _ => match idx {
                 // $4C: KON — key on, one bit per voice (bit 0 = voice 0).
@@ -208,10 +249,23 @@ impl Dsp {
                 // $3D: NON — one bit per voice; see the `non` field doc.
                 0x3D => self.non = value,
 
+                // ---- Echo registers (Stage 1: stored, no audio effect
+                // yet — the buffer/FIR/routing land in later stages) ----
+                // $0D: EFB — echo feedback, signed.
+                0x0D => self.efb = value as i8,
+                // $4D: EON — one bit per voice; see the `eon` field doc.
+                0x4D => self.eon = value,
+                // $6D: ESA — echo buffer base page.
+                0x6D => self.esa = value,
+                // $7D: EDL — echo delay length; only the low nibble is
+                // meaningful (see the `edl` field doc).
+                0x7D => self.edl = value & 0x0F,
+
                 // $6C: FLG — noise clock / echo-write-disable / mute / reset.
                 // Noise clock changes take effect on the next `advance_noise`
-                // call. Echo-write-disable is stored but has no effect yet
-                // (echo isn't implemented). RESET and MUTE are handled here
+                // call. Echo-write-disable (bit 5) is stored but has no
+                // effect yet — the echo buffer itself isn't implemented
+                // until a later stage. RESET and MUTE are handled here
                 // and in render_audio_single/$4C respectively.
                 0x6C => {
                     self.flg = value;
@@ -229,7 +283,9 @@ impl Dsp {
                     }
                 }
 
-                // All other registers (echo, FIR, pitch modulation, etc.) not yet implemented
+                // Only pitch modulation (PMON, $2D) remains genuinely
+                // unhandled — echo's registers are now stored above (see
+                // the Stage 1 block), pitch mod isn't started yet.
                 _ => {}
             },
         }
