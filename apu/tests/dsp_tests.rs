@@ -1226,3 +1226,95 @@ fn test_non_register_roundtrip() {
     dsp.write_reg(0x3D, 0xA5);
     assert_eq!(dsp.read_reg(0x3D), 0xA5, "NON register must store raw bits");
 }
+
+// ============================================================
+// Echo registers — Stage 1 (storage/roundtrip only; the buffer, FIR
+// filtering, and voice routing that actually produce echo audio land
+// in later stages, so these tests only check registers stick and
+// don't collide with unrelated per-voice data).
+// ============================================================
+
+#[test]
+fn test_efb_register_roundtrip() {
+    let mut dsp = Dsp::new();
+    dsp.write_reg(0x0D, 0x81); // -127 as i8
+    assert_eq!(dsp.read_reg(0x0D), 0x81, "EFB must store raw bits");
+}
+
+#[test]
+fn test_eon_register_roundtrip() {
+    let mut dsp = Dsp::new();
+    dsp.write_reg(0x4D, 0xFF);
+    assert_eq!(dsp.read_reg(0x4D), 0xFF, "EON must store raw bits");
+}
+
+#[test]
+fn test_esa_register_roundtrip() {
+    let mut dsp = Dsp::new();
+    dsp.write_reg(0x6D, 0x20);
+    assert_eq!(dsp.read_reg(0x6D), 0x20, "ESA must store raw bits");
+}
+
+#[test]
+fn test_edl_register_masked_to_4_bits() {
+    // Only the low nibble is meaningful to the actual delay-length
+    // calculation. `read_reg` always reflects the raw byte as written,
+    // mask or no mask — same as PITCH's high byte — so the masked value
+    // shows up through `edl()`, not `read_reg`.
+    let mut dsp = Dsp::new();
+    dsp.write_reg(0x7D, 0xFF);
+    assert_eq!(
+        dsp.read_reg(0x7D),
+        0xFF,
+        "read_reg must return the raw byte as written, unmasked"
+    );
+    assert_eq!(
+        dsp.edl(),
+        0x0F,
+        "the processed EDL value used internally must be masked to 4 bits"
+    );
+}
+
+#[test]
+fn test_edl_low_nibble_preserved() {
+    let mut dsp = Dsp::new();
+    dsp.write_reg(0x7D, 0x0B);
+    assert_eq!(dsp.read_reg(0x7D), 0x0B);
+    assert_eq!(dsp.edl(), 0x0B);
+}
+
+#[test]
+fn test_fir_coefficients_roundtrip_all_8_taps() {
+    // $0F, $1F, ..., $7F — one coefficient per "voice slot", but they're
+    // not per-voice data (see the `fir_coeff` field doc). Write a
+    // distinct value to each and confirm they don't collide with each
+    // other or with any real per-voice register.
+    let mut dsp = Dsp::new();
+    for tap in 0u8..8 {
+        let reg = (tap << 4) | 0x0F;
+        dsp.write_reg(reg, tap * 10 + 1);
+    }
+    for tap in 0u8..8 {
+        let reg = (tap << 4) | 0x0F;
+        assert_eq!(
+            dsp.read_reg(reg),
+            tap * 10 + 1,
+            "FIR tap {tap} (register {reg:#04X}) must roundtrip independently"
+        );
+    }
+}
+
+#[test]
+fn test_fir_coefficient_write_does_not_affect_voice_gain() {
+    // $0F sits immediately after $0E in the register file and one slot
+    // past voice 0's GAIN ($07 + voice 0's base = $07); make sure
+    // writing the FIR tap doesn't leak into any real per-voice state.
+    let mut dsp = Dsp::new();
+    dsp.write_reg(0x00, 0x7F); // voice 0 VOL(L)
+    dsp.write_reg(0x07, 0x55); // voice 0 GAIN
+    dsp.write_reg(0x0F, 0x99); // FIR tap 0
+
+    assert_eq!(dsp.voices[0].left_vol, 0x7F);
+    assert_eq!(dsp.voices[0].adsr.gain_param, 0x55);
+    assert_eq!(dsp.read_reg(0x0F), 0x99);
+}

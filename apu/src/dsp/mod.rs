@@ -146,6 +146,10 @@ impl Dsp {
         self.registers[(index & 0x7F) as usize]
     }
 
+    pub fn edl(&self) -> u8 {
+        self.edl
+    }
+
     /// Write a DSP register by its 7-bit index and update internal state.
     pub fn write_reg(&mut self, index: u8, value: u8) {
         let idx = (index & 0x7F) as usize;
