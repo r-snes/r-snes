@@ -7,6 +7,7 @@ pub use adsr::{Adsr, EnvelopePhase};
 pub use brr::{Brr, decode_brr_block, decode_brr_nibble};
 pub use voice::Voice;
 
+use adsr::ENVELOPE_RATE_TABLE;
 use common::u16_split::U16Split;
 
 use crate::memory::RawARAM;
@@ -40,8 +41,27 @@ pub struct Dsp {
     ///          voice/envelope state (unlike RESET, playback keeps running
     ///          underneath, it just isn't heard)
     ///   bit 5: disable echo writes (no effect yet — echo isn't implemented)
-    ///   bits 4-0: noise clock (no effect yet — noise isn't implemented)
+    ///   bits 4-0: noise clock — index into the shared rate table
+    ///             (ENVELOPE_RATE_TABLE; 0 = stopped). See `advance_noise`.
     flg: u8,
+
+    /// $3D NON — one bit per voice; when set, that voice's mixed output
+    /// is the shared noise generator instead of its BRR-decoded sample.
+    /// BRR decoding keeps running underneath regardless (see `step`), so
+    /// clearing NON resumes wherever that voice's sample stream got to.
+    non: u8,
+
+    /// Shared 15-bit noise LFSR (bits 0-14; bit 15 always 0). Advanced by
+    /// `advance_noise` at the rate selected by FLG bits 0-4. Seeded
+    /// non-zero — an LFSR seeded with 0 would XOR itself into permanent
+    /// silence. The exact real-hardware power-on seed isn't verified here;
+    /// any non-zero seed produces the same statistical noise.
+    noise_lfsr: u16,
+
+    /// Ticks elapsed since the last noise LFSR advance, compared against
+    /// the period selected by FLG bits 0-4 (same tick-gating pattern as
+    /// `Adsr::tick_due`).
+    noise_tick_counter: u16,
 }
 
 impl Default for Dsp {
@@ -64,6 +84,9 @@ impl Dsp {
             // (not reset/muted) like the rest of the zero-initialized
             // register file — the driver writes $6C itself during setup.
             flg: 0,
+            non: 0,
+            noise_lfsr: 0x4000,
+            noise_tick_counter: 0,
         }
     }
 
@@ -182,10 +205,14 @@ impl Dsp {
                 // $5D: DIR — sample directory base page
                 0x5D => self.dir_base = value,
 
+                // $3D: NON — one bit per voice; see the `non` field doc.
+                0x3D => self.non = value,
+
                 // $6C: FLG — noise clock / echo-write-disable / mute / reset.
-                // Noise and echo writes are stored but have no effect yet
-                // (neither feature is implemented). RESET and MUTE are
-                // handled here and in render_audio_single/$4C respectively.
+                // Noise clock changes take effect on the next `advance_noise`
+                // call. Echo-write-disable is stored but has no effect yet
+                // (echo isn't implemented). RESET and MUTE are handled here
+                // and in render_audio_single/$4C respectively.
                 0x6C => {
                     self.flg = value;
                     if value & 0x80 != 0 {
@@ -202,7 +229,7 @@ impl Dsp {
                     }
                 }
 
-                // All other registers (echo, FIR, noise, etc.) not yet implemented
+                // All other registers (echo, FIR, pitch modulation, etc.) not yet implemented
                 _ => {}
             },
         }
@@ -257,6 +284,13 @@ impl Dsp {
     /// Takes `&RawARAM` rather than `&Memory` so the caller can pass
     /// `&memory.ram` without conflicting with the `&mut memory.dsp` borrow.
     pub fn step(&mut self, ram: &RawARAM) {
+        self.advance_noise();
+        // Real hardware scales the 15-bit LFSR into a signed sample the
+        // same way a decoded BRR sample would be: shift left 1 and treat
+        // as i16, so values above 0x4000 read as negative.
+        let noise_sample = (self.noise_lfsr << 1) as i16;
+        let non = self.non;
+
         // Split borrows so we can pass &mut voice and &mut self.registers
         // into Voice::step() simultaneously — the borrow checker allows
         // borrowing separate struct fields at the same time.
@@ -264,7 +298,42 @@ impl Dsp {
 
         for (i, voice) in voices.iter_mut().enumerate() {
             voice.step(i, ram, registers);
+
+            if non & (1 << i) != 0 {
+                // NON substitutes the noise generator for this voice's
+                // decoded-sample source; envelope/volume/pan still apply
+                // normally afterward via render_audio_single. BRR decoding
+                // keeps running underneath regardless — real hardware
+                // doesn't pause it — so clearing NON later resumes
+                // wherever that voice's sample stream already got to.
+                voice.current_sample = noise_sample;
+                registers[(i << 4) | 0x9] = (noise_sample >> 8) as u8;
+            }
         }
+    }
+
+    /// Advance the shared noise LFSR by one DSP tick, if the noise clock
+    /// (FLG bits 0-4) is due to fire this tick. Gated by the same rate
+    /// table and tick-counting pattern as ADSR envelope rates — index 0
+    /// means "stopped," matching FLG's documented "0 = noise off."
+    ///
+    /// 15-bit LFSR, taps at bit0 and bit1: each fire, the new bit
+    /// (bit0 XOR bit1 of the current value) is fed in at bit14 and the
+    /// whole register shifts right by 1.
+    fn advance_noise(&mut self) {
+        let period = ENVELOPE_RATE_TABLE[(self.flg & 0x1F) as usize];
+        if period == 0 {
+            return;
+        }
+
+        self.noise_tick_counter += 1;
+        if self.noise_tick_counter < period {
+            return;
+        }
+        self.noise_tick_counter = 0;
+
+        let feedback = ((self.noise_lfsr << 13) ^ (self.noise_lfsr << 14)) & 0x4000;
+        self.noise_lfsr = feedback | (self.noise_lfsr >> 1);
     }
 
     /// Mix all active voices into one stereo output sample pair.
