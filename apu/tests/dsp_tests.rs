@@ -1318,3 +1318,220 @@ fn test_fir_coefficient_write_does_not_affect_voice_gain() {
     assert_eq!(dsp.voices[0].adsr.gain_param, 0x55);
     assert_eq!(dsp.read_reg(0x0F), 0x99);
 }
+
+// ============================================================
+// Echo buffer — Stage 2 (delay-line mechanics only: circular
+// read/write addressing, wraparound, write-disable. No FIR filtering
+// or voice routing yet — that's Stage 3/4. `tick_echo_buffer` is a
+// standalone method, not yet called from `Dsp::step`, so it's tested
+// directly against `mem.ram`.)
+// ============================================================
+
+#[test]
+fn test_tick_echo_buffer_delays_by_exactly_buffer_length() {
+    let mut mem = Memory::new();
+    dsp_gw(&mut mem, 0x6D, 0x02); // ESA = page 2 ($0200)
+    dsp_gw(&mut mem, 0x7D, 0x01); // EDL = 1 -> 2048 bytes = 512 stereo pairs
+
+    // Buffer starts zeroed, so the very first tick's "old" value must
+    // be silence.
+    let (old_l, old_r) = mem.dsp.tick_echo_buffer(&mut mem.ram, 1234, -1234);
+    assert_eq!((old_l, old_r), (0, 0));
+
+    // Advance through the rest of the buffer with distinct dummy writes
+    // so the pointer comes all the way back around to the position we
+    // wrote first.
+    for i in 1..512i16 {
+        mem.dsp.tick_echo_buffer(&mut mem.ram, i, -i);
+    }
+
+    // The pointer has now wrapped exactly once: this call must read back
+    // the very first value we wrote, 512 ticks ago.
+    let (wrapped_l, wrapped_r) = mem.dsp.tick_echo_buffer(&mut mem.ram, 0, 0);
+    assert_eq!(
+        (wrapped_l, wrapped_r),
+        (1234, -1234),
+        "buffer must wrap after exactly EDL*512 stereo pairs"
+    );
+}
+
+#[test]
+fn test_tick_echo_buffer_writes_sequential_little_endian_addresses() {
+    let mut mem = Memory::new();
+    dsp_gw(&mut mem, 0x6D, 0x05); // ESA = page 5 ($0500)
+    dsp_gw(&mut mem, 0x7D, 0x01); // EDL = 1
+
+    mem.dsp.tick_echo_buffer(&mut mem.ram, 0x0102, 0x0304);
+    mem.dsp.tick_echo_buffer(&mut mem.ram, 0x0506, 0x0708);
+
+    // Tick 1 writes L at $0500-501, R at $0502-503; tick 2 writes the
+    // next stereo pair immediately after, at $0504-505 / $0506-507.
+    let read16 = |mem: &Memory, addr: u16| -> i16 {
+        i16::from_le_bytes([mem.ram[addr as usize], mem.ram[addr as usize + 1]])
+    };
+    assert_eq!(read16(&mem, 0x0500), 0x0102);
+    assert_eq!(read16(&mem, 0x0502), 0x0304);
+    assert_eq!(read16(&mem, 0x0504), 0x0506);
+    assert_eq!(read16(&mem, 0x0506), 0x0708);
+}
+
+#[test]
+fn test_tick_echo_buffer_edl_zero_is_silent_noop() {
+    let mut mem = Memory::new();
+    dsp_gw(&mut mem, 0x6D, 0x03); // ESA = page 3; EDL left at its default 0
+
+    let (l, r) = mem.dsp.tick_echo_buffer(&mut mem.ram, 999, -999);
+    assert_eq!(
+        (l, r),
+        (0, 0),
+        "EDL=0 must read as silence, not stale/garbage RAM content"
+    );
+    // Nothing to write to — RAM must be untouched.
+    assert_eq!(mem.ram[0x0300], 0);
+    assert_eq!(mem.ram[0x0301], 0);
+}
+
+#[test]
+fn test_flg_bit5_disables_echo_writes_but_reads_still_work() {
+    let mut mem = Memory::new();
+    dsp_gw(&mut mem, 0x6D, 0x04); // ESA = page 4
+    dsp_gw(&mut mem, 0x7D, 0x01); // EDL = 1
+
+    // Pre-seed the buffer's first slot directly, the way a prior
+    // (writes-enabled) tick would have left it.
+    mem.ram[0x0400] = 0x34; // L lo
+    mem.ram[0x0401] = 0x12; // L hi -> L = 0x1234
+    mem.ram[0x0402] = 0x00; // R lo
+    mem.ram[0x0403] = 0x00; // R hi -> R = 0
+
+    dsp_gw(&mut mem, 0x6C, 0x20); // FLG bit 5: disable echo writes
+
+    let (old_l, old_r) = mem.dsp.tick_echo_buffer(&mut mem.ram, 0x7FFF, -1);
+    assert_eq!(
+        (old_l, old_r),
+        (0x1234, 0),
+        "reads must keep working even while writes are disabled"
+    );
+
+    // The attempted write must not have landed.
+    assert_eq!(mem.ram[0x0400], 0x34);
+    assert_eq!(mem.ram[0x0401], 0x12);
+    assert_eq!(mem.ram[0x0402], 0x00);
+    assert_eq!(mem.ram[0x0403], 0x00);
+}
+
+#[test]
+fn test_echo_buffer_address_wraps_past_64kb_without_panicking() {
+    // ESA near the top of the address space plus a large EDL means
+    // esa*0x100 + offset can exceed 0xFFFF partway around the buffer —
+    // this must wrap like real 16-bit hardware addressing, not panic.
+    let mut mem = Memory::new();
+    dsp_gw(&mut mem, 0x6D, 0xFF); // ESA = page 0xFF -> base $FF00
+    dsp_gw(&mut mem, 0x7D, 0x0F); // EDL = 15 (max buffer size)
+
+    for i in 0..2000i16 {
+        mem.dsp.tick_echo_buffer(&mut mem.ram, i, 0);
+    }
+}
+
+// ============================================================
+// FIR filter + feedback — Stage 3 (`tick_echo`). Still not called
+// from `Dsp::step`/`render_audio_single` — that's Stage 4, alongside
+// EON voice routing. `echo_in` is a plain parameter for the same
+// reason Stage 2's `tick_echo_buffer` took its write value directly.
+// ============================================================
+
+#[test]
+fn test_fir_taps_read_correct_positions_for_all_8_taps() {
+    // For each tap k, verify it surfaces a single known write from
+    // exactly the right number of ticks in the past. Tap 0 is the
+    // "oldest, about to be overwritten" position, so it only shows a
+    // write after one *full* trip around the buffer (512 ticks here);
+    // taps 1-7 are progressively closer to "now" and surface after
+    // just k+1 ticks. Verified against an independent simulation of
+    // the addressing/wraparound math before writing this test.
+    let wait_ticks: [u32; 8] = [513, 2, 3, 4, 5, 6, 7, 8];
+
+    for k in 0..8usize {
+        let mut mem = Memory::new();
+        dsp_gw(&mut mem, 0x6D, 0x20); // ESA = page 0x20
+        dsp_gw(&mut mem, 0x7D, 0x01); // EDL = 1 -> 2048-byte buffer
+
+        // Tick 1: write a distinctive value with FIR still all-zero.
+        // EFB=0 throughout, so FIR settings never affect what actually
+        // lands in the buffer — only the returned fir_out.
+        mem.dsp.tick_echo(&mut mem.ram, 9999, -1111);
+
+        // Advance up to (but not including) the verification tick.
+        for _ in 1..wait_ticks[k] - 1 {
+            mem.dsp.tick_echo(&mut mem.ram, 0, 0);
+        }
+
+        // Isolate tap k just before the verification tick.
+        dsp_vw(&mut mem, k as u8, 0xF, 127);
+
+        let (out_l, out_r) = mem.dsp.tick_echo(&mut mem.ram, 0, 0);
+        assert_eq!(
+            out_l,
+            ((127i32 * 9999) >> 7) as i16,
+            "tap {k} must read the value written {} ticks ago",
+            wait_ticks[k]
+        );
+        assert_eq!(out_r, ((127i32 * -1111) >> 7) as i16);
+    }
+}
+
+#[test]
+fn test_tick_echo_zero_fir_is_always_silent_regardless_of_buffer_content() {
+    // Default FIR coefficients are all 0, so the filtered output must
+    // stay silent no matter what's actually sitting in the buffer.
+    let mut mem = Memory::new();
+    dsp_gw(&mut mem, 0x6D, 0x40);
+    dsp_gw(&mut mem, 0x7D, 0x01);
+
+    for i in 0..20i16 {
+        let (l, r) = mem.dsp.tick_echo(&mut mem.ram, i * 111, -i * 111);
+        assert_eq!((l, r), (0, 0), "all-zero FIR must produce silent output (tick {i})");
+    }
+}
+
+#[test]
+fn test_tick_echo_edl_zero_is_always_silent() {
+    let mut mem = Memory::new();
+    dsp_gw(&mut mem, 0x6D, 0x50); // ESA set; EDL left at its default 0
+    dsp_vw(&mut mem, 0, 0xF, 127); // even with a strong FIR tap...
+
+    let (l, r) = mem.dsp.tick_echo(&mut mem.ram, 12345, -12345);
+    assert_eq!((l, r), (0, 0), "EDL=0 must produce silence — there's no buffer to filter");
+}
+
+#[test]
+fn test_efb_feeds_filtered_output_back_into_the_buffer() {
+    // FIR isolates tap 0 at coefficient 64 (~0.5x); EFB=64 (~0.5x
+    // feedback). A single write of 1000 should come back roughly
+    // halved on each full trip around the buffer — echoing, decaying,
+    // and being re-filtered each cycle: 1000 -> 500 -> 125 (not 250 —
+    // the write that goes back into the buffer is *already* scaled by
+    // the feedback path, then gets scaled by the FIR tap *again* on
+    // the next read, so two ~0.5x factors compound between readings,
+    // not one). Verified against an independent simulation before
+    // writing this test, specifically to catch that double-scaling.
+    let mut mem = Memory::new();
+    dsp_gw(&mut mem, 0x6D, 0x30); // ESA = page 0x30
+    dsp_gw(&mut mem, 0x7D, 0x01); // EDL = 1 -> 512 stereo pairs
+    dsp_vw(&mut mem, 0, 0xF, 64); // FIR tap 0 = 64
+    dsp_gw(&mut mem, 0x0D, 64); // EFB = 64
+
+    mem.dsp.tick_echo(&mut mem.ram, 1000, 0); // tick 1: buffer empty, writes 1000 unmodified
+    for _ in 1..512 {
+        mem.dsp.tick_echo(&mut mem.ram, 0, 0);
+    }
+    let (out1, _) = mem.dsp.tick_echo(&mut mem.ram, 0, 0); // tick 513: reads tick 1's 1000
+    assert_eq!(out1, 500);
+
+    for _ in 0..511 {
+        mem.dsp.tick_echo(&mut mem.ram, 0, 0);
+    }
+    let (out2, _) = mem.dsp.tick_echo(&mut mem.ram, 0, 0); // tick 1025: reads tick 513's write
+    assert_eq!(out2, 125);
+}
