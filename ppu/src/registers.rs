@@ -169,8 +169,8 @@ pub struct PPURegisters {
     /// $2131 - CGADSUB (W8)
     pub cgadsub: u8, // Bits: MHBO4321 | Color math operator (M), half (H), backdrop (B), layer enable (O4321)
 
-    /// $2132 - COLDATA (W8)
-    pub coldata: u8, // Bits: BGRCCCCC | Fixed color channel select (BGR) and value (C)
+        /// $2132 - COLDATA (W8)
+    pub coldata: u16, // Bits: BGRCCCCC | Fixed color channel select (BGR) and value (C). Accumulated into a BGR555 fixed color; also the sub-screen backdrop.
 
     /// $2133 - SETINI (W8)
     pub setini: u8, // Bits: EX..HOiI | External sync (E), EXTBG (X), Hi-res (H), Overscan (O), OBJ interlace (i), Screen interlace (I)

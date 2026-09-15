@@ -35,6 +35,60 @@ pub const Z_BG1_HIGH: u8 = 11;
 pub const Z_OBJ3: u8 = 12;
 pub const Z_BG3_PRIO: u8 = 13; // mode 1, BGMODE bit3: BG3 high-prio above all
 
+/// Identity of the layer that produced a pixel. Needed by color math, which
+/// enables/disables per layer (CGADSUB) and treats OBJ specially.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Layer {
+    Backdrop,
+    Bg1,
+    Bg2,
+    Bg3,
+    Bg4,
+    Obj,
+}
+
+impl Layer {
+    pub fn from_bg(bg: usize) -> Layer {
+        match bg {
+            0 => Layer::Bg1,
+            1 => Layer::Bg2,
+            2 => Layer::Bg3,
+            _ => Layer::Bg4,
+        }
+    }
+
+    // CGADSUB layer-enable bit index (BG1=0..BG4=3, OBJ=4, backdrop=5)
+    fn math_bit(self) -> u8 {
+        match self {
+            Layer::Bg1 => 0,
+            Layer::Bg2 => 1,
+            Layer::Bg3 => 2,
+            Layer::Bg4 => 3,
+            Layer::Obj => 4,
+            Layer::Backdrop => 5,
+        }
+    }
+}
+
+/// One composited pixel of a screen (main or sub), before color math.
+#[derive(Clone, Copy)]
+pub struct LinePixel {
+    pub color: u16,
+    pub z: u8,
+    pub layer: Layer,
+    // OBJ pixels only do color math when the sprite uses palettes 4-7.
+    pub obj_math: bool,
+}
+
+impl LinePixel {
+    const BACKDROP: LinePixel = LinePixel {
+        color: 0,
+        z: Z_BACKDROP,
+        layer: Layer::Backdrop,
+        obj_math: false,
+    };
+}
+
 /// Parameters for rendering one BG layer on one scanline.
 pub struct BgParams {
     pub tilemap_base: u16,
@@ -47,6 +101,9 @@ pub struct BgParams {
     pub h64: bool,        // tilemap 64 tiles tall
     pub z_low: u8,
     pub z_high: u8,
+    pub layer: Layer,
+    pub to_main: bool, // enabled on main screen (TM)
+    pub to_sub: bool,  // enabled on sub screen (TS)
 }
 
 pub struct Renderer {
@@ -54,9 +111,9 @@ pub struct Renderer {
     pub presented: Box<RawFramebuffer>,   // front buffer, GUI reads here
     pub current_brightness: u8,
 
-    /// Per-column z-order of the pixel currently written on the scanline
-    /// being rendered. Reset to Z_BACKDROP at the start of each scanline.
-    priority: Box<[u8; SCREEN_WIDTH]>,
+    // Per-column top pixel of each screen for the scanline being rendered.
+    main_line: Box<[LinePixel; SCREEN_WIDTH]>,
+    sub_line: Box<[LinePixel; SCREEN_WIDTH]>,
 
     brightness_delay: u8,
 }
@@ -72,7 +129,8 @@ impl Renderer {
         Self {
             framebuffer: Box::new([0; SCREEN_WIDTH * SCREEN_HEIGHT * 3]),
             current_brightness: 15, // full brightness
-            priority: Box::new([Z_BACKDROP; SCREEN_WIDTH]),
+            main_line: Box::new([LinePixel::BACKDROP; SCREEN_WIDTH]),
+            sub_line: Box::new([LinePixel::BACKDROP; SCREEN_WIDTH]),
             brightness_delay: 0,
             presented: Box::new([0; SCREEN_WIDTH * SCREEN_HEIGHT * 3]),
         }
@@ -96,34 +154,38 @@ impl Renderer {
         // Update brightness
         self.update_brightness(ppu.brightness());
 
-        // Reset priorities and fill with the backdrop
-        self.priority.fill(Z_BACKDROP);
-        let backdrop = ppu.cgram.read(0);
-        let (br, bg, bb) = Self::apply_brightness(backdrop, self.current_brightness as u16);
-        for x in 0..SCREEN_WIDTH {
-            self.set_pixel(x, y, br, bg, bb);
-        }
+        // Main backdrop = CGRAM[0]; sub backdrop = fixed colour (COLDATA).
+        let main_bd = LinePixel {
+            color: ppu.cgram.read(0),
+            ..LinePixel::BACKDROP
+        };
+        let sub_bd = LinePixel {
+            color: ppu.regs.coldata,
+            ..LinePixel::BACKDROP
+        };
+        self.main_line.fill(main_bd);
+        self.sub_line.fill(sub_bd);
 
-        // Background layers
+        // Background layers -> deposit into main_line / sub_line
         match ppu.regs.bg_mode() {
             0 => self.render_scanline_mode0(ppu, y),
             1 => self.render_scanline_mode1(ppu, y),
-            mode => {
-                if y == 0 {
-                    println!("bg_mode = {}", mode);
-                }
-                self.render_scanline_mode1(ppu, y); // TEMPORARY DEBUG - TODO
-            }
+            mode => self.render_scanline_mode1(ppu, y),
+            // mode => {
+            //     self.render_full_black(y);
+            //     println!("PPU mode {} not implemented", mode);
+            //     return;
+            // }
         }
 
-        // Sprites, if OBJ is enabled on the main screen (TM bit 4)
-        if ppu.regs.tm & 0x10 != 0 {
-            self.render_sprites(ppu, y);
-        }
+        // Sprites deposit into main_line / sub_line too (gated on TM/TS bit 4).
+        self.render_sprites(ppu, y);
+
+        // Final pass: main + sub -> color math -> brightness -> framebuffer.
+        self.composite_line(ppu, y);
     }
 
-    /// Render one BG layer for one scanline. Handles 2bpp/4bpp, tilemap sizes,
-    /// per-tile flip/priority, and mode-0 palette offsets.
+    /// Render one BG layer for one scanline into the main and/or sub screen.
     pub fn render_bg_scanline(&mut self, ppu: &PPU, y: usize, p: &BgParams) {
         // if y == 0 {
         //     println!(
@@ -178,11 +240,110 @@ impl Renderer {
 
             let palette_entry = p.palette_base + (palette_num << pal_shift) + color_index;
             let color = ppu.cgram.read(palette_entry);
-
-            let (r, g, b) = Self::apply_brightness(color, self.current_brightness as u16);
             let z = if priority { p.z_high } else { p.z_low };
-            self.set_pixel_z(x, y, r, g, b, z);
+
+            let pixel = LinePixel {
+                color,
+                z,
+                layer: p.layer,
+                obj_math: false,
+            };
+            if p.to_main {
+                Self::deposit(&mut self.main_line, x, pixel);
+            }
+            if p.to_sub {
+                Self::deposit(&mut self.sub_line, x, pixel);
+            }
         }
+    }
+
+    /// Deposit an OBJ pixel. Called by the sprite renderer.
+    /// `obj_math` must be true if the sprite uses palette 4-7.
+    pub fn deposit_main(&mut self, x: usize, color: u16, z: u8, layer: Layer, obj_math: bool) {
+        Self::deposit(
+            &mut self.main_line,
+            x,
+            LinePixel { color, z, layer, obj_math },
+        );
+    }
+
+    pub fn deposit_sub(&mut self, x: usize, color: u16, z: u8, layer: Layer, obj_math: bool) {
+        Self::deposit(
+            &mut self.sub_line,
+            x,
+            LinePixel { color, z, layer, obj_math },
+        );
+    }
+
+    fn deposit(line: &mut [LinePixel; SCREEN_WIDTH], x: usize, px: LinePixel) {
+        if px.z >= line[x].z {
+            line[x] = px;
+        }
+    }
+
+    /// Combine main + sub per pixel, apply color math and brightness.
+    fn composite_line(&mut self, ppu: &PPU, y: usize) {
+        let cgwsel = ppu.regs.cgwsel;
+        let cgadsub = ppu.regs.cgadsub;
+
+        let subtract = cgadsub & 0x80 != 0;
+        let half = cgadsub & 0x40 != 0;
+        let use_subscreen = cgwsel & 0x02 != 0; // CGWSEL bit1 (A)
+        let fixed = ppu.regs.coldata;
+        let brightness = self.current_brightness as u16;
+
+        let clip_mode = (cgwsel >> 6) & 0x03; // 0=never 1=out 2=in 3=always
+        let math_region = (cgwsel >> 4) & 0x03; // 0=always 1=in 2=out 3=never
+
+        for x in 0..SCREEN_WIDTH {
+            let main = self.main_line[x];
+
+            // Clip main screen to black. Window-relative cases (1/2) need the
+            // color window -> handled when window masking lands.
+            let force_black = clip_mode == 3;
+            let main_color = if force_black { 0 } else { main.color };
+
+            // Is color math active on this pixel?
+            let region_ok = math_region != 3; // 1/2 need color window
+            let layer_enabled = match main.layer {
+                Layer::Obj => (cgadsub & 0x10 != 0) && main.obj_math,
+                l => cgadsub & (1 << l.math_bit()) != 0,
+            };
+
+            let out = if region_ok && layer_enabled {
+                let sub = if use_subscreen {
+                    self.sub_line[x].color
+                } else {
+                    fixed
+                };
+                Self::color_math(main_color, sub, subtract, half)
+            } else {
+                main_color
+            };
+
+            let (r, g, b) = Self::apply_brightness(out, brightness);
+            self.set_pixel(x, y, r, g, b);
+        }
+    }
+
+    /// Per-channel BGR555 add/subtract with optional halving.
+    fn color_math(main: u16, sub: u16, subtract: bool, half: bool) -> u16 {
+        let (mr, mg, mb) = (main & 0x1F, (main >> 5) & 0x1F, (main >> 10) & 0x1F);
+        let (sr, sg, sb) = (sub & 0x1F, (sub >> 5) & 0x1F, (sub >> 10) & 0x1F);
+
+        let (mut r, mut g, mut b) = if subtract {
+            (mr.saturating_sub(sr), mg.saturating_sub(sg), mb.saturating_sub(sb))
+        } else {
+            ((mr + sr).min(31), (mg + sg).min(31), (mb + sb).min(31))
+        };
+
+        if half {
+            r >>= 1;
+            g >>= 1;
+            b >>= 1;
+        }
+
+        r | (g << 5) | (b << 10)
     }
 
     fn update_brightness(&mut self, target: u8) {
@@ -225,15 +386,6 @@ impl Renderer {
         self.framebuffer[index] = r;
         self.framebuffer[index + 1] = g;
         self.framebuffer[index + 2] = b;
-    }
-
-    /// Write a pixel only if its z-order is at least the one already stored
-    /// for this column. On success, updates the stored z-order.
-    pub fn set_pixel_z(&mut self, x: usize, y: usize, r: u8, g: u8, b: u8, z: u8) {
-        if z >= self.priority[x] {
-            self.set_pixel(x, y, r, g, b);
-            self.priority[x] = z;
-        }
     }
 
     fn render_full_black(&mut self, y: usize) {
