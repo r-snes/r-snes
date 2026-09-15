@@ -1322,4 +1322,154 @@ mod tests {
         assert_eq!(rsnes.bus.io.mdmaen, 0);
         assert_eq!(channel_a1t(&mut rsnes, 0).addr, 0x2000);
     }
+
+    /// Mode 0 writes every byte to the same B-bus register.
+    #[test]
+    fn test_dma_pattern_mode0_single_register() {
+        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let src = snes_addr!(0x7E:0x1000);
+        fill_wram(&mut rsnes, src, &[0x11, 0x22, 0x33, 0x44]);
+
+        // Increment after $2118 (VMAIN bit 7 clear).
+        write_reg(&mut rsnes, 0x2115, 0x00);
+        write_reg(&mut rsnes, 0x2116, 0x00);
+        write_reg(&mut rsnes, 0x2117, 0x00);
+
+        configure_channel(&mut rsnes, 0, 0x00, 0x18, src, 4);
+        run_dma(&mut rsnes, 0b0000_0001, 10_000);
+
+        assert_eq!(rsnes.ppu.vram.memory[0], 0x0011);
+        assert_eq!(rsnes.ppu.vram.memory[1], 0x0022);
+        assert_eq!(rsnes.ppu.vram.memory[2], 0x0033);
+        assert_eq!(rsnes.ppu.vram.memory[3], 0x0044);
+    }
+
+    /// Mode 2 writes pairs to the same register, so the second byte of
+    /// each pair overwrites the first.
+    #[test]
+    fn test_dma_pattern_mode2_pairs_to_one_register() {
+        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let src = snes_addr!(0x7E:0x1000);
+        fill_wram(&mut rsnes, src, &[0x11, 0x22, 0x33, 0x44]);
+
+        configure_channel(&mut rsnes, 0, 0x02, 0x26, src, 4);
+        run_dma(&mut rsnes, 0b0000_0001, 10_000);
+
+        assert_eq!(rsnes.ppu.regs.wh0, 0x44);
+    }
+
+    /// Mode 3 writes two bytes to the base register, then two to base+1.
+    #[test]
+    fn test_dma_pattern_mode3_two_then_two() {
+        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let src = snes_addr!(0x7E:0x1000);
+        fill_wram(&mut rsnes, src, &[0x11, 0x22, 0x33, 0x44]);
+
+        configure_channel(&mut rsnes, 0, 0x03, 0x26, src, 4);
+        run_dma(&mut rsnes, 0b0000_0001, 10_000);
+
+        assert_eq!(rsnes.ppu.regs.wh0, 0x22);
+        assert_eq!(rsnes.ppu.regs.wh1, 0x44);
+    }
+
+    /// Mode 4 walks four consecutive registers, one byte each.
+    #[test]
+    fn test_dma_pattern_mode4_four_consecutive_registers() {
+        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let src = snes_addr!(0x7E:0x1000);
+        fill_wram(&mut rsnes, src, &[0x11, 0x22, 0x33, 0x44]);
+
+        configure_channel(&mut rsnes, 0, 0x04, 0x26, src, 4);
+        run_dma(&mut rsnes, 0b0000_0001, 10_000);
+
+        assert_eq!(rsnes.ppu.regs.wh0, 0x11);
+        assert_eq!(rsnes.ppu.regs.wh1, 0x22);
+        assert_eq!(rsnes.ppu.regs.wh2, 0x33);
+        assert_eq!(rsnes.ppu.regs.wh3, 0x44);
+    }
+
+    /// Mode 5 alternates base / base+1 in pairs.
+    #[test]
+    fn test_dma_pattern_mode5_alternating_pairs() {
+        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let src = snes_addr!(0x7E:0x1000);
+        fill_wram(&mut rsnes, src, &[0x11, 0x22, 0x33, 0x44]);
+
+        configure_channel(&mut rsnes, 0, 0x05, 0x26, src, 4);
+        run_dma(&mut rsnes, 0b0000_0001, 10_000);
+
+        assert_eq!(rsnes.ppu.regs.wh0, 0x33);
+        assert_eq!(rsnes.ppu.regs.wh1, 0x44);
+    }
+
+    /// Modes 6 and 7 are documented aliases of 2 and 3.
+    #[test]
+    fn test_dma_pattern_modes_6_and_7_alias_2_and_3() {
+        let src = snes_addr!(0x7E:0x1000);
+
+        let mut six = RSnesCoreInterruptDetector::new();
+        fill_wram(&mut six, src, &[0x11, 0x22, 0x33, 0x44]);
+        configure_channel(&mut six, 0, 0x06, 0x26, src, 4);
+        run_dma(&mut six, 0b0000_0001, 10_000);
+        assert_eq!(six.ppu.regs.wh0, 0x44, "mode 6 behaves as mode 2");
+
+        let mut seven = RSnesCoreInterruptDetector::new();
+        fill_wram(&mut seven, src, &[0x11, 0x22, 0x33, 0x44]);
+        configure_channel(&mut seven, 0, 0x07, 0x26, src, 4);
+        run_dma(&mut seven, 0b0000_0001, 10_000);
+        assert_eq!(seven.ppu.regs.wh0, 0x22, "mode 7 behaves as mode 3: $2126");
+        assert_eq!(seven.ppu.regs.wh1, 0x44, "mode 7 behaves as mode 3: $2127");
+    }
+
+    /// The pattern cycles rather than truncating: eight bytes in mode 1 fill
+    /// four VRAM words, not two.
+    #[test]
+    fn test_dma_pattern_repeats_beyond_its_length() {
+        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let src = snes_addr!(0x7E:0x1000);
+        fill_wram(
+            &mut rsnes,
+            src,
+            &[0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88],
+        );
+        vram_word_mode(&mut rsnes);
+
+        configure_channel(&mut rsnes, 0, 0x01, 0x18, src, 8);
+        run_dma(&mut rsnes, 0b0000_0001, 10_000);
+
+        assert_eq!(rsnes.ppu.vram.memory[0], 0x2211);
+        assert_eq!(rsnes.ppu.vram.memory[1], 0x4433);
+        assert_eq!(rsnes.ppu.vram.memory[2], 0x6655);
+        assert_eq!(rsnes.ppu.vram.memory[3], 0x8877);
+    }
+
+    /// A transfer that stops mid-unit still moves exactly DAS bytes.
+    #[test]
+    fn test_dma_stops_mid_pattern_on_odd_count() {
+        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let src = snes_addr!(0x7E:0x1000);
+        fill_wram(&mut rsnes, src, &[0x11, 0x22, 0x33]);
+
+        configure_channel(&mut rsnes, 0, 0x04, 0x26, src, 3);
+        run_dma(&mut rsnes, 0b0000_0001, 10_000);
+
+        assert_eq!(rsnes.ppu.regs.wh0, 0x11);
+        assert_eq!(rsnes.ppu.regs.wh1, 0x22);
+        assert_eq!(rsnes.ppu.regs.wh2, 0x33);
+        assert_eq!(rsnes.ppu.regs.wh3, 0);
+        assert_eq!(channel_das(&mut rsnes, 0), 0);
+    }
+
+    /// BBAD wraps inside the $21xx page rather than spilling into $22xx.
+    #[test]
+    fn test_dma_b_address_wraps_within_the_page() {
+        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let src = snes_addr!(0x7E:0x1000);
+        fill_wram(&mut rsnes, src, &[0x11, 0x22]);
+
+        configure_channel(&mut rsnes, 0, 0x01, 0xFF, src, 2);
+        run_dma(&mut rsnes, 0b0000_0001, 10_000);
+
+        assert_eq!(rsnes.ppu.regs.inidisp, 0x22);
+    }
 }
