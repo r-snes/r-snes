@@ -1,8 +1,8 @@
 use crate::constants::*;
 use crate::ppu::PPU;
 use crate::rendering::renderer::{
-    BgParams, Renderer, Z_BG1_HIGH, Z_BG1_LOW, Z_BG2_HIGH, Z_BG2_LOW, Z_BG3_HIGH, Z_BG3_LOW,
-    Z_BG4_HIGH, Z_BG4_LOW,
+    BgParams, Layer, Renderer, Z_BG1_HIGH, Z_BG1_LOW, Z_BG2_HIGH, Z_BG2_LOW, Z_BG3_HIGH,
+    Z_BG3_LOW, Z_BG4_HIGH, Z_BG4_LOW,
 };
 use crate::vram::RawVRAM;
 
@@ -15,8 +15,9 @@ impl Renderer {
         const Z_HIGH: [u8; 4] = [Z_BG1_HIGH, Z_BG2_HIGH, Z_BG3_HIGH, Z_BG4_HIGH];
 
         for bg in 0..4 {
-            // Gate on the main-screen enable bit (TM bits 0..3)
-            if ppu.regs.tm & (1 << bg) == 0 {
+            let to_main = ppu.regs.tm & (1 << bg) != 0;
+            let to_sub = ppu.regs.ts & (1 << bg) != 0;
+            if !to_main && !to_sub {
                 continue;
             }
 
@@ -37,6 +38,9 @@ impl Renderer {
                     h64,
                     z_low: Z_LOW[bg],
                     z_high: Z_HIGH[bg],
+                    layer: Layer::from_bg(bg),
+                    to_main,
+                    to_sub,
                 },
             );
         }
