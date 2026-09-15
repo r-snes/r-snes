@@ -302,7 +302,7 @@ fn test_step_voice_goes_off_after_non_looping_end_block() {
     // At pitch=0x1000 we advance 1 sample per tick; 16 samples = 16 ticks minimum.
     let mut went_off = false;
     for _ in 0..200 {
-        mem.dsp.step(&mem.ram);
+        mem.dsp.step(&mut mem.ram);
         if mem.dsp.voices[0].adsr.envelope_phase == EnvelopePhase::Off
             || (!mem.dsp.voices[0].key_on
                 && mem.dsp.voices[0].adsr.envelope_phase == EnvelopePhase::Release)
@@ -335,7 +335,7 @@ fn test_step_looping_voice_stays_active() {
 
     // Run for 500 ticks; voice must never go Off.
     for i in 0..500 {
-        mem.dsp.step(&mem.ram);
+        mem.dsp.step(&mut mem.ram);
         assert_ne!(
             mem.dsp.voices[0].adsr.envelope_phase,
             EnvelopePhase::Off,
@@ -350,7 +350,7 @@ fn test_step_pitch_counter_advances() {
     setup_single_voice_end_block(&mut mem);
 
     let _counter_before = mem.dsp.voices[0].pitch_counter;
-    mem.dsp.step(&mem.ram);
+    mem.dsp.step(&mut mem.ram);
     // pitch=0x1000 is added each tick; counter wraps at 0x1000 so
     // after one tick from zero the high nibble has consumed one sample
     // and the counter resets to 0. What matters: key_on went true.
@@ -375,7 +375,7 @@ fn test_step_advances_envelope_over_multiple_ticks() {
     dsp_gw(&mut mem, 0x4C, 0x01);
 
     for _ in 0..10 {
-        mem.dsp.step(&mem.ram);
+        mem.dsp.step(&mut mem.ram);
     }
 
     assert!(
@@ -395,7 +395,7 @@ fn test_step_out_of_range_ram_address_does_not_panic() {
     dsp_vw(&mut mem, 0, 0x6, 0xE0);
     dsp_gw(&mut mem, 0x4C, 0x01);
 
-    mem.dsp.step(&mem.ram); // must not panic
+    mem.dsp.step(&mut mem.ram); // must not panic
 }
 
 // ============================================================
@@ -628,7 +628,7 @@ fn test_envx_updated_after_step() {
 
     // Advance until the envelope leaves Attack (level > 0).
     for _ in 0..200 {
-        mem.dsp.step(&mem.ram);
+        mem.dsp.step(&mut mem.ram);
         if mem.dsp.voices[0].adsr.envelope_level > 0 {
             break;
         }
@@ -655,7 +655,7 @@ fn test_envx_tracks_envelope_level_directly() {
     mem.dsp.voices[0].adsr.envelope_level = 0x400;
     mem.dsp.voices[0].adsr.sustain_rate = 0; // hold forever
 
-    mem.dsp.step(&mem.ram);
+    mem.dsp.step(&mut mem.ram);
 
     let expected = (0x400u16 >> 4) as u8; // = 0x40
     assert_eq!(mem.dsp.read_reg(0x08), expected);
@@ -671,7 +671,7 @@ fn test_envx_max_value_is_0x7f() {
     mem.dsp.voices[0].adsr.envelope_level = 0x7FF;
     mem.dsp.voices[0].adsr.sustain_rate = 0;
 
-    mem.dsp.step(&mem.ram);
+    mem.dsp.step(&mut mem.ram);
 
     assert_eq!(mem.dsp.read_reg(0x08), 0x7F, "ENVX max must be 0x7F");
 }
@@ -703,7 +703,7 @@ fn test_envx_all_8_voices_independent() {
         mem.dsp.voices[v as usize].key_on = true;
     }
 
-    mem.dsp.step(&mem.ram);
+    mem.dsp.step(&mut mem.ram);
 
     for v in 0usize..8 {
         let expected = (mem.dsp.voices[v].adsr.envelope_level >> 4) as u8;
@@ -738,7 +738,7 @@ fn test_outx_reflects_top_byte_of_current_sample() {
     mem.dsp.voices[0].adsr.sustain_rate = 0;
     mem.dsp.voices[0].current_sample = 0x1234;
 
-    mem.dsp.step(&mem.ram);
+    mem.dsp.step(&mut mem.ram);
 
     // After step the BRR buffer will have been consumed and current_sample
     // updated from decoded data. We test the register reflects *that* value.
@@ -773,7 +773,7 @@ fn test_outx_positive_and_negative_samples() {
     mem.dsp.voices[0].brr.nibble_idx = 0;
     mem.dsp.voices[0].history = [0x0500i16; 4];
 
-    mem.dsp.step(&mem.ram);
+    mem.dsp.step(&mut mem.ram);
     let outx_pos = mem.dsp.read_reg(0x09) as i8;
     assert!(outx_pos > 0, "positive sample → positive OUTX top byte");
 
@@ -783,7 +783,7 @@ fn test_outx_positive_and_negative_samples() {
     mem.dsp.voices[0].brr.nibble_idx = 0;
     mem.dsp.voices[0].history = [-0x0500i16; 4];
 
-    mem.dsp.step(&mem.ram);
+    mem.dsp.step(&mut mem.ram);
     let outx_neg = mem.dsp.read_reg(0x09) as i8;
     assert!(outx_neg < 0, "negative sample → negative OUTX top byte");
 }
@@ -806,7 +806,7 @@ fn test_endx_set_when_end_block_reached() {
     // Run until the voice either goes silent or ENDX is set.
     let mut endx_set = false;
     for _ in 0..200 {
-        mem.dsp.step(&mem.ram);
+        mem.dsp.step(&mut mem.ram);
         if mem.dsp.read_reg(0x7C) & 0x01 != 0 {
             endx_set = true;
             break;
@@ -837,7 +837,7 @@ fn test_endx_set_for_correct_voice_bit() {
     dsp_gw(&mut mem, 0x4C, 0b00001000); // KON voice 3 only
 
     for _ in 0..200 {
-        mem.dsp.step(&mem.ram);
+        mem.dsp.step(&mut mem.ram);
         let endx = mem.dsp.read_reg(0x7C);
         if endx != 0 {
             assert_eq!(
@@ -860,7 +860,7 @@ fn test_endx_cleared_on_kon() {
 
     // Run until ENDX bit 0 is set.
     for _ in 0..200 {
-        mem.dsp.step(&mem.ram);
+        mem.dsp.step(&mut mem.ram);
         if mem.dsp.read_reg(0x7C) & 0x01 != 0 {
             break;
         }
@@ -902,7 +902,7 @@ fn test_endx_looping_sample_still_sets_bit() {
 
     let mut endx_set = false;
     for _ in 0..200 {
-        mem.dsp.step(&mem.ram);
+        mem.dsp.step(&mut mem.ram);
         if mem.dsp.read_reg(0x7C) & 0x01 != 0 {
             endx_set = true;
             break;
@@ -941,7 +941,7 @@ fn test_endx_multiple_voices_independent_bits() {
     dsp_gw(&mut mem, 0x4C, 0b00000101); // KON voices 0 and 2
 
     for _ in 0..200 {
-        mem.dsp.step(&mem.ram);
+        mem.dsp.step(&mut mem.ram);
     }
 
     let endx = mem.dsp.read_reg(0x7C);
@@ -1138,7 +1138,7 @@ fn test_non_bit_substitutes_noise_for_silent_voice() {
     // Baseline: NON off, noise clock untouched (FLG defaults to 0 —
     // noise stopped) — OUTX must stay exactly 0, the silent BRR source.
     for _ in 0..5 {
-        mem.dsp.step(&mem.ram);
+        mem.dsp.step(&mut mem.ram);
     }
     assert_eq!(
         mem.dsp.read_reg(0x09),
@@ -1153,7 +1153,7 @@ fn test_non_bit_substitutes_noise_for_silent_voice() {
 
     let mut saw_nonzero = false;
     for _ in 0..20 {
-        mem.dsp.step(&mem.ram);
+        mem.dsp.step(&mut mem.ram);
         if mem.dsp.read_reg(0x09) != 0 {
             saw_nonzero = true;
             break;
@@ -1176,11 +1176,11 @@ fn test_noise_clock_zero_never_advances_lfsr() {
     dsp_gw(&mut mem, 0x3D, 0x01); // NON voice 0
     // FLG left at its default 0: mute/reset clear, noise clock stopped.
 
-    mem.dsp.step(&mem.ram);
+    mem.dsp.step(&mut mem.ram);
     let first = mem.dsp.read_reg(0x09);
 
     for i in 0..50 {
-        mem.dsp.step(&mem.ram);
+        mem.dsp.step(&mut mem.ram);
         assert_eq!(
             mem.dsp.read_reg(0x09),
             first,
@@ -1203,7 +1203,7 @@ fn test_clearing_non_restores_brr_output() {
     // First 3 ticks of the LFSR sequence from this seed are reliably
     // non-zero (verified against the actual table/LFSR, not assumed).
     for _ in 0..3 {
-        mem.dsp.step(&mem.ram);
+        mem.dsp.step(&mut mem.ram);
     }
     assert_ne!(
         mem.dsp.read_reg(0x09),
@@ -1212,7 +1212,7 @@ fn test_clearing_non_restores_brr_output() {
     );
 
     dsp_gw(&mut mem, 0x3D, 0x00); // clear NON
-    mem.dsp.step(&mem.ram);
+    mem.dsp.step(&mut mem.ram);
     assert_eq!(
         mem.dsp.read_reg(0x09),
         0,
@@ -1534,4 +1534,141 @@ fn test_efb_feeds_filtered_output_back_into_the_buffer() {
     }
     let (out2, _) = mem.dsp.tick_echo(&mut mem.ram, 0, 0); // tick 1025: reads tick 513's write
     assert_eq!(out2, 125);
+}
+
+// ============================================================
+// EON voice routing + full pipeline — Stage 4. `Dsp::step` now calls
+// `tick_echo` itself (with the EON-gated voice sum as the fresh
+// input), and `render_audio_single` adds the resulting echo output on
+// top of the dry mix — so these tests go through the real `step()`/
+// `render_audio_single()` pair rather than calling `tick_echo`
+// directly, unlike Stage 2/3's tests.
+// ============================================================
+
+/// Write a single BRR block with strong alternating +7/-8 nibbles
+/// (shift=12, filter=0 — each nibble decodes independently of history),
+/// so playback is clearly non-silent and easy to reason about, unlike
+/// `write_silent_brr_block`.
+fn write_tone_brr_block(mem: &mut Memory, addr: u16, end: bool, do_loop: bool) {
+    let mut header: u8 = 0xC0; // shift=12, filter=0
+    if end {
+        header |= 0x01;
+    }
+    if do_loop {
+        header |= 0x02;
+    }
+    mem.write8(addr, header);
+    for i in 1..9u16 {
+        mem.write8(addr + i, 0x78); // nibbles 7, -8 repeating
+    }
+}
+
+/// Set up a self-looping voice 0 playing a strong, non-silent tone (see
+/// `write_tone_brr_block`) at full volume with a fast attack, so its
+/// dry output is reliably non-zero within a couple of ticks.
+fn setup_tone_looping_voice(mem: &mut Memory) {
+    let dir_page: u8 = 0x02;
+    let brr_addr: u16 = 0x0300;
+
+    write_tone_brr_block(mem, brr_addr, true, true); // end+loop, single block
+    write_dir_entry(mem, dir_page, 0, brr_addr, brr_addr);
+
+    dsp_gw(mem, 0x5D, dir_page);
+    dsp_vw(mem, 0, 0x0, 100); // VOL(L)
+    dsp_vw(mem, 0, 0x1, 100); // VOL(R)
+    dsp_vw(mem, 0, 0x4, 0); // SRCN 0
+    dsp_vw(mem, 0, 0x2, 0x00); // PITCH lo
+    dsp_vw(mem, 0, 0x3, 0x10); // PITCH hi (native rate)
+    dsp_vw(mem, 0, 0x5, 0x8F); // ADSR1: fast attack
+    dsp_vw(mem, 0, 0x6, 0xE0); // ADSR2: hold sustain
+    dsp_gw(mem, 0x4C, 0x01); // KON voice 0
+}
+
+#[test]
+fn test_eon_clear_leaves_echo_buffer_untouched() {
+    let mut mem = Memory::new();
+    setup_tone_looping_voice(&mut mem);
+    dsp_gw(&mut mem, 0x6D, 0x40); // ESA = page 0x40 ($4000)
+    dsp_gw(&mut mem, 0x7D, 0x01); // EDL = 1
+    // EON left at its default 0 — voice 0 is loud, but not routed to echo.
+
+    for _ in 0..10 {
+        mem.dsp.step(&mut mem.ram);
+    }
+
+    let any_nonzero = mem.ram[0x4000..0x4000 + 40].iter().any(|&b| b != 0);
+    assert!(
+        !any_nonzero,
+        "without EON, an audible voice must still never reach the echo buffer"
+    );
+}
+
+#[test]
+fn test_eon_set_writes_voice_output_into_echo_buffer() {
+    let mut mem = Memory::new();
+    setup_tone_looping_voice(&mut mem);
+    dsp_gw(&mut mem, 0x6D, 0x40); // ESA = page 0x40
+    dsp_gw(&mut mem, 0x7D, 0x01); // EDL = 1
+    dsp_gw(&mut mem, 0x4D, 0x01); // EON voice 0
+
+    for _ in 0..10 {
+        mem.dsp.step(&mut mem.ram);
+    }
+
+    let any_nonzero = mem.ram[0x4000..0x4000 + 40].iter().any(|&b| b != 0);
+    assert!(
+        any_nonzero,
+        "with EON set, the voice's dry output must actually reach the echo buffer"
+    );
+}
+
+#[test]
+fn test_echo_output_reaches_final_mix_even_with_mvol_zeroed() {
+    // Zero master volume so the dry mix contributes exactly nothing to
+    // the final output (render_audio_single scales only the dry sum by
+    // MVOL, then adds the echo output on top unscaled) — anything
+    // audible in the result can only be coming from echo, isolating
+    // that the echo path genuinely reaches the final mix rather than
+    // just landing correctly in RAM.
+    let mut mem = Memory::new();
+    setup_tone_looping_voice(&mut mem);
+    dsp_gw(&mut mem, 0x6D, 0x50); // ESA = page 0x50
+    dsp_gw(&mut mem, 0x7D, 0x01); // EDL = 1
+    dsp_vw(&mut mem, 1, 0xF, 127); // isolate FIR tap 1 (surfaces after 2 ticks)
+    dsp_gw(&mut mem, 0x4D, 0x01); // EON voice 0
+    dsp_gw(&mut mem, 0x0C, 0); // MVOLL = 0
+    dsp_gw(&mut mem, 0x1C, 0); // MVOLR = 0
+
+    for _ in 0..10 {
+        mem.dsp.step(&mut mem.ram);
+    }
+
+    let (l, r) = mem.dsp.render_audio_single();
+    assert!(
+        l != 0 || r != 0,
+        "echo output must reach the final mix even when MVOL zeroes the dry mix"
+    );
+}
+
+#[test]
+fn test_echo_defaults_are_a_complete_no_op() {
+    // Every echo register at its power-on default (ESA=0, EDL=0, EON=0,
+    // EFB=0, FIR=all zero) — this is what every test written before
+    // Stage 4 already implicitly depends on continuing to hold.
+    let mut mem = Memory::new();
+    setup_tone_looping_voice(&mut mem);
+    dsp_gw(&mut mem, 0x0C, 100); // MVOLL
+    dsp_gw(&mut mem, 0x1C, 100); // MVOLR
+
+    for _ in 0..10 {
+        mem.dsp.step(&mut mem.ram);
+    }
+
+    let (l, r) = mem.dsp.render_audio_single();
+    assert!(l != 0 || r != 0, "sanity check: the voice itself must be audible");
+
+    // ESA=0 means the (nonexistent, since EDL=0) echo buffer's base
+    // would be RAM address 0 — confirm nothing was ever written there.
+    assert_eq!(mem.ram[0], 0);
+    assert_eq!(mem.ram[1], 0);
 }

@@ -372,7 +372,7 @@ impl Apu {
                 self.dsp_cycles += 1;
                 if self.dsp_cycles >= DSP_CYCLES_PER_SAMPLE {
                     self.dsp_cycles = 0;
-                    self.memory.dsp.step(&self.memory.ram);
+                    self.memory.dsp.step(&mut self.memory.ram);
 
                     // One output sample per DSP tick, straight into the
                     // buffer the host drains. Discard everything if nothing

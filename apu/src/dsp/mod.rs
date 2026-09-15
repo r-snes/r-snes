@@ -104,6 +104,8 @@ pub struct Dsp {
     /// Not reset on ESA/EDL writes — real hardware doesn't clamp it
     /// until it naturally reaches the wraparound check either.
     echo_ptr: u16,
+    echo_out_l: i16,
+    echo_out_r: i16,
 }
 
 impl Default for Dsp {
@@ -135,6 +137,8 @@ impl Dsp {
             edl: 0,
             fir_coeff: [0i8; 8],
             echo_ptr: 0,
+            echo_out_l: 0,
+            echo_out_r: 0,
         }
     }
 
@@ -355,26 +359,25 @@ impl Dsp {
     }
 
     /// Advance the DSP by one output sample tick.
-    ///
-    /// `ram` is a direct slice of the 64 KB APU RAM. The DSP only reads
-    /// from RAM (BRR sample data and the DIR table); it never writes to it.
-    ///
-    /// Takes `&RawARAM` rather than `&Memory` so the caller can pass
-    /// `&memory.ram` without conflicting with the `&mut memory.dsp` borrow.
-    pub fn step(&mut self, ram: &RawARAM) {
+    pub fn step(&mut self, ram: &mut RawARAM) {
         self.advance_noise();
         // Real hardware scales the 15-bit LFSR into a signed sample the
         // same way a decoded BRR sample would be: shift left 1 and treat
         // as i16, so values above 0x4000 read as negative.
         let noise_sample = (self.noise_lfsr << 1) as i16;
         let non = self.non;
+        let eon = self.eon;
 
         // Split borrows so we can pass &mut voice and &mut self.registers
         // into Voice::step() simultaneously — the borrow checker allows
         // borrowing separate struct fields at the same time.
         let (voices, registers) = (&mut self.voices, &mut self.registers);
 
+        let mut echo_in_l: i32 = 0;
+        let mut echo_in_r: i32 = 0;
+
         for (i, voice) in voices.iter_mut().enumerate() {
+            // Voice::step only reads RAM
             voice.step(i, ram, registers);
 
             if non & (1 << i) != 0 {
@@ -387,7 +390,23 @@ impl Dsp {
                 voice.current_sample = noise_sample;
                 registers[(i << 4) | 0x9] = (noise_sample >> 8) as u8;
             }
+
+            if eon & (1 << i) != 0 {
+                // EON sums this voice's dry output (post-NON, so a
+                // voice with both NON and EON set feeds its noise into
+                // the echo buffer too
+                let (l, r) = voice_dry_output(voice);
+                echo_in_l += l;
+                echo_in_r += r;
+            }
         }
+
+        let echo_in_l = echo_in_l.clamp(i16::MIN as i32, i16::MAX as i32) as i16;
+        let echo_in_r = echo_in_r.clamp(i16::MIN as i32, i16::MAX as i32) as i16;
+
+        let (echo_out_l, echo_out_r) = self.tick_echo(ram, echo_in_l, echo_in_r);
+        self.echo_out_l = echo_out_l;
+        self.echo_out_r = echo_out_r;
     }
 
     /// Advance the shared noise LFSR by one DSP tick, if the noise clock
@@ -413,21 +432,6 @@ impl Dsp {
         let feedback = ((self.noise_lfsr << 13) ^ (self.noise_lfsr << 14)) & 0x4000;
         self.noise_lfsr = feedback | (self.noise_lfsr >> 1);
     }
-
-    // ---- Echo buffer (Stage 2) ----
-    //
-    // This is deliberately just the delay line: circular read/write
-    // addressing, wraparound, and the write-disable flag, with no FIR
-    // filtering or voice routing yet (Stage 3/4). `tick_echo_buffer`
-    // takes the stereo pair to write as plain parameters rather than
-    // computing one internally, and isn't called from `step` yet, so
-    // every existing caller of `step` — including every test that
-    // exercises voices/BRR/registers — keeps compiling and passing
-    // unchanged. Wiring this into `step`'s main tick in a later stage
-    // will require changing `step`'s RAM parameter from `&RawARAM` to
-    // `&mut RawARAM` (echo writes need mutable RAM), which will touch
-    // every call site that currently does `dsp.step(&ram)` — flagging
-    // that now so it isn't a surprise later.
 
     /// Echo buffer length in bytes: EDL * 2048 (2 KB per unit, EDL 0-15
     /// after $7D's masking). EDL=0 means no delay buffer at all.
@@ -483,30 +487,6 @@ impl Dsp {
         (old_l, old_r)
     }
 
-    // ---- FIR filter + feedback (Stage 3) ----
-    //
-    // Like Stage 2, `tick_echo` isn't called from `step`/render yet —
-    // that's Stage 4, alongside EON voice routing. `echo_in` here is a
-    // plain parameter (the fresh echo input) for the same reason
-    // `tick_echo_buffer` took its write value as a parameter: Stage 4 is
-    // what actually computes it, from the EON-gated voice sum.
-    //
-    // Two things below are implemented from well-documented community
-    // reverse-engineering rather than verified against a real hardware
-    // trace here — flagged inline at the point they matter, same
-    // caveat as `Voice::interpolate`'s Gaussian quirk.
-
-    /// Read the 8-tap FIR window directly out of RAM: the sample
-    /// currently at the echo pointer (tap 0 — the freshest fully-delayed
-    /// echo sample) and the 7 stereo pairs immediately before it in the
-    /// ring (tap 7 — the oldest of the eight), wrapping within the
-    /// buffer as needed.
-    ///
-    /// No internal shadow history is kept — real hardware has none
-    /// either; the echo buffer in RAM *is* the history, re-read fresh
-    /// every tick. That matters observably: if the CPU writes into the
-    /// echo buffer's RAM region directly, the very next FIR tick sees
-    /// it, exactly like the real chip would.
     fn read_fir_taps(&self, ram: &RawARAM) -> [(i16, i16); 8] {
         let len = self.echo_buffer_len_bytes();
         let mut taps = [(0i16, 0i16); 8];
@@ -532,15 +512,7 @@ impl Dsp {
 
     /// Combine the 8 taps with the FIR coefficients (`fir_coeff[0]`
     /// weights the freshest tap, `fir_coeff[7]` the oldest) into this
-    /// tick's filtered echo output. Coefficients are Q7 fixed-point
-    /// (signed, effectively `coeff/128`), matching the `>>7` scaling
-    /// convention used for VOL/MVOL elsewhere in this file.
-    ///
-    /// Documented hardware quirk, not independently verified here: the
-    /// running sum truncates to 16 bits after the first 7 taps, *before*
-    /// the 8th tap is added — the same "truncate before the last term"
-    /// pattern as `Voice::interpolate`'s Gaussian kernel. Treat this as
-    /// best-available documentation rather than bit-certain.
+    /// tick's filtered echo output.
     fn fir_filter(&self, taps: &[(i16, i16); 8]) -> (i16, i16) {
         let mut sum_l: i32 = 0;
         let mut sum_r: i32 = 0;
@@ -563,18 +535,6 @@ impl Dsp {
     }
 
     /// Advance the echo processor by one tick.
-    ///
-    /// Reads the 8-tap FIR window, filters it into this tick's echo
-    /// output, scales that output by EFB (signed feedback) and adds the
-    /// fresh `echo_in` sample to produce the value written back into the
-    /// buffer — so repeated echoes decay, grow, or invert depending on
-    /// EFB's sign and magnitude — then advances the buffer via
-    /// `tick_echo_buffer` (which also applies FLG bit 5's write-disable).
-    ///
-    /// Returns the filtered output `(l, r)` — the actual audible echo
-    /// for this tick — for the caller to mix into the final output.
-    /// EFB scales the *feedback path* (what gets written for next time),
-    /// not this returned output directly.
     pub fn tick_echo(&mut self, ram: &mut RawARAM, echo_in_l: i16, echo_in_r: i16) -> (i16, i16) {
         let taps = self.read_fir_taps(ram);
         let (fir_l, fir_r) = self.fir_filter(&taps);
@@ -591,10 +551,6 @@ impl Dsp {
     }
 
     /// Mix all active voices into one stereo output sample pair.
-    ///
-    /// Uses integer arithmetic throughout to match hardware behaviour.
-    /// Volumes are signed i8; samples and envelope are 16-bit.
-    /// The accumulator is i32 to prevent overflow during summation.
     pub fn render_audio_single(&self) -> (i16, i16) {
         // MUTE (bit6) and RESET (bit7, which forces mute too) silence the
         // final output stage only — voices keep decoding/enveloping
@@ -609,32 +565,43 @@ impl Dsp {
         let mut right: i32 = 0;
 
         for voice in self.voices.iter() {
-            if voice.adsr.envelope_phase == EnvelopePhase::Off {
-                continue;
-            }
-
-            // Scale sample by 11-bit envelope (0–0x7FF) → back to ~16-bit range
-            let env = voice.adsr.envelope_level as i32; // 0–0x7FF
-            let sample = voice.current_sample as i32; // -32768..+32767
-            let scaled = (sample * env) >> 11; // ~16-bit result
-
-            // Apply signed per-voice volumes (i8, -128..+127), shift by 7
-            left += (scaled * voice.left_vol as i32) >> 7;
-            right += (scaled * voice.right_vol as i32) >> 7;
+            let (l, r) = voice_dry_output(voice);
+            left += l;
+            right += r;
         }
 
         // Apply master volume ($0C/$1C) as a final output stage scaler.
         // Same signed i8 × i32 → >> 7 pattern as per-voice volume.
-        // A second clamp is required because master vol can amplify the
-        // already-summed mix past i16 range again.
         left = (left * self.master_vol_left as i32) >> 7;
         right = (right * self.master_vol_right as i32) >> 7;
 
+        left += self.echo_out_l as i32;
+        right += self.echo_out_r as i32;
+
+        // A second clamp is required: master vol can amplify the
+        // already-summed dry mix past i16 range again
         (
             left.clamp(i16::MIN as i32, i16::MAX as i32) as i16,
             right.clamp(i16::MIN as i32, i16::MAX as i32) as i16,
         )
     }
+}
+
+/// Per-voice dry (pre-echo, pre-MVOL) output sample
+fn voice_dry_output(voice: &Voice) -> (i32, i32) {
+    if voice.adsr.envelope_phase == EnvelopePhase::Off {
+        return (0, 0);
+    }
+
+    // Scale sample by 11-bit envelope (0–0x7FF) → back to ~16-bit range
+    let env = voice.adsr.envelope_level as i32; // 0–0x7FF
+    let sample = voice.current_sample as i32; // -32768..+32767
+    let scaled = (sample * env) >> 11; // ~16-bit result
+
+    // Apply signed per-voice volumes (i8, -128..+127), shift by 7
+    let left = (scaled * voice.left_vol as i32) >> 7;
+    let right = (scaled * voice.right_vol as i32) >> 7;
+    (left, right)
 }
 
 /// Read a little-endian 16-bit signed sample from APU RAM, matching the
