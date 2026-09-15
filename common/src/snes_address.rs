@@ -68,14 +68,37 @@ impl SnesAddress {
 #[macro_export]
 /// Shorthand for constructing SnesAddress structs.
 ///
-/// The bank number and address are separated by a colon (:).
+/// The bank number and address are separated by a colon (`:`).
 /// The bank number may need to be parenthesised if it is not a simple
 /// token (a direct variable name or number).
+///
+/// Examples:
+/// ```
+/// # use common::snes_addr;
+/// // simple bank + address
+/// let a = snes_addr!(0x12:0x3456);
+/// // full bank + page + address
+/// let b = snes_addr!(0x12:0x34:0x56);
+/// // parentheses needed to use an expression before a colon
+/// let c = snes_addr!((9 + 9):0x3400 | 0x56);
+///
+/// assert_eq!(a.bank, 0x12);
+/// assert_eq!(a.addr, 0x3456);
+/// assert_eq!(a, b);
+/// assert_eq!(a, c);
+/// ```
 macro_rules! snes_addr {
     ( $bank:tt : $addr:expr ) => {
         SnesAddress {
             bank: $bank,
             addr: $addr,
+        }
+    };
+
+    ( $bank:tt : $page:tt : $addr:expr ) => {
+        SnesAddress {
+            bank: $bank,
+            addr: u16::from_be_bytes([$page, $addr]),
         }
     };
 }
