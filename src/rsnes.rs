@@ -556,7 +556,7 @@ mod tests {
         let lo = read_reg(rsnes, base + 0x2);
         let hi = read_reg(rsnes, base + 0x3);
         let bank = read_reg(rsnes, base + 0x4);
-        snes_addr!(bank:u16::from_le_bytes([lo, hi]))
+        snes_addr!(bank:hi:lo)
     }
 
     fn channel_das(rsnes: &mut RSnesCore, channel: u8) -> u16 {

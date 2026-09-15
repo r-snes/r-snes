@@ -89,14 +89,14 @@ impl SnesAddress {
 /// ```
 macro_rules! snes_addr {
     ( $bank:tt : $addr:expr ) => {
-        SnesAddress {
+        $crate::snes_address::SnesAddress {
             bank: $bank,
             addr: $addr,
         }
     };
 
     ( $bank:tt : $page:tt : $addr:expr ) => {
-        SnesAddress {
+        $crate::snes_address::SnesAddress {
             bank: $bank,
             addr: u16::from_be_bytes([$page, $addr]),
         }

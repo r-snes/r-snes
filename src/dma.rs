@@ -91,7 +91,7 @@ impl Dma {
     /// B-bus address for a unit offset. The sum wraps inside the `$21xx`
     /// page rather than spilling into `$22xx`.
     pub fn b_address(bbad: u8, offset: u8) -> SnesAddress {
-        snes_addr!(0x00:0x2100 + bbad.wrapping_add(offset) as u16)
+        snes_addr!(0x00:0x21:bbad.wrapping_add(offset))
     }
 }
 
