@@ -520,6 +520,103 @@ mod tests {
         RSnesCore::load_rom(&rom_path).unwrap()
     }
 
+    fn write_reg(rsnes: &mut RSnesCore, addr: u16, value: u8) {
+        rsnes
+            .bus
+            .write(snes_addr!(0:addr), value, &mut rsnes.ppu, &mut rsnes.apu);
+    }
+
+    fn read_reg(rsnes: &mut RSnesCore, addr: u16) -> u8 {
+        rsnes
+            .bus
+            .read(snes_addr!(0:addr), &mut rsnes.ppu, &mut rsnes.apu)
+    }
+
+    /// Configure a channel entirely through its $43xx registers, as a ROM would.
+    fn configure_channel(
+        rsnes: &mut RSnesCore,
+        channel: u8,
+        dmap: u8,
+        bbad: u8,
+        src: SnesAddress,
+        count: u16,
+    ) {
+        let base = 0x4300 + channel as u16 * 0x10;
+        write_reg(rsnes, base, dmap);
+        write_reg(rsnes, base + 0x1, bbad);
+        write_reg(rsnes, base + 0x2, *src.addr.lo());
+        write_reg(rsnes, base + 0x3, *src.addr.hi());
+        write_reg(rsnes, base + 0x4, src.bank);
+        write_reg(rsnes, base + 0x5, *count.lo());
+        write_reg(rsnes, base + 0x6, *count.hi());
+    }
+
+    fn channel_a1t(rsnes: &mut RSnesCore, channel: u8) -> SnesAddress {
+        let base = 0x4300 + channel as u16 * 0x10;
+        let lo = read_reg(rsnes, base + 0x2);
+        let hi = read_reg(rsnes, base + 0x3);
+        let bank = read_reg(rsnes, base + 0x4);
+        snes_addr!(bank:u16::from_le_bytes([lo, hi]))
+    }
+
+    fn channel_das(rsnes: &mut RSnesCore, channel: u8) -> u16 {
+        let base = 0x4300 + channel as u16 * 0x10;
+        u16::from_le_bytes([read_reg(rsnes, base + 0x5), read_reg(rsnes, base + 0x6)])
+    }
+
+    /// Kick off a transfer via $420B and run until every queued channel has
+    /// finished. Returns the master cycles consumed.
+    fn run_dma(rsnes: &mut RSnesCore, channels: u8, cap: u64) -> u64 {
+        let start = rsnes.master_cycles;
+        write_reg(rsnes, 0x420B, channels);
+
+        for _ in 0..cap {
+            rsnes.update();
+            if rsnes.bus.io.mdmaen == 0 {
+                return rsnes.master_cycles - start;
+            }
+        }
+        panic!("DMA did not complete within {cap} master cycles");
+    }
+
+    fn fill_wram(rsnes: &mut RSnesCore, at: SnesAddress, bytes: &[u8]) {
+        for (i, &b) in bytes.iter().enumerate() {
+            let bank = at.bank;
+            let addr = at.addr.wrapping_add(i as u16);
+            rsnes.bus.wram.write(snes_addr!(bank:addr), b);
+        }
+    }
+
+    /// Point VMAIN at "increment after the $2119 write" so a mode-1 transfer
+    /// builds consecutive 16-bit VRAM words.
+    fn vram_word_mode(rsnes: &mut RSnesCore) {
+        write_reg(rsnes, 0x2115, 0x80);
+        write_reg(rsnes, 0x2116, 0x00);
+        write_reg(rsnes, 0x2117, 0x00);
+    }
+
+    const HDMA_TABLE: SnesAddress = snes_addr!(0x7E:0x1000);
+
+    /// Arm an HDMA channel during V-Blank (as a ROM does), then cross into
+    /// the next frame so the channel gets its once-per-frame init.
+    fn arm_hdma(rsnes: &mut RSnesCore, dmap: u8, bbad: u8, table: &[u8]) {
+        advance_core_to_scanline(rsnes, VBLANK_START_LINE);
+
+        fill_wram(rsnes, HDMA_TABLE, table);
+        configure_channel(rsnes, 0, dmap, bbad, HDMA_TABLE, 0);
+        write_reg(rsnes, 0x420C, 0b0000_0001);
+
+        advance_core_to_scanline(rsnes, 0);
+    }
+
+    /// Advance to `line` and past dot 278, so that line's HDMA pass has run.
+    fn settle_line(rsnes: &mut RSnesCore, line: u16) {
+        if !(rsnes.ppu.scanline == line && rsnes.ppu.h_cycles == 0) {
+            advance_core_to_scanline(rsnes, line);
+        }
+        tick_core(rsnes, HDMA_START_DOT as u64 * 4 + 128);
+    }
+
     #[test]
     fn test_cpu_update_function() {
         let mut rsnes = make_rsnes();
@@ -912,5 +1009,319 @@ mod tests {
     fn test_no_hdma_when_disabled() {
         let mut rsnes = make_rsnes();
         advance_core_to_scanline(&mut rsnes, 10);
+    }
+
+    /// Transfer mode 1 writes alternating bytes to $2118/$2119, so four
+    /// source bytes become two VRAM words in source order.
+    #[test]
+    fn test_dma_mode1_builds_vram_words_in_order() {
+        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let src = snes_addr!(0x7E:0x1000);
+        fill_wram(&mut rsnes, src, &[0x11, 0x22, 0x33, 0x44]);
+        vram_word_mode(&mut rsnes);
+
+        configure_channel(&mut rsnes, 0, 0x01, 0x18, src, 4);
+        run_dma(&mut rsnes, 0b0000_0001, 10_000);
+
+        assert_eq!(rsnes.ppu.vram.memory[0], 0x2211);
+        assert_eq!(rsnes.ppu.vram.memory[1], 0x4433);
+    }
+
+    /// DMAP bit 4 walks the A-bus backwards, so the same four bytes arrive
+    /// reversed.
+    #[test]
+    fn test_dma_decrement_reverses_source_order() {
+        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let base = snes_addr!(0x7E:0x1000);
+        fill_wram(&mut rsnes, base, &[0x11, 0x22, 0x33, 0x44]);
+        vram_word_mode(&mut rsnes);
+
+        // Start at the last byte and walk down.
+        configure_channel(&mut rsnes, 0, 0x11, 0x18, snes_addr!(0x7E:0x1003), 4);
+        run_dma(&mut rsnes, 0b0000_0001, 10_000);
+
+        assert_eq!(rsnes.ppu.vram.memory[0], 0x3344);
+        assert_eq!(rsnes.ppu.vram.memory[1], 0x1122);
+    }
+
+    /// DMAP bit 3 pins the A-bus, so the same byte is read every time.
+    /// Bit 3 wins even when bit 4 also asks for a decrement.
+    #[test]
+    fn test_dma_fixed_source_repeats_one_byte() {
+        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let src = snes_addr!(0x7E:0x1000);
+        fill_wram(&mut rsnes, src, &[0xAB, 0xCD, 0xEF, 0x01]);
+        vram_word_mode(&mut rsnes);
+
+        // bits 4 and 3 both set: fixed takes priority.
+        configure_channel(&mut rsnes, 0, 0x19, 0x18, src, 4);
+        run_dma(&mut rsnes, 0b0000_0001, 10_000);
+
+        assert_eq!(rsnes.ppu.vram.memory[0], 0xABAB);
+        assert_eq!(rsnes.ppu.vram.memory[1], 0xABAB);
+        assert_eq!(channel_a1t(&mut rsnes, 0).addr, 0x1000);
+    }
+
+    /// DMAP bit 7 reverses the direction: the B-bus is read and the A-bus
+    /// written. Reading $213B walks CGRAM, so four reads land four bytes.
+    #[test]
+    fn test_dma_b_to_a_writes_into_wram() {
+        let mut rsnes = RSnesCoreInterruptDetector::new();
+
+        // Seed two CGRAM colours, then rewind the CGRAM address.
+        write_reg(&mut rsnes, 0x2121, 0x00);
+        for b in [0xEF, 0x3A, 0xCD, 0x12] {
+            write_reg(&mut rsnes, 0x2122, b);
+        }
+        write_reg(&mut rsnes, 0x2121, 0x00);
+        assert_eq!(rsnes.ppu.cgram.memory[0], 0x3AEF);
+        assert_eq!(rsnes.ppu.cgram.memory[1], 0x12CD);
+
+        let dst = snes_addr!(0x7E:0x1000);
+        configure_channel(&mut rsnes, 0, 0x80, 0x3B, dst, 4);
+        run_dma(&mut rsnes, 0b0000_0001, 10_000);
+
+        assert_eq!(rsnes.bus.wram.read(snes_addr!(0x7E:0x1000)), 0xEF);
+        assert_eq!(rsnes.bus.wram.read(snes_addr!(0x7E:0x1001)), 0x3A);
+        assert_eq!(rsnes.bus.wram.read(snes_addr!(0x7E:0x1002)), 0xCD);
+        assert_eq!(rsnes.bus.wram.read(snes_addr!(0x7E:0x1003)), 0x12);
+    }
+
+    /// A ROM reading $43n2/$43n5 afterwards sees the source advanced by the
+    /// byte count and the counter drained to zero.
+    #[test]
+    fn test_dma_leaves_source_advanced_and_count_zero() {
+        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let src = snes_addr!(0x7E:0x1000);
+        fill_wram(&mut rsnes, src, &[0; 8]);
+
+        configure_channel(&mut rsnes, 0, 0x00, 0x26, src, 8);
+        run_dma(&mut rsnes, 0b0000_0001, 10_000);
+
+        assert_eq!(channel_a1t(&mut rsnes, 0).addr, 0x1008);
+        assert_eq!(channel_das(&mut rsnes, 0), 0);
+    }
+
+    /// The bank byte is never carried into: the A-bus wraps inside its bank.
+    #[test]
+    fn test_dma_source_wraps_inside_its_bank() {
+        let mut rsnes = RSnesCoreInterruptDetector::new();
+        rsnes.bus.wram.write(snes_addr!(0x7E:0xFFFF), 0xAA);
+        rsnes.bus.wram.write(snes_addr!(0x7E:0x0000), 0xBB);
+        vram_word_mode(&mut rsnes);
+
+        configure_channel(&mut rsnes, 0, 0x01, 0x18, snes_addr!(0x7E:0xFFFF), 2);
+        run_dma(&mut rsnes, 0b0000_0001, 10_000);
+
+        assert_eq!(rsnes.ppu.vram.memory[0], 0xBBAA);
+        assert_eq!(channel_a1t(&mut rsnes, 0).bank, 0x7E);
+    }
+
+    /// A count of zero means the full 64 KiB, not nothing. The source walks
+    /// exactly one lap of its bank.
+    #[test]
+    fn test_dma_count_zero_transfers_64k() {
+        let mut rsnes = RSnesCoreInterruptDetector::new();
+
+        configure_channel(&mut rsnes, 0, 0x08, 0x26, snes_addr!(0x7E:0x0000), 0);
+        let cycles = run_dma(&mut rsnes, 0b0000_0001, 1_000_000);
+
+        assert_eq!(channel_a1t(&mut rsnes, 0).addr, 0x0000);
+        assert!(cycles >= 0x10000 * BYTE_COST as u64);
+    }
+
+    /// Channels run lowest-numbered first, one fully at a time, so the
+    /// higher channel's byte is the one left in the destination.
+    #[test]
+    fn test_dma_channels_run_lowest_first() {
+        let mut rsnes = RSnesCoreInterruptDetector::new();
+        fill_wram(&mut rsnes, snes_addr!(0x7E:0x1000), &[0xAA]);
+        fill_wram(&mut rsnes, snes_addr!(0x7E:0x2000), &[0xBB]);
+
+        configure_channel(&mut rsnes, 0, 0x00, 0x26, snes_addr!(0x7E:0x1000), 1);
+        configure_channel(&mut rsnes, 1, 0x00, 0x26, snes_addr!(0x7E:0x2000), 1);
+        run_dma(&mut rsnes, 0b0000_0011, 10_000);
+
+        assert_eq!(rsnes.ppu.regs.wh0, 0xBB);
+        assert_eq!(channel_a1t(&mut rsnes, 0).addr, 0x1001);
+        assert_eq!(channel_a1t(&mut rsnes, 1).addr, 0x2001);
+    }
+
+    /// Channels not named in $420B are untouched.
+    #[test]
+    fn test_dma_ignores_disabled_channels() {
+        let mut rsnes = RSnesCoreInterruptDetector::new();
+
+        configure_channel(&mut rsnes, 0, 0x00, 0x26, snes_addr!(0x7E:0x1000), 4);
+        configure_channel(&mut rsnes, 1, 0x00, 0x26, snes_addr!(0x7E:0x2000), 4);
+        run_dma(&mut rsnes, 0b0000_0010, 10_000);
+
+        assert_eq!(channel_a1t(&mut rsnes, 0).addr, 0x1000);
+        assert_eq!(channel_das(&mut rsnes, 0), 4);
+        assert_eq!(channel_a1t(&mut rsnes, 1).addr, 0x2004);
+    }
+
+    /// Every byte costs 8 master cycles. Differencing two transfer sizes
+    /// isolates the rate from the fixed start and per-channel overheads.
+    #[test]
+    fn test_dma_costs_eight_master_cycles_per_byte() {
+        let mut short = make_rsnes();
+        configure_channel(&mut short, 0, 0x08, 0x26, snes_addr!(0x7E:0x1000), 4);
+        let short_cycles = run_dma(&mut short, 0b0000_0001, 10_000);
+
+        let mut long = make_rsnes();
+        configure_channel(&mut long, 0, 0x08, 0x26, snes_addr!(0x7E:0x1000), 20);
+        let long_cycles = run_dma(&mut long, 0b0000_0001, 10_000);
+
+        assert_eq!(long_cycles - short_cycles, 16 * BYTE_COST as u64);
+    }
+
+    /// A non-repeat entry writes once and holds the value for its whole
+    /// line count; the next entry takes over when the count runs out.
+    #[test]
+    fn test_hdma_non_repeat_holds_value_across_lines() {
+        let mut rsnes = RSnesCoreInterruptDetector::new();
+        // 2 lines of 0x10, 2 lines of 0x20, terminate.
+        arm_hdma(&mut rsnes, 0x00, 0x26, &[0x02, 0x10, 0x02, 0x20, 0x00]);
+
+        settle_line(&mut rsnes, 0);
+        assert_eq!(rsnes.ppu.regs.wh0, 0x10);
+
+        settle_line(&mut rsnes, 1);
+        assert_eq!(rsnes.ppu.regs.wh0, 0x10);
+
+        settle_line(&mut rsnes, 2);
+        assert_eq!(rsnes.ppu.regs.wh0, 0x20);
+
+        settle_line(&mut rsnes, 3);
+        assert_eq!(rsnes.ppu.regs.wh0, 0x20);
+    }
+
+    /// Bit 7 of the line count means "a fresh byte every line", which is
+    /// how a gradient is drawn.
+    #[test]
+    fn test_hdma_repeat_writes_a_new_byte_per_line() {
+        let mut rsnes = RSnesCoreInterruptDetector::new();
+        // repeat, 3 lines, three data bytes, terminate.
+        arm_hdma(&mut rsnes, 0x00, 0x26, &[0x83, 0x11, 0x22, 0x33, 0x00]);
+
+        for (line, expected) in [(0, 0x11), (1, 0x22), (2, 0x33)] {
+            settle_line(&mut rsnes, line);
+            assert_eq!(rsnes.ppu.regs.wh0, expected);
+        }
+    }
+
+    /// A line count of $00 ends the channel for the rest of the frame; the
+    /// destination keeps whatever was last written.
+    #[test]
+    fn test_hdma_zero_count_terminates_for_the_frame() {
+        let mut rsnes = RSnesCoreInterruptDetector::new();
+        arm_hdma(&mut rsnes, 0x00, 0x26, &[0x01, 0x77, 0x00, 0x99, 0x99]);
+
+        settle_line(&mut rsnes, 0);
+        assert_eq!(rsnes.ppu.regs.wh0, 0x77);
+
+        // Line 1 hits the terminator. Nothing past it is ever read.
+        for line in 1..VBLANK_START_LINE {
+            settle_line(&mut rsnes, line);
+            assert_eq!(rsnes.ppu.regs.wh0, 0x77);
+        }
+    }
+
+    /// The table pointer rewinds at the top of each frame, so the same
+    /// sequence plays again.
+    #[test]
+    fn test_hdma_table_restarts_every_frame() {
+        let mut rsnes = RSnesCoreInterruptDetector::new();
+        arm_hdma(&mut rsnes, 0x00, 0x26, &[0x83, 0x11, 0x22, 0x33, 0x00]);
+
+        settle_line(&mut rsnes, 0);
+        assert_eq!(rsnes.ppu.regs.wh0, 0x11);
+        settle_line(&mut rsnes, 1);
+        assert_eq!(rsnes.ppu.regs.wh0, 0x22);
+        settle_line(&mut rsnes, 2);
+        assert_eq!(rsnes.ppu.regs.wh0, 0x33);
+        settle_line(&mut rsnes, 3);
+        assert_eq!(rsnes.ppu.regs.wh0, 0x33);
+
+        // Cross into the next frame.
+        advance_core_to_scanline(&mut rsnes, 0);
+        settle_line(&mut rsnes, 0);
+        assert_eq!(rsnes.ppu.regs.wh0, 0x11);
+    }
+
+    /// DMAP bit 6 makes the entry carry a pointer instead of data; the
+    /// bytes come from DASB:DAS and that pointer advances as they are used.
+    #[test]
+    fn test_hdma_indirect_streams_from_a_separate_pointer() {
+        let mut rsnes = RSnesCoreInterruptDetector::new();
+        // repeat, 2 lines, pointer to $7E:2000, terminate.
+        arm_hdma(&mut rsnes, 0x40, 0x26, &[0x82, 0x00, 0x20, 0x00]);
+        fill_wram(&mut rsnes, snes_addr!(0x7E:0x2000), &[0x5A, 0xA5]);
+        // DASB selects the bank the indirect data lives in.
+        write_reg(&mut rsnes, 0x4307, 0x7E);
+
+        settle_line(&mut rsnes, 0);
+        assert_eq!(rsnes.ppu.regs.wh0, 0x5A);
+
+        settle_line(&mut rsnes, 1);
+        assert_eq!(rsnes.ppu.regs.wh0, 0xA5);
+    }
+
+    /// HDMA runs on visible lines only. The destination stops changing
+    /// while in V-BLANK even with entries left in the table.
+    #[test]
+    fn test_hdma_stops_at_vblank() {
+        let mut rsnes = RSnesCoreInterruptDetector::new();
+
+        // Two repeat entries of 127 lines each, data counting upward, so the
+        // destination records how many transfers have happened.
+        let mut table = vec![0xFF];
+        table.extend(1..=127);
+        table.push(0xFF);
+        table.extend(128..=254);
+        table.push(0x00);
+        arm_hdma(&mut rsnes, 0x00, 0x26, &table);
+
+        settle_line(&mut rsnes, VBLANK_START_LINE - 1);
+        let last_visible = rsnes.ppu.regs.wh0;
+        assert_eq!(last_visible, 225);
+
+        settle_line(&mut rsnes, VBLANK_START_LINE + 3);
+        assert_eq!(rsnes.ppu.regs.wh0, last_visible);
+    }
+
+    /// Nothing happens while HDMAEN is clear, however the channel is set up.
+    #[test]
+    fn test_no_hdma_when_hdmaen_is_clear() {
+        let mut rsnes = RSnesCoreInterruptDetector::new();
+        advance_core_to_scanline(&mut rsnes, VBLANK_START_LINE);
+
+        fill_wram(&mut rsnes, HDMA_TABLE, &[0x83, 0x11, 0x22, 0x00]);
+        configure_channel(&mut rsnes, 0, 0x00, 0x26, HDMA_TABLE, 0);
+        // HDMAEN deliberately left at 0.
+
+        advance_core_to_scanline(&mut rsnes, 0);
+        settle_line(&mut rsnes, 5);
+
+        assert_eq!(rsnes.ppu.regs.wh0, 0);
+    }
+
+    /// A channel enabled in both $420B and $420C loses its general-purpose
+    /// transfer outright: HDMA wins and the transfer is aborted, not queued.
+    #[test]
+    fn test_hdma_channel_cancels_its_general_purpose_transfer() {
+        let mut rsnes = RSnesCoreInterruptDetector::new();
+        arm_hdma(&mut rsnes, 0x00, 0x26, &[0x7F, 0x55, 0x00]);
+
+        // Repoint the same channel at a bulk transfer and request it.
+        fill_wram(&mut rsnes, snes_addr!(0x7E:0x2000), &[0xAA; 8]);
+        configure_channel(&mut rsnes, 0, 0x00, 0x26, snes_addr!(0x7E:0x2000), 8);
+        write_reg(&mut rsnes, 0x420B, 0b0000_0001);
+
+        tick_core(&mut rsnes, 2_000);
+
+        assert_eq!(rsnes.bus.io.mdmaen, 0);
+        assert_eq!(channel_a1t(&mut rsnes, 0).addr, 0x2000);
     }
 }
