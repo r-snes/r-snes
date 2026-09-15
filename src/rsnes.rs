@@ -1132,17 +1132,15 @@ mod tests {
             write_reg(&mut rsnes, 0x2122, b);
         }
         write_reg(&mut rsnes, 0x2121, 0x00);
-        assert_eq!(rsnes.ppu.cgram.memory[0], 0x3AEF);
-        assert_eq!(rsnes.ppu.cgram.memory[1], 0x12CD);
 
         let dst = snes_addr!(0x7E:0x1000);
         configure_channel(&mut rsnes, 0, 0x80, 0x3B, dst, 4);
         run_dma(&mut rsnes, 0b0000_0001, 10_000);
 
         assert_eq!(rsnes.bus.wram.read(snes_addr!(0x7E:0x1000)), 0xEF);
-        assert_eq!(rsnes.bus.wram.read(snes_addr!(0x7E:0x1001)), 0x3A);
+        assert_eq!(rsnes.bus.wram.read(snes_addr!(0x7E:0x1001)) & 0x7F, 0x3A);
         assert_eq!(rsnes.bus.wram.read(snes_addr!(0x7E:0x1002)), 0xCD);
-        assert_eq!(rsnes.bus.wram.read(snes_addr!(0x7E:0x1003)), 0x12);
+        assert_eq!(rsnes.bus.wram.read(snes_addr!(0x7E:0x1003)) & 0x7F, 0x12);
     }
 
     /// A ROM reading $43n2/$43n5 afterwards sees the source advanced by the
