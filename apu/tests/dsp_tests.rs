@@ -1105,3 +1105,124 @@ fn test_master_vol_written_via_memory_bus_affects_mix() {
         "MVOLR written via bus must produce non-zero right output"
     );
 }
+
+// ============================================================
+// Noise generation — $3D NON, FLG bits 0-4 (noise clock)
+// ============================================================
+
+/// Set up a silent, self-looping voice 0 (single end+loop block, all
+/// nibbles 0) and key it on. Without NON, current_sample/OUTX stay
+/// exactly 0 forever — a clean baseline for proving NON actually
+/// substitutes the noise generator's output.
+fn setup_silent_looping_voice(mem: &mut Memory) {
+    let dir_page: u8 = 0x01;
+    let brr_addr: u16 = 0x0200;
+
+    write_silent_brr_block(mem, brr_addr, true, true); // end+loop, single block
+    write_dir_entry(mem, dir_page, 0, brr_addr, brr_addr);
+
+    dsp_gw(mem, 0x5D, dir_page);
+    dsp_vw(mem, 0, 0x4, 0); // SRCN 0
+    dsp_vw(mem, 0, 0x2, 0x00); // PITCH lo
+    dsp_vw(mem, 0, 0x3, 0x10); // PITCH hi (native rate)
+    dsp_vw(mem, 0, 0x5, 0x8F); // ADSR1: fast attack
+    dsp_vw(mem, 0, 0x6, 0xE0); // ADSR2: hold sustain
+    dsp_gw(mem, 0x4C, 0x01); // KON voice 0
+}
+
+#[test]
+fn test_non_bit_substitutes_noise_for_silent_voice() {
+    let mut mem = Memory::new();
+    setup_silent_looping_voice(&mut mem);
+
+    // Baseline: NON off, noise clock untouched (FLG defaults to 0 —
+    // noise stopped) — OUTX must stay exactly 0, the silent BRR source.
+    for _ in 0..5 {
+        mem.dsp.step(&mem.ram);
+    }
+    assert_eq!(
+        mem.dsp.read_reg(0x09),
+        0,
+        "silent BRR source must keep OUTX at 0 before NON is set"
+    );
+
+    // Enable NON for voice 0 and run the noise clock at its fastest rate
+    // (FLG bits 0-4 = 0x1F, i.e. table index 31 = "every tick").
+    dsp_gw(&mut mem, 0x3D, 0x01); // NON voice 0
+    dsp_gw(&mut mem, 0x6C, 0x1F); // FLG: fastest noise clock, no mute/reset
+
+    let mut saw_nonzero = false;
+    for _ in 0..20 {
+        mem.dsp.step(&mem.ram);
+        if mem.dsp.read_reg(0x09) != 0 {
+            saw_nonzero = true;
+            break;
+        }
+    }
+    assert!(
+        saw_nonzero,
+        "NON must substitute the noise generator's output for a silent voice"
+    );
+}
+
+#[test]
+fn test_noise_clock_zero_never_advances_lfsr() {
+    // FLG bits 0-4 = 0 ("noise off") must freeze the LFSR entirely, so a
+    // NON-driven voice's output stays perfectly constant tick to tick —
+    // not just silent, but unchanging (distinguishing "stopped" from
+    // "coincidentally repeating").
+    let mut mem = Memory::new();
+    setup_silent_looping_voice(&mut mem);
+    dsp_gw(&mut mem, 0x3D, 0x01); // NON voice 0
+    // FLG left at its default 0: mute/reset clear, noise clock stopped.
+
+    mem.dsp.step(&mem.ram);
+    let first = mem.dsp.read_reg(0x09);
+
+    for i in 0..50 {
+        mem.dsp.step(&mem.ram);
+        assert_eq!(
+            mem.dsp.read_reg(0x09),
+            first,
+            "noise clock=0 must never advance the LFSR (tick {i})"
+        );
+    }
+}
+
+#[test]
+fn test_clearing_non_restores_brr_output() {
+    // NON only swaps the mixed output source — the BRR decoder keeps
+    // running underneath (see Dsp::step's doc comment) — so clearing
+    // NON should immediately go back to reflecting the (silent) BRR
+    // stream, with nothing left over from the noise substitution.
+    let mut mem = Memory::new();
+    setup_silent_looping_voice(&mut mem);
+    dsp_gw(&mut mem, 0x3D, 0x01); // NON voice 0
+    dsp_gw(&mut mem, 0x6C, 0x1F); // fastest noise clock
+
+    // First 3 ticks of the LFSR sequence from this seed are reliably
+    // non-zero (verified against the actual table/LFSR, not assumed).
+    for _ in 0..3 {
+        mem.dsp.step(&mem.ram);
+    }
+    assert_ne!(
+        mem.dsp.read_reg(0x09),
+        0,
+        "sanity check: noise must be substituted while NON is set"
+    );
+
+    dsp_gw(&mut mem, 0x3D, 0x00); // clear NON
+    mem.dsp.step(&mem.ram);
+    assert_eq!(
+        mem.dsp.read_reg(0x09),
+        0,
+        "clearing NON must restore the (silent) BRR-decoded output"
+    );
+}
+
+#[test]
+fn test_non_register_roundtrip() {
+    let mut dsp = Dsp::new();
+    dsp.write_reg(0x3D, 0xA5);
+    assert_eq!(dsp.read_reg(0x3D), 0xA5, "NON register must store raw bits");
+}
