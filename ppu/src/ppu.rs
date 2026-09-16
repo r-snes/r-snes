@@ -37,6 +37,10 @@ pub struct PPU {
     pub h_cycles: u32,
     pub frame: u64,
     pub odd_frame: bool,
+
+    // Separate open-bus latches for the PPU1 (5C77) and PPU2 (5C78) chips.
+    pub ppu1_open_bus: u8,
+    pub ppu2_open_bus: u8,
 }
 
 impl Default for PPU {
@@ -56,6 +60,8 @@ impl PPU {
             h_cycles: 0,
             frame: 0,
             odd_frame: false,
+            ppu1_open_bus: 0,
+            ppu2_open_bus: 0,
         }
     }
 
@@ -87,11 +93,11 @@ impl PPU {
             0x2105 => self.regs.bgmode = value,
             0x2106 => self.regs.mosaic = value, // TODO
             0x2107 => self.regs.bgsc[0] = value,
-            0x2108 => self.regs.bgsc[1] = value, // TODO
-            0x2109 => self.regs.bgsc[2] = value, // TODO
-            0x210A => self.regs.bgsc[3] = value, // TODO
-            0x210B => self.regs.bg12nba = value, // TODO
-            0x210C => self.regs.bg34nba = value, // TODO
+            0x2108 => self.regs.bgsc[1] = value,
+            0x2109 => self.regs.bgsc[2] = value,
+            0x210A => self.regs.bgsc[3] = value,
+            0x210B => self.regs.bg12nba = value,
+            0x210C => self.regs.bg34nba = value,
 
             // BG1HOFS / M7HOFS - same address ($210D)
             0x210D => {
@@ -202,6 +208,7 @@ impl PPU {
                 *self.regs.m7a.lo_mut() = lo;
                 *self.regs.m7a.hi_mut() = value;
                 self.regs.mode7_latch = value;
+                self.update_mode7_multiply();
             }
             0x211C => {
                 // M7B (W8x2)
@@ -209,6 +216,7 @@ impl PPU {
                 *self.regs.m7b.lo_mut() = lo;
                 *self.regs.m7b.hi_mut() = value;
                 self.regs.mode7_latch = value;
+                self.update_mode7_multiply();
             }
             0x211D => {
                 // M7C (W8x2)
@@ -290,61 +298,126 @@ impl PPU {
         }
     }
 
-    pub fn read(&mut self, addr: u16) -> u8 {
+    pub fn read(&mut self, addr: u16, cpu_open_bus: u8) -> u8 {
         match addr {
-            // ==========================
-            // Multiply
-            // ==========================
-            0x2134 => Self::unimplemented_read_only(addr), // TODO
-            0x2135 => Self::unimplemented_read_only(addr), // TODO
-            0x2136 => Self::unimplemented_read_only(addr), // TODO
 
-            // ==========================
-            // OAM
-            // ==========================
-            0x2138 => self.oam.read_data(),
+            // Multiply result (PPU1)
+            0x2134 => self.ppu1_read(self.regs.mpy as u8, 0xFF),
+            0x2135 => self.ppu1_read((self.regs.mpy >> 8) as u8, 0xFF),
+            0x2136 => self.ppu1_read((self.regs.mpy >> 16) as u8, 0xFF),
 
-            // ==========================
-            // VRAM
-            // ==========================
-            0x2139 => self.vram.read_vmdatal(&mut self.regs),
-            0x213A => self.vram.read_vmdatah(&mut self.regs),
+            // SLHV (PPU1) - drives no lines: strobes the H/V latch, returns CPU
+            // open bus, leaves both PPU MDRs untouched.
+            0x2137 => {
+                self.latch_hv_counters();
+                cpu_open_bus
+            }
 
-            // ==========================
-            // CGRAM
-            // ==========================
-            0x213B => self.cgram.read_data(&mut self.regs),
+            // OAM (PPU1)
+            0x2138 => {
+                let v = self.oam.read_data();
+                self.ppu1_read(v, 0xFF)
+            }
 
-            // ==========================
-            // Counters
-            // ==========================
-            0x2137 => Self::unimplemented_read_only(addr), // TODO
-            0x213C => Self::unimplemented_read_only(addr), // TODO
-            0x213D => Self::unimplemented_read_only(addr), // TODO
+            // VRAM (PPU1)
+            0x2139 => {
+                let v = self.vram.read_vmdatal(&mut self.regs);
+                self.ppu1_read(v, 0xFF)
+            }
+            0x213A => {
+                let v = self.vram.read_vmdatah(&mut self.regs);
+                self.ppu1_read(v, 0xFF)
+            }
 
-            // ==========================
-            // Status
-            // ==========================
+            // CGRAM (PPU2) - high byte drives only bits 0-6, bit 7 open bus
+            0x213B => {
+                let (v, mask) = self.cgram.read_data(&mut self.regs);
+                self.ppu2_read(v, mask)
+            }
+
+            // H/V counters (PPU2). 9-bit values, read low-then-high. The high
+            // read drives only bit 0 (counter bit 8); bits 1-7 are open bus.
+            0x213C => {
+                let (v, mask) = if self.regs.ophct_latch.phase.is_high() {
+                    (((self.regs.ophct >> 8) & 0x01) as u8, 0x01)
+                } else {
+                    (*self.regs.ophct.lo(), 0xFF)
+                };
+                self.regs.ophct_latch.phase.flip();
+                self.ppu2_read(v, mask)
+            }
+            0x213D => {
+                let (v, mask) = if self.regs.opvct_latch.phase.is_high() {
+                    (((self.regs.opvct >> 8) & 0x01) as u8, 0x01)
+                } else {
+                    (*self.regs.opvct.lo(), 0xFF)
+                };
+                self.regs.opvct_latch.phase.flip();
+                self.ppu2_read(v, mask)
+            }
+
+            // STAT77 (PPU1) - TRMx VVVV, bit 4 = PPU1 open bus
             0x213E => {
-                let mut val: u8 = 0x01; // PPU1 version
-                if self.oam.time_over {
-                    val |= 0x80;
-                }
+                let mut val: u8 = 0x01; // bits 3-0: PPU1 version
+                // bit 5: master/slave (PPU1 pin 25) = 0
                 if self.oam.range_over {
-                    val |= 0x40;
+                    val |= 0x40; // bit 6: range over (>32 sprites on the line)
                 }
-                val
+                if self.oam.time_over {
+                    val |= 0x80; // bit 7: time over (>34 sprite tiles on the line)
+                }
+                self.ppu1_read(val, 0xEF) // bit 4 undriven -> PPU1 open bus
             }
-            0x213F => Self::unimplemented_read_only(addr), // TODO
 
-            _ => {
-                println!(
-                    "PPU READ IGNORED: ${:04X} (register not handled by PPU)",
-                    addr
-                );
-                0
+            // STAT78 (PPU2) - FLxM VVVV, bit 5 = PPU2 open bus
+            0x213F => {
+                let mut val: u8 = 0x01; // bits 3-0: PPU2 version
+                // bit 4: 0 = 60Hz/NTSC
+                if self.regs.counter_latch {
+                    val |= 0x40; // bit 6: H/V counter latch flag
+                }
+                if self.odd_frame {
+                    val |= 0x80; // bit 7: interlace field (toggles each frame)
+                }
+                let result = self.ppu2_read(val, 0xDF); // bit 5 undriven
+                self.regs.read_stat78_side_effects();
+                result
             }
+
+            // Write-only registers ($2100-$2133) and everything else read back
+            // as CPU open bus; the PPU drives nothing here.
+            _ => cpu_open_bus,
         }
+    }
+
+    // Driven bits from `value`, the rest from the PPU1 latch; then latch the
+    // whole byte. `driven_mask` = 1 for every bit the register actually drives.
+    fn ppu1_read(&mut self, value: u8, driven_mask: u8) -> u8 {
+        let result = (value & driven_mask) | (self.ppu1_open_bus & !driven_mask);
+        self.ppu1_open_bus = result;
+        result
+    }
+
+    fn ppu2_read(&mut self, value: u8, driven_mask: u8) -> u8 {
+        let result = (value & driven_mask) | (self.ppu2_open_bus & !driven_mask);
+        self.ppu2_open_bus = result;
+        result
+    }
+
+    /// Latch the current beam position into OPHCT/OPVCT and raise the STAT78
+    /// counter-latch flag. Triggered by an SLHV ($2137) read.
+    fn latch_hv_counters(&mut self) {
+        self.regs.ophct = self.dot() & 0x01FF; // 9-bit H counter (dot 0..339)
+        self.regs.opvct = self.scanline & 0x01FF; // 9-bit V counter
+        self.regs.counter_latch = true;
+    }
+
+    /// Signed 16-bit M7A * signed 8-bit (high byte of M7B) -> signed 24-bit,
+    /// exposed through MPYL/M/H ($2134-$2136). Recomputed on every M7A/M7B write.
+    fn update_mode7_multiply(&mut self) {
+        let a = self.regs.m7a as i16 as i32;
+        let b = (self.regs.m7b >> 8) as u8 as i8 as i32;
+        self.regs.mpy = ((a * b) as u32) & 0x00FF_FFFF;
     }
 
     /// Current dot (0..339).

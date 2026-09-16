@@ -242,6 +242,10 @@ pub struct PPURegisters {
 
     // Internal flip-flop for OPVCT ($213D) reads
     pub opvct_latch: WriteTwice,
+
+    // Set when the H/V counters are latched (SLHV $2137 read). Cleared when
+    // STAT78 ($213F) is read. Reflected in STAT78 bit 6.
+    pub counter_latch: bool,
 }
 
 impl Default for PPURegisters {
@@ -312,6 +316,7 @@ impl PPURegisters {
             cgram_latch: WriteTwice::new(),
             ophct_latch: WriteTwice::new(),
             opvct_latch: WriteTwice::new(),
+            counter_latch: false,
         }
     }
 
@@ -349,5 +354,13 @@ impl PPURegisters {
         let h = if bg == 0 { self.bg1hofs } else { self.bghofs[bg - 1] };
         let v = if bg == 0 { self.bg1vofs } else { self.bgvofs[bg - 1] };
         (h as usize, v as usize)
+    }
+
+    // $213F read side effects: clear the counter latch and reset the
+    // OPHCT/OPVCT read toggles.
+    pub fn read_stat78_side_effects(&mut self) {
+        self.counter_latch = false;
+        self.ophct_latch.reset();
+        self.opvct_latch.reset();
     }
 }
