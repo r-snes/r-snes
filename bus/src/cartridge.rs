@@ -223,7 +223,7 @@ impl Cartridge {
                 self.sram.write(linear, value);
                 AccessSpeed::Slow
             }
-            CartridgeTarget::Rom(_) | CartridgeTarget::Unmapped => Self::rom_speed(addr, memsel)
+            CartridgeTarget::Rom(_) | CartridgeTarget::Unmapped => Self::rom_speed(addr, memsel),
         }
     }
 }

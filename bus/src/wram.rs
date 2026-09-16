@@ -1,5 +1,5 @@
-use crate::constants::WRAM_SIZE;
 use crate::bus::AccessSpeed;
+use crate::constants::WRAM_SIZE;
 
 use common::snes_address::SnesAddress;
 

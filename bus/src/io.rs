@@ -731,7 +731,13 @@ impl Io {
     ///
     /// # Panics
     /// Panics if the address does not map to a valid I/O memory location.
-    pub fn read(&mut self, addr: SnesAddress, wram: &mut Wram, ppu: &mut PPU, apu: &mut Apu) -> (u8, AccessSpeed) {
+    pub fn read(
+        &mut self,
+        addr: SnesAddress,
+        wram: &mut Wram,
+        ppu: &mut PPU,
+        apu: &mut Apu,
+    ) -> (u8, AccessSpeed) {
         self.open_bus = match addr.bank {
             0x00..=0x3F | 0x80..=0xBF => match addr.addr {
                 0x2000..0x2100 => self.open_bus,
