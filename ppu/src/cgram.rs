@@ -6,7 +6,6 @@ use common::u16_split::U16Split;
 pub struct CGRAM {
     pub memory: [u16; CGRAM_SIZE / 2], // CGRAM stored as u16 words
     word_addr: u8,                     // Internal 8-bit word address (0–255)
-    pub ppu_open_bus: u8,              // bit 7 used during high-byte read
 }
 
 impl Default for CGRAM {
@@ -20,7 +19,6 @@ impl CGRAM {
         Self {
             memory: [0; CGRAM_SIZE / 2],
             word_addr: 0,
-            ppu_open_bus: 0,
         }
     }
 
@@ -44,26 +42,24 @@ impl CGRAM {
             *word.hi_mut() = hi & 0x7F;
             self.word_addr = self.word_addr.wrapping_add(1);
         }
-        self.ppu_open_bus = value;
     }
 
     // ============================================================
     // $213B - CGDATAREAD
     // ============================================================
 
-    pub fn read_data(&mut self, PPURegisters { cgram_latch, .. }: &mut PPURegisters) -> u8 {
+    pub fn read_data(&mut self, PPURegisters { cgram_latch, .. }: &mut PPURegisters) -> (u8, u8) {
         let word = self.memory[self.word_addr as usize];
-        let value = match cgram_latch.phase {
-            BytePhase::Low => *word.lo(),
-            BytePhase::High => *word.hi() | (self.ppu_open_bus & 0x80),
+        let (value, mask) = match cgram_latch.phase {
+            BytePhase::Low => (*word.lo(), 0xFF),
+            BytePhase::High => (*word.hi(), 0x7F),
         };
 
         if cgram_latch.phase.is_high() {
             self.word_addr = self.word_addr.wrapping_add(1);
         }
         cgram_latch.phase.flip();
-        self.ppu_open_bus = value;
-        value
+        (value, mask)
     }
 
     // ============================================================
