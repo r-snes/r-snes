@@ -331,8 +331,7 @@ impl Plugin {
         let file = fs::File::open(path).map_err(PluginLoadError::OpenError)?;
         let mut file = p_io::buffered_read(file).map_err(PluginLoadError::BufCreationError)?;
         let mut source = Vec::new();
-        file.read_to_end(&mut source)
-            .map_err(PluginLoadError::ReadError)?;
+        file.read_to_end(&mut source).map_err(PluginLoadError::ReadError)?;
 
         Self::load_from_raw(source.as_slice(), Some(path.to_path_buf()))
     }

@@ -239,8 +239,7 @@ impl PermTreeFromAllOr for FilePermissions {
                         }
                     };
 
-                    ret.files
-                        .insert(pathbuf, FileReadWriteOptions::from_lua(ctx, v)?);
+                    ret.files.insert(pathbuf, FileReadWriteOptions::from_lua(ctx, v)?);
                 }
                 _ => eprintln!("unexpected key val combo in file write permissions"),
             }

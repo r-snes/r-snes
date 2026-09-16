@@ -319,9 +319,8 @@ impl RSnesCore {
         if self.cpu_master_cycles_to_wait != 0 || !self.cpu.is_instr_start() {
             None
         } else {
-            let (opcode, _speed) = self
-                .bus
-                .read(*self.cpu.addr_bus(), &mut self.ppu, &mut self.apu);
+            let (opcode, _speed) =
+                self.bus.read(*self.cpu.addr_bus(), &mut self.ppu, &mut self.apu);
             Some(opcode)
         }
     }
@@ -614,9 +613,7 @@ mod tests {
         let mut rsnes = TestRsnesCore::new().0;
         advance_core_to_scanline(&mut rsnes, VBLANK_START_LINE);
 
-        let (value, _speed) = rsnes
-            .bus
-            .read(snes_addr!(0:0x4210), &mut rsnes.ppu, &mut rsnes.apu);
+        let (value, _speed) = rsnes.bus.read(snes_addr!(0:0x4210), &mut rsnes.ppu, &mut rsnes.apu);
 
         assert_eq!(value & 0x80, 0x80, "read returns the flag that was set");
         assert!(!rsnes.bus.io.nmi_flag(), "read acknowledges");
