@@ -215,7 +215,7 @@ impl RSnesCore {
                         return Ok(CallbackReturn::Return);
                     };
                     let addr = SnesAddress::from(addr as usize);
-                    let byte = {
+                    let (byte, _speed) = {
                         let mut emu_mut = clone.borrow_mut();
                         let RSnesCore { bus, ppu, apu, .. } = emu_mut.deref_mut();
                         bus.read(addr, ppu, apu)
@@ -777,8 +777,8 @@ mod test {
         plugin.run_exit().unwrap();
         let mut emu_mut = core.borrow_mut();
         let RSnesCore { bus, ppu, apu, .. } = emu_mut.deref_mut();
-        assert_eq!(bus.read(snes_addr!(0x7F:0x1234), ppu, apu), 0x66);
-        assert_eq!(bus.read(snes_addr!(0x7F:0x1235), ppu, apu), 0x35);
+        assert_eq!(bus.read(snes_addr!(0x7F:0x1234), ppu, apu).0, 0x66);
+        assert_eq!(bus.read(snes_addr!(0x7F:0x1235), ppu, apu).0, 0x35);
     }
 
     #[test]
