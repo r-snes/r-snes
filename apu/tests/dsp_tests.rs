@@ -1452,7 +1452,7 @@ fn test_fir_taps_read_correct_positions_for_all_8_taps() {
     // the addressing/wraparound math before writing this test.
     let wait_ticks: [u32; 8] = [513, 2, 3, 4, 5, 6, 7, 8];
 
-    for k in 0..8usize {
+    for (k, &wait) in wait_ticks.iter().enumerate() {
         let mut mem = Memory::new();
         dsp_gw(&mut mem, 0x6D, 0x20); // ESA = page 0x20
         dsp_gw(&mut mem, 0x7D, 0x01); // EDL = 1 -> 2048-byte buffer
@@ -1463,7 +1463,7 @@ fn test_fir_taps_read_correct_positions_for_all_8_taps() {
         mem.dsp.tick_echo(&mut mem.ram, 9999, -1111);
 
         // Advance up to (but not including) the verification tick.
-        for _ in 1..wait_ticks[k] - 1 {
+        for _ in 1..wait - 1 {
             mem.dsp.tick_echo(&mut mem.ram, 0, 0);
         }
 
@@ -1474,8 +1474,7 @@ fn test_fir_taps_read_correct_positions_for_all_8_taps() {
         assert_eq!(
             out_l,
             ((127i32 * 9999) >> 7) as i16,
-            "tap {k} must read the value written {} ticks ago",
-            wait_ticks[k]
+            "tap {k} must read the value written {wait} ticks ago"
         );
         assert_eq!(out_r, ((127i32 * -1111) >> 7) as i16);
     }
@@ -1491,11 +1490,7 @@ fn test_tick_echo_zero_fir_is_always_silent_regardless_of_buffer_content() {
 
     for i in 0..20i16 {
         let (l, r) = mem.dsp.tick_echo(&mut mem.ram, i * 111, -i * 111);
-        assert_eq!(
-            (l, r),
-            (0, 0),
-            "all-zero FIR must produce silent output (tick {i})"
-        );
+        assert_eq!((l, r), (0, 0), "all-zero FIR must produce silent output (tick {i})");
     }
 }
 
@@ -1506,11 +1501,7 @@ fn test_tick_echo_edl_zero_is_always_silent() {
     dsp_vw(&mut mem, 0, 0xF, 127); // even with a strong FIR tap...
 
     let (l, r) = mem.dsp.tick_echo(&mut mem.ram, 12345, -12345);
-    assert_eq!(
-        (l, r),
-        (0, 0),
-        "EDL=0 must produce silence — there's no buffer to filter"
-    );
+    assert_eq!((l, r), (0, 0), "EDL=0 must produce silence — there's no buffer to filter");
 }
 
 #[test]
@@ -1673,10 +1664,7 @@ fn test_echo_defaults_are_a_complete_no_op() {
     }
 
     let (l, r) = mem.dsp.render_audio_single();
-    assert!(
-        l != 0 || r != 0,
-        "sanity check: the voice itself must be audible"
-    );
+    assert!(l != 0 || r != 0, "sanity check: the voice itself must be audible");
 
     // ESA=0 means the (nonexistent, since EDL=0) echo buffer's base
     // would be RAM address 0 — confirm nothing was ever written there.

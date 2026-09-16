@@ -104,6 +104,12 @@ pub struct Dsp {
     /// Not reset on ESA/EDL writes — real hardware doesn't clamp it
     /// until it naturally reaches the wraparound check either.
     echo_ptr: u16,
+
+    /// Stage 4: this tick's FIR-filtered echo output, computed by `step`
+    /// (which has the mutable RAM access `tick_echo` needs) and read by
+    /// `render_audio_single` (which doesn't take RAM at all — it's a
+    /// pure read of already-computed state). Split this way so
+    /// `render_audio_single`'s signature doesn't have to change.
     echo_out_l: i16,
     echo_out_r: i16,
 }
@@ -243,12 +249,10 @@ impl Dsp {
                 // Ignored while FLG's RESET bit is set — real hardware
                 // blocks new key-ons for as long as the DSP is held in
                 // reset.
-                0x4C => {
-                    if self.flg & 0x80 == 0 {
-                        for v in 0..8usize {
-                            if value & (1 << v) != 0 {
-                                self.key_on_voice(v);
-                            }
+                0x4C if self.flg & 0x80 == 0 => {
+                    for v in 0..8usize {
+                        if value & (1 << v) != 0 {
+                            self.key_on_voice(v);
                         }
                     }
                 }
@@ -359,6 +363,14 @@ impl Dsp {
     }
 
     /// Advance the DSP by one output sample tick.
+    ///
+    /// `ram` is a direct slice of the 64 KB APU RAM. Mutable as of Stage
+    /// 4: the echo buffer (Stage 2/3) needs to write into it. Every
+    /// other read (BRR sample data, the DIR table) still only reads.
+    ///
+    /// Takes `&mut RawARAM` rather than `&mut Memory` so the caller can
+    /// pass `&mut memory.ram` without conflicting with the `&mut
+    /// memory.dsp` borrow (disjoint fields of the same struct).
     pub fn step(&mut self, ram: &mut RawARAM) {
         self.advance_noise();
         // Real hardware scales the 15-bit LFSR into a signed sample the
@@ -377,7 +389,8 @@ impl Dsp {
         let mut echo_in_r: i32 = 0;
 
         for (i, voice) in voices.iter_mut().enumerate() {
-            // Voice::step only reads RAM
+            // Voice::step only reads RAM; reborrow the mutable reference
+            // as shared for the duration of this call.
             voice.step(i, ram, registers);
 
             if non & (1 << i) != 0 {
@@ -394,7 +407,10 @@ impl Dsp {
             if eon & (1 << i) != 0 {
                 // EON sums this voice's dry output (post-NON, so a
                 // voice with both NON and EON set feeds its noise into
-                // the echo buffer too
+                // the echo buffer too, not the BRR audio underneath —
+                // both stages see the same "this voice's output this
+                // tick" value) into the echo input, same per-voice
+                // scaling as the main dry mix.
                 let (l, r) = voice_dry_output(voice);
                 echo_in_l += l;
                 echo_in_r += r;
@@ -510,16 +526,14 @@ impl Dsp {
         taps
     }
 
-    /// Combine the 8 taps with the FIR coefficients (`fir_coeff[0]`
-    /// weights the freshest tap, `fir_coeff[7]` the oldest) into this
-    /// tick's filtered echo output.
+    /// Combine the 8 taps with the FIR coefficients
     fn fir_filter(&self, taps: &[(i16, i16); 8]) -> (i16, i16) {
         let mut sum_l: i32 = 0;
         let mut sum_r: i32 = 0;
-        for k in 0..7 {
-            let c = self.fir_coeff[k] as i32;
-            sum_l += (c * taps[k].0 as i32) >> 7;
-            sum_r += (c * taps[k].1 as i32) >> 7;
+        for (&coeff, tap) in self.fir_coeff.iter().zip(taps.iter()).take(7) {
+            let c = coeff as i32;
+            sum_l += (c * tap.0 as i32) >> 7;
+            sum_r += (c * tap.1 as i32) >> 7;
         }
         sum_l = sum_l as i16 as i32;
         sum_r = sum_r as i16 as i32;
@@ -579,7 +593,7 @@ impl Dsp {
         right += self.echo_out_r as i32;
 
         // A second clamp is required: master vol can amplify the
-        // already-summed dry mix past i16 range again
+        // already-summed dry mix past i16 range.
         (
             left.clamp(i16::MIN as i32, i16::MAX as i32) as i16,
             right.clamp(i16::MIN as i32, i16::MAX as i32) as i16,
@@ -587,7 +601,6 @@ impl Dsp {
     }
 }
 
-/// Per-voice dry (pre-echo, pre-MVOL) output sample
 fn voice_dry_output(voice: &Voice) -> (i32, i32) {
     if voice.adsr.envelope_phase == EnvelopePhase::Off {
         return (0, 0);
