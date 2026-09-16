@@ -15,7 +15,7 @@ pub fn make_rsnes() -> RSnesCore {
     RSnesCore::load_rom(&rom_path).unwrap()
 }
 
-pub struct TestRsnesCore(RSnesCore);
+pub struct TestRsnesCore(pub RSnesCore);
 
 impl AsRef<RSnesCore> for TestRsnesCore {
     fn as_ref(&self) -> &RSnesCore {

@@ -501,7 +501,7 @@ mod tests {
     /// while HDMAEN is non-zero.
     #[test]
     fn test_hdma_transfer_requested_during_visible_lines() {
-        let mut rsnes = make_rsnes();
+        let mut rsnes = TestRsnesCore::new();
         rsnes.bus.io.hdmaen = 0b0000_0001;
 
         tick_core(&mut rsnes, HDMA_START_DOT as u64 * 4);
@@ -512,7 +512,7 @@ mod tests {
     /// Reaching the end without panicking is the assertion.
     #[test]
     fn test_hdma_not_requested_during_vblank() {
-        let mut rsnes = make_rsnes();
+        let mut rsnes = TestRsnesCore::new();
         advance_core_to_scanline(&mut rsnes, VBLANK_START_LINE);
         rsnes.bus.io.hdmaen = 0b0000_0001;
 
@@ -522,7 +522,7 @@ mod tests {
     /// Channels are re-initialised at the top of each frame.
     #[test]
     fn test_hdma_init_requested_at_frame_start() {
-        let mut rsnes = make_rsnes();
+        let mut rsnes = TestRsnesCore::new();
         advance_core_to_scanline(&mut rsnes, VBLANK_START_LINE);
         rsnes.bus.io.hdmaen = 0b0000_0001;
 
@@ -533,7 +533,7 @@ mod tests {
     /// Nothing is requested when HDMAEN is clear.
     #[test]
     fn test_no_hdma_when_disabled() {
-        let mut rsnes = make_rsnes();
+        let mut rsnes = TestRsnesCore::new();
         advance_core_to_scanline(&mut rsnes, 10);
     }
 
@@ -689,11 +689,11 @@ mod tests {
     /// isolates the rate from the fixed start and per-channel overheads.
     #[test]
     fn test_dma_costs_eight_master_cycles_per_byte() {
-        let mut short = make_rsnes();
+        let mut short = TestRsnesCore::new();
         configure_channel(&mut short, 0, 0x08, 0x26, snes_addr!(0x7E:0x1000), 4);
         let short_cycles = run_dma(&mut short, 0b0000_0001, 10_000);
 
-        let mut long = make_rsnes();
+        let mut long = TestRsnesCore::new();
         configure_channel(&mut long, 0, 0x08, 0x26, snes_addr!(0x7E:0x1000), 20);
         let long_cycles = run_dma(&mut long, 0b0000_0001, 10_000);
 

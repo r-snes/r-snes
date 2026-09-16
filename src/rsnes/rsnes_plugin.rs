@@ -440,7 +440,7 @@ impl RSnesCore {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::test_utils::make_rsnes;
+    use crate::test_utils::*;
     use common::snes_addr;
     use cpu::registers::Registers;
     use piccolo::{Executor, Function, StashedExecutor, StashedTable, StashedValue, meta_ops};
@@ -448,7 +448,7 @@ mod test {
 
     #[test]
     fn cpu_regs_perms() {
-        let mut core = make_rsnes();
+        let mut core = TestRsnesCore::new().0;
         core.cpu = CPU::new(Registers {
             A: 1000,
             D: 4000,
@@ -596,7 +596,7 @@ mod test {
 
     #[test]
     fn input() {
-        let core = Rc::new(RefCell::new(make_rsnes()));
+        let core = Rc::new(RefCell::new(TestRsnesCore::new().0));
 
         let mut plugin = Plugin::load_from_raw(
             br#"return {
@@ -665,7 +665,7 @@ mod test {
 
     #[test]
     fn bus_inject_count() {
-        let core = Rc::new(RefCell::new(make_rsnes()));
+        let core = Rc::new(RefCell::new(TestRsnesCore::new().0));
 
         let mut plugin_read = Plugin::load_from_raw(
             br#"
@@ -737,7 +737,7 @@ mod test {
 
     #[test]
     fn bus_read_write() {
-        let mut core = make_rsnes();
+        let mut core = TestRsnesCore::new().0;
         let RSnesCore { bus, ppu, apu, .. } = &mut core;
         bus.write(snes_addr!(0x7F:0x1234), 0x44, ppu, apu);
         let core = Rc::new(RefCell::new(core));
@@ -783,7 +783,7 @@ mod test {
 
     #[test]
     fn ppu() {
-        let core = Rc::new(RefCell::new(make_rsnes()));
+        let core = Rc::new(RefCell::new(TestRsnesCore::new().0));
 
         let mut plugin = Plugin::load_from_raw(
             br#"return {

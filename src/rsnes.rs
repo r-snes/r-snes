@@ -453,15 +453,13 @@ impl RSnesEmu {
 mod tests {
     use super::*;
     use common::snes_addr;
-    use common::snes_address::SnesAddress;
-    use common::u16_split::U16Split;
     use ppu::constants::{MASTER_CYCLES_PER_SCANLINE, SCANLINES_PER_FRAME};
 
     use crate::test_utils::*;
 
     #[test]
     fn test_cpu_update_function() {
-        let mut rsnes = make_rsnes();
+        let mut rsnes = TestRsnesCore::new();
 
         let reset_addr = bus::cartridge::Cartridge::get_lorom_offset(snes_addr!(0:0xFFFC)).unwrap();
         rsnes.bus.cart.rom[reset_addr] = 0x00;
@@ -518,7 +516,7 @@ mod tests {
     /// tick per master cycle, regardless of what the CPU is doing.
     #[test]
     fn test_ppu_advances_with_master_clock() {
-        let mut rsnes = make_rsnes();
+        let mut rsnes = TestRsnesCore::new();
 
         tick_core(&mut rsnes, 100);
 
@@ -530,7 +528,7 @@ mod tests {
     /// The APU is driven by the same clock at its own 1.024 MHz rate.
     #[test]
     fn test_apu_cycle_debt_tracks_clock_ratio() {
-        let mut rsnes = make_rsnes();
+        let mut rsnes = TestRsnesCore::new();
         let cycles = 1_000u64;
 
         tick_core(&mut rsnes, cycles);
@@ -554,7 +552,7 @@ mod tests {
     /// the next scanline begins.
     #[test]
     fn test_hblank_flag_tracks_dot_position() {
-        let mut rsnes = make_rsnes();
+        let mut rsnes = TestRsnesCore::new();
 
         tick_core(&mut rsnes, HBLANK_START_DOT as u64 * 4 - 1);
         assert!(!rsnes.bus.io.in_hblank());
@@ -573,7 +571,7 @@ mod tests {
     /// Both flags go up on scanline 225 and come back down on scanline 0.
     #[test]
     fn test_vblank_flags_set_and_cleared() {
-        let mut rsnes = make_rsnes();
+        let mut rsnes = TestRsnesCore::new();
         assert!(!rsnes.bus.io.in_vblank());
         assert!(!rsnes.bus.io.nmi_flag());
 
@@ -590,7 +588,7 @@ mod tests {
     /// just the first one — ROMs poll it in a loop.
     #[test]
     fn test_vblank_flag_held_for_whole_interval() {
-        let mut rsnes = make_rsnes();
+        let mut rsnes = TestRsnesCore::new();
 
         for line in VBLANK_START_LINE..SCANLINES_PER_FRAME {
             advance_core_to_scanline(&mut rsnes, line);
@@ -604,7 +602,7 @@ mod tests {
     /// The last visible line is still outside V-Blank.
     #[test]
     fn test_last_visible_scanline_is_not_vblank() {
-        let mut rsnes = make_rsnes();
+        let mut rsnes = TestRsnesCore::new();
         advance_core_to_scanline(&mut rsnes, VBLANK_START_LINE - 1);
         assert!(!rsnes.bus.io.in_vblank());
     }
@@ -613,7 +611,7 @@ mod tests {
     /// not be disturbed by it.
     #[test]
     fn test_reading_rdnmi_acknowledges_without_clearing_vblank() {
-        let mut rsnes = make_rsnes();
+        let mut rsnes = TestRsnesCore::new().0;
         advance_core_to_scanline(&mut rsnes, VBLANK_START_LINE);
 
         let value = rsnes
@@ -628,7 +626,7 @@ mod tests {
     /// SETINI bit 2 moves V-Blank to line 240, and the core follows it.
     #[test]
     fn test_overscan_moves_vblank_start() {
-        let mut rsnes = make_rsnes();
+        let mut rsnes = TestRsnesCore::new();
         rsnes.ppu.write(0x2133, 0x04);
 
         advance_core_to_scanline(&mut rsnes, VBLANK_START_LINE);
@@ -674,7 +672,7 @@ mod tests {
 
     #[test]
     fn test_irq_mode_decoding() {
-        let mut rsnes = make_rsnes();
+        let mut rsnes = TestRsnesCore::new();
         for (bits, expected) in [
             (0b0000_0000, IrqMode::Disabled),
             (0b0001_0000, IrqMode::H),
@@ -753,7 +751,7 @@ mod tests {
     /// against a pre-filled buffer.
     #[test]
     fn test_scanline_rendered_at_hblank_of_visible_line() {
-        let mut rsnes = make_rsnes();
+        let mut rsnes = TestRsnesCore::new();
         rsnes.ppu.write(0x2100, 0x80);
         rsnes.ppu_renderer.framebuffer.fill(0xFF);
 
@@ -772,7 +770,7 @@ mod tests {
     /// Scanline 0 is the pre-render line and draws nothing.
     #[test]
     fn test_prerender_scanline_draws_nothing() {
-        let mut rsnes = make_rsnes();
+        let mut rsnes = TestRsnesCore::new();
         rsnes.ppu.write(0x2100, 0x80);
         rsnes.ppu_renderer.framebuffer.fill(0xFF);
 
@@ -784,7 +782,7 @@ mod tests {
     /// V-Blank scanlines draw nothing either.
     #[test]
     fn test_vblank_scanlines_draw_nothing() {
-        let mut rsnes = make_rsnes();
+        let mut rsnes = TestRsnesCore::new();
         rsnes.ppu.write(0x2100, 0x80);
 
         advance_core_to_scanline(&mut rsnes, VBLANK_START_LINE);
@@ -798,7 +796,7 @@ mod tests {
     /// The back buffer becomes visible only when the frame completes.
     #[test]
     fn test_framebuffer_published_at_frame_start() {
-        let mut rsnes = make_rsnes();
+        let mut rsnes = TestRsnesCore::new();
 
         // Park in V-Blank first so no further rendering overwrites the mark.
         advance_core_to_scanline(&mut rsnes, VBLANK_START_LINE);
