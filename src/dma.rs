@@ -394,9 +394,7 @@ mod tests {
     use common::snes_addr;
     use common::snes_address::SnesAddress;
     use common::u16_split::U16Split;
-    use ppu::constants::{
-        HDMA_START_DOT, MASTER_CYCLES_PER_SCANLINE, SCANLINES_PER_FRAME, VBLANK_START_LINE,
-    };
+    use ppu::constants::{HDMA_START_DOT, MASTER_CYCLES_PER_SCANLINE, VBLANK_START_LINE};
 
     use crate::test_utils::*;
 

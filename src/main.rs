@@ -1,8 +1,8 @@
 mod dma;
 mod gui;
-
 mod rsnes;
 
+#[cfg(test)]
 mod test_utils;
 
 use crate::{
