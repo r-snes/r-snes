@@ -53,7 +53,7 @@ impl Renderer {
         y: usize,
     ) -> u8 {
         // Planes 0+1: words 0-7
-        let w = vram[tile_word_base + y];
+        let w = vram[(tile_word_base + y) & 0x7FFF];
         let p0 = (w & 0xFF) as u8;
         let p1 = (w >> 8) as u8;
 
