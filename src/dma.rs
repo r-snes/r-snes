@@ -84,7 +84,8 @@ impl Dma {
             2 | 6 => &[0, 0],
             3 | 7 => &[0, 0, 1, 1],
             4 => &[0, 1, 2, 3],
-            _ => &[0, 1, 0, 1],
+            5 => &[0, 1, 0, 1],
+            _ => unreachable!("DMAP bits 2-0 are masked to 3 bits"),
         }
     }
 
@@ -137,7 +138,6 @@ impl RSnesCore {
 
         // A channel enabled for both loses its general-purpose transfer;
         // HDMA wins outright and the transfer is aborted, not deferred.
-        self.bus.io.mdmaen &= !self.bus.io.hdmaen;
         if self.bus.io.mdmaen == 0 {
             return;
         }
