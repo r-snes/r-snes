@@ -440,7 +440,7 @@ impl RSnesCore {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::rsnes::tests::make_rsnes;
+    use crate::test_utils::make_rsnes;
     use common::snes_addr;
     use cpu::registers::Registers;
     use piccolo::{Executor, Function, StashedExecutor, StashedTable, StashedValue, meta_ops};

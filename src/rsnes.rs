@@ -638,7 +638,7 @@ mod tests {
 
     #[test]
     fn test_interrupt_flags_clear_at_poweron() {
-        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let mut rsnes = TestRsnesCore::new();
         assert!(!rsnes.has_nmi_occured());
         assert!(!rsnes.has_irq_occured());
     }
@@ -745,7 +745,7 @@ mod tests {
     /// With NMITIMEN bit 7 set, entering V-Blank must request an NMI.
     #[test]
     fn test_vblank_nmi_requested_when_enabled() {
-        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let mut rsnes = TestRsnesCore::new();
         rsnes.bus.io.nmitimen = 0x80;
         advance_core_to_scanline(&mut rsnes, VBLANK_START_LINE);
         assert!(rsnes.has_nmi_occured());
@@ -756,7 +756,7 @@ mod tests {
     /// interrupt is opt-in.
     #[test]
     fn test_vblank_flag_set_even_when_nmi_disabled() {
-        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let mut rsnes = TestRsnesCore::new();
         assert!(!rsnes.bus.io.nmi_enabled());
 
         advance_core_to_scanline(&mut rsnes, VBLANK_START_LINE);
@@ -786,7 +786,7 @@ mod tests {
     /// Mode 1 fires wherever H reaches HTIME, on any scanline.
     #[test]
     fn test_h_irq_fires_at_htime() {
-        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let mut rsnes = TestRsnesCore::new();
         rsnes.bus.io.nmitimen = 0b0001_0000;
         rsnes.bus.io.htime = 100;
 
@@ -797,7 +797,7 @@ mod tests {
     /// Mode 2 fires once per frame, at H = 0 of VTIME.
     #[test]
     fn test_v_irq_fires_on_target_scanline() {
-        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let mut rsnes = TestRsnesCore::new();
         rsnes.bus.io.nmitimen = 0b0010_0000;
         rsnes.bus.io.vtime = 42;
 
@@ -808,7 +808,7 @@ mod tests {
     /// Mode 2 must ignore every other scanline.
     #[test]
     fn test_v_irq_silent_on_other_scanlines() {
-        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let mut rsnes = TestRsnesCore::new();
         rsnes.bus.io.nmitimen = 0b0010_0000;
         rsnes.bus.io.vtime = 200;
 
@@ -820,7 +820,7 @@ mod tests {
     /// must not fire.
     #[test]
     fn test_hv_irq_ignores_htime_match_on_wrong_scanline() {
-        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let mut rsnes = TestRsnesCore::new();
         rsnes.bus.io.nmitimen = 0b0011_0000;
         rsnes.bus.io.htime = 100;
         rsnes.bus.io.vtime = 200;
@@ -832,7 +832,7 @@ mod tests {
     /// Mode 0 must never fire, even when both counters match.
     #[test]
     fn test_irq_disabled_never_fires() {
-        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let mut rsnes = TestRsnesCore::new();
         rsnes.bus.io.htime = 100;
         rsnes.bus.io.vtime = 100;
 
@@ -954,7 +954,7 @@ mod tests {
     /// source bytes become two VRAM words in source order.
     #[test]
     fn test_dma_mode1_builds_vram_words_in_order() {
-        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let mut rsnes = TestRsnesCore::new();
         let src = snes_addr!(0x7E:0x1000);
         fill_wram(&mut rsnes, src, &[0x11, 0x22, 0x33, 0x44]);
         vram_word_mode(&mut rsnes);
@@ -970,7 +970,7 @@ mod tests {
     /// reversed.
     #[test]
     fn test_dma_decrement_reverses_source_order() {
-        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let mut rsnes = TestRsnesCore::new();
         let base = snes_addr!(0x7E:0x1000);
         fill_wram(&mut rsnes, base, &[0x11, 0x22, 0x33, 0x44]);
         vram_word_mode(&mut rsnes);
@@ -987,7 +987,7 @@ mod tests {
     /// Bit 3 wins even when bit 4 also asks for a decrement.
     #[test]
     fn test_dma_fixed_source_repeats_one_byte() {
-        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let mut rsnes = TestRsnesCore::new();
         let src = snes_addr!(0x7E:0x1000);
         fill_wram(&mut rsnes, src, &[0xAB, 0xCD, 0xEF, 0x01]);
         vram_word_mode(&mut rsnes);
@@ -1005,7 +1005,7 @@ mod tests {
     /// written. Reading $213B walks CGRAM, so four reads land four bytes.
     #[test]
     fn test_dma_b_to_a_writes_into_wram() {
-        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let mut rsnes = TestRsnesCore::new();
 
         // Seed two CGRAM colours, then rewind the CGRAM address.
         write_reg(&mut rsnes, 0x2121, 0x00);
@@ -1028,7 +1028,7 @@ mod tests {
     /// byte count and the counter drained to zero.
     #[test]
     fn test_dma_leaves_source_advanced_and_count_zero() {
-        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let mut rsnes = TestRsnesCore::new();
         let src = snes_addr!(0x7E:0x1000);
         fill_wram(&mut rsnes, src, &[0; 8]);
 
@@ -1042,7 +1042,7 @@ mod tests {
     /// The bank byte is never carried into: the A-bus wraps inside its bank.
     #[test]
     fn test_dma_source_wraps_inside_its_bank() {
-        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let mut rsnes = TestRsnesCore::new();
         rsnes.bus.wram.write(snes_addr!(0x7E:0xFFFF), 0xAA);
         rsnes.bus.wram.write(snes_addr!(0x7E:0x0000), 0xBB);
         vram_word_mode(&mut rsnes);
@@ -1058,7 +1058,7 @@ mod tests {
     /// exactly one lap of its bank.
     #[test]
     fn test_dma_count_zero_transfers_64k() {
-        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let mut rsnes = TestRsnesCore::new();
 
         configure_channel(&mut rsnes, 0, 0x08, 0x26, snes_addr!(0x7E:0x0000), 0);
         let cycles = run_dma(&mut rsnes, 0b0000_0001, 1_000_000);
@@ -1071,7 +1071,7 @@ mod tests {
     /// higher channel's byte is the one left in the destination.
     #[test]
     fn test_dma_channels_run_lowest_first() {
-        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let mut rsnes = TestRsnesCore::new();
         fill_wram(&mut rsnes, snes_addr!(0x7E:0x1000), &[0xAA]);
         fill_wram(&mut rsnes, snes_addr!(0x7E:0x2000), &[0xBB]);
 
@@ -1087,7 +1087,7 @@ mod tests {
     /// Channels not named in $420B are untouched.
     #[test]
     fn test_dma_ignores_disabled_channels() {
-        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let mut rsnes = TestRsnesCore::new();
 
         configure_channel(&mut rsnes, 0, 0x00, 0x26, snes_addr!(0x7E:0x1000), 4);
         configure_channel(&mut rsnes, 1, 0x00, 0x26, snes_addr!(0x7E:0x2000), 4);
@@ -1117,7 +1117,7 @@ mod tests {
     /// line count; the next entry takes over when the count runs out.
     #[test]
     fn test_hdma_non_repeat_holds_value_across_lines() {
-        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let mut rsnes = TestRsnesCore::new();
         // 2 lines of 0x10, 2 lines of 0x20, terminate.
         arm_hdma(&mut rsnes, 0x00, 0x26, &[0x02, 0x10, 0x02, 0x20, 0x00]);
 
@@ -1138,7 +1138,7 @@ mod tests {
     /// how a gradient is drawn.
     #[test]
     fn test_hdma_repeat_writes_a_new_byte_per_line() {
-        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let mut rsnes = TestRsnesCore::new();
         // repeat, 3 lines, three data bytes, terminate.
         arm_hdma(&mut rsnes, 0x00, 0x26, &[0x83, 0x11, 0x22, 0x33, 0x00]);
 
@@ -1152,7 +1152,7 @@ mod tests {
     /// destination keeps whatever was last written.
     #[test]
     fn test_hdma_zero_count_terminates_for_the_frame() {
-        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let mut rsnes = TestRsnesCore::new();
         arm_hdma(&mut rsnes, 0x00, 0x26, &[0x01, 0x77, 0x00, 0x99, 0x99]);
 
         settle_line(&mut rsnes, 0);
@@ -1169,7 +1169,7 @@ mod tests {
     /// sequence plays again.
     #[test]
     fn test_hdma_table_restarts_every_frame() {
-        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let mut rsnes = TestRsnesCore::new();
         arm_hdma(&mut rsnes, 0x00, 0x26, &[0x83, 0x11, 0x22, 0x33, 0x00]);
 
         settle_line(&mut rsnes, 0);
@@ -1191,7 +1191,7 @@ mod tests {
     /// bytes come from DASB:DAS and that pointer advances as they are used.
     #[test]
     fn test_hdma_indirect_streams_from_a_separate_pointer() {
-        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let mut rsnes = TestRsnesCore::new();
         // repeat, 2 lines, pointer to $7E:2000, terminate.
         arm_hdma(&mut rsnes, 0x40, 0x26, &[0x82, 0x00, 0x20, 0x00]);
         fill_wram(&mut rsnes, snes_addr!(0x7E:0x2000), &[0x5A, 0xA5]);
@@ -1209,7 +1209,7 @@ mod tests {
     /// while in V-BLANK even with entries left in the table.
     #[test]
     fn test_hdma_stops_at_vblank() {
-        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let mut rsnes = TestRsnesCore::new();
 
         // Two repeat entries of 127 lines each, data counting upward, so the
         // destination records how many transfers have happened.
@@ -1231,7 +1231,7 @@ mod tests {
     /// Nothing happens while HDMAEN is clear, however the channel is set up.
     #[test]
     fn test_no_hdma_when_hdmaen_is_clear() {
-        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let mut rsnes = TestRsnesCore::new();
         advance_core_to_scanline(&mut rsnes, VBLANK_START_LINE);
 
         fill_wram(&mut rsnes, HDMA_TABLE, &[0x83, 0x11, 0x22, 0x00]);
@@ -1248,7 +1248,7 @@ mod tests {
     /// transfer outright: HDMA wins and the transfer is aborted, not queued.
     #[test]
     fn test_hdma_channel_cancels_its_general_purpose_transfer() {
-        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let mut rsnes = TestRsnesCore::new();
         arm_hdma(&mut rsnes, 0x00, 0x26, &[0x7F, 0x55, 0x00]);
 
         // Repoint the same channel at a bulk transfer and request it.
@@ -1265,7 +1265,7 @@ mod tests {
     /// Mode 0 writes every byte to the same B-bus register.
     #[test]
     fn test_dma_pattern_mode0_single_register() {
-        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let mut rsnes = TestRsnesCore::new();
         let src = snes_addr!(0x7E:0x1000);
         fill_wram(&mut rsnes, src, &[0x11, 0x22, 0x33, 0x44]);
 
@@ -1287,7 +1287,7 @@ mod tests {
     /// each pair overwrites the first.
     #[test]
     fn test_dma_pattern_mode2_pairs_to_one_register() {
-        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let mut rsnes = TestRsnesCore::new();
         let src = snes_addr!(0x7E:0x1000);
         fill_wram(&mut rsnes, src, &[0x11, 0x22, 0x33, 0x44]);
 
@@ -1300,7 +1300,7 @@ mod tests {
     /// Mode 3 writes two bytes to the base register, then two to base+1.
     #[test]
     fn test_dma_pattern_mode3_two_then_two() {
-        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let mut rsnes = TestRsnesCore::new();
         let src = snes_addr!(0x7E:0x1000);
         fill_wram(&mut rsnes, src, &[0x11, 0x22, 0x33, 0x44]);
 
@@ -1314,7 +1314,7 @@ mod tests {
     /// Mode 4 walks four consecutive registers, one byte each.
     #[test]
     fn test_dma_pattern_mode4_four_consecutive_registers() {
-        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let mut rsnes = TestRsnesCore::new();
         let src = snes_addr!(0x7E:0x1000);
         fill_wram(&mut rsnes, src, &[0x11, 0x22, 0x33, 0x44]);
 
@@ -1330,7 +1330,7 @@ mod tests {
     /// Mode 5 alternates base / base+1 in pairs.
     #[test]
     fn test_dma_pattern_mode5_alternating_pairs() {
-        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let mut rsnes = TestRsnesCore::new();
         let src = snes_addr!(0x7E:0x1000);
         fill_wram(&mut rsnes, src, &[0x11, 0x22, 0x33, 0x44]);
 
@@ -1346,13 +1346,13 @@ mod tests {
     fn test_dma_pattern_modes_6_and_7_alias_2_and_3() {
         let src = snes_addr!(0x7E:0x1000);
 
-        let mut six = RSnesCoreInterruptDetector::new();
+        let mut six = TestRsnesCore::new();
         fill_wram(&mut six, src, &[0x11, 0x22, 0x33, 0x44]);
         configure_channel(&mut six, 0, 0x06, 0x26, src, 4);
         run_dma(&mut six, 0b0000_0001, 10_000);
         assert_eq!(six.ppu.regs.wh0, 0x44, "mode 6 behaves as mode 2");
 
-        let mut seven = RSnesCoreInterruptDetector::new();
+        let mut seven = TestRsnesCore::new();
         fill_wram(&mut seven, src, &[0x11, 0x22, 0x33, 0x44]);
         configure_channel(&mut seven, 0, 0x07, 0x26, src, 4);
         run_dma(&mut seven, 0b0000_0001, 10_000);
@@ -1364,7 +1364,7 @@ mod tests {
     /// four VRAM words, not two.
     #[test]
     fn test_dma_pattern_repeats_beyond_its_length() {
-        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let mut rsnes = TestRsnesCore::new();
         let src = snes_addr!(0x7E:0x1000);
         fill_wram(
             &mut rsnes,
@@ -1385,7 +1385,7 @@ mod tests {
     /// A transfer that stops mid-unit still moves exactly DAS bytes.
     #[test]
     fn test_dma_stops_mid_pattern_on_odd_count() {
-        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let mut rsnes = TestRsnesCore::new();
         let src = snes_addr!(0x7E:0x1000);
         fill_wram(&mut rsnes, src, &[0x11, 0x22, 0x33]);
 
@@ -1402,7 +1402,7 @@ mod tests {
     /// BBAD wraps inside the $21xx page rather than spilling into $22xx.
     #[test]
     fn test_dma_b_address_wraps_within_the_page() {
-        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let mut rsnes = TestRsnesCore::new();
         let src = snes_addr!(0x7E:0x1000);
         fill_wram(&mut rsnes, src, &[0x11, 0x22]);
 

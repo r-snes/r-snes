@@ -15,30 +15,30 @@ pub fn make_rsnes() -> RSnesCore {
     RSnesCore::load_rom(&rom_path).unwrap()
 }
 
-pub struct RSnesCoreInterruptDetector(RSnesCore);
+pub struct TestRsnesCore(RSnesCore);
 
-impl AsRef<RSnesCore> for RSnesCoreInterruptDetector {
+impl AsRef<RSnesCore> for TestRsnesCore {
     fn as_ref(&self) -> &RSnesCore {
         &self.0
     }
 }
-impl Deref for RSnesCoreInterruptDetector {
+impl Deref for TestRsnesCore {
     type Target = RSnesCore;
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
-impl AsMut<RSnesCore> for RSnesCoreInterruptDetector {
+impl AsMut<RSnesCore> for TestRsnesCore {
     fn as_mut(&mut self) -> &mut RSnesCore {
         &mut self.0
     }
 }
-impl DerefMut for RSnesCoreInterruptDetector {
+impl DerefMut for TestRsnesCore {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
 }
-impl RSnesCoreInterruptDetector {
+impl TestRsnesCore {
     const NMI_MARKER_ADDR: SnesAddress = snes_addr!(0:0x1FFE);
     const IRQ_MARKER_ADDR: SnesAddress = snes_addr!(0:0x1FFF);
 
