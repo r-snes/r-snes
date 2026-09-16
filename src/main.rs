@@ -3,6 +3,8 @@ mod gui;
 
 mod rsnes;
 
+mod test_utils;
+
 use crate::{
     gui::{Gui, GuiFrameData, RSnesEvent, SnesButton},
     rsnes::{RSnesCore, RSnesEmu},
