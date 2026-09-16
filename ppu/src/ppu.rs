@@ -262,12 +262,24 @@ impl PPU {
             // COLOR MATH / LAYER ENABLE
             // ==========================
             0x212C => self.regs.tm = value,
-            0x212D => self.regs.ts = value,      // TODO
+            0x212D => self.regs.ts = value,
             0x212E => self.regs.tmw = value,     // TODO
             0x212F => self.regs.tsw = value,     // TODO
-            0x2130 => self.regs.cgwsel = value,  // TODO
-            0x2131 => self.regs.cgadsub = value, // TODO
-            0x2132 => self.regs.coldata = value, // TODO
+            0x2130 => self.regs.cgwsel = value,
+            0x2131 => self.regs.cgadsub = value,
+            0x2132 => {
+                // COLDATA: bits 7-5 select B/G/R channels, bits 4-0 = intensity.
+                let intensity = (value & 0x1F) as u16;
+                if value & 0x20 != 0 {
+                    self.regs.coldata = (self.regs.coldata & !0x001F) | intensity;
+                }
+                if value & 0x40 != 0 {
+                    self.regs.coldata = (self.regs.coldata & !0x03E0) | (intensity << 5);
+                }
+                if value & 0x80 != 0 {
+                    self.regs.coldata = (self.regs.coldata & !0x7C00) | (intensity << 10);
+                }
+            }
 
             _ => {
                 println!(
