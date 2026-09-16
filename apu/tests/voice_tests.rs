@@ -233,9 +233,18 @@ fn release_keeps_consuming_samples_instead_of_freezing() {
     // continued playback must alternate too. The old code returned
     // immediately once key_on was false, leaving current_sample
     // pinned at its pre-KOFF value for every one of these calls.
-    assert_ne!(samples[0], samples[1], "sample must advance during release, not freeze");
-    assert_ne!(samples[1], samples[2], "sample must advance during release, not freeze");
-    assert_ne!(samples[2], samples[3], "sample must advance during release, not freeze");
+    assert_ne!(
+        samples[0], samples[1],
+        "sample must advance during release, not freeze"
+    );
+    assert_ne!(
+        samples[1], samples[2],
+        "sample must advance during release, not freeze"
+    );
+    assert_ne!(
+        samples[2], samples[3],
+        "sample must advance during release, not freeze"
+    );
 }
 
 /// A voice that never keys on, and one whose release has fully
@@ -251,7 +260,10 @@ fn fully_off_voice_stays_idle() {
     voice.step(0, &ram, &mut registers);
 
     assert_eq!(voice.current_sample, 0, "untouched voice must stay silent");
-    assert_eq!(voice.brr.buffer_fill, 0, "must never resolve DIR/decode for an idle voice");
+    assert_eq!(
+        voice.brr.buffer_fill, 0,
+        "must never resolve DIR/decode for an idle voice"
+    );
 }
 
 // ============================================================
@@ -328,12 +340,18 @@ fn reset_silences_voices_clears_endx_and_blocks_kon() {
 
     // KON while still in reset must be ignored.
     dsp.write_reg(0x4C, 0x01);
-    assert!(!dsp.voices[0].key_on, "KON must be ignored while RESET is set");
+    assert!(
+        !dsp.voices[0].key_on,
+        "KON must be ignored while RESET is set"
+    );
 
     // Clearing RESET lets KON work again.
     dsp.write_reg(0x6C, 0x00);
     dsp.write_reg(0x4C, 0x01);
-    assert!(dsp.voices[0].key_on, "KON must work again once RESET clears");
+    assert!(
+        dsp.voices[0].key_on,
+        "KON must work again once RESET clears"
+    );
 }
 
 #[test]
@@ -344,11 +362,18 @@ fn mute_silences_output_without_touching_voice_state() {
     dsp.write_reg(0x1C, 100); // MVOLR
 
     let (l, r) = dsp.render_audio_single();
-    assert!(l != 0 || r != 0, "sanity check: voice must be audible before mute");
+    assert!(
+        l != 0 || r != 0,
+        "sanity check: voice must be audible before mute"
+    );
 
     dsp.write_reg(0x6C, 0x40); // MUTE only, not RESET
 
-    assert_eq!(dsp.render_audio_single(), (0, 0), "MUTE must force output to silence");
+    assert_eq!(
+        dsp.render_audio_single(),
+        (0, 0),
+        "MUTE must force output to silence"
+    );
     assert_eq!(
         dsp.voices[0].adsr.envelope_phase,
         EnvelopePhase::Sustain,

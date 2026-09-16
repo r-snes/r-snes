@@ -78,21 +78,15 @@ fn gui_emu_loop(
         }
 
         // Drain whatever audio the real hardware produced this frame and
-        // queue it straight through. Unlike the idle jingle (which
-        // generates audio on demand to hit a target buffer size), this
-        // is a byproduct of the real CPU/APU simulation via
-        // `update_apu_cycles`'s cycle-debt accumulator, so there's no
-        // "top up to a target" logic here — just queue exactly what came
-        // out this frame. A queueing failure disables audio for the rest
-        // of this ROM's session rather than re-logging every frame.
+        // queue it straight through.
         if !audio_failed {
             let samples = emu.core_mut().apu.drain_samples();
-            if !samples.is_empty() {
-                if let Err(e) = gui.audio_queue_samples(&samples) {
-                    eprintln!("audio output disabled: {e}");
-                    gui.audio_stop();
-                    audio_failed = true;
-                }
+            if !samples.is_empty()
+                && let Err(e) = gui.audio_queue_samples(&samples)
+            {
+                eprintln!("audio output disabled: {e}");
+                gui.audio_stop();
+                audio_failed = true;
             }
         }
 

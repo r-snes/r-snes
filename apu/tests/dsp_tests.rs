@@ -1491,7 +1491,11 @@ fn test_tick_echo_zero_fir_is_always_silent_regardless_of_buffer_content() {
 
     for i in 0..20i16 {
         let (l, r) = mem.dsp.tick_echo(&mut mem.ram, i * 111, -i * 111);
-        assert_eq!((l, r), (0, 0), "all-zero FIR must produce silent output (tick {i})");
+        assert_eq!(
+            (l, r),
+            (0, 0),
+            "all-zero FIR must produce silent output (tick {i})"
+        );
     }
 }
 
@@ -1502,7 +1506,11 @@ fn test_tick_echo_edl_zero_is_always_silent() {
     dsp_vw(&mut mem, 0, 0xF, 127); // even with a strong FIR tap...
 
     let (l, r) = mem.dsp.tick_echo(&mut mem.ram, 12345, -12345);
-    assert_eq!((l, r), (0, 0), "EDL=0 must produce silence — there's no buffer to filter");
+    assert_eq!(
+        (l, r),
+        (0, 0),
+        "EDL=0 must produce silence — there's no buffer to filter"
+    );
 }
 
 #[test]
@@ -1665,7 +1673,10 @@ fn test_echo_defaults_are_a_complete_no_op() {
     }
 
     let (l, r) = mem.dsp.render_audio_single();
-    assert!(l != 0 || r != 0, "sanity check: the voice itself must be audible");
+    assert!(
+        l != 0 || r != 0,
+        "sanity check: the voice itself must be audible"
+    );
 
     // ESA=0 means the (nonexistent, since EDL=0) echo buffer's base
     // would be RAM address 0 — confirm nothing was ever written there.
