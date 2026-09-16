@@ -62,10 +62,10 @@ impl Renderer {
         y: usize,
     ) -> u8 {
         // Planes 0+1: p0 = low byte, p1 = high byte
-        let [p0, p1] = vram[tile_word_base + y].to_le_bytes();
+        let [p0, p1] = vram[(tile_word_base + y) & 0x7FFF].to_le_bytes();
 
         // Planes 2+3: words 8-15
-        let [p2, p3] = vram[tile_word_base + y + 8].to_le_bytes();
+        let [p2, p3] = vram[(tile_word_base + y + 8) & 0x7FFF].to_le_bytes();
 
         let bit = 7 - x;
         ((p0 >> bit) & 1)
