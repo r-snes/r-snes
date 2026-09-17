@@ -102,7 +102,7 @@ impl TestRsnesCore {
         for _ in 0..5000 {
             self.0.update_cpu_cycles();
         }
-        self.0.bus.wram.read(DUP_addr) == 0x99
+        self.0.bus.wram.read(DUP_addr).0 == 0x99
     }
 }
 

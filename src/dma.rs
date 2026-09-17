@@ -216,7 +216,7 @@ impl RSnesCore {
         } else {
             (a_addr, b_addr)
         };
-        let byte = self.bus.read(src, &mut self.ppu, &mut self.apu);
+        let byte = self.bus.read(src, &mut self.ppu, &mut self.apu).0;
         self.bus.write(dst, byte, &mut self.ppu, &mut self.apu);
 
         // The A-bus address wraps inside its bank; A1B never increments.
@@ -343,7 +343,7 @@ impl RSnesCore {
         };
         ch.a2a = ch.a2a.wrapping_add(1);
 
-        self.bus.read(addr, &mut self.ppu, &mut self.apu)
+        self.bus.read(addr, &mut self.ppu, &mut self.apu).0
     }
 
     /// Move one full transfer unit (1-4 bytes per DMAP mode) and return
@@ -370,7 +370,7 @@ impl RSnesCore {
             } else {
                 (a_addr, b_addr)
             };
-            let byte = self.bus.read(src, &mut self.ppu, &mut self.apu);
+            let byte = self.bus.read(src, &mut self.ppu, &mut self.apu).0;
             self.bus.write(dst, byte, &mut self.ppu, &mut self.apu);
 
             addr = addr.wrapping_add(1);
@@ -407,7 +407,7 @@ mod tests {
     fn read_reg(rsnes: &mut RSnesCore, addr: u16) -> u8 {
         rsnes
             .bus
-            .read(snes_addr!(0:addr), &mut rsnes.ppu, &mut rsnes.apu)
+            .read(snes_addr!(0:addr), &mut rsnes.ppu, &mut rsnes.apu).0
     }
 
     /// Configure a channel entirely through its $43xx registers, as a ROM would.
@@ -603,10 +603,10 @@ mod tests {
         configure_channel(&mut rsnes, 0, 0x80, 0x3B, dst, 4);
         run_dma(&mut rsnes, 0b0000_0001, 10_000);
 
-        assert_eq!(rsnes.bus.wram.read(snes_addr!(0x7E:0x1000)), 0xEF);
-        assert_eq!(rsnes.bus.wram.read(snes_addr!(0x7E:0x1001)) & 0x7F, 0x3A);
-        assert_eq!(rsnes.bus.wram.read(snes_addr!(0x7E:0x1002)), 0xCD);
-        assert_eq!(rsnes.bus.wram.read(snes_addr!(0x7E:0x1003)) & 0x7F, 0x12);
+        assert_eq!(rsnes.bus.wram.read(snes_addr!(0x7E:0x1000)).0, 0xEF);
+        assert_eq!(rsnes.bus.wram.read(snes_addr!(0x7E:0x1001)).0 & 0x7F, 0x3A);
+        assert_eq!(rsnes.bus.wram.read(snes_addr!(0x7E:0x1002)).0, 0xCD);
+        assert_eq!(rsnes.bus.wram.read(snes_addr!(0x7E:0x1003)).0 & 0x7F, 0x12);
     }
 
     /// A ROM reading $43n2/$43n5 afterwards sees the source advanced by the
