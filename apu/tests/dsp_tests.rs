@@ -1228,10 +1228,7 @@ fn test_non_register_roundtrip() {
 }
 
 // ============================================================
-// Echo registers — Stage 1 (storage/roundtrip only; the buffer, FIR
-// filtering, and voice routing that actually produce echo audio land
-// in later stages, so these tests only check registers stick and
-// don't collide with unrelated per-voice data).
+// Echo registers
 // ============================================================
 
 #[test]
@@ -1320,11 +1317,7 @@ fn test_fir_coefficient_write_does_not_affect_voice_gain() {
 }
 
 // ============================================================
-// Echo buffer — Stage 2 (delay-line mechanics only: circular
-// read/write addressing, wraparound, write-disable. No FIR filtering
-// or voice routing yet — that's Stage 3/4. `tick_echo_buffer` is a
-// standalone method, not yet called from `Dsp::step`, so it's tested
-// directly against `mem.ram`.)
+// Echo buffer
 // ============================================================
 
 #[test]
@@ -1435,10 +1428,7 @@ fn test_echo_buffer_address_wraps_past_64kb_without_panicking() {
 }
 
 // ============================================================
-// FIR filter + feedback — Stage 3 (`tick_echo`). Still not called
-// from `Dsp::step`/`render_audio_single` — that's Stage 4, alongside
-// EON voice routing. `echo_in` is a plain parameter for the same
-// reason Stage 2's `tick_echo_buffer` took its write value directly.
+// FIR filter + feedback
 // ============================================================
 
 #[test]
@@ -1544,12 +1534,7 @@ fn test_efb_feeds_filtered_output_back_into_the_buffer() {
 }
 
 // ============================================================
-// EON voice routing + full pipeline — Stage 4. `Dsp::step` now calls
-// `tick_echo` itself (with the EON-gated voice sum as the fresh
-// input), and `render_audio_single` adds the resulting echo output on
-// top of the dry mix — so these tests go through the real `step()`/
-// `render_audio_single()` pair rather than calling `tick_echo`
-// directly, unlike Stage 2/3's tests.
+// EON voice routing + full pipeline
 // ============================================================
 
 /// Write a single BRR block with strong alternating +7/-8 nibbles

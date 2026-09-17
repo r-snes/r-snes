@@ -194,7 +194,7 @@ fn test_all_8_voices_have_independent_registers() {
 }
 
 // ============================================================
-// Voice — Release-phase playback (moved from voice.rs)
+// Voice Release-phase playback
 // ============================================================
 
 /// Regression test for the frozen-release bug: once KOFF clears
@@ -267,7 +267,7 @@ fn fully_off_voice_stays_idle() {
 }
 
 // ============================================================
-// Voice — Gaussian interpolation (moved from voice.rs)
+// Gaussian interpolation
 // ============================================================
 
 /// Every fractional pitch position (0..256, the full range `interpolate`
@@ -317,7 +317,7 @@ fn push_history_shifts_oldest_to_newest() {
 }
 
 // ============================================================
-// Dsp — FLG register: RESET and MUTE (moved from dsp/mod.rs)
+// FLG register: RESET and MUTE
 // ============================================================
 
 #[test]
