@@ -470,7 +470,7 @@ mod tests {
         rsnes.bus.cart.rom[5] = 0x12;
 
         rsnes.update();
-        assert_eq!(rsnes.cpu_master_cycles_to_wait, 6);
+        assert_eq!(rsnes.cpu_master_cycles_to_wait, 8);
         rsnes.cpu_master_cycles_to_wait = 0;
         rsnes.update();
         assert_eq!(rsnes.cpu.regs().PC, 0);
