@@ -405,9 +405,7 @@ mod tests {
     }
 
     fn read_reg(rsnes: &mut RSnesCore, addr: u16) -> u8 {
-        rsnes
-            .bus
-            .read(snes_addr!(0:addr), &mut rsnes.ppu, &mut rsnes.apu).0
+        rsnes.bus.read(snes_addr!(0:addr), &mut rsnes.ppu, &mut rsnes.apu).0
     }
 
     /// Configure a channel entirely through its $43xx registers, as a ROM would.
