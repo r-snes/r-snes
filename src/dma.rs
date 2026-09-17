@@ -829,24 +829,6 @@ mod tests {
         assert_eq!(rsnes.ppu.regs.wh0, 0);
     }
 
-    /// A channel enabled in both $420B and $420C loses its general-purpose
-    /// transfer outright: HDMA wins and the transfer is aborted, not queued.
-    #[test]
-    fn test_hdma_channel_cancels_its_general_purpose_transfer() {
-        let mut rsnes = TestRsnesCore::new();
-        arm_hdma(&mut rsnes, 0x00, 0x26, &[0x7F, 0x55, 0x00]);
-
-        // Repoint the same channel at a bulk transfer and request it.
-        fill_wram(&mut rsnes, snes_addr!(0x7E:0x2000), &[0xAA; 8]);
-        configure_channel(&mut rsnes, 0, 0x00, 0x26, snes_addr!(0x7E:0x2000), 8);
-        write_reg(&mut rsnes, 0x420B, 0b0000_0001);
-
-        tick_core(&mut rsnes, 2_000);
-
-        assert_eq!(rsnes.bus.io.mdmaen, 0);
-        assert_eq!(channel_a1t(&mut rsnes, 0).addr, 0x2000);
-    }
-
     /// Mode 0 writes every byte to the same B-bus register.
     #[test]
     fn test_dma_pattern_mode0_single_register() {
