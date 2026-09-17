@@ -1,6 +1,9 @@
+mod dma;
 mod gui;
-
 mod rsnes;
+
+#[cfg(test)]
+mod test_utils;
 
 use crate::{
     gui::{Gui, GuiFrameData, RSnesEvent, SnesButton},

@@ -1,28 +1,26 @@
 #[cfg(feature = "plugins")]
 mod rsnes_plugin;
 
-use bus::io::IrqMode;
-#[cfg(feature = "plugins")]
-use plugins::plugin::Plugin;
-use ppu::ppu::PpuEvent;
-use ppu::ppu::ScanlineKind;
-use std::ops::DerefMut;
-#[cfg(feature = "plugins")]
-use std::{cell::RefCell, rc::Rc};
-
+use crate::dma::*;
 use apu::Apu;
 use bus::Bus;
-use common::snes_address::SnesAddress;
+use bus::cartridge::header::RomHeader;
+use bus::io::IrqMode;
 use cpu::cpu::CPU;
 use cpu::cpu::CycleResult;
-
-use bus::cartridge::header::RomHeader;
+#[cfg(feature = "plugins")]
+use plugins::plugin::Plugin;
+use ppu::constants::*;
 use ppu::ppu::PPU;
+use ppu::ppu::PpuEvent;
+use ppu::ppu::ScanlineKind;
 use std::error::Error;
+use std::ops::DerefMut;
 use std::path::Path;
 use std::path::PathBuf;
 #[cfg(feature = "plugins")]
 use std::time::{Duration, Instant};
+use std::{cell::RefCell, rc::Rc};
 
 // Once-per-frame auto-joypad read, split into its two hardware phases.
 // Copy so update_auto_joypad can match it by value while still touching self.
@@ -49,6 +47,8 @@ pub struct RSnesCore {
     pub master_cycles: u64,
     pub cpu_master_cycles_to_wait: u32,
     pub apu_cycle_debt: u64,
+    pub dma: Dma,
+    pub nmi_line: bool,
     auto_joypad: AutoJoypad,
     pub joypad1: u16,
 }
@@ -112,94 +112,36 @@ impl RSnesCore {
             apu_cycle_debt: 0,
             auto_joypad: AutoJoypad::Idle,
             joypad1: 0,
+            dma: Dma::default(),
+            nmi_line: false,
         })
     }
 
-    fn dma_transfer(&mut self) {
-        let mdmaen = self.bus.io.mdmaen;
+    /// This function will be called every master cycle, it will update the
+    /// CPU, PPU, APU and DMA state accordingly.
+    pub fn update(&mut self) {
+        self.update_ppu_cycles();
+        self.update_apu_cycles();
+        self.update_auto_joypad();
 
-        for channel_nb in 0..8 {
-            if mdmaen & (1 << channel_nb) == 0 {
-                continue;
-            }
-            self.execute_dma_channel(channel_nb);
+        self.poll_hdma_start();
+        self.poll_nmi();
+        self.check_hv_irq();
+
+        // DMA holds the bus while it is active, so the CPU does not run during that time.
+        if !self.update_dma_cycles() {
+            self.update_cpu_cycles();
         }
 
-        self.bus.io.mdmaen = 0;
-    }
-
-    fn execute_dma_channel(&mut self, channel_nb: u8) {
-        let ch = &self.bus.io.dma_channels[channel_nb as usize];
-
-        // Get transfer parameters from channel DMAP register
-        let direction = (ch.dmap >> 7) & 1;
-        let fixed = (ch.dmap >> 3) & 1;
-        let decrement = (ch.dmap >> 4) & 1;
-        let mode = ch.dmap & 0x07;
-        let ch_b_addr = ch.bbad;
-
-        let mut a_addr = ch.a1t;
-
-        // 0x0000 means 65536 bytes, u32 needed to not overflow
-        let remaining: u32 = {
-            let raw = ch.das;
-            if raw == 0 { 0x10000 } else { raw as u32 }
-        };
-
-        let b_offsets: &[u8] = match mode {
-            0 => &[0],
-            1 => &[0, 1],
-            2 | 6 => &[0, 0],
-            3 | 7 => &[0, 0, 1, 1],
-            4 => &[0, 1, 2, 3],
-            5 => &[0, 1, 0, 1],
-            _ => unreachable!(),
-        };
-
-        for pattern_idx in 0..remaining {
-            let b_offset = b_offsets[pattern_idx as usize % b_offsets.len()];
-            let b_addr = SnesAddress {
-                bank: 0x00,
-                addr: 0x2100 | (ch_b_addr as u16 + b_offset as u16),
-            };
-
-            let (src, dest) = if direction == 0 {
-                (a_addr, b_addr)
-            } else {
-                (b_addr, a_addr)
-            };
-            let byte = self.bus.read(src, &mut self.ppu, &mut self.apu);
-            self.bus.write(dest, byte, &mut self.ppu, &mut self.apu);
-
-            if fixed == 0 {
-                if decrement == 0 {
-                    a_addr.increment();
-                } else {
-                    a_addr.decrement();
-                }
-            }
-
-            // Each byte transferred takes 8 master cycles - ROUGH WAY TO HANDLE IT, TO CHANGE LATER
-            self.cpu_master_cycles_to_wait += 8;
-        }
-
-        // Reset DMA channel registers
-        let ch = &mut self.bus.io.dma_channels[channel_nb as usize];
-        ch.das = 0;
-        ch.a1t.addr = a_addr.addr;
+        self.master_cycles += 1;
     }
 
     /// This function will be called every master cycle, it will either decrease the
     /// number of master cycles to wait or execute a cpu cycle
-    fn update_cpu_cycles(&mut self) {
+    pub fn update_cpu_cycles(&mut self) {
         if self.cpu_master_cycles_to_wait > 0 {
             self.cpu_master_cycles_to_wait -= 1;
             return;
-        }
-
-        // Check for DMA start
-        if self.bus.io.mdmaen != 0 {
-            self.dma_transfer();
         }
 
         match self.cpu.cycle() {
@@ -230,7 +172,7 @@ impl RSnesCore {
     /// Advance the APU by however many of its own 1.024 MHz cycles are
     /// owed, given one more master clock cycle has just elapsed.
     /// ~1 APU cycle per 20.97 master cycles
-    fn update_apu_cycles(&mut self) {
+    pub fn update_apu_cycles(&mut self) {
         self.apu_cycle_debt += Apu::CLOCK_HZ;
         while self.apu_cycle_debt >= Self::MASTER_CLOCK_HZ {
             self.apu_cycle_debt -= Self::MASTER_CLOCK_HZ;
@@ -238,19 +180,9 @@ impl RSnesCore {
         }
     }
 
-    /// This function will be called every master cycle, it will update the CPU, PPU and APU state accordingly
-    pub fn update(&mut self) {
-        self.update_cpu_cycles();
-        self.update_apu_cycles();
-        self.update_ppu_cycles();
-        self.update_auto_joypad();
-
-        self.master_cycles += 1;
-    }
-
     // Drive the two-phase auto-joypad read one master cycle: count down to the strobe,
     // then hold HVBJOY bit 0 busy until the 16-bit read completes.
-    fn update_auto_joypad(&mut self) {
+    pub fn update_auto_joypad(&mut self) {
         self.auto_joypad = match self.auto_joypad {
             AutoJoypad::Pending(1) => {
                 // Strobe: snapshot the pads and raise the busy flag.
@@ -268,9 +200,9 @@ impl RSnesCore {
         };
     }
 
-    fn update_ppu_cycles(&mut self) {
+    pub fn update_ppu_cycles(&mut self) {
         match self.ppu.tick() {
-            None => return,
+            None => {}
             Some(PpuEvent::DotStart) => {}
             Some(PpuEvent::HBlankStart) => self.on_hblank_start(),
             Some(PpuEvent::ScanlineStart(kind)) => {
@@ -282,28 +214,15 @@ impl RSnesCore {
                 }
             }
         }
-
-        // Everything below is implied by "a new dot began", which every
-        // variant except `None` guarantees.
-        self.check_hv_irq();
     }
 
     /// Start of H-Blank (dot 274) on the current scanline.
+    /// H-DMA starts later at dot 278, see [`poll_hdma_start`](Self::poll_hdma_start).
     fn on_hblank_start(&mut self) {
         self.bus.io.set_hblank(true);
 
         if let Some(y) = self.ppu.visible_line() {
             self.ppu_renderer.render_scanline(&self.ppu, y);
-        }
-
-        // HDMA transfers run in the H-Blank of scanlines 0 through the last
-        // visible one, never during V-Blank.
-        if self.ppu.scanline < self.ppu.vblank_start_line() && self.bus.io.hdmaen != 0 {
-            todo!(
-                "HDMA transfer on scanline {}: channels {:08b} enabled via HDMAEN",
-                self.ppu.scanline,
-                self.bus.io.hdmaen
-            );
         }
     }
 
@@ -323,10 +242,6 @@ impl RSnesCore {
         if self.bus.io.auto_joypad_enabled() {
             self.auto_joypad = AutoJoypad::Pending(Self::AUTO_JOYPAD_START_DELAY);
         }
-
-        if self.bus.io.nmi_enabled() {
-            self.cpu.nmi();
-        }
     }
 
     /// Scanline 0: V-Blank ends and a new frame begins. Scanline 0 is the
@@ -341,25 +256,58 @@ impl RSnesCore {
 
         // HDMA init for the new frame.
         if self.bus.io.hdmaen != 0 {
-            todo!(
-                "HDMA init at frame start: channels {:08b} enabled via HDMAEN",
-                self.bus.io.hdmaen
-            );
+            self.dma.hdma_pending = true;
+            self.dma.hdma_init = true;
+        }
+    }
+
+    /// Check if an NMI should be triggered.
+    pub fn poll_nmi(&mut self) {
+        let line = self.bus.io.nmi_enabled() && self.bus.io.nmi_flag();
+        if line && !self.nmi_line {
+            self.cpu.nmi();
+        }
+        self.nmi_line = line;
+    }
+
+    /// Check for the start of an HDMA pass
+    pub fn poll_hdma_start(&mut self) {
+        // HDMA transfers begin at dot 278 of every non-V-Blank scanline.
+        if self.ppu.h_cycles == HDMA_START_DOT as u32 * 4
+            && self.ppu.scanline < self.ppu.vblank_start_line()
+            && self.bus.io.hdmaen != 0
+        {
+            self.dma.hdma_pending = true;
         }
     }
 
     /// NMITIMEN bits 5-4 select the H/V timer mode.
-    fn check_hv_irq(&mut self) {
-        let (h, v) = (self.ppu.dot(), self.ppu.scanline);
+    pub fn check_hv_irq(&mut self) {
+        let v = self.ppu.scanline;
+        let h = self.bus.io.htime;
 
-        let hit = match self.bus.io.irq_mode() {
+        let target = match self.bus.io.irq_mode() {
             IrqMode::Disabled => return,
-            IrqMode::H => h == self.bus.io.htime,
-            IrqMode::V => v == self.bus.io.vtime && h == 0,
-            IrqMode::HV => v == self.bus.io.vtime && h == self.bus.io.htime,
+            IrqMode::H => IRQ_TRIGGER_OFFSET + h as u32 * 4,
+            IrqMode::V => {
+                if v != self.bus.io.vtime {
+                    return;
+                }
+                V_IRQ_TRIGGER_CYCLES
+            }
+            IrqMode::HV => {
+                if v != self.bus.io.vtime {
+                    return;
+                }
+                if h == 0 {
+                    V_IRQ_TRIGGER_CYCLES
+                } else {
+                    IRQ_TRIGGER_OFFSET + h as u32 * 4
+                }
+            }
         };
 
-        if hit {
+        if self.ppu.h_cycles == target {
             self.bus.io.set_timer_flag(true);
             self.cpu.irq();
         }
@@ -503,302 +451,15 @@ impl RSnesEmu {
 
 #[cfg(test)]
 mod tests {
-    use std::ops::Deref;
-
     use super::*;
-    use bus::cartridge::{Cartridge, test_rom::*};
     use common::snes_addr;
-    use common::u16_split::U16Split;
-    use cpu::registers::RegisterP;
-    use duplicate::duplicate_item;
-    use ppu::constants::*;
+    use ppu::constants::{MASTER_CYCLES_PER_SCANLINE, SCANLINES_PER_FRAME};
 
-    struct RSnesCoreInterruptDetector(RSnesCore);
-    impl AsRef<RSnesCore> for RSnesCoreInterruptDetector {
-        fn as_ref(&self) -> &RSnesCore {
-            &self.0
-        }
-    }
-    impl Deref for RSnesCoreInterruptDetector {
-        type Target = RSnesCore;
-        fn deref(&self) -> &Self::Target {
-            &self.0
-        }
-    }
-    impl AsMut<RSnesCore> for RSnesCoreInterruptDetector {
-        fn as_mut(&mut self) -> &mut RSnesCore {
-            &mut self.0
-        }
-    }
-    impl DerefMut for RSnesCoreInterruptDetector {
-        fn deref_mut(&mut self) -> &mut Self::Target {
-            &mut self.0
-        }
-    }
-    impl RSnesCoreInterruptDetector {
-        const NMI_MARKER_ADDR: SnesAddress = snes_addr!(0:0x1FFE);
-        const IRQ_MARKER_ADDR: SnesAddress = snes_addr!(0:0x1FFF);
-
-        pub fn new() -> Self {
-            let mut core = make_rsnes();
-            core.bus.wram.write(Self::NMI_MARKER_ADDR, 0x42);
-            core.bus.wram.write(Self::IRQ_MARKER_ADDR, 0x42);
-
-            // init code is a BRA (branch always) that branches to itself:
-            // we keep the CPU looping on one instruction by doing this,
-            // avoiding executing uninitialised memory
-            let init_code: [u8; _] = [
-                0x58,        // CLI opcode: clear the "disable IRQ" flag, so we can see IRQs
-                0x80,        // BRA opcode
-                -2_i8 as u8, // jump 2 bytes backwards: BRA is 2 bytes long, so we loop
-            ];
-            // write a 0x99 at the NMI marker
-            // to be sure we only write one byte, we have to put the accumulator in 8-bit mode first
-            let interrupt_handler = |marker_addr: SnesAddress| {
-                [
-                    0xe2, // SEP opcode used to set CPU flags
-                    RegisterP {
-                        M: true,
-                        ..0.into()
-                    }
-                    .into(), // set the M flag for 8-bit memory
-                    0xa9, // LDA imm opcode, to load a byte in A
-                    0x99, // the byte we're going to write
-                    0x8f, // STA absl opcode, to store A somewhere
-                    *marker_addr.addr.lo(),
-                    *marker_addr.addr.hi(),
-                    marker_addr.bank,
-                    0x40, // RTI opcode: return from interrupt
-                ]
-            };
-
-            for (interrupt_vec, routine_addr, interrupt_code) in [
-                (0xFFFC, 1000_u16, &init_code as &[u8]), // reset
-                (0xFFEA, 1100_u16, &interrupt_handler(Self::NMI_MARKER_ADDR)), // nmi native
-                (0xFFFA, 1100_u16, &interrupt_handler(Self::NMI_MARKER_ADDR)), // nmi emu
-                (0xFFEE, 1200_u16, &interrupt_handler(Self::IRQ_MARKER_ADDR)), // irq native
-                (0xFFFE, 1200_u16, &interrupt_handler(Self::IRQ_MARKER_ADDR)), // irq emu
-            ] {
-                let int_vec_addr =
-                    Cartridge::get_lorom_offset(snes_addr!(0:interrupt_vec)).unwrap();
-                core.bus.cart.rom[int_vec_addr] = *routine_addr.lo();
-                core.bus.cart.rom[int_vec_addr + 1] = *routine_addr.hi();
-                core.bus.wram.data
-                    [routine_addr as usize..routine_addr as usize + interrupt_code.len()]
-                    .copy_from_slice(interrupt_code);
-            }
-
-            Self(core)
-        }
-
-        #[duplicate_item(
-            DUP_name            DUP_addr;
-            [has_nmi_occured]   [Self::NMI_MARKER_ADDR];
-            [has_irq_occured]   [Self::IRQ_MARKER_ADDR];
-        )]
-        pub fn DUP_name(&mut self) -> bool {
-            // let the CPU complete an interrupt routine in case one was just requested
-            for _ in 0..5000 {
-                self.0.update_cpu_cycles();
-            }
-            self.0.bus.wram.read(DUP_addr) == 0x99
-        }
-    }
-
-    /// Ticks the core without letting the CPU run.
-    fn tick_core(rsnes: &mut RSnesCore, cycles: u64) {
-        for _ in 0..cycles {
-            rsnes.update();
-        }
-    }
-
-    /// Ticks until the PPU sits at the very start of `target`.
-    fn advance_core_to_scanline(rsnes: &mut RSnesCore, target: u16) {
-        let cap = (SCANLINES_PER_FRAME as u32 + 1) * MASTER_CYCLES_PER_SCANLINE;
-        for _ in 0..cap {
-            rsnes.update();
-            if rsnes.ppu.scanline == target && rsnes.ppu.h_cycles == 0 {
-                return;
-            }
-        }
-        panic!("never reached the start of scanline {target}");
-    }
-
-    pub(super) fn make_rsnes() -> RSnesCore {
-        let rom_data = create_valid_lorom(0x20000);
-        let (rom_path, _dir) = create_temp_rom(&rom_data);
-        RSnesCore::load_rom(&rom_path).unwrap()
-    }
-
-    fn set_dma_channel(
-        rsnes: &mut RSnesCore,
-        channel: usize,
-        dmap: u8,
-        src_bank: u8,
-        src_addr: u16,
-        size: u16,
-    ) {
-        let ch = &mut rsnes.bus.io.dma_channels[channel];
-        ch.dmap = dmap;
-        ch.bbad = 0xFF; // 0x21FF: safe no-op destination because useful memory zones not implemented yet
-        ch.a1t.bank = src_bank;
-        ch.a1t.addr = src_addr;
-        ch.das = size;
-    }
-
-    #[test]
-    fn test_mdmaen_cleared_after_transfer() {
-        let mut rsnes = make_rsnes();
-        rsnes.bus.io.mdmaen = 0b0000_0001;
-        set_dma_channel(&mut rsnes, 0, 0x00, 0x7E, 0x0000, 1);
-
-        rsnes.dma_transfer();
-
-        assert_eq!(
-            rsnes.bus.io.mdmaen, 0,
-            "mdmaen should be cleared after transfer"
-        );
-    }
-
-    #[test]
-    fn test_only_enabled_channels_run() {
-        let mut rsnes = make_rsnes();
-        rsnes.bus.io.mdmaen = 0b0000_0010;
-
-        set_dma_channel(&mut rsnes, 0, 0x00, 0x7E, 0x0000, 1);
-        set_dma_channel(&mut rsnes, 1, 0x00, 0x7E, 0x0000, 1);
-
-        rsnes.dma_transfer();
-
-        // Channel 0 was not enabled, its source address should not have changed
-        let ch0 = &rsnes.bus.io.dma_channels[0];
-        let ch0_addr = ch0.a1t.addr;
-        assert_eq!(ch0_addr, 0x0000, "Channel 0 should not have run");
-        assert_eq!(rsnes.bus.io.mdmaen, 0);
-    }
-
-    #[test]
-    fn test_multiple_channels_run() {
-        let mut rsnes = make_rsnes();
-        rsnes.bus.io.mdmaen = 0b0000_0011;
-
-        set_dma_channel(&mut rsnes, 0, 0x00, 0x7E, 0x0000, 2);
-        set_dma_channel(&mut rsnes, 1, 0x00, 0x7E, 0x0100, 3);
-
-        rsnes.dma_transfer();
-
-        let ch0 = &rsnes.bus.io.dma_channels[0];
-        let ch0_addr = ch0.a1t.addr;
-        assert_eq!(ch0_addr, 0x0002, "Channel 0 should have advanced by 2");
-
-        let ch1 = &rsnes.bus.io.dma_channels[1];
-        let ch1_addr = ch1.a1t.addr;
-        assert_eq!(ch1_addr, 0x0103, "Channel 1 should have advanced by 3");
-    }
-
-    #[test]
-    fn test_a1t_increments_after_transfer() {
-        let mut rsnes = make_rsnes();
-        rsnes.bus.io.mdmaen = 0b0000_0001;
-        set_dma_channel(&mut rsnes, 0, 0x00, 0x7E, 0x0010, 4);
-
-        rsnes.dma_transfer();
-
-        let ch = &rsnes.bus.io.dma_channels[0];
-        let final_addr = ch.a1t.addr;
-        assert_eq!(
-            final_addr, 0x0014,
-            "Source address should have advanced by 4"
-        );
-    }
-
-    #[test]
-    fn test_a1t_decrements_after_transfer() {
-        let mut rsnes = make_rsnes();
-        rsnes.bus.io.mdmaen = 0b0000_0001;
-        set_dma_channel(&mut rsnes, 0, 0b0001_0000, 0x7E, 0x0010, 4);
-
-        rsnes.dma_transfer();
-
-        let ch = &rsnes.bus.io.dma_channels[0];
-        let final_addr = ch.a1t.addr;
-        assert_eq!(
-            final_addr, 0x000C,
-            "Source address should have decreased by 4"
-        );
-    }
-
-    #[test]
-    fn test_a1t_unchanged_in_fixed_mode() {
-        let mut rsnes = make_rsnes();
-        rsnes.bus.io.mdmaen = 0b0000_0001;
-        set_dma_channel(&mut rsnes, 0, 0b0000_1000, 0x7E, 0x0010, 4);
-
-        rsnes.dma_transfer();
-
-        let ch = &rsnes.bus.io.dma_channels[0];
-        let final_addr = ch.a1t.addr;
-        assert_eq!(
-            final_addr, 0x0010,
-            "Source address should not change in fixed mode"
-        );
-    }
-
-    #[test]
-    fn test_das_zeroed_after_transfer() {
-        let mut rsnes = make_rsnes();
-        rsnes.bus.io.mdmaen = 0b0000_0001;
-        set_dma_channel(&mut rsnes, 0, 0x00, 0x7E, 0x0000, 8);
-
-        rsnes.dma_transfer();
-
-        let ch = &rsnes.bus.io.dma_channels[0];
-        assert_eq!(ch.das, 0, "das should be 0 after transfer");
-    }
-
-    /// This test isn't really relevant for now because the destination
-    /// does not really registers the written value from a to b
-    #[test]
-    fn test_wram_source_bytes_are_read() {
-        let mut rsnes = make_rsnes();
-
-        rsnes.bus.wram.data[0x0100] = 0xAB;
-        rsnes.bus.wram.data[0x0101] = 0xCD;
-        rsnes.bus.wram.data[0x0102] = 0xEF;
-
-        rsnes.bus.io.mdmaen = 0b0000_0001;
-        set_dma_channel(&mut rsnes, 0, 0x00, 0x7E, 0x0100, 3);
-
-        rsnes.dma_transfer();
-
-        let ch = &rsnes.bus.io.dma_channels[0];
-        let final_addr = ch.a1t.addr;
-        assert_eq!(final_addr, 0x0103);
-    }
-
-    #[test]
-    fn test_direction_b_to_a_writes_into_wram() {
-        let mut rsnes = make_rsnes();
-
-        // Pre-fill so we can confirm it changed
-        rsnes.bus.wram.data[0x0200] = 0xFF;
-        rsnes.bus.wram.data[0x0201] = 0xFF;
-        rsnes.bus.wram.data[0x0202] = 0xFF;
-        rsnes.bus.io.mdmaen = 0b0000_0001;
-        set_dma_channel(&mut rsnes, 0, 0b1000_0000, 0x7E, 0x0200, 3);
-
-        rsnes.dma_transfer();
-
-        assert_eq!(
-            &rsnes.bus.wram.data[0x0200..=0x0202],
-            &[0x00, 0x00, 0x00],
-            "WRAM should have been overwritten with open bus value 0x00"
-        );
-    }
+    use crate::test_utils::*;
 
     #[test]
     fn test_cpu_update_function() {
-        let mut rsnes = make_rsnes();
+        let mut rsnes = TestRsnesCore::new();
 
         let reset_addr = bus::cartridge::Cartridge::get_lorom_offset(snes_addr!(0:0xFFFC)).unwrap();
         rsnes.bus.cart.rom[reset_addr] = 0x00;
@@ -855,7 +516,7 @@ mod tests {
     /// tick per master cycle, regardless of what the CPU is doing.
     #[test]
     fn test_ppu_advances_with_master_clock() {
-        let mut rsnes = make_rsnes();
+        let mut rsnes = TestRsnesCore::new();
 
         tick_core(&mut rsnes, 100);
 
@@ -867,7 +528,7 @@ mod tests {
     /// The APU is driven by the same clock at its own 1.024 MHz rate.
     #[test]
     fn test_apu_cycle_debt_tracks_clock_ratio() {
-        let mut rsnes = make_rsnes();
+        let mut rsnes = TestRsnesCore::new();
         let cycles = 1_000u64;
 
         tick_core(&mut rsnes, cycles);
@@ -878,7 +539,7 @@ mod tests {
 
     #[test]
     fn test_interrupt_flags_clear_at_poweron() {
-        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let mut rsnes = TestRsnesCore::new();
         assert!(!rsnes.has_nmi_occured());
         assert!(!rsnes.has_irq_occured());
     }
@@ -891,7 +552,7 @@ mod tests {
     /// the next scanline begins.
     #[test]
     fn test_hblank_flag_tracks_dot_position() {
-        let mut rsnes = make_rsnes();
+        let mut rsnes = TestRsnesCore::new();
 
         tick_core(&mut rsnes, HBLANK_START_DOT as u64 * 4 - 1);
         assert!(!rsnes.bus.io.in_hblank());
@@ -910,7 +571,7 @@ mod tests {
     /// Both flags go up on scanline 225 and come back down on scanline 0.
     #[test]
     fn test_vblank_flags_set_and_cleared() {
-        let mut rsnes = make_rsnes();
+        let mut rsnes = TestRsnesCore::new();
         assert!(!rsnes.bus.io.in_vblank());
         assert!(!rsnes.bus.io.nmi_flag());
 
@@ -927,7 +588,7 @@ mod tests {
     /// just the first one — ROMs poll it in a loop.
     #[test]
     fn test_vblank_flag_held_for_whole_interval() {
-        let mut rsnes = make_rsnes();
+        let mut rsnes = TestRsnesCore::new();
 
         for line in VBLANK_START_LINE..SCANLINES_PER_FRAME {
             advance_core_to_scanline(&mut rsnes, line);
@@ -941,7 +602,7 @@ mod tests {
     /// The last visible line is still outside V-Blank.
     #[test]
     fn test_last_visible_scanline_is_not_vblank() {
-        let mut rsnes = make_rsnes();
+        let mut rsnes = TestRsnesCore::new();
         advance_core_to_scanline(&mut rsnes, VBLANK_START_LINE - 1);
         assert!(!rsnes.bus.io.in_vblank());
     }
@@ -950,7 +611,7 @@ mod tests {
     /// not be disturbed by it.
     #[test]
     fn test_reading_rdnmi_acknowledges_without_clearing_vblank() {
-        let mut rsnes = make_rsnes();
+        let mut rsnes = TestRsnesCore::new().0;
         advance_core_to_scanline(&mut rsnes, VBLANK_START_LINE);
 
         let value = rsnes
@@ -965,7 +626,7 @@ mod tests {
     /// SETINI bit 2 moves V-Blank to line 240, and the core follows it.
     #[test]
     fn test_overscan_moves_vblank_start() {
-        let mut rsnes = make_rsnes();
+        let mut rsnes = TestRsnesCore::new();
         rsnes.ppu.write(0x2133, 0x04);
 
         advance_core_to_scanline(&mut rsnes, VBLANK_START_LINE);
@@ -983,10 +644,9 @@ mod tests {
     // ============================================================
 
     /// With NMITIMEN bit 7 set, entering V-Blank must request an NMI.
-    /// Becomes a `nmi_pending` assertion once the CPU can take interrupts.
     #[test]
     fn test_vblank_nmi_requested_when_enabled() {
-        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let mut rsnes = TestRsnesCore::new();
         rsnes.bus.io.nmitimen = 0x80;
         advance_core_to_scanline(&mut rsnes, VBLANK_START_LINE);
         assert!(rsnes.has_nmi_occured());
@@ -997,7 +657,7 @@ mod tests {
     /// interrupt is opt-in.
     #[test]
     fn test_vblank_flag_set_even_when_nmi_disabled() {
-        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let mut rsnes = TestRsnesCore::new();
         assert!(!rsnes.bus.io.nmi_enabled());
 
         advance_core_to_scanline(&mut rsnes, VBLANK_START_LINE);
@@ -1012,7 +672,7 @@ mod tests {
 
     #[test]
     fn test_irq_mode_decoding() {
-        let mut rsnes = make_rsnes();
+        let mut rsnes = TestRsnesCore::new();
         for (bits, expected) in [
             (0b0000_0000, IrqMode::Disabled),
             (0b0001_0000, IrqMode::H),
@@ -1027,18 +687,18 @@ mod tests {
     /// Mode 1 fires wherever H reaches HTIME, on any scanline.
     #[test]
     fn test_h_irq_fires_at_htime() {
-        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let mut rsnes = TestRsnesCore::new();
         rsnes.bus.io.nmitimen = 0b0001_0000;
         rsnes.bus.io.htime = 100;
 
-        tick_core(&mut rsnes, 100 * 4);
+        tick_core(&mut rsnes, 100 * 4 + IRQ_TRIGGER_OFFSET as u64);
         assert!(rsnes.has_irq_occured());
     }
 
     /// Mode 2 fires once per frame, at H = 0 of VTIME.
     #[test]
     fn test_v_irq_fires_on_target_scanline() {
-        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let mut rsnes = TestRsnesCore::new();
         rsnes.bus.io.nmitimen = 0b0010_0000;
         rsnes.bus.io.vtime = 42;
 
@@ -1049,7 +709,7 @@ mod tests {
     /// Mode 2 must ignore every other scanline.
     #[test]
     fn test_v_irq_silent_on_other_scanlines() {
-        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let mut rsnes = TestRsnesCore::new();
         rsnes.bus.io.nmitimen = 0b0010_0000;
         rsnes.bus.io.vtime = 200;
 
@@ -1061,7 +721,7 @@ mod tests {
     /// must not fire.
     #[test]
     fn test_hv_irq_ignores_htime_match_on_wrong_scanline() {
-        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let mut rsnes = TestRsnesCore::new();
         rsnes.bus.io.nmitimen = 0b0011_0000;
         rsnes.bus.io.htime = 100;
         rsnes.bus.io.vtime = 200;
@@ -1073,7 +733,7 @@ mod tests {
     /// Mode 0 must never fire, even when both counters match.
     #[test]
     fn test_irq_disabled_never_fires() {
-        let mut rsnes = RSnesCoreInterruptDetector::new();
+        let mut rsnes = TestRsnesCore::new();
         rsnes.bus.io.htime = 100;
         rsnes.bus.io.vtime = 100;
 
@@ -1091,7 +751,7 @@ mod tests {
     /// against a pre-filled buffer.
     #[test]
     fn test_scanline_rendered_at_hblank_of_visible_line() {
-        let mut rsnes = make_rsnes();
+        let mut rsnes = TestRsnesCore::new();
         rsnes.ppu.write(0x2100, 0x80);
         rsnes.ppu_renderer.framebuffer.fill(0xFF);
 
@@ -1110,7 +770,7 @@ mod tests {
     /// Scanline 0 is the pre-render line and draws nothing.
     #[test]
     fn test_prerender_scanline_draws_nothing() {
-        let mut rsnes = make_rsnes();
+        let mut rsnes = TestRsnesCore::new();
         rsnes.ppu.write(0x2100, 0x80);
         rsnes.ppu_renderer.framebuffer.fill(0xFF);
 
@@ -1122,7 +782,7 @@ mod tests {
     /// V-Blank scanlines draw nothing either.
     #[test]
     fn test_vblank_scanlines_draw_nothing() {
-        let mut rsnes = make_rsnes();
+        let mut rsnes = TestRsnesCore::new();
         rsnes.ppu.write(0x2100, 0x80);
 
         advance_core_to_scanline(&mut rsnes, VBLANK_START_LINE);
@@ -1136,7 +796,7 @@ mod tests {
     /// The back buffer becomes visible only when the frame completes.
     #[test]
     fn test_framebuffer_published_at_frame_start() {
-        let mut rsnes = make_rsnes();
+        let mut rsnes = TestRsnesCore::new();
 
         // Park in V-Blank first so no further rendering overwrites the mark.
         advance_core_to_scanline(&mut rsnes, VBLANK_START_LINE);
@@ -1145,49 +805,5 @@ mod tests {
 
         advance_core_to_scanline(&mut rsnes, 0);
         assert_eq!(rsnes.ppu_renderer.presented()[0], 0xAB);
-    }
-
-    // ============================================================
-    // HDMA scheduling
-    // ============================================================
-
-    /// A transfer is requested in the H-Blank of every visible scanline
-    /// while HDMAEN is non-zero.
-    #[test]
-    #[should_panic(expected = "HDMA transfer")]
-    fn test_hdma_transfer_requested_during_visible_lines() {
-        let mut rsnes = make_rsnes();
-        rsnes.bus.io.hdmaen = 0b0000_0001;
-
-        tick_core(&mut rsnes, HBLANK_START_DOT as u64 * 4);
-    }
-
-    /// HDMA never runs during V-Blank — that window belongs to the ROM.
-    /// Reaching the end without panicking is the assertion.
-    #[test]
-    fn test_hdma_not_requested_during_vblank() {
-        let mut rsnes = make_rsnes();
-        advance_core_to_scanline(&mut rsnes, VBLANK_START_LINE);
-        rsnes.bus.io.hdmaen = 0b0000_0001;
-
-        tick_core(&mut rsnes, MASTER_CYCLES_PER_SCANLINE as u64);
-    }
-
-    /// Channels are re-initialised at the top of each frame.
-    #[test]
-    #[should_panic(expected = "HDMA init")]
-    fn test_hdma_init_requested_at_frame_start() {
-        let mut rsnes = make_rsnes();
-        advance_core_to_scanline(&mut rsnes, VBLANK_START_LINE);
-        rsnes.bus.io.hdmaen = 0b0000_0001;
-
-        advance_core_to_scanline(&mut rsnes, 0);
-    }
-
-    /// Nothing is requested when HDMAEN is clear.
-    #[test]
-    fn test_no_hdma_when_disabled() {
-        let mut rsnes = make_rsnes();
-        advance_core_to_scanline(&mut rsnes, 10);
     }
 }
