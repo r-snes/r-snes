@@ -203,9 +203,17 @@ fn test_step_advances_cycle_counter() {
     let mut apu = Apu::new();
     setup_cpu(&mut apu, 0x0100, 128);
 
+    // NOP costs 2 real SPC700 cycles and can't be interrupted mid-way,
+    // so asking for a 1-cycle budget still runs the whole NOP: cycles
+    // ends up at 2, with the 1-cycle overrun banked as debt against the
+    // next call (see Apu::step's `cycle_debt`).
     apu.step(1);
-    assert_eq!(apu.cycles, 1);
+    assert_eq!(apu.cycles, 2);
 
+    // That banked debt is paid down first: budget = 9 - 1 = 8, which is
+    // exactly 4 more NOPs (8 cycles), landing back on an exact multiple
+    // of 2 with no debt left over — so the cumulative total across both
+    // calls comes out exactly as requested (1 + 9 = 10).
     apu.step(9);
     assert_eq!(apu.cycles, 10);
 }
@@ -242,8 +250,10 @@ fn test_step_multiple_cycles_advances_pc_multiple_times() {
 
     let pc_before = apu.cpu.regs.pc;
     apu.step(5);
-    // Each NOP advances PC by 1; 5 steps = 5 NOPs = PC + 5
-    assert_eq!(apu.cpu.regs.pc, pc_before.wrapping_add(5));
+    // Each NOP costs 2 real cycles, so a 5-cycle budget only fits 3 whole
+    // NOPs (3*2=6, overrunning the budget by 1, which is banked as debt
+    // rather than fitting a 4th NOP): PC + 3, not PC + 5.
+    assert_eq!(apu.cpu.regs.pc, pc_before.wrapping_add(3));
 }
 
 // ============================================================
@@ -252,18 +262,25 @@ fn test_step_multiple_cycles_advances_pc_multiple_times() {
 
 #[test]
 fn test_dsp_not_ticked_before_32_cycles() {
-    // After 31 cycles the envelope must still be Off (DSP never stepped).
+    // After fewer than 32 cycles the envelope must still be Off (DSP
+    // never stepped).
     let mut apu = Apu::new();
     setup_cpu(&mut apu, 0x0100, 256);
     setup_voice_silent_sample(&mut apu);
 
-    // Step 31 cycles — DSP should not have fired yet
-    apu.step(31);
-    // The voice was keyed on but if the DSP never stepped its envelope
-    // is still in Attack at level 0 (not yet processed).
-    // The key observable: master vol is set, so any DSP output after a
-    // step would be non-zero eventually; here we just check cycles.
-    assert_eq!(apu.cycles, 31);
+    // Step 30 cycles — DSP should not have fired yet. 30, not 31: NOP
+    // costs 2 real cycles and can't be interrupted mid-instruction, so
+    // 31 isn't a reachable stopping point from a fresh (zero-debt) Apu —
+    // the 16th NOP would land exactly on 32 and tick the DSP, which is
+    // exactly the boundary this test needs to stay under.
+    apu.step(30);
+    assert_eq!(apu.cycles, 30);
+    // The voice was keyed on but the DSP hasn't stepped yet, so the
+    // envelope is still at its key-on reset state (Attack, level 0).
+    assert_eq!(
+        apu.memory.dsp.voices[0].adsr.envelope_level, 0,
+        "envelope must not advance before the DSP's first tick at 32 cycles"
+    );
 }
 
 #[test]

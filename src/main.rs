@@ -65,6 +65,9 @@ fn gui_emu_loop(
         _ => RSnesEmu::new(rsnes),
     };
 
+    gui.audio_play();
+    let mut audio_failed = false;
+
     let closing_ev = 'emu_loop: loop {
         let deadline = Instant::now() + Duration::from_secs_f64(Gui::FRAME_DURATION);
 
@@ -74,6 +77,19 @@ fn gui_emu_loop(
             cfg_select! {
                 feature = "plugins" => gui.unwrap_result(emu.update()),
                 _ => emu.update(),
+            }
+        }
+
+        // Drain whatever audio the real hardware produced this frame and
+        // queue it straight through.
+        if !audio_failed {
+            let samples = emu.core_mut().apu.drain_samples();
+            if !samples.is_empty()
+                && let Err(e) = gui.audio_queue_samples(&samples)
+            {
+                eprintln!("audio output disabled: {e}");
+                gui.audio_stop();
+                audio_failed = true;
             }
         }
 
@@ -114,6 +130,10 @@ fn gui_emu_loop(
         }
         frame_nb += 1;
     };
+
+    if !audio_failed {
+        gui.audio_stop();
+    }
 
     #[cfg(feature = "plugins")]
     if let Some(p) = emu.plugin_mut() {

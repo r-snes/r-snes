@@ -1,7 +1,7 @@
 use crate::memory::RawARAM;
 
 use super::adsr::{Adsr, EnvelopePhase};
-use super::brr::{Brr, decode_brr_block, ram_read8};
+use super::brr::{Brr, GAUSS, decode_brr_block, ram_read8};
 
 /// One voice (channel) of the SNES APU DSP.
 #[derive(Debug, Clone, Copy, Default)]
@@ -26,8 +26,17 @@ pub struct Voice {
     /// Every 0x1000 units = 1 BRR sample consumed.
     pub pitch_counter: u16,
 
-    /// Most recently output sample (16-bit, pre-envelope).
+    /// Most recently output sample (16-bit, pre-envelope). This is the
+    /// *interpolated* output — see `interpolate` — not a raw decoded
+    /// BRR sample.
     pub current_sample: i16,
+
+    /// The 4 most recently decoded raw BRR samples, oldest to newest
+    /// (`history[3]` is the newest). Gaussian-interpolated every tick
+    /// against the fractional pitch position to produce `current_sample`.
+    /// Reset on key-on (see `Dsp::key_on_voice`) so a new note doesn't
+    /// interpolate against the previous note's tail.
+    pub history: [i16; 4],
 
     /// ADSR envelope sub-state.
     pub adsr: Adsr,
@@ -49,10 +58,13 @@ impl Voice {
             self.adsr.update_envelope();
         }
 
+        // A voice only goes fully idle once its envelope has actually
+        // reached Off. `key_on == false` alone (i.e. right after KOFF)
+        // is not enough to stop here: the voice is in Release and must
+        // keep decoding/consuming BRR samples while the envelope fades
+        // it out underneath, the same way real hardware keeps playing
+        // through a release instead of freezing on the last sample.
         if !self.key_on && self.adsr.envelope_phase == EnvelopePhase::Off {
-            return;
-        }
-        if !self.key_on {
             return;
         }
 
@@ -80,11 +92,12 @@ impl Voice {
         let samples_to_consume = self.pitch_counter / 0x1000;
         self.pitch_counter %= 0x1000;
 
-        // 4. Consume decoded samples from buffer.
+        // 4. Shift each newly-reached raw decoded sample into the
+        // 4-sample interpolation history as the pitch counter crosses it.
         for _ in 0..samples_to_consume {
             let idx = self.brr.nibble_idx as usize;
             if idx < self.brr.buffer_fill as usize {
-                self.current_sample = self.brr.sample_buffer[idx];
+                self.push_history(self.brr.sample_buffer[idx]);
                 self.brr.nibble_idx += 1;
             }
 
@@ -97,11 +110,52 @@ impl Voice {
             }
         }
 
-        // 5. Update read-only ENVX ($X8) and OUTX ($X9) registers.
+        // 5. Gaussian-interpolate this tick's output sample from the
+        // 4-sample history and the fractional part of the pitch counter
+        // (how far between the last and next raw sample we currently are).
+        self.current_sample = self.interpolate();
+
+        // 6. Update read-only ENVX ($X8) and OUTX ($X9) registers.
         //   ENVX = envelope_level >> 4  (11-bit → 7-bit)
         //   OUTX = current_sample  >> 8 (signed top byte)
         registers[(i << 4) | 0x8] = (self.adsr.envelope_level >> 4) as u8;
         registers[(i << 4) | 0x9] = (self.current_sample >> 8) as u8;
+    }
+
+    /// Shift a newly decoded raw sample into the 4-sample history,
+    /// oldest-to-newest (`history[3]` is always the most recent).
+    pub fn push_history(&mut self, sample: i16) {
+        self.history[0] = self.history[1];
+        self.history[1] = self.history[2];
+        self.history[2] = self.history[3];
+        self.history[3] = sample;
+    }
+
+    /// Gaussian-interpolate the current output sample from the 4-sample
+    /// history and the fractional part of the pitch counter.
+    ///
+    /// `pitch_counter` (0..0x1000 after the advance in `step`) is how far
+    /// past the last whole-sample boundary we are; its top 8 bits (>>4)
+    /// select one of 256 fractional positions into the DSP's 512-entry
+    /// Gaussian kernel, which is laid out as four 256-entry regions — one
+    /// per history tap — so each tap is weighted by how close the
+    /// fractional position is to it.
+    ///
+    /// The intermediate cast to i16 after the first three taps reproduces
+    /// a documented quirk of the real DSP's interpolator (it truncates to
+    /// 16 bits there before adding the fourth tap); this is required for
+    /// bit-accurate output, not a mistake.
+    pub fn interpolate(&self) -> i16 {
+        let index = ((self.pitch_counter >> 4) & 0xFF) as usize;
+        let h = &self.history;
+
+        let mut out: i32 = (GAUSS[255 - index] as i32 * h[0] as i32) >> 11;
+        out += (GAUSS[511 - index] as i32 * h[1] as i32) >> 11;
+        out += (GAUSS[index + 256] as i32 * h[2] as i32) >> 11;
+        out = out as i16 as i32; // hardware quirk: truncate before the 4th tap
+        out += (GAUSS[index] as i32 * h[3] as i32) >> 11;
+
+        out.clamp(i16::MIN as i32, i16::MAX as i32) as i16
     }
 
     /// Decode the next 9-byte BRR block and advance the BRR address.
