@@ -150,21 +150,21 @@ impl RSnesCore {
             }
             CycleResult::Read => {
                 let addr = *self.cpu.addr_bus();
-                let byte = self.bus.read(addr, &mut self.ppu, &mut self.apu);
+                let (byte, speed) = self.bus.read(addr, &mut self.ppu, &mut self.apu);
 
                 self.cpu.data_bus = byte;
 
                 // Default to 6 cycles for now
-                self.cpu_master_cycles_to_wait = 6; // TODO : have the bus return the number of cycle to wait
+                self.cpu_master_cycles_to_wait = speed.cycles();
             }
             CycleResult::Write => {
                 let addr = *self.cpu.addr_bus();
                 let byte = self.cpu.data_bus;
 
-                self.bus.write(addr, byte, &mut self.ppu, &mut self.apu);
+                let speed = self.bus.write(addr, byte, &mut self.ppu, &mut self.apu);
 
                 // Default to 6 cycles for now
-                self.cpu_master_cycles_to_wait = 6; // TODO : have the bus return the number of cycle to wait
+                self.cpu_master_cycles_to_wait = speed.cycles();
             }
         }
     }
@@ -319,9 +319,8 @@ impl RSnesCore {
         if self.cpu_master_cycles_to_wait != 0 || !self.cpu.is_instr_start() {
             None
         } else {
-            let opcode = self
-                .bus
-                .read(*self.cpu.addr_bus(), &mut self.ppu, &mut self.apu);
+            let (opcode, _speed) =
+                self.bus.read(*self.cpu.addr_bus(), &mut self.ppu, &mut self.apu);
             Some(opcode)
         }
     }
@@ -433,9 +432,7 @@ impl RSnesEmu {
                     .expect("checked is_some above")
                     .interval_seconds,
             );
-            let next = *plugin
-                .next_real_interval_instant
-                .get_or_insert(now + interval);
+            let next = *plugin.next_real_interval_instant.get_or_insert(now + interval);
 
             if now >= next {
                 plugin.next_real_interval_instant = Some(next + interval);
@@ -473,7 +470,7 @@ mod tests {
         rsnes.bus.cart.rom[5] = 0x12;
 
         rsnes.update();
-        assert_eq!(rsnes.cpu_master_cycles_to_wait, 6);
+        assert_eq!(rsnes.cpu_master_cycles_to_wait, 8);
         rsnes.cpu_master_cycles_to_wait = 0;
         rsnes.update();
         assert_eq!(rsnes.cpu.regs().PC, 0);
@@ -505,7 +502,7 @@ mod tests {
         rsnes.update();
         rsnes.cpu_master_cycles_to_wait = 0;
 
-        assert_eq!(rsnes.bus.wram.read(snes_addr!(0:0x1234)), 0x42);
+        assert_eq!(rsnes.bus.wram.read(snes_addr!(0:0x1234)).0, 0x42);
     }
 
     // ============================================================
@@ -614,9 +611,7 @@ mod tests {
         let mut rsnes = TestRsnesCore::new().0;
         advance_core_to_scanline(&mut rsnes, VBLANK_START_LINE);
 
-        let value = rsnes
-            .bus
-            .read(snes_addr!(0:0x4210), &mut rsnes.ppu, &mut rsnes.apu);
+        let (value, _speed) = rsnes.bus.read(snes_addr!(0:0x4210), &mut rsnes.ppu, &mut rsnes.apu);
 
         assert_eq!(value & 0x80, 0x80, "read returns the flag that was set");
         assert!(!rsnes.bus.io.nmi_flag(), "read acknowledges");

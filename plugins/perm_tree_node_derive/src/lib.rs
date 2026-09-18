@@ -42,10 +42,7 @@ impl ToTokens for PermTreeNodeDerive {
         let (impl_generics, ty_generics, where_clause) = self.item.generics.split_for_impl();
 
         let match_arms = self.item.fields.iter().map(|f| {
-            let ident = &f
-                .ident
-                .as_ref()
-                .expect("named struct field (no tuple struct)");
+            let ident = &f.ident.as_ref().expect("named struct field (no tuple struct)");
             let typ = &f.ty;
             let bytestring = pm2::Literal::byte_string(ident.to_string().as_bytes());
 

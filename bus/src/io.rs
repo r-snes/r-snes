@@ -1,3 +1,4 @@
+use crate::bus::AccessSpeed;
 use crate::wram::Wram;
 use apu::Apu;
 use common::{snes_addr, snes_address::SnesAddress, u16_split::U16Split};
@@ -538,7 +539,7 @@ impl Io {
 
             // WMDATA - WRAM access port. Reads the byte at WMADD, then advances it.
             0x2180 => {
-                let value = wram.read(self.wmadd.to_snes_addr());
+                let value = wram.read(self.wmadd.to_snes_addr()).0;
                 self.wmadd.inc();
                 value
             }
@@ -713,13 +714,30 @@ impl Io {
 }
 
 impl Io {
+    pub fn speed(addr: SnesAddress) -> AccessSpeed {
+        match addr.addr {
+            0x2000..=0x20FF => AccessSpeed::Fast,
+            0x2100..=0x21FF => AccessSpeed::Fast,
+            0x2200..=0x3FFF => AccessSpeed::Fast,
+            0x4000..=0x41FF => AccessSpeed::XSlow,
+            0x4200..=0x43FF => AccessSpeed::Fast,
+            0x4400..=0x5FFF => AccessSpeed::Fast,
+            _ => Self::panic_invalid_addr(addr),
+        }
+    }
     /// Reads a byte from the I/O memory zone at the given `SnesAddress`.
     ///
     /// The address is translated to an internal I/O offset using `to_offset`.
     ///
     /// # Panics
     /// Panics if the address does not map to a valid I/O memory location.
-    pub fn read(&mut self, addr: SnesAddress, wram: &mut Wram, ppu: &mut PPU, apu: &mut Apu) -> u8 {
+    pub fn read(
+        &mut self,
+        addr: SnesAddress,
+        wram: &mut Wram,
+        ppu: &mut PPU,
+        apu: &mut Apu,
+    ) -> (u8, AccessSpeed) {
         self.open_bus = match addr.bank {
             0x00..=0x3F | 0x80..=0xBF => match addr.addr {
                 0x2000..0x2100 => self.open_bus,
@@ -731,7 +749,7 @@ impl Io {
             },
             _ => Self::panic_invalid_addr(addr),
         };
-        self.open_bus
+        (self.open_bus, Self::speed(addr))
     }
 
     /// Writes a byte to the I/O memory zone at the given `SnesAddress`.
@@ -747,7 +765,7 @@ impl Io {
         wram: &mut Wram,
         ppu: &mut PPU,
         apu: &mut Apu,
-    ) {
+    ) -> AccessSpeed {
         self.open_bus = value;
         match addr.bank {
             0x00..=0x3F | 0x80..=0xBF => match addr.addr {
@@ -760,6 +778,8 @@ impl Io {
             },
             _ => Self::panic_invalid_addr(addr),
         };
+
+        Self::speed(addr)
     }
 }
 
@@ -818,15 +838,15 @@ mod tests {
         io.open_bus = 0x5A;
 
         assert_eq!(
-            io.read(snes_addr!(0:0x2181), &mut wram, &mut ppu, &mut apu),
+            io.read(snes_addr!(0:0x2181), &mut wram, &mut ppu, &mut apu).0,
             0x5A
         );
         assert_eq!(
-            io.read(snes_addr!(0:0x2182), &mut wram, &mut ppu, &mut apu),
+            io.read(snes_addr!(0:0x2182), &mut wram, &mut ppu, &mut apu).0,
             0x5A
         );
         assert_eq!(
-            io.read(snes_addr!(0:0x2183), &mut wram, &mut ppu, &mut apu),
+            io.read(snes_addr!(0:0x2183), &mut wram, &mut ppu, &mut apu).0,
             0x5A
         );
     }
@@ -844,7 +864,7 @@ mod tests {
         );
         io.write(snes_addr!(0:0x2180), 0xAB, &mut wram, &mut ppu, &mut apu);
 
-        assert_eq!(wram.read(snes_addr!(0x7E:0x0100)), 0xAB);
+        assert_eq!(wram.read(snes_addr!(0x7E:0x0100)).0, 0xAB);
     }
 
     #[test]
@@ -860,8 +880,8 @@ mod tests {
         );
         io.write(snes_addr!(0:0x2180), 0xCD, &mut wram, &mut ppu, &mut apu);
 
-        assert_eq!(wram.read(snes_addr!(0x7F:0x0100)), 0xCD);
-        assert_eq!(wram.read(snes_addr!(0x7E:0x0100)), 0x00);
+        assert_eq!(wram.read(snes_addr!(0x7F:0x0100)).0, 0xCD);
+        assert_eq!(wram.read(snes_addr!(0x7E:0x0100)).0, 0x00);
     }
 
     #[test]
@@ -878,7 +898,7 @@ mod tests {
         );
 
         assert_eq!(
-            io.read(snes_addr!(0:0x2180), &mut wram, &mut ppu, &mut apu),
+            io.read(snes_addr!(0:0x2180), &mut wram, &mut ppu, &mut apu).0,
             0x42
         );
     }
@@ -898,9 +918,9 @@ mod tests {
             io.write(snes_addr!(0:0x2180), value, &mut wram, &mut ppu, &mut apu);
         }
 
-        assert_eq!(wram.read(snes_addr!(0x7E:0x0300)), 0x11);
-        assert_eq!(wram.read(snes_addr!(0x7E:0x0301)), 0x22);
-        assert_eq!(wram.read(snes_addr!(0x7E:0x0302)), 0x33);
+        assert_eq!(wram.read(snes_addr!(0x7E:0x0300)).0, 0x11);
+        assert_eq!(wram.read(snes_addr!(0x7E:0x0301)).0, 0x22);
+        assert_eq!(wram.read(snes_addr!(0x7E:0x0302)).0, 0x33);
         assert_eq!(io.wmadd.addr, 0x0303);
     }
 
@@ -920,11 +940,11 @@ mod tests {
 
         // The pointer advances on reads as well as writes.
         assert_eq!(
-            io.read(snes_addr!(0:0x2180), &mut wram, &mut ppu, &mut apu),
+            io.read(snes_addr!(0:0x2180), &mut wram, &mut ppu, &mut apu).0,
             0x11
         );
         assert_eq!(
-            io.read(snes_addr!(0:0x2180), &mut wram, &mut ppu, &mut apu),
+            io.read(snes_addr!(0:0x2180), &mut wram, &mut ppu, &mut apu).0,
             0x22
         );
         assert_eq!(io.wmadd.addr, 0x0402);
@@ -944,8 +964,8 @@ mod tests {
         io.write(snes_addr!(0:0x2180), 0x11, &mut wram, &mut ppu, &mut apu);
         io.write(snes_addr!(0:0x2180), 0x22, &mut wram, &mut ppu, &mut apu);
 
-        assert_eq!(wram.read(snes_addr!(0x7E:0xFFFF)), 0x11);
-        assert_eq!(wram.read(snes_addr!(0x7F:0x0000)), 0x22);
+        assert_eq!(wram.read(snes_addr!(0x7E:0xFFFF)).0, 0x11);
+        assert_eq!(wram.read(snes_addr!(0x7F:0x0000)).0, 0x22);
         assert_eq!(io.wmadd.bank, WmAddBank::Bank7F);
         assert_eq!(io.wmadd.addr, 0x0001);
     }
@@ -964,8 +984,8 @@ mod tests {
         io.write(snes_addr!(0:0x2180), 0x11, &mut wram, &mut ppu, &mut apu);
         io.write(snes_addr!(0:0x2180), 0x22, &mut wram, &mut ppu, &mut apu);
 
-        assert_eq!(wram.read(snes_addr!(0x7F:0xFFFF)), 0x11);
-        assert_eq!(wram.read(snes_addr!(0x7E:0x0000)), 0x22);
+        assert_eq!(wram.read(snes_addr!(0x7F:0xFFFF)).0, 0x11);
+        assert_eq!(wram.read(snes_addr!(0x7E:0x0000)).0, 0x22);
         assert_eq!(io.wmadd.bank, WmAddBank::Bank7E);
         assert_eq!(io.wmadd.addr, 0x0001);
     }
@@ -976,7 +996,7 @@ mod tests {
 
         apu.memory.port_out[0] = 0xAB; // simulate SPC700 having written this
         let addr = snes_addr!(0:0x2140);
-        assert_eq!(io.read(addr, &mut wram, &mut ppu, &mut apu), 0xAB);
+        assert_eq!(io.read(addr, &mut wram, &mut ppu, &mut apu).0, 0xAB);
     }
 
     #[test]
@@ -1001,7 +1021,7 @@ mod tests {
 
         apu.memory.port_out[1] = 0x22;
         assert_eq!(
-            io.read(snes_addr!(0:0x2179), &mut wram, &mut ppu, &mut apu),
+            io.read(snes_addr!(0:0x2179), &mut wram, &mut ppu, &mut apu).0,
             0x22
         );
     }
@@ -1040,12 +1060,12 @@ mod tests {
 
         io.open_bus = 0x20;
         let open_bus_addr = snes_addr!(0:0x5000);
-        let read_value = io.read(open_bus_addr, &mut wram, &mut ppu, &mut apu);
+        let read_value = io.read(open_bus_addr, &mut wram, &mut ppu, &mut apu).0;
         assert_eq!(read_value, 0x20);
 
         io.open_bus = 0x40;
         let open_bus_addr = snes_addr!(0:0x4250);
-        let read_value = io.read(open_bus_addr, &mut wram, &mut ppu, &mut apu);
+        let read_value = io.read(open_bus_addr, &mut wram, &mut ppu, &mut apu).0;
         assert_eq!(read_value, 0x40);
     }
 
@@ -1089,11 +1109,11 @@ mod tests {
         assert_eq!(io.rdmpy, (io.wrmpya as u16) * (io.wrmpyb as u16));
 
         assert_eq!(
-            io.read(rdmpyl_addr, &mut wram, &mut ppu, &mut apu),
+            io.read(rdmpyl_addr, &mut wram, &mut ppu, &mut apu).0,
             *io.rdmpy.lo()
         );
         assert_eq!(
-            io.read(rdmpyh_addr, &mut wram, &mut ppu, &mut apu),
+            io.read(rdmpyh_addr, &mut wram, &mut ppu, &mut apu).0,
             *io.rdmpy.hi()
         );
     }
@@ -1124,20 +1144,20 @@ mod tests {
         assert_eq!(io.rdmpy, value_wrdiv % value_wrdivb as u16);
 
         assert_eq!(
-            io.read(rdmpyl_addr, &mut wram, &mut ppu, &mut apu),
+            io.read(rdmpyl_addr, &mut wram, &mut ppu, &mut apu).0,
             *io.rdmpy.lo()
         );
         assert_eq!(
-            io.read(rdmpyh_addr, &mut wram, &mut ppu, &mut apu),
+            io.read(rdmpyh_addr, &mut wram, &mut ppu, &mut apu).0,
             *io.rdmpy.hi()
         );
 
         assert_eq!(
-            io.read(rddivl_addr, &mut wram, &mut ppu, &mut apu),
+            io.read(rddivl_addr, &mut wram, &mut ppu, &mut apu).0,
             *io.rddiv.lo()
         );
         assert_eq!(
-            io.read(rddivh_addr, &mut wram, &mut ppu, &mut apu),
+            io.read(rddivh_addr, &mut wram, &mut ppu, &mut apu).0,
             *io.rddiv.hi()
         );
     }
@@ -1206,9 +1226,9 @@ mod tests {
         let value_rdnmi = 0xFF;
         io.rdnmi = value_rdnmi;
 
-        let read_value = io.read(rdnmi_addr, &mut wram, &mut ppu, &mut apu);
+        let read_value = io.read(rdnmi_addr, &mut wram, &mut ppu, &mut apu).0;
         assert_eq!(read_value, value_rdnmi);
-        let second_read_value = io.read(rdnmi_addr, &mut wram, &mut ppu, &mut apu);
+        let second_read_value = io.read(rdnmi_addr, &mut wram, &mut ppu, &mut apu).0;
         assert_eq!(second_read_value, 0b0111_1111);
     }
 
@@ -1220,9 +1240,9 @@ mod tests {
         let value_timeup = 0xFF;
         io.timeup = value_timeup;
 
-        let read_value = io.read(timeup_addr, &mut wram, &mut ppu, &mut apu);
+        let read_value = io.read(timeup_addr, &mut wram, &mut ppu, &mut apu).0;
         assert_eq!(read_value, value_timeup);
-        let second_read_value = io.read(timeup_addr, &mut wram, &mut ppu, &mut apu);
+        let second_read_value = io.read(timeup_addr, &mut wram, &mut ppu, &mut apu).0;
         assert_eq!(second_read_value, 0b0111_1111);
     }
 
@@ -1234,7 +1254,7 @@ mod tests {
         let value_hvbjoy = 0xFF;
         io.hvbjoy = value_hvbjoy;
 
-        let read_value = io.read(hvbjoy_addr, &mut wram, &mut ppu, &mut apu);
+        let read_value = io.read(hvbjoy_addr, &mut wram, &mut ppu, &mut apu).0;
         assert_eq!(read_value, value_hvbjoy);
     }
 
@@ -1260,38 +1280,38 @@ mod tests {
         io.joy4 = value_joy4;
 
         assert_eq!(
-            io.read(joy1l_addr, &mut wram, &mut ppu, &mut apu),
+            io.read(joy1l_addr, &mut wram, &mut ppu, &mut apu).0,
             *value_joy1.lo()
         );
         assert_eq!(
-            io.read(joy1h_addr, &mut wram, &mut ppu, &mut apu),
+            io.read(joy1h_addr, &mut wram, &mut ppu, &mut apu).0,
             *value_joy1.hi()
         );
 
         assert_eq!(
-            io.read(joy2l_addr, &mut wram, &mut ppu, &mut apu),
+            io.read(joy2l_addr, &mut wram, &mut ppu, &mut apu).0,
             *value_joy2.lo()
         );
         assert_eq!(
-            io.read(joy2h_addr, &mut wram, &mut ppu, &mut apu),
+            io.read(joy2h_addr, &mut wram, &mut ppu, &mut apu).0,
             *value_joy2.hi()
         );
 
         assert_eq!(
-            io.read(joy3l_addr, &mut wram, &mut ppu, &mut apu),
+            io.read(joy3l_addr, &mut wram, &mut ppu, &mut apu).0,
             *value_joy3.lo()
         );
         assert_eq!(
-            io.read(joy3h_addr, &mut wram, &mut ppu, &mut apu),
+            io.read(joy3h_addr, &mut wram, &mut ppu, &mut apu).0,
             *value_joy3.hi()
         );
 
         assert_eq!(
-            io.read(joy4l_addr, &mut wram, &mut ppu, &mut apu),
+            io.read(joy4l_addr, &mut wram, &mut ppu, &mut apu).0,
             *value_joy4.lo()
         );
         assert_eq!(
-            io.read(joy4h_addr, &mut wram, &mut ppu, &mut apu),
+            io.read(joy4h_addr, &mut wram, &mut ppu, &mut apu).0,
             *value_joy4.hi()
         );
     }
@@ -1321,12 +1341,12 @@ mod tests {
         assert_eq!(io.rddiv, 0xFFFF);
         assert_eq!(io.rdmpy, value_wrdiv);
 
-        let rdmpyl_value = io.read(rdmpyl_addr, &mut wram, &mut ppu, &mut apu);
-        let rdmpyh_value = io.read(rdmpyh_addr, &mut wram, &mut ppu, &mut apu);
+        let rdmpyl_value = io.read(rdmpyl_addr, &mut wram, &mut ppu, &mut apu).0;
+        let rdmpyh_value = io.read(rdmpyh_addr, &mut wram, &mut ppu, &mut apu).0;
         assert_eq!(rdmpyl_value, value_wrdivl);
         assert_eq!(rdmpyh_value, value_wrdivh);
-        let rddivl_value = io.read(rddivl_addr, &mut wram, &mut ppu, &mut apu);
-        let rddivh_value = io.read(rddivh_addr, &mut wram, &mut ppu, &mut apu);
+        let rddivl_value = io.read(rddivl_addr, &mut wram, &mut ppu, &mut apu).0;
+        let rddivh_value = io.read(rddivh_addr, &mut wram, &mut ppu, &mut apu).0;
         assert_eq!(rddivl_value, 0xFF);
         assert_eq!(rddivh_value, 0xFF);
     }
@@ -1345,7 +1365,7 @@ mod tests {
                 let reg_addr = snes_addr!(0:channel_addr.addr + dma_reg);
 
                 io.write(reg_addr, value_inc, &mut wram, &mut ppu, &mut apu);
-                let read_value = io.read(reg_addr, &mut wram, &mut ppu, &mut apu);
+                let read_value = io.read(reg_addr, &mut wram, &mut ppu, &mut apu).0;
                 match dma_reg {
                     0x0 => {
                         assert_eq!(io.dma_channels[channel_nb as usize].dmap, value_inc);

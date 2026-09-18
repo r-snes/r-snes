@@ -198,12 +198,7 @@ impl Gui {
 
         // Ignore the error: a failed title update is cosmetic, not worth
         // propagating up through the emu loop.
-        let _ = self
-            .egui_canvas
-            .painter
-            .canvas
-            .window_mut()
-            .set_title(&window_title);
+        let _ = self.egui_canvas.painter.canvas.window_mut().set_title(&window_title);
     }
 
     /// Enables/disables Ctrl+P plugin loading. Idle loop enables, emu loop disables.
@@ -224,9 +219,7 @@ impl Gui {
     /// permission prompt opens next frame), on failure it surfaces as an error.
     #[cfg(feature = "plugins")]
     fn load_plugin_dialog(&mut self) {
-        let Some(path) = rfd::FileDialog::new()
-            .add_filter("Lua plugin", &["lua"])
-            .pick_file()
+        let Some(path) = rfd::FileDialog::new().add_filter("Lua plugin", &["lua"]).pick_file()
         else {
             return;
         };
@@ -488,11 +481,7 @@ impl Gui {
                 }
                 SdlEvent::ControllerDeviceRemoved { which, .. } => {
                     println!("Controller removed: index {which}");
-                    if self
-                        .controller
-                        .as_ref()
-                        .is_some_and(|c| c.instance_id() == *which)
-                    {
+                    if self.controller.as_ref().is_some_and(|c| c.instance_id() == *which) {
                         self.controller = None;
                     }
                     continue;
@@ -592,8 +581,7 @@ impl Gui {
         // Split the borrow: `run` takes `&mut self.egui_canvas`, so `state`
         // must be borrowed separately rather than through `self`.
         let state = &mut self.state;
-        self.egui_canvas
-            .run(|ctx| Self::draw_overlays(state, &data, ctx));
+        self.egui_canvas.run(|ctx| Self::draw_overlays(state, &data, ctx));
 
         self.egui_canvas.paint();
         self.egui_canvas.present();
