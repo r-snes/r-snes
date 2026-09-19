@@ -267,6 +267,113 @@ fn fully_off_voice_stays_idle() {
 }
 
 // ============================================================
+// Non-looping BRR end-of-sample handling
+// ============================================================
+
+/// A single BRR block, shift=12 filter=0, end=1 loop=0 — i.e. a
+/// non-looping sample whose only block is also its terminal block.
+/// Same alternating +7/-8 nibble pattern as `build_test_ram` so a "did
+/// it keep decoding/replaying" check has a signal to look for.
+fn build_test_ram_non_looping() -> Box<RawARAM> {
+    let mut ram: Box<RawARAM> = Box::new([0u8; 64 * 1024]);
+    // DIR entry at $0010: start=$0020. Loop address is set but must be
+    // unused, since the LOOP bit is clear in the header below.
+    ram[0x0010] = 0x20;
+    ram[0x0011] = 0x00;
+    ram[0x0012] = 0x20;
+    ram[0x0013] = 0x00;
+    // BRR header: shift=12 ($C), filter=0, loop=0, end=1 -> 0xC1.
+    ram[0x0020] = 0xC1;
+    for i in 0..8 {
+        ram[0x0021 + i] = 0x78; // nibbles 7, -8 repeating
+    }
+    ram
+}
+
+/// Test for the "fades instead of hard-mutes" bug: real
+/// hardware forces the envelope to 0 the instant a non-looping end
+/// block finishes.
+#[test]
+fn non_looping_end_mutes_envelope_immediately() {
+    let ram = build_test_ram_non_looping();
+    let mut registers = [0u8; 128];
+    let mut voice = Voice {
+        key_on: true,
+        pitch: 0x1000, // exactly one decoded sample consumed per tick
+        ..Default::default()
+    };
+    voice.brr.addr = 0x0010; // DIR entry address, as key_on_voice sets it
+    voice.adsr.adsr_mode = true;
+    voice.adsr.attack_rate = 15; // instant attack, so a stale pre-fix level would be obviously nonzero
+    voice.adsr.envelope_phase = EnvelopePhase::Attack;
+
+    voice.step(0, &ram, &mut registers);
+
+    assert_eq!(
+        voice.adsr.envelope_level, 0,
+        "envelope must be forced to 0 immediately on a non-looping end block, not left mid-attack or mid-fade"
+    );
+    assert_eq!(
+        voice.adsr.envelope_phase,
+        EnvelopePhase::Off,
+        "phase must go straight to Off, not Release"
+    );
+    assert!(!voice.key_on, "voice must be keyed off");
+    assert_eq!(
+        registers[0x7C] & 0x01,
+        0x01,
+        "ENDX bit for voice 0 must still be set"
+    );
+}
+
+/// Once a non-looping end block has muted the voice, further `step()`
+/// calls must be true no-ops (the early-return guard is `!key_on &&
+/// phase == Off`), not continue consuming the buffer and re-decoding
+/// the same terminal block on repeat.
+#[test]
+fn non_looping_end_stops_the_voice_from_replaying() {
+    let ram = build_test_ram_non_looping();
+    let mut registers = [0u8; 128];
+    let mut voice = Voice {
+        key_on: true,
+        pitch: 0x1000,
+        ..Default::default()
+    };
+    voice.brr.addr = 0x0010;
+    voice.adsr.adsr_mode = true;
+    voice.adsr.attack_rate = 15;
+    voice.adsr.envelope_phase = EnvelopePhase::Attack;
+
+    voice.step(0, &ram, &mut registers); // hits the end block, mutes
+
+    let addr_after_end = voice.brr.addr;
+    let nibble_idx_after_end = voice.brr.nibble_idx;
+    let sample_after_end = voice.current_sample;
+
+    for _ in 0..8 {
+        voice.step(0, &ram, &mut registers);
+    }
+
+    assert_eq!(
+        voice.brr.addr, addr_after_end,
+        "a muted, keyed-off voice must not keep advancing/re-resolving its BRR address"
+    );
+    assert_eq!(
+        voice.brr.nibble_idx, nibble_idx_after_end,
+        "a muted, keyed-off voice must not keep consuming nibbles from the terminal block"
+    );
+    assert_eq!(
+        voice.current_sample, sample_after_end,
+        "output must stay put, not keep replaying the terminal block's samples"
+    );
+    assert_eq!(
+        voice.adsr.envelope_phase,
+        EnvelopePhase::Off,
+        "must remain Off, not drift into any other phase"
+    );
+}
+
+// ============================================================
 // Gaussian interpolation
 // ============================================================
 

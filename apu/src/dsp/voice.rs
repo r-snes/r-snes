@@ -162,7 +162,7 @@ impl Voice {
     ///
     /// Handles end/loop flags:
     /// - end=true,  loop=true  → jump to loop_addr and continue
-    /// - end=true,  loop=false → silence the voice (enter release)
+    /// - end=true,  loop=false → mute the voice immediately
     /// - end=false             → advance address by 9 bytes
     ///
     /// Sets bit `i` of `registers[0x7C]` (ENDX) when an end block is reached.
@@ -180,8 +180,18 @@ impl Voice {
             if do_loop {
                 self.brr.addr = self.brr.loop_addr;
             } else {
+                // Real hardware does NOT fade this out via a normal
+                // release: hitting an end block with the loop flag clear
+                // forces the envelope to 0 immediately (a hard mute), not
+                // a -8/tick ramp. Setting the phase straight to `Off`
+                // (rather than `Release`) also stops `step()`'s
+                // `!key_on && phase == Off` guard from letting the voice
+                // keep running afterwards — otherwise it would go on
+                // re-decoding and replaying this same terminal block for
+                // the rest of the fade instead of going silent.
                 self.key_on = false;
-                self.adsr.envelope_phase = EnvelopePhase::Release;
+                self.adsr.envelope_level = 0;
+                self.adsr.envelope_phase = EnvelopePhase::Off;
             }
         } else {
             self.brr.addr = self.brr.addr.wrapping_add(9);
