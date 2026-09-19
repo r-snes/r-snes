@@ -290,14 +290,9 @@ fn build_test_ram_non_looping() -> Box<RawARAM> {
     ram
 }
 
-/// Regression test for the "fades instead of hard-mutes" bug: real
+/// Test for the "fades instead of hard-mutes" bug: real
 /// hardware forces the envelope to 0 the instant a non-looping end
-/// block finishes, rather than easing it out through a normal -8/tick
-/// Release fade. Because the DIR here points straight at the sample's
-/// only (terminal) block, DIR resolution, decode, and the end-of-sample
-/// mute all happen within this single `step()` call — the mid-attack
-/// level it briefly reaches earlier in that same tick must still end
-/// up stomped back to 0 by the end-block handling that runs afterward.
+/// block finishes.
 #[test]
 fn non_looping_end_mutes_envelope_immediately() {
     let ram = build_test_ram_non_looping();
@@ -334,9 +329,7 @@ fn non_looping_end_mutes_envelope_immediately() {
 /// Once a non-looping end block has muted the voice, further `step()`
 /// calls must be true no-ops (the early-return guard is `!key_on &&
 /// phase == Off`), not continue consuming the buffer and re-decoding
-/// the same terminal block on repeat — which is what happened when the
-/// voice was left in `Release` instead of `Off`, since `Release` alone
-/// doesn't satisfy that guard until the envelope has also decayed away.
+/// the same terminal block on repeat.
 #[test]
 fn non_looping_end_stops_the_voice_from_replaying() {
     let ram = build_test_ram_non_looping();
