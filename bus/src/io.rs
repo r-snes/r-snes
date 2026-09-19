@@ -1,4 +1,6 @@
 use crate::bus::AccessSpeed;
+use crate::constants::{AUTO_JOYPAD_BIT_CYCLES, AUTO_JOYPAD_START_DELAY, JOYOUT_LATCH};
+use crate::joypad::ControllerPort;
 use crate::wram::Wram;
 use apu::Apu;
 use common::{snes_addr, snes_address::SnesAddress, u16_split::U16Split};
@@ -21,6 +23,20 @@ pub struct Io {
     /// # Reference
     /// [SNESdev Wiki - WMADD](https://snes.nesdev.org/wiki/MMIO_registers#WMADD)
     pub wmadd: WmAddress,
+
+    /// **JOYOUT** (`0x4016`, W) - Bit 0 drives the latch line of both
+    /// controller ports. Bits 1–2 (OUT1/OUT2) are not connected on a standard setup.
+    ///
+    /// # Reference
+    /// [SNESdev Wiki - JOYOUT](https://snes.nesdev.org/wiki/MMIO_registers#JOYOUT)
+    pub joyout: u8,
+
+    /// Controller ports 1 and 2, shared by manual reads (`$4016`/`$4017`)
+    /// and the auto-joypad read.
+    pub controllers: [ControllerPort; 2],
+
+    /// Progress of the once-per-frame auto-joypad read.
+    auto_joypad: AutoJoypad,
 
     /// **NMITIMEN** (`0x4200`, W) - Enables NMI on V-Blank, H/V IRQ, and
     /// joypad auto-read. Bit 7 = NMI, bits 5–4 = IRQ mode, bit 0 = auto-read.
@@ -193,6 +209,18 @@ pub struct WmAddress {
     pub addr: u16,
 }
 
+/// Once-per-frame auto-joypad read, clocked by master cycles.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum AutoJoypad {
+    /// Not reading (disabled, or this frame's read has finished).
+    #[default]
+    Idle,
+    /// V-Blank started; master cycles left before the pads are strobed.
+    Pending(u32),
+    /// Strobed; `bits_left` serial bits remain, next one in `countdown` cycles.
+    Reading { bits_left: u8, countdown: u32 },
+}
+
 /// Register state for a single SNES DMA/HDMA channel.
 ///
 /// Each of the 8 channels occupies a 16-byte window at `0x43n0–0x43nF`.
@@ -343,6 +371,11 @@ impl Default for Io {
     fn default() -> Self {
         Self {
             wmadd: Default::default(),
+
+            joyout: 0,
+            controllers: [ControllerPort::default(); 2],
+            auto_joypad: AutoJoypad::Idle,
+
             nmitimen: 0,
             wrio: 0xFF,
 
@@ -509,13 +542,75 @@ impl Io {
     }
 
     // ================================================================
-    // Controller input
+    // Controller input - JOYOUT latch + auto-joypad read
     // ================================================================
 
-    /// Latch a caller-supplied controller snapshot into JOY1 ($4218/$4219).
-    /// The live pad state lives on [`RSnesCore`]
-    pub fn latch_joypad1(&mut self, live: u16) {
-        self.joy1 = live;
+    fn set_controllers_latch(&mut self, on: bool) {
+        for port in &mut self.controllers {
+            port.set_latch(on);
+        }
+    }
+
+    /// Called at V-Blank start: schedule this frame's auto-read if NMITIMEN enables it.
+    pub fn start_auto_joypad(&mut self) {
+        if self.auto_joypad_enabled() {
+            self.auto_joypad = AutoJoypad::Pending(AUTO_JOYPAD_START_DELAY);
+        }
+    }
+
+    /// Advance the auto-read by one master cycle.
+    ///
+    /// The auto-read uses the same latch/clock lines as a manual read, so a
+    /// game reading JOY1-4 mid-read sees a partially shifted value
+    pub fn step_auto_joypad(&mut self) {
+        self.auto_joypad = match self.auto_joypad {
+            AutoJoypad::Idle => AutoJoypad::Idle,
+            AutoJoypad::Pending(n) if n > 1 => AutoJoypad::Pending(n - 1),
+            AutoJoypad::Pending(_) => {
+                // Pulse the latch, then release it back to what JOYOUT holds.
+                self.set_controllers_latch(true);
+                self.set_controllers_latch(self.joyout & JOYOUT_LATCH != 0);
+                self.set_auto_joypad_busy(true);
+                AutoJoypad::Reading {
+                    bits_left: 16,
+                    countdown: AUTO_JOYPAD_BIT_CYCLES,
+                }
+            }
+            AutoJoypad::Reading {
+                bits_left,
+                countdown,
+            } if countdown > 1 => AutoJoypad::Reading {
+                bits_left,
+                countdown: countdown - 1,
+            },
+            AutoJoypad::Reading { bits_left, .. } => {
+                self.auto_joypad_shift_bit();
+                if bits_left > 1 {
+                    AutoJoypad::Reading {
+                        bits_left: bits_left - 1,
+                        countdown: AUTO_JOYPAD_BIT_CYCLES,
+                    }
+                } else {
+                    self.set_auto_joypad_busy(false);
+                    AutoJoypad::Idle
+                }
+            }
+        };
+    }
+
+    /// Shift one serial bit from each port into JOY1-4, then clock the pads.
+    fn auto_joypad_shift_bit(&mut self) {
+        let [port1, port2] = &mut self.controllers;
+
+        self.joy1 = (self.joy1 << 1) | port1.data1() as u16;
+        self.joy2 = (self.joy2 << 1) | port2.data1() as u16;
+        // JOY3/JOY4 come from the data2 lines (multitap), which aren't
+        // emulated and therefore read 0.
+        self.joy3 <<= 1;
+        self.joy4 <<= 1;
+
+        port1.clock();
+        port2.clock();
     }
 }
 
@@ -544,29 +639,37 @@ impl Io {
                 value
             }
 
-            // JOYSER0/JOYSER1 - manual controller reading not implemented
-            #[cfg(not(tarpaulin_include))]
-            0x4016 => todo!("0x4016 : Implement JOYSER0 register read"),
-            #[cfg(not(tarpaulin_include))]
-            0x4017 => todo!("0x4017 : Implement JOYSER1 register read"),
+            // JOYSER0 - Manual controller reading. port 1 serial data (bit 0), data2/multitap (bit 1, TODO).
+            // Reading clocks the pad. Bits 7-2 are open bus.
+            0x4016 => {
+                let port = &mut self.controllers[0];
+                let data = port.data1();
+                port.clock();
+                (self.open_bus & 0xFC) | data
+            }
+            // JOYSER1 - Manual controller reading. port 2 serial data.
+            // Bits 4-2 always read 1, bits 7-5 are open bus.
+            0x4017 => {
+                let port = &mut self.controllers[1];
+                let data = port.data1();
+                port.clock();
+                (self.open_bus & 0xE0) | 0x1C | data
+            }
 
-            // Vblank flag and CPU version register
-            // TODO : Implement open bus on unused bits
-            0x4210 => self.read_rdnmi(),
+            // RDNMI - Vblank flag and CPU version register. bits 6-4 are open bus
+            0x4210 => (self.read_rdnmi() & 0x8F) | (self.open_bus & 0x70),
 
-            // Timer flag register
-            // TODO : Implement open bus on unused bits
-            0x4211 => self.read_timeup(),
+            // TIMEUP - Timer flag register. bits 6-0 are open bus
+            0x4211 => (self.read_timeup() & 0x80) | (self.open_bus & 0x7F),
 
-            // Screen and Joypad status register
-            // TODO : Implement open bus on unused bits
-            0x4212 => self.hvbjoy,
+            // HVBJOY - Screen and Joypad status register. bits 5-1 are open bus
+            0x4212 => (self.hvbjoy & 0xC1) | (self.open_bus & 0x3E),
 
-            // RDIO : manual controller reading not implemented
-            #[cfg(not(tarpaulin_include))]
-            0x4213 => todo!("0x4213 : Implement RDIO register read"),
+            // RDIO - reads the programmable I/O pins. With nothing pulling them
+            // low, they read back what WRIO drives.
+            0x4213 => self.wrio,
 
-            // Divison result register
+            // Division result register
             0x4214 => *self.rddiv.lo(),
             0x4215 => *self.rddiv.hi(),
 
@@ -634,14 +737,22 @@ impl Io {
             0x2182 => *self.wmadd.addr.hi_mut() = value,
             0x2183 => self.wmadd.bank = value.into(),
 
-            // JOYOUT - manual controller reading not implemented
-            #[cfg(not(tarpaulin_include))]
-            0x4016 => todo!("0x4016 : Implement JOYOUT register write"),
+            // JOYOUT - bit 0 drives both port's latch
+            0x4016 => {
+                self.joyout = value;
+                self.set_controllers_latch(value & JOYOUT_LATCH != 0);
+            }
 
-            // Register for enabling NMI, H/V-Blank, and joypad auto-read
-            0x4200 => self.nmitimen = value,
+            // NMITIMEN - Register for enabling NMI, H/V-Blank, and joypad auto-read.
+            0x4200 => {
+                self.nmitimen = value;
+                if self.irq_mode() == IrqMode::Disabled {
+                    self.set_timer_flag(false);
+                }
+            }
 
-            // UNUSED : manual controller reading not implemented
+            // WRIO - programmable I/O output.
+            // TODO : a 1->0 transition on bit 7 must latch the PPU H/V counters, This is meant for specific peripherals so okay for now
             0x4201 => self.wrio = value,
 
             // Multiplication registers
@@ -786,6 +897,7 @@ impl Io {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::constants::AUTO_JOYPAD_READ_CYCLES;
     use common::snes_address::snes_addr;
 
     fn init_all() -> (Io, Wram, PPU, Apu) {
@@ -1223,13 +1335,16 @@ mod tests {
         let (mut io, mut wram, mut ppu, mut apu) = init_all();
 
         let rdnmi_addr = snes_addr!(0:0x4210);
-        let value_rdnmi = 0xFF;
-        io.rdnmi = value_rdnmi;
+        io.rdnmi = 0xFF;
 
+        io.open_bus = 0b0101_1010;
         let read_value = io.read(rdnmi_addr, &mut wram, &mut ppu, &mut apu).0;
-        assert_eq!(read_value, value_rdnmi);
+        assert_eq!(read_value, 0b1101_1111);
+        assert!(!io.nmi_flag());
+
+        io.open_bus = 0b1010_0101;
         let second_read_value = io.read(rdnmi_addr, &mut wram, &mut ppu, &mut apu).0;
-        assert_eq!(second_read_value, 0b0111_1111);
+        assert_eq!(second_read_value, 0b0010_1111);
     }
 
     #[test]
@@ -1237,13 +1352,16 @@ mod tests {
         let (mut io, mut wram, mut ppu, mut apu) = init_all();
 
         let timeup_addr = snes_addr!(0:0x4211);
-        let value_timeup = 0xFF;
-        io.timeup = value_timeup;
+        io.timeup = 0xFF;
 
+        io.open_bus = 0b0101_1010;
         let read_value = io.read(timeup_addr, &mut wram, &mut ppu, &mut apu).0;
-        assert_eq!(read_value, value_timeup);
+        assert_eq!(read_value, 0b1101_1010);
+        assert!(!io.timer_flag());
+
+        io.open_bus = 0b1010_0101;
         let second_read_value = io.read(timeup_addr, &mut wram, &mut ppu, &mut apu).0;
-        assert_eq!(second_read_value, 0b0111_1111);
+        assert_eq!(second_read_value, 0b0010_0101);
     }
 
     #[test]
@@ -1251,11 +1369,20 @@ mod tests {
         let (mut io, mut wram, mut ppu, mut apu) = init_all();
 
         let hvbjoy_addr = snes_addr!(0:0x4212);
-        let value_hvbjoy = 0xFF;
-        io.hvbjoy = value_hvbjoy;
+        io.hvbjoy = 0xFF;
 
+        io.open_bus = 0b0101_1010;
         let read_value = io.read(hvbjoy_addr, &mut wram, &mut ppu, &mut apu).0;
-        assert_eq!(read_value, value_hvbjoy);
+        assert_eq!(read_value, 0b1101_1011);
+
+        io.open_bus = 0b1010_0101;
+        let second_read_value = io.read(hvbjoy_addr, &mut wram, &mut ppu, &mut apu).0;
+        assert_eq!(second_read_value, 0b1110_0101);
+
+        io.hvbjoy = 0;
+        io.open_bus = 0xFF;
+        let third_read_value = io.read(hvbjoy_addr, &mut wram, &mut ppu, &mut apu).0;
+        assert_eq!(third_read_value, 0b0011_1110);
     }
 
     #[test]
@@ -1427,5 +1554,51 @@ mod tests {
                 value_inc += 1;
             }
         }
+    }
+
+    fn run_auto_read(io: &mut Io) {
+        io.start_auto_joypad();
+        for _ in 0..10_000 {
+            io.step_auto_joypad();
+        }
+    }
+
+    #[test]
+    fn auto_read_does_nothing_when_disabled() {
+        let mut io = Io::default();
+        io.controllers[0].set_buttons(0x8080);
+        run_auto_read(&mut io);
+        assert_eq!(io.joy1, 0);
+    }
+
+    #[test]
+    fn auto_read_fills_joy1_and_joy2() {
+        let mut io = Io {
+            nmitimen: Io::NMITIMEN_AUTO_JOYPAD,
+            ..Io::default()
+        };
+        io.controllers[0].set_buttons(0x8080); // B + A
+        io.controllers[1].set_buttons(0x1000); // Start
+        run_auto_read(&mut io);
+        assert_eq!(io.joy1, 0x8080);
+        assert_eq!(io.joy2, 0x1000);
+        assert!(!io.auto_joypad_busy());
+    }
+
+    #[test]
+    fn busy_flag_covers_the_read_window() {
+        let mut io = Io {
+            nmitimen: Io::NMITIMEN_AUTO_JOYPAD,
+            ..Io::default()
+        };
+        io.start_auto_joypad();
+        for _ in 0..AUTO_JOYPAD_START_DELAY {
+            io.step_auto_joypad();
+        }
+        assert!(io.auto_joypad_busy());
+        for _ in 0..AUTO_JOYPAD_READ_CYCLES {
+            io.step_auto_joypad();
+        }
+        assert!(!io.auto_joypad_busy());
     }
 }
