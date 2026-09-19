@@ -33,3 +33,9 @@ pub const HEADER_SIZE: usize = 64; // Equal to 0x40
 pub const LOROM_BANK_SIZE: usize = 0x8000; // 32 KiB
 pub const HIROM_BANK_SIZE: usize = 0xFFFF + 1; // 64 KiB
 pub const COPIER_HEADER_SIZE: usize = 512; // Optional copier header
+
+// Joypads
+pub const AUTO_JOYPAD_START_DELAY: u32 = 298; // Delay between V-Blank start and the auto-read strobe (~74.5 dots).
+pub const AUTO_JOYPAD_READ_CYCLES: u32 = 4224; // Total duration of the auto-read, during which HVBJOY bit 0 is set.
+pub const AUTO_JOYPAD_BIT_CYCLES: u32 = AUTO_JOYPAD_READ_CYCLES / 16; // Master cycles per serial bit (16 bits spread evenly over the read).
+pub const JOYOUT_LATCH: u8 = 1 << 0;
