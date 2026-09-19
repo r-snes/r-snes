@@ -860,6 +860,7 @@ impl Io {
             },
             _ => Self::panic_invalid_addr(addr),
         };
+        eprintln!("IO READ at {addr:?} = {:#.2X}", self.open_bus);
         (self.open_bus, Self::speed(addr))
     }
 
@@ -878,6 +879,7 @@ impl Io {
         apu: &mut Apu,
     ) -> AccessSpeed {
         self.open_bus = value;
+        eprintln!("IO WRITE: {addr:?} = {value:#.2X}");
         match addr.bank {
             0x00..=0x3F | 0x80..=0xBF => match addr.addr {
                 0x2000..0x2100 => {}
