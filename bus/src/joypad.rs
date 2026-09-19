@@ -34,10 +34,8 @@ pub struct ControllerPort {
     latch: bool,
 }
 
-impl ControllerPort {
-    const ID_MASK: u16 = 0x000F;
-
-    pub fn new() -> Self {
+impl Default for ControllerPort {
+    fn default() -> Self {
         Self {
             connected: true,
             buttons: 0,
@@ -45,6 +43,10 @@ impl ControllerPort {
             latch: false,
         }
     }
+}
+
+impl ControllerPort {
+    const ID_MASK: u16 = 0x000F;
 
     /// Replace the live button state.
     /// The ID bits are forced to `0`.
@@ -101,7 +103,7 @@ mod tests {
 
     #[test]
     fn serial_order_is_msb_first_then_ones() {
-        let mut pad = ControllerPort::new();
+        let mut pad = ControllerPort::default();
         pad.set_buttons(0xA000);
         pad.set_latch(true);
         pad.set_latch(false);
@@ -114,7 +116,7 @@ mod tests {
 
     #[test]
     fn latched_pad_keeps_reporting_b() {
-        let mut pad = ControllerPort::new();
+        let mut pad = ControllerPort::default();
         pad.set_buttons(0x8000);
         pad.set_latch(true);
         assert_eq!(read_bits(&mut pad, 4), vec![1, 1, 1, 1]);
@@ -122,7 +124,7 @@ mod tests {
 
     #[test]
     fn state_is_frozen_on_latch_falling_edge() {
-        let mut pad = ControllerPort::new();
+        let mut pad = ControllerPort::default();
         pad.set_buttons(0x8000);
         pad.set_latch(true);
         pad.set_latch(false);
@@ -132,15 +134,17 @@ mod tests {
 
     #[test]
     fn id_bits_are_forced_to_zero() {
-        let mut pad = ControllerPort::new();
+        let mut pad = ControllerPort::default();
         pad.set_buttons(0xFFFF);
         assert_eq!(pad.buttons(), 0xFFF0);
     }
 
     #[test]
     fn empty_port_reads_zero() {
-        let mut pad = ControllerPort::new();
-        pad.connected = false;
+        let mut pad = ControllerPort {
+            connected: false,
+            ..ControllerPort::default()
+        };
         pad.set_buttons(0xFFFF);
         pad.set_latch(true);
         pad.set_latch(false);

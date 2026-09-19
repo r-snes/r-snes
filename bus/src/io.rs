@@ -373,7 +373,7 @@ impl Default for Io {
             wmadd: Default::default(),
 
             joyout: 0,
-            controllers: [ControllerPort::new(); 2],
+            controllers: [ControllerPort::default(); 2],
             auto_joypad: AutoJoypad::Idle,
 
             nmitimen: 0,
@@ -1573,8 +1573,10 @@ mod tests {
 
     #[test]
     fn auto_read_fills_joy1_and_joy2() {
-        let mut io = Io::default();
-        io.nmitimen = Io::NMITIMEN_AUTO_JOYPAD;
+        let mut io = Io {
+            nmitimen: Io::NMITIMEN_AUTO_JOYPAD,
+            ..Io::default()
+        };
         io.controllers[0].set_buttons(0x8080); // B + A
         io.controllers[1].set_buttons(0x1000); // Start
         run_auto_read(&mut io);
@@ -1585,8 +1587,10 @@ mod tests {
 
     #[test]
     fn busy_flag_covers_the_read_window() {
-        let mut io = Io::default();
-        io.nmitimen = Io::NMITIMEN_AUTO_JOYPAD;
+        let mut io = Io {
+            nmitimen: Io::NMITIMEN_AUTO_JOYPAD,
+            ..Io::default()
+        };
         io.start_auto_joypad();
         for _ in 0..AUTO_JOYPAD_START_DELAY {
             io.step_auto_joypad();
