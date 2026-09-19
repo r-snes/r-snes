@@ -1335,13 +1335,16 @@ mod tests {
         let (mut io, mut wram, mut ppu, mut apu) = init_all();
 
         let rdnmi_addr = snes_addr!(0:0x4210);
-        let value_rdnmi = 0xFF;
-        io.rdnmi = value_rdnmi;
+        io.rdnmi = 0xFF;
 
+        io.open_bus = 0b0101_1010;
         let read_value = io.read(rdnmi_addr, &mut wram, &mut ppu, &mut apu).0;
-        assert_eq!(read_value, value_rdnmi);
+        assert_eq!(read_value, 0b1101_1111);
+        assert!(!io.nmi_flag());
+
+        io.open_bus = 0b1010_0101;
         let second_read_value = io.read(rdnmi_addr, &mut wram, &mut ppu, &mut apu).0;
-        assert_eq!(second_read_value, 0b0111_1111);
+        assert_eq!(second_read_value, 0b0010_1111);
     }
 
     #[test]
@@ -1349,13 +1352,16 @@ mod tests {
         let (mut io, mut wram, mut ppu, mut apu) = init_all();
 
         let timeup_addr = snes_addr!(0:0x4211);
-        let value_timeup = 0xFF;
-        io.timeup = value_timeup;
+        io.timeup = 0xFF;
 
+        io.open_bus = 0b0101_1010;
         let read_value = io.read(timeup_addr, &mut wram, &mut ppu, &mut apu).0;
-        assert_eq!(read_value, value_timeup);
+        assert_eq!(read_value, 0b1101_1010);
+        assert!(!io.timer_flag());
+
+        io.open_bus = 0b1010_0101;
         let second_read_value = io.read(timeup_addr, &mut wram, &mut ppu, &mut apu).0;
-        assert_eq!(second_read_value, 0b0111_1111);
+        assert_eq!(second_read_value, 0b0010_0101);
     }
 
     #[test]
@@ -1363,11 +1369,20 @@ mod tests {
         let (mut io, mut wram, mut ppu, mut apu) = init_all();
 
         let hvbjoy_addr = snes_addr!(0:0x4212);
-        let value_hvbjoy = 0xFF;
-        io.hvbjoy = value_hvbjoy;
+        io.hvbjoy = 0xFF;
 
+        io.open_bus = 0b0101_1010;
         let read_value = io.read(hvbjoy_addr, &mut wram, &mut ppu, &mut apu).0;
-        assert_eq!(read_value, value_hvbjoy);
+        assert_eq!(read_value, 0b1101_1011);
+
+        io.open_bus = 0b1010_0101;
+        let second_read_value = io.read(hvbjoy_addr, &mut wram, &mut ppu, &mut apu).0;
+        assert_eq!(second_read_value, 0b1110_0101);
+
+        io.hvbjoy = 0;
+        io.open_bus = 0xFF;
+        let third_read_value = io.read(hvbjoy_addr, &mut wram, &mut ppu, &mut apu).0;
+        assert_eq!(third_read_value, 0b0011_1110);
     }
 
     #[test]
