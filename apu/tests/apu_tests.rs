@@ -9,6 +9,10 @@
 ///     stereo-interleaved samples, silent when no voices active
 ///   - Component wiring: DSP register writes via Memory reach the DSP,
 ///     render_audio reflects DSP state
+///   - IPL boot protocol (HLE): upload/execute handshake over the ports,
+///     chunk-boundary port stability, and cold ($FFC0) vs. warm ($FFC9)
+///     re-entry (SP/zero-page preserved on warm re-entry — the fix for
+///     the multi-chunk upload hang some games hit on a black screen)
 use apu::Apu;
 use apu::dsp::EnvelopePhase;
 
@@ -501,5 +505,162 @@ fn test_render_audio_reflects_master_volume() {
     assert!(
         loud_out.iter().any(|&[l, r]| l != 0 || r != 0),
         "non-zero master volume with active voice must produce output"
+    );
+}
+
+// ============================================================
+// IPL boot protocol (HLE)
+// ============================================================
+
+/// Drive the IPL protocol from the "main CPU" side, the way a game's
+/// boot code would through $2140-$2143, and verify the upload lands
+/// in ARAM and execution starts at the requested entry point.
+#[test]
+fn test_ipl_hle_upload_and_execute() {
+    let mut apu = Apu::new();
+
+    // 1. Boot delay, then announce. Before the delay elapses the ports
+    // must NOT yet show $AA — that's the point of the delay.
+    assert_ne!(
+        apu.memory.cpu_port_read(0),
+        0xAA,
+        "no announce before boot delay"
+    );
+    apu.step(1024 + 8);
+    assert_eq!(apu.memory.cpu_port_read(0), 0xAA);
+    assert_eq!(apu.memory.cpu_port_read(1), 0xBB);
+
+    // 2. Start command: upload to $0200
+    apu.memory.cpu_port_write(2, 0x00);
+    apu.memory.cpu_port_write(3, 0x02);
+    apu.memory.cpu_port_write(1, 0x01); // non-zero = transfer
+    apu.memory.cpu_port_write(0, 0xCC);
+    apu.step(2);
+    assert_eq!(apu.memory.cpu_port_read(0), 0xCC, "IPL must ack $CC");
+
+    // 3. Upload a 3-byte program: MOV A,#$42 ($E8 $42), then STOP ($FF).
+    for (i, byte) in [0xE8_u8, 0x42, 0xFF].iter().enumerate() {
+        apu.memory.cpu_port_write(1, *byte);
+        apu.memory.cpu_port_write(0, i as u8);
+        apu.step(2);
+        assert_eq!(apu.memory.cpu_port_read(0), i as u8, "IPL must echo index");
+    }
+    assert_eq!(apu.memory.read8(0x0200), 0xE8);
+    assert_eq!(apu.memory.read8(0x0201), 0x42);
+    assert_eq!(apu.memory.read8(0x0202), 0xFF);
+
+    // 4. Execute command: index jumped by >= 2, port1 = 0, addr = $0200
+    apu.memory.cpu_port_write(2, 0x00);
+    apu.memory.cpu_port_write(3, 0x02);
+    apu.memory.cpu_port_write(1, 0x00); // zero = execute
+    apu.memory.cpu_port_write(0, 0x05); // last index was 2; 2 + >=2
+    apu.step(2);
+    assert_eq!(
+        apu.memory.cpu_port_read(0),
+        0x05,
+        "execute ack must be visible"
+    );
+    // The ack must stay stable for the whole exec-delay window...
+    apu.step(256 - 8);
+    assert_eq!(
+        apu.memory.cpu_port_read(0),
+        0x05,
+        "ack stomped during exec delay"
+    );
+    assert!(apu.ipl_active(), "chunk must not run during exec delay");
+    // ...then the uploaded program runs: MOV A,#$42 executes, STOP parks
+    // the core. The end-state proves execution began exactly at $0200
+    // with the real IPL's zeroed registers.
+    apu.step(32);
+
+    assert!(!apu.ipl_active(), "IPL should have handed off");
+    assert_eq!(apu.cpu.regs.a, 0x42, "uploaded MOV A,#$42 must have run");
+    assert_eq!(apu.cpu.regs.pc, 0x0203, "PC frozen just past the STOP");
+    assert_eq!(
+        apu.memory.read8(0x00),
+        0x00,
+        "entry lo stored at $00 like the real IPL"
+    );
+    assert_eq!(
+        apu.memory.read8(0x01),
+        0x02,
+        "entry hi stored at $01 like the real IPL"
+    );
+    assert_eq!((apu.cpu.regs.x, apu.cpu.regs.y), (0, 0));
+}
+
+/// Regression test for the chunk-boundary race: a completion value the
+/// previous code left on port 0 must stay readable by the main CPU for
+/// the whole boot delay after an IPL re-entry — not be stomped by the
+/// $AA announce on the next cycle.
+#[test]
+fn test_reentry_preserves_completion_signal_during_boot_delay() {
+    let mut apu = Apu::new();
+    apu.step(1024 + 8); // initial boot
+
+    // Pretend uploaded code signalled "chunk complete" then jumped back
+    // into the boot ROM region at the cold entry point ($FFC0).
+    apu.skip_ipl_boot(); // hand control to the (simulated) uploaded code
+    apu.memory.port_out[0] = 0x77; // completion signal
+    apu.memory.control = 0x80; // IPL ROM mapping enabled
+    apu.cpu.regs.pc = 0xFFC0;
+
+    // For the entire boot delay the signal must remain visible...
+    for _ in 0..(1024 - 2) {
+        apu.step(1);
+        assert_eq!(
+            apu.memory.cpu_port_read(0),
+            0x77,
+            "signal stomped too early"
+        );
+    }
+
+    // ...and only then is it replaced by the announce.
+    apu.step(8);
+    assert_eq!(apu.memory.cpu_port_read(0), 0xAA);
+    assert_eq!(apu.memory.cpu_port_read(1), 0xBB);
+}
+
+/// Regression test for the multi-chunk upload bug that hung games like
+/// Super Mario World on a black screen: a driver that stashes its own
+/// transfer bookkeeping in zero page and re-enters the IPL at $FFC9 for
+/// its second chunk must see that data survive — a warm re-entry must
+/// NOT reset SP or clear zero page. (Confirmed against Anomie's SPC700
+/// doc: jumping to $FFC9 "skip[s] resetting the stack and page 0".)
+#[test]
+fn test_warm_reentry_at_ffc9_preserves_zero_page_and_sp() {
+    let mut apu = Apu::new();
+    apu.step(1024 + 8); // initial cold boot + announce
+    apu.skip_ipl_boot(); // hand control to the (simulated) uploaded code
+
+    // Simulate the driver's own state mid-upload: a custom SP (moved off
+    // the IPL's $EF) and a sentinel byte in zero page that only survives
+    // if the warm-reentry path does NOT run the clear loop.
+    apu.cpu.regs.sp = 0x80;
+    apu.memory.write8(0x0010, 0x99);
+
+    // Uploaded code jumps to $FFC9 instead of $FFC0 to request the next
+    // chunk without clearing its own bookkeeping.
+    apu.memory.control = 0x80; // IPL ROM mapping enabled
+    apu.cpu.regs.pc = 0xFFC9;
+
+    apu.step(1); // triggers the reentry check (pc >= $FFC0 && bit 7 set)
+
+    assert_eq!(apu.cpu.regs.sp, 0x80, "warm reentry must not reset SP");
+    assert_eq!(
+        apu.memory.read8(0x0010),
+        0x99,
+        "warm reentry must not clear zero page"
+    );
+
+    // The announce still happens, just much sooner than a cold boot's
+    // ~1000-cycle delay.
+    apu.step(8 + 4);
+    assert_eq!(apu.memory.cpu_port_read(0), 0xAA);
+    assert_eq!(apu.memory.cpu_port_read(1), 0xBB);
+    assert_eq!(
+        apu.memory.read8(0x0010),
+        0x99,
+        "sentinel must still be intact after announce"
     );
 }

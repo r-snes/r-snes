@@ -12,6 +12,9 @@
 ///   - $FA–$FC TIMERDIV:  write stored in timer_div, read returns 0xFF
 ///   - $FD–$FF TIMEROUT:  read returns counter, read8_mut clears it
 ///   - $F200–$F27F:       direct DSP window (test-code path)
+///   - $FFC0–$FFFF:       IPL boot ROM overlay — wins on reads while
+///                        CONTROL bit 7 is set, hidden (plain RAM) when
+///                        clear, writes always land in RAM regardless
 ///   - read16/write16:    little-endian, correct wrapping at $FFFF
 ///   - cpu_port_write/read: SNES↔APU communication helpers
 use apu::Memory;
@@ -595,6 +598,79 @@ fn test_direct_dsp_window_and_f2f3_protocol_share_same_dsp() {
         mem.read8(0xF200 + 0x1C),
         0x66,
         "$F3 write must be visible via direct window"
+    );
+}
+
+// ============================================================
+// $FFC0–$FFFF — IPL boot ROM overlay
+// ============================================================
+
+#[test]
+fn test_ipl_rom_readable_when_control_bit7_set() {
+    // Memory::new() defaults with the ROM mapped in (control = 0x80).
+    let mem = Memory::new();
+    assert_eq!(mem.read8(0xFFC0), 0xCD, "first ROM byte must be visible");
+}
+
+#[test]
+fn test_ipl_rom_reset_vector_points_at_ffc0() {
+    // The ROM's own reset vector ($FFFE/$FFFF) is $FFC0 — its own entry
+    // point — which real hardware relies on for a cold boot.
+    let mem = Memory::new();
+    assert_eq!(mem.read16(0xFFFE), 0xFFC0);
+}
+
+#[test]
+fn test_ipl_rom_hidden_when_control_bit7_clear() {
+    // With the ROM switched out, $FFC0–$FFFF must read back as plain,
+    // zeroed RAM (nothing has been written there).
+    let mut mem = Memory::new();
+    mem.write8(0x00F1, 0x00); // clear CONTROL, including bit 7
+    assert_eq!(
+        mem.read8(0xFFC0),
+        0x00,
+        "ROM must not be visible once bit 7 is cleared"
+    );
+}
+
+#[test]
+fn test_ipl_rom_window_does_not_extend_below_ffc0() {
+    // Sanity check the overlay is exactly 64 bytes: $FFBF, just below the
+    // window, must stay plain RAM even with bit 7 set.
+    let mut mem = Memory::new();
+    mem.write8(0xFFBF, 0x55);
+    assert_eq!(
+        mem.read8(0xFFBF),
+        0x55,
+        "$FFBF is outside the ROM window and must be plain RAM"
+    );
+}
+
+#[test]
+fn test_writes_to_ipl_rom_region_always_land_in_ram() {
+    // Real hardware: writes to $FFC0-$FFFF always hit the underlying
+    // RAM, even while the ROM is mapped in for reads. This is how the
+    // IPL protocol stages uploaded bytes into that window before code
+    // there gets executed.
+    let mut mem = Memory::new();
+    assert_eq!(mem.control & 0x80, 0x80, "ROM mapped in by default");
+
+    let original_rom_byte = mem.read8(0xFFC5);
+    mem.write8(0xFFC5, 0x42); // write while ROM is mapped in for reads
+
+    // While mapped, the ROM overlay still wins on reads...
+    assert_eq!(
+        mem.read8(0xFFC5),
+        original_rom_byte,
+        "ROM overlay must still win on reads right after a write"
+    );
+
+    // ...but the write did land in RAM: switching the ROM out reveals it.
+    mem.write8(0x00F1, 0x00); // clear CONTROL bit 7
+    assert_eq!(
+        mem.read8(0xFFC5),
+        0x42,
+        "write must have landed in the underlying RAM"
     );
 }
 
