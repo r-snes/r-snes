@@ -12,9 +12,7 @@
 ///   - $FA–$FC TIMERDIV:  write stored in timer_div, read returns 0xFF
 ///   - $FD–$FF TIMEROUT:  read returns counter, read8_mut clears it
 ///   - $F200–$F27F:       direct DSP window (test-code path)
-///   - $FFC0–$FFFF:       IPL boot ROM overlay — wins on reads while
-///                        CONTROL bit 7 is set, hidden (plain RAM) when
-///                        clear, writes always land in RAM regardless
+///   - $FFC0–$FFFF:       IPL boot ROM overlay — wins on reads while CONTROL bit 7 is set, hidden (plain RAM) when clear, writes always land in RAM regardless
 ///   - read16/write16:    little-endian, correct wrapping at $FFFF
 ///   - cpu_port_write/read: SNES↔APU communication helpers
 use apu::Memory;
