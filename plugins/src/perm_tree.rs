@@ -6,26 +6,26 @@
 //! Full tree:
 //! ```txt
 //! + internal // access stuff within the emulator
-//! | + control // control the emulator, not the components
+//! | + emulator // control the emulator, not the components
 //! | | + dialog // allows the plugin to show dialog windows
-//! | | ` pause // pause/resume game
+//! | | + pause // pause/resume game
 //! | |
 //! | + cpu
-//! | | ` registers
+//! | | + registers
 //! | |
 //! | + ppu // access framebuffer, loaded objects, etc.
-//! | | ` display // draw to the framebuffer
+//! | | + display // draw to the framebuffer
 //! | |
-//! | ` bus // interact with memory
+//! | + bus // interact with memory
 //! |   + read
-//! |   ` write
+//! |   + write
 //! |
-//! ` external // access to the host system
+//! + external // access to the host system
 //!   + filesystem
 //!   | + read_file
-//!   | ` write_file
+//!   | + write_file
 //!   |
-//!   ` http
+//!   + http
 //! ```
 
 pub mod filesystem;
@@ -105,7 +105,7 @@ pub struct RSnesPermissions {
 #[derive(..PermTree)]
 pub struct InternalPermissions {
     /// control how the emulator is running
-    pub control: ControlPermissions,
+    pub emulator: EmulatorPermissions,
     /// access to `rsnes.cpu`
     pub cpu: CpuPermissions,
     /// access to `rsnes.ppu`
@@ -116,9 +116,9 @@ pub struct InternalPermissions {
     pub input: bool,
 }
 
-/// Control permissions: allows control of the emulator itself
+/// Emulator permissions: allows control of the emulator itself
 #[derive(..PermTree)]
-pub struct ControlPermissions {
+pub struct EmulatorPermissions {
     /// allows the plugin to show dialog windows over the
     /// game screen
     pub dialog: bool,
@@ -221,7 +221,7 @@ mod test {
         let tree = build_perm_tree(
             r#"{
                 internal = {
-                    control = "all",
+                    emulator = "all",
                     bus = { "read" },
                     "cpu",
                 },
@@ -235,7 +235,7 @@ mod test {
 
         let expected_tree = RSnesPermissions {
             internal: InternalPermissions {
-                control: ControlPermissions::all(),
+                emulator: EmulatorPermissions::all(),
                 bus: BusPermissions {
                     read: true,
                     write: false,
