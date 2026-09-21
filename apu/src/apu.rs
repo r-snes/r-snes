@@ -161,22 +161,16 @@ impl Apu {
     }
 
     /// Reproduce the externally visible side effects of a *cold* IPL boot
-    /// (entry at $FFC0), and arm the HLE state machine. Called at
-    /// power-on and whenever uploaded code jumps back to $FFC0
+    /// (entry at $FFC0), and arm the HLE state machine.
     fn ipl_boot(&mut self) {
         // The real IPL's first acts are `mov x,#$EF / mov sp,x` and a loop
-        // clearing zero page $01-$EF
+        // clearing zero page $01-$EF.
         self.cpu.regs.sp = 0xEF;
         self.memory.ram[0x01..=0xEF].fill(0);
 
         // Do NOT announce $AA/$BB yet: the real boot ROM spends ~1000
         // cycles on the init above before touching the ports, and that
-        // delay is protocol-critical — it leaves the previous code's
-        // port_out values (e.g. a "chunk complete" signal the main CPU
-        // is polling for) visible long enough to be sampled. Announcing
-        // on the very next cycle creates a race where the main CPU can
-        // miss that signal and deadlock. The announce happens when
-        // BootDelay elapses, in ipl_step.
+        // delay is protocol-critical.
         self.ipl = Some(IplHle::BootDelay {
             cycles_left: IPL_BOOT_CYCLES,
         });

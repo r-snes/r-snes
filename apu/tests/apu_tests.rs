@@ -40,6 +40,14 @@ fn write_nops(apu: &mut Apu, addr: u16, count: usize) {
 /// BRR block at $1000 contains the byte 0x10 (high address byte), which
 /// the CPU would interpret as opcode BPL if it fell inside the sled.
 fn setup_cpu(apu: &mut Apu, start_addr: u16, nop_count: usize) {
+    // Switch the IPL ROM out before touching the reset vector. CONTROL
+    // defaults to 0x80 (ROM mapped in) at power-on, and while it's set,
+    // $FFFE/$FFFF read back through the ROM overlay, not RAM — the ROM's
+    // own vector is always $FFC0, which is exactly why every real reset
+    // boots into the IPL. These tests want direct control over PC for
+    // CPU-level testing rather than exercising the IPL, so we clear bit 7
+    // first, same as a driver would once it's done with the boot ROM.
+    apu.memory.write8(0x00F1, 0x00);
     apu.memory.write8(0xFFFE, (start_addr & 0xFF) as u8);
     apu.memory.write8(0xFFFF, (start_addr >> 8) as u8);
     write_nops(apu, start_addr, nop_count);
@@ -164,12 +172,16 @@ fn test_new_cpu_sp_initialised() {
 
 #[test]
 fn test_new_cpu_pc_loaded_from_reset_vector() {
-    // Default memory is zeroed so reset vector $FFFE/$FFFF = 0x0000,
-    // meaning PC should be 0x0000 on a fresh APU.
+    // CONTROL defaults to 0x80 (IPL ROM mapped in) at power-on, so the
+    // reset vector at $FFFE/$FFFF is read through the ROM overlay, not
+    // underlying RAM — and the ROM's own reset vector is $FFC0, its own
+    // entry point. This is exactly why every real reset boots into the
+    // IPL: whatever's sitting in RAM's reset vector is irrelevant until
+    // a driver clears CONTROL bit 7 itself.
     let apu = Apu::new();
     assert_eq!(
-        apu.cpu.regs.pc, 0x0000,
-        "PC must be loaded from reset vector at $FFFE/$FFFF"
+        apu.cpu.regs.pc, 0xFFC0,
+        "PC must be loaded from the IPL ROM's own reset vector at boot"
     );
 }
 
