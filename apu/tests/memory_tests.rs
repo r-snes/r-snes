@@ -696,8 +696,10 @@ fn test_write16_little_endian() {
 
 #[test]
 fn test_read16_wraps_at_0xffff() {
-    // A 16-bit read at $FFFF must read $FFFF (lo) and $0000 (hi) without panic.
+    // A 16-bit read at $FFFF must read $FFFF (lo) and $0000 (hi) without
+    // panic.
     let mut mem = Memory::new();
+    mem.write8(0x00F1, 0x00); // CONTROL = 0, ROM overlay disabled
     mem.write8(0xFFFF, 0x11);
     mem.write8(0x0000, 0x22);
     let val = mem.read16(0xFFFF);
@@ -706,7 +708,10 @@ fn test_read16_wraps_at_0xffff() {
 
 #[test]
 fn test_write16_wraps_at_0xffff() {
+    // Disable the ROM overlay so this plain
+    // RAM-wraparound test isn't shadowed by the IPL ROM's own bytes.
     let mut mem = Memory::new();
+    mem.write8(0x00F1, 0x00); // CONTROL = 0, ROM overlay disabled
     mem.write16(0xFFFF, 0x5566);
     assert_eq!(mem.read8(0xFFFF), 0x66, "low byte at $FFFF");
     assert_eq!(mem.read8(0x0000), 0x55, "high byte wraps to $0000");

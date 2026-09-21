@@ -17,6 +17,13 @@ use apu::cpu::{FLAG_C, FLAG_N, FLAG_P, FLAG_Z, Spc700};
 fn make() -> (Spc700, Memory) {
     let mut cpu = Spc700::new();
     let mut mem = Memory::new();
+    // Memory::new() defaults CONTROL to 0x80 (IPL ROM mapped in), which
+    // means $FFFE/$FFFF read through the ROM overlay, not RAM — so
+    // reset() would always land PC at the ROM's own vector ($FFC0)
+    // regardless of what we write below. These tests want direct control
+    // over PC to exercise individual opcodes, not the IPL, so switch the
+    // ROM out first.
+    mem.write8(0x00F1, 0x00);
     mem.write8(0xFFFE, 0x00);
     mem.write8(0xFFFF, 0x02);
     cpu.reset(&mut mem);
