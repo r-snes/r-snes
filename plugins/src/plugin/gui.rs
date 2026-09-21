@@ -105,7 +105,7 @@ impl<'a> PluginPermRequest<'a> {
             // which guarantees some security to the user (they at least know what is
             // requested)
             let InternalPermissions {
-                control,
+                emulator,
                 cpu,
                 ppu,
                 bus,
@@ -126,8 +126,8 @@ impl<'a> PluginPermRequest<'a> {
                 self.show_perm_bool(ui, *display, "Display");
             });
             self.show_perm_bool(ui, *input, "Input");
-            self.show_perm_collapsible(ui, control, "Control", |ui, control| {
-                let ControlPermissions { dialog, pause } = control;
+            self.show_perm_collapsible(ui, emulator, "Emulator", |ui, emulator| {
+                let EmulatorPermissions { dialog, pause } = emulator;
                 self.show_perm_bool(ui, *pause, "Pause");
                 self.show_perm_bool(ui, *dialog, "Dialog");
             });
