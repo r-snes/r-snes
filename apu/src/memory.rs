@@ -136,9 +136,7 @@ impl Memory {
             // ---- IPL boot ROM overlay ($FFC0–$FFFF) ----
             // Real hardware maps this 64-byte mask ROM in for *reads* only
             // while CONTROL bit 7 is set
-            0xFFC0..=0xFFFF if self.control & 0x80 != 0 => {
-                Self::IPL_ROM[(addr - 0xFFC0) as usize]
-            }
+            0xFFC0..=0xFFFF if self.control & 0x80 != 0 => Self::IPL_ROM[(addr - 0xFFC0) as usize],
 
             // ---- Normal RAM ----
             _ => self.ram[addr as usize],
