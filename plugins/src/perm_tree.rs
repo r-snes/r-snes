@@ -21,7 +21,7 @@ use piccolo::{Context, Value};
 /// | | + registers
 /// | |
 /// | + ppu // access framebuffer, loaded objects, etc.
-/// | | + display // draw to the framebuffer
+/// | | + cgram // touch the colour palette
 /// | |
 /// | + bus // interact with memory
 /// |   + read
@@ -113,7 +113,7 @@ pub struct CpuPermissions {
 
 #[derive(..PermTree)]
 pub struct PpuPermissions {
-    pub display: bool,
+    pub cgram: bool,
 }
 
 #[derive(..PermTree)]

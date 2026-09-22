@@ -122,8 +122,8 @@ impl<'a> PluginPermRequest<'a> {
                 self.show_perm_bool(ui, *write, "Write");
             });
             self.show_perm_collapsible(ui, ppu, "PPU", |ui, ppu| {
-                let PpuPermissions { display } = ppu;
-                self.show_perm_bool(ui, *display, "Display");
+                let PpuPermissions { cgram } = ppu;
+                self.show_perm_bool(ui, *cgram, "CGRAM");
             });
             self.show_perm_bool(ui, *input, "Input");
             self.show_perm_collapsible(ui, emulator, "Emulator", |ui, emulator| {
