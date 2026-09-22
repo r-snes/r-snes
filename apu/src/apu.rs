@@ -50,8 +50,26 @@ enum IplHle {
     BootDelay { cycles_left: u16 },
     /// Announcing $AA/$BB, waiting for the $CC start command.
     AwaitStart,
-    /// Receiving data bytes for the block being uploaded.
-    Transfer { addr: u16, index: u8 },
+    /// Receiving data bytes for the block being uploaded. `awaiting_byte0`
+    /// is true only right after freshly entering this block, matching
+    /// real hardware's `Trans:` entry point (reached once per block),
+    /// which waits for port 0 to read exactly zero before anything else
+    /// is honored — including a byte that would otherwise look like a
+    /// valid command trigger. It's cleared for good once byte 0 lands,
+    /// and deliberately *not* re-armed when `index` later wraps 0xFF→0
+    /// mid-transfer: real hardware doesn't re-enter `Trans:` on that
+    /// overflow, so a driver sending an explicit "next block" command
+    /// right at a 256-byte boundary needs that byte treated as a
+    /// command, not swallowed by a zero-wait it isn't subject to.
+    /// `settle` counts down real cycles, for every byte, between port0
+    /// matching the expected index and port_in[1] being trusted as that
+    /// byte's data — see IPL_FIRST_BYTE_SETTLE_CYCLES.
+    Transfer {
+        addr: u16,
+        index: u8,
+        settle: u8,
+        awaiting_byte0: bool,
+    },
     /// Execute command received and acked; holding the ack stable on
     /// port 0 for a grace period before the uploaded code starts. This
     /// is the only unsynchronized handoff in the protocol: once the
@@ -62,6 +80,17 @@ enum IplHle {
     /// provide a more generous one.
     ExecDelay { cycles_left: u16, entry: u16 },
 }
+
+/// Real cycles to wait, after port0 first reads 0 for a block's first
+/// byte, before trusting port_in[1] — see the `settle` field on
+/// IplHle::Transfer. Real hardware separates detecting port0==0 from
+/// actually reading port1 by a couple more instructions (~8 cycles);
+/// our HLE collapses that gap to zero, so without this delay we can
+/// read port_in[1] a tick before the main CPU has written the real
+/// byte there, capturing leftover data from the command that started
+/// the block instead. Covers the real BNE+CMP+MOV preamble with a
+/// little headroom.
+const IPL_FIRST_BYTE_SETTLE_CYCLES: u8 = 8;
 
 /// SPC700 cycles the HLE IPL spends "booting" before announcing $AA/$BB
 /// on a *cold* entry ($FFC0), approximating the real boot ROM's SP init
@@ -113,6 +142,12 @@ pub struct Apu {
     /// HLE IPL boot state. `None` once the upload has
     /// finished and the SPC700 core is executing uploaded code.
     ipl: Option<IplHle>,
+
+    /// Real data bytes actually accepted in the block currently being
+    /// transferred, reset on every block boundary. Reported alongside
+    /// "next block"/"execute" transitions so a stalled or truncated
+    /// transfer shows up in the boot log without extra tooling.
+    bytes_this_block: u32,
 }
 
 /// Upper bound on buffered stereo frames before `step` starts discarding:
@@ -148,6 +183,7 @@ impl Apu {
             ipl: Some(IplHle::BootDelay {
                 cycles_left: IPL_BOOT_CYCLES,
             }),
+            bytes_this_block: 0,
         };
 
         // Load the reset vector and initialise SP so the CPU starts correctly.
@@ -263,7 +299,13 @@ impl Apu {
 
                 if self.memory.port_in[1] != 0 {
                     ipl_trace!("[apu ipl] start command: uploading block to {addr:#06x}");
-                    Some(IplHle::Transfer { addr, index: 0 })
+                    self.bytes_this_block = 0;
+                    Some(IplHle::Transfer {
+                        addr,
+                        index: 0,
+                        settle: IPL_FIRST_BYTE_SETTLE_CYCLES,
+                        awaiting_byte0: true,
+                    })
                 } else {
                     ipl_trace!("[apu ipl] start command: direct execute at {addr:#06x}");
                     Some(IplHle::ExecDelay {
@@ -273,22 +315,57 @@ impl Apu {
                 }
             }
 
-            IplHle::Transfer { addr, index } => {
+            IplHle::Transfer {
+                addr,
+                index,
+                settle,
+                awaiting_byte0,
+            } => {
                 let f4 = self.memory.port_in[0];
-                // Same comparison the real IPL performs: negative delta =
-                // stale value from the previous byte (keep waiting),
-                // zero = next data byte, positive = new command.
+
+                // Real hardware's `Trans:` entry point (reached once per
+                // block) waits for port0==0 before honoring anything
+                // else, even a byte that looks like a command trigger.
+                // Gated on awaiting_byte0, not index's value — see the
+                // comment on IplHle::Transfer for why that distinction
+                // matters (natural index wraparound mid-transfer).
+                if awaiting_byte0 && f4 != 0 {
+                    return Some(state);
+                }
+
+                // Same comparison the real IPL performs (CMP Y,$F4):
+                // negative delta = stale value from the previous byte
+                // (keep waiting), zero = next data byte, positive = new
+                // command. While awaiting_byte0, this reduces to f4==0,
+                // already guaranteed above.
                 let delta = f4.wrapping_sub(index) as i8;
 
                 if delta == 0 {
-                    // Data byte: main CPU wrote data to port1 *before*
-                    // bumping the index on port0, so port1 is valid now.
+                    // port0 matches the expected index, but the main
+                    // CPU's write to port_in[1] can lag its write to
+                    // port_in[0] by a few cycles (see
+                    // IPL_FIRST_BYTE_SETTLE_CYCLES) — not just for byte
+                    // 0, so this settle applies every byte or we can
+                    // silently duplicate the previous byte's data.
+                    if settle > 0 {
+                        return Some(IplHle::Transfer {
+                            addr,
+                            index,
+                            settle: settle - 1,
+                            awaiting_byte0,
+                        });
+                    }
+
+                    // Data byte: settled, so port_in[1] is trustworthy now.
                     let data = self.memory.port_in[1];
                     self.memory.ram[addr as usize] = data;
                     self.memory.port_out[0] = index; // ack by echoing index
+                    self.bytes_this_block += 1;
                     Some(IplHle::Transfer {
                         addr: addr.wrapping_add(1),
                         index: index.wrapping_add(1),
+                        settle: IPL_FIRST_BYTE_SETTLE_CYCLES, // re-arm for the next byte
+                        awaiting_byte0: false, // never re-armed, even on index wraparound
                     })
                 } else if delta > 0 {
                     // New command: next block, or execute.
@@ -296,11 +373,19 @@ impl Apu {
                         u16::from_le_bytes([self.memory.port_in[2], self.memory.port_in[3]]);
                     self.memory.port_out[0] = f4; // ack the command byte
 
+                    ipl_trace!(
+                        "[apu ipl][block done] addr={addr:#06x} received {} bytes",
+                        self.bytes_this_block
+                    );
+                    self.bytes_this_block = 0;
+
                     if self.memory.port_in[1] != 0 {
                         ipl_trace!("[apu ipl] next block at {new_addr:#06x}");
                         Some(IplHle::Transfer {
                             addr: new_addr,
                             index: 0,
+                            settle: IPL_FIRST_BYTE_SETTLE_CYCLES,
+                            awaiting_byte0: true,
                         })
                     } else {
                         ipl_trace!("[apu ipl] execute at {new_addr:#06x} — handing off shortly");
