@@ -551,10 +551,14 @@ fn test_ipl_hle_upload_and_execute() {
     assert_eq!(apu.memory.cpu_port_read(0), 0xCC, "IPL must ack $CC");
 
     // 3. Upload a 3-byte program: MOV A,#$42 ($E8 $42), then STOP ($FF).
+    // Each byte now needs 9 cycles before it's echoed, not 2: the IPL
+    // holds off trusting port1 for 8 cycles after port0 matches the
+    // expected index (see IPL_FIRST_BYTE_SETTLE_CYCLES in apu.rs), then
+    // one more cycle to actually accept and echo.
     for (i, byte) in [0xE8_u8, 0x42, 0xFF].iter().enumerate() {
         apu.memory.cpu_port_write(1, *byte);
         apu.memory.cpu_port_write(0, i as u8);
-        apu.step(2);
+        apu.step(9);
         assert_eq!(apu.memory.cpu_port_read(0), i as u8, "IPL must echo index");
     }
     assert_eq!(apu.memory.read8(0x0200), 0xE8);
