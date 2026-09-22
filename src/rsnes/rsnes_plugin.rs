@@ -789,7 +789,7 @@ mod test {
             br#"return {
                 permissions = {
                     internal = {
-                        ppu = { "display" },
+                        ppu = { "cgram" },
                     }
                 },
 
@@ -804,7 +804,7 @@ mod test {
         .unwrap();
         {
             let mut res_perms = RSnesPermissions::none();
-            res_perms.internal.ppu.display = true;
+            res_perms.internal.ppu.cgram = true;
             assert_eq!(plugin.table.perms, res_perms);
         }
 

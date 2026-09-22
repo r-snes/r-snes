@@ -14,7 +14,7 @@
 //! | | + registers
 //! | |
 //! | + ppu // access framebuffer, loaded objects, etc.
-//! | | + display // draw to the framebuffer
+//! | | + cgram // touch the colour palette
 //! | |
 //! | + bus // interact with memory
 //! |   + read
@@ -138,7 +138,7 @@ pub struct CpuPermissions {
 #[derive(..PermTree)]
 pub struct PpuPermissions {
     /// access to `ppu.write_cgram`
-    pub display: bool,
+    pub cgram: bool,
 }
 
 /// Permissions to read/write the global address space
