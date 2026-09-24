@@ -12,27 +12,28 @@ use piccolo::{Context, Value};
 ///
 /// Full tree:
 /// ```txt
-/// + internal // access stuff within the emulator
-/// | + emulator // control the emulator, not the components
-/// | | + dialog // allows the plugin to show dialog windows
-/// | | + pause // pause/resume game
+/// +-internal // access stuff within the emulator
+/// | +-cpu
+/// | | +-registers
 /// | |
-/// | + cpu
-/// | | + registers
+/// | +-ppu // access framebuffer, loaded objects, etc.
+/// | | +-cgram // touch the colour palette
 /// | |
-/// | + ppu // access framebuffer, loaded objects, etc.
-/// | | + cgram // touch the colour palette
+/// | +-bus // interact with memory
+/// | | +-read
+/// | | +-write
 /// | |
-/// | + bus // interact with memory
-/// |   + read
-/// |   + write
+/// | +-input
+/// | |
+/// | +-emulator // control the emulator, not the components
+/// |   +-dialog // allows the plugin to show dialog windows
+/// |   +-pause // pause/resume game
 /// |
-/// + external // access to the host system
-///   + filesystem
-///   | + read_file
-///   | + write_file
+/// +-external // access to the host system
+///   +-filesystem
+///   | +-files
 ///   |
-///   + http
+///   +-http
 /// ```
 pub trait PermTreeNode: Sized {
     fn from_lua<'gc>(ctx: Context<'gc>, value: Value<'gc>) -> Option<Self>;
