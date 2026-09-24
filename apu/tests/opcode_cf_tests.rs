@@ -30,6 +30,11 @@ use apu::cpu::{FLAG_C, FLAG_N, FLAG_V, FLAG_Z, Spc700};
 fn make() -> (Spc700, Memory) {
     let mut cpu = Spc700::new();
     let mut mem = Memory::new();
+    // Memory::new() defaults CONTROL to 0x80 (IPL ROM mapped in), which
+    // means $FFFE/$FFFF read through the ROM overlay, not RAM. Switch the
+    // ROM out first so the reset vector we write below is what reset()
+    // actually loads.
+    mem.write8(0x00F1, 0x00);
     mem.write8(0xFFFE, 0x00);
     mem.write8(0xFFFF, 0x02); // reset vector → $0200
     cpu.reset(&mut mem);
@@ -89,6 +94,11 @@ fn test_bra_max_negative_offset() {
 fn test_bra_pc_wraps_at_ffff() {
     let mut cpu = Spc700::new();
     let mut mem = Memory::new();
+    // Fresh Memory defaults CONTROL to 0x80 (ROM mapped in), which would
+    // shadow the BRA opcode we're about to write at $FFFF with the IPL
+    // ROM's own last byte on read. Switch it off — this test only cares
+    // about PC-wraparound arithmetic, not IPL behaviour.
+    mem.write8(0x00F1, 0x00);
     cpu.regs.pc = 0xFFFF;
     mem.write8(0xFFFF, 0x2F);
     mem.write8(0x0000, 0x01); // offset +1 → $0002
