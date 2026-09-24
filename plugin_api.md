@@ -233,7 +233,7 @@ The PPU has 3 memory units which plugins can (**will** in the near future, a lot
 |---------------------------------------|----------------|--------------|
 | `rsnes.ppu.write_cgram(index, color)` | `index`: cgram index 0-255, `color`: 15-bit BGR colour | `nil` |
 
-(`read_cgram` and other functions for VRAM and OAM will come in the future)
+([`read_cgram`](https://github.com/r-snes/r-snes/issues/246) and other functions [for VRAM](https://github.com/r-snes/r-snes/issues/247) and [OAM](https://github.com/r-snes/r-snes/issues/248) will come in the future)
 
 ### `rsnes.bus`
 
