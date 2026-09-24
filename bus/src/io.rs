@@ -554,7 +554,7 @@ impl Io {
     /// Called at V-Blank start: schedule this frame's auto-read if NMITIMEN enables it.
     pub fn start_auto_joypad(&mut self) {
         if self.auto_joypad_enabled() {
-            self.auto_joypad = AutoJoypad::Pending(AUTO_JOYPAD_START_DELAY);
+            self.auto_joypad = AutoJoypad::Pending(AUTO_JOYPAD_START_DELAY - 1); // `- 1` because we count until 0 in `step_auto_joypad`
         }
     }
 
@@ -565,21 +565,21 @@ impl Io {
     pub fn step_auto_joypad(&mut self) {
         self.auto_joypad = match self.auto_joypad {
             AutoJoypad::Idle => AutoJoypad::Idle,
-            AutoJoypad::Pending(n) if n > 1 => AutoJoypad::Pending(n - 1),
-            AutoJoypad::Pending(_) => {
+            AutoJoypad::Pending(n @ 1..) => AutoJoypad::Pending(n - 1),
+            AutoJoypad::Pending(0) => {
                 // Pulse the latch, then release it back to what JOYOUT holds.
                 self.set_controllers_latch(true);
                 self.set_controllers_latch(self.joyout & JOYOUT_LATCH != 0);
                 self.set_auto_joypad_busy(true);
                 AutoJoypad::Reading {
                     bits_left: 16,
-                    countdown: AUTO_JOYPAD_BIT_CYCLES,
+                    countdown: AUTO_JOYPAD_BIT_CYCLES - 1, // `- 1` because we count until 0
                 }
             }
             AutoJoypad::Reading {
                 bits_left,
-                countdown,
-            } if countdown > 1 => AutoJoypad::Reading {
+                countdown: countdown @ 1..,
+            } => AutoJoypad::Reading {
                 bits_left,
                 countdown: countdown - 1,
             },
@@ -588,7 +588,7 @@ impl Io {
                 if bits_left > 1 {
                     AutoJoypad::Reading {
                         bits_left: bits_left - 1,
-                        countdown: AUTO_JOYPAD_BIT_CYCLES,
+                        countdown: AUTO_JOYPAD_BIT_CYCLES - 1, // `- 1` because we count until 0
                     }
                 } else {
                     self.set_auto_joypad_busy(false);
