@@ -293,6 +293,33 @@ fn setup_single_voice_end_block(mem: &mut Memory) {
     dsp_gw(mem, 0x4C, 0x01); // KON voice 0
 }
 
+/// Set up voice 0 with a silent, looping (end+loop back to itself) BRR
+/// block and key it on. Unlike `setup_single_voice_end_block`, this
+/// voice never mutes on its own, so it's the right fixture for tests
+/// that need to observe *ongoing* playback — pitch counter advance,
+/// a manually forced envelope level surviving a step — rather than the
+/// end-of-sample path itself.
+fn setup_single_voice_looping_block(mem: &mut Memory) {
+    let dir_page: u8 = 0x01;
+    let brr_addr: u16 = 0x0200;
+
+    write_silent_brr_block(mem, brr_addr, true, true); // end+loop -> loops to itself
+    write_dir_entry(mem, dir_page, 0, brr_addr, brr_addr);
+
+    dsp_gw(mem, 0x5D, dir_page);
+    dsp_vw(mem, 0, 0x4, 0); // SRCN 0
+    dsp_vw(mem, 0, 0x0, 100i8 as u8); // VOL L
+    dsp_vw(mem, 0, 0x1, 100i8 as u8); // VOL R
+    // pitch=0x1000 → native rate
+    dsp_vw(mem, 0, 0x2, 0x00);
+    dsp_vw(mem, 0, 0x3, 0x10);
+    // ADSR: fast attack, hold sustain
+    dsp_vw(mem, 0, 0x5, 0x8F);
+    dsp_vw(mem, 0, 0x6, 0xE0);
+
+    dsp_gw(mem, 0x4C, 0x01); // KON voice 0
+}
+
 #[test]
 fn test_step_voice_goes_off_after_non_looping_end_block() {
     let mut mem = Memory::new();
@@ -347,7 +374,7 @@ fn test_step_looping_voice_stays_active() {
 #[test]
 fn test_step_pitch_counter_advances() {
     let mut mem = Memory::new();
-    setup_single_voice_end_block(&mut mem);
+    setup_single_voice_looping_block(&mut mem);
 
     let _counter_before = mem.dsp.voices[0].pitch_counter;
     mem.dsp.step(&mut mem.ram);
@@ -648,7 +675,7 @@ fn test_envx_updated_after_step() {
 fn test_envx_tracks_envelope_level_directly() {
     // Set envelope manually, step once, confirm ENVX matches.
     let mut mem = Memory::new();
-    setup_single_voice_end_block(&mut mem);
+    setup_single_voice_looping_block(&mut mem);
 
     // Force a known envelope level.
     mem.dsp.voices[0].adsr.envelope_phase = EnvelopePhase::Sustain;
@@ -665,7 +692,7 @@ fn test_envx_tracks_envelope_level_directly() {
 fn test_envx_max_value_is_0x7f() {
     // envelope_level max = 0x7FF; 0x7FF >> 4 = 0x7F.
     let mut mem = Memory::new();
-    setup_single_voice_end_block(&mut mem);
+    setup_single_voice_looping_block(&mut mem);
 
     mem.dsp.voices[0].adsr.envelope_phase = EnvelopePhase::Sustain;
     mem.dsp.voices[0].adsr.envelope_level = 0x7FF;
