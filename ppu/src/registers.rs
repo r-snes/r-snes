@@ -170,7 +170,7 @@ pub struct PPURegisters {
     pub cgadsub: u8, // Bits: MHBO4321 | Color math operator (M), half (H), backdrop (B), layer enable (O4321)
 
     /// $2132 - COLDATA (W8)
-    pub coldata: u8, // Bits: BGRCCCCC | Fixed color channel select (BGR) and value (C)
+    pub coldata: u16, // Bits: BGRCCCCC | Fixed color channel select (BGR) and value (C). Accumulated into a BGR555 fixed color; also the sub-screen backdrop.
 
     /// $2133 - SETINI (W8)
     pub setini: u8, // Bits: EX..HOiI | External sync (E), EXTBG (X), Hi-res (H), Overscan (O), OBJ interlace (i), Screen interlace (I)
@@ -242,6 +242,10 @@ pub struct PPURegisters {
 
     // Internal flip-flop for OPVCT ($213D) reads
     pub opvct_latch: WriteTwice,
+
+    // Set when the H/V counters are latched (SLHV $2137 read). Cleared when
+    // STAT78 ($213F) is read. Reflected in STAT78 bit 6.
+    pub counter_latch: bool,
 }
 
 impl Default for PPURegisters {
@@ -312,6 +316,7 @@ impl PPURegisters {
             cgram_latch: WriteTwice::new(),
             ophct_latch: WriteTwice::new(),
             opvct_latch: WriteTwice::new(),
+            counter_latch: false,
         }
     }
 
@@ -327,37 +332,130 @@ impl PPURegisters {
         self.bgmode & 0x07
     }
 
-    // Tilemap addresses - bgsc[n] bits[7:2] in 0x400-word steps
-    pub fn bg1_tilemap_addr(&self) -> u16 {
-        (self.bgsc[0] as u16 >> 2) * 0x400
+    pub fn bg_tilemap_addr(&self, bg: usize) -> u16 {
+        (self.bgsc[bg] as u16 >> 2) * 0x400
     }
 
-    pub fn bg2_tilemap_addr(&self) -> u16 {
-        (self.bgsc[1] as u16 >> 2) * 0x400
+    pub fn bg_tiledata_addr(&self, bg: usize) -> u16 {
+        let nib = match bg {
+            0 => self.bg12nba & 0x0F,
+            1 => self.bg12nba >> 4,
+            2 => self.bg34nba & 0x0F,
+            _ => self.bg34nba >> 4,
+        };
+        (nib as u16) << 12
     }
 
-    pub fn bg3_tilemap_addr(&self) -> u16 {
-        (self.bgsc[2] as u16 >> 2) * 0x400
+    pub fn bg_tilemap_size(&self, bg: usize) -> (bool, bool) {
+        (self.bgsc[bg] & 0x01 != 0, self.bgsc[bg] & 0x02 != 0)
     }
 
-    pub fn bg4_tilemap_addr(&self) -> u16 {
-        (self.bgsc[3] as u16 >> 2) * 0x400
+    pub fn bg_scroll(&self, bg: usize) -> (usize, usize) {
+        let h = if bg == 0 { self.bg1hofs } else { self.bghofs[bg - 1] };
+        let v = if bg == 0 { self.bg1vofs } else { self.bgvofs[bg - 1] };
+        (h as usize, v as usize)
     }
 
-    // CHR base addresses - BG12NBA low/high nibble, BG34NBA low/high nibble, in 0x1000-word steps
-    pub fn bg1_tiledata_addr(&self) -> u16 {
-        (self.bg12nba as u16 & 0x0F) << 12
+    // $213F read side effects: clear the counter latch and reset the
+    // OPHCT/OPVCT read toggles.
+    pub fn read_stat78_side_effects(&mut self) {
+        self.counter_latch = false;
+        self.ophct_latch.reset();
+        self.opvct_latch.reset();
     }
 
-    pub fn bg2_tiledata_addr(&self) -> u16 {
-        (self.bg12nba as u16 >> 4) << 12
+    // Enable/invert flags for both windows of a layer.
+    // 4-bit field: en1, inv1, en2, inv2.
+    fn window_flags(sel: u8, shift: u8) -> (bool, bool, bool, bool) {
+        let f = (sel >> shift) & 0x0F;
+        (f & 0x01 != 0, f & 0x02 != 0, f & 0x04 != 0, f & 0x08 != 0)
     }
 
-    pub fn bg3_tiledata_addr(&self) -> u16 {
-        (self.bg34nba as u16 & 0x0F) << 12
+    // Combine two windows: 00=OR 01=AND 10=XOR 11=XNOR.
+    fn window_logic(op: u8, a: bool, b: bool) -> bool {
+        match op & 0x03 {
+            0 => a || b,
+            1 => a && b,
+            2 => a ^ b,
+            _ => !(a ^ b),
+        }
     }
 
-    pub fn bg4_tiledata_addr(&self) -> u16 {
-        (self.bg34nba as u16 >> 4) << 12
+    // Inclusive range; empty when left > right.
+    fn in_window1(&self, x: u8) -> bool {
+        self.wh0 <= self.wh1 && x >= self.wh0 && x <= self.wh1
+    }
+
+    fn in_window2(&self, x: u8) -> bool {
+        self.wh2 <= self.wh3 && x >= self.wh2 && x <= self.wh3
+    }
+
+    // True if column x is inside the layer's window region.
+    fn window_masked_at(
+        &self,
+        x: u8,
+        w1_en: bool,
+        w1_inv: bool,
+        w2_en: bool,
+        w2_inv: bool,
+        logic: u8,
+    ) -> bool {
+        let w1 = w1_en && (self.in_window1(x) ^ w1_inv);
+        let w2 = w2_en && (self.in_window2(x) ^ w2_inv);
+
+        match (w1_en, w2_en) {
+            (false, false) => false,
+            (true, false) => w1,
+            (false, true) => w2,
+            (true, true) => Self::window_logic(logic, w1, w2),
+        }
+    }
+
+    // Per-column window region for a BG layer (bg = 0..3).
+    pub fn bg_window_mask(&self, bg: usize) -> [bool; 256] {
+        let (sel, shift) = match bg {
+            0 => (self.w12sel, 0),
+            1 => (self.w12sel, 4),
+            2 => (self.w34sel, 0),
+            _ => (self.w34sel, 4),
+        };
+        let (w1_en, w1_inv, w2_en, w2_inv) = Self::window_flags(sel, shift);
+        let logic = self.wbglog >> (bg as u8 * 2); // WBGLOG: 44 33 22 11
+
+        let mut mask = [false; 256];
+        if w1_en || w2_en {
+            for (x, m) in mask.iter_mut().enumerate() {
+                *m = self.window_masked_at(x as u8, w1_en, w1_inv, w2_en, w2_inv, logic);
+            }
+        }
+        mask
+    }
+
+    // Per-column window region for OBJ.
+    pub fn obj_window_mask(&self) -> [bool; 256] {
+        let (w1_en, w1_inv, w2_en, w2_inv) = Self::window_flags(self.wobjsel, 0);
+        let logic = self.wobjlog;
+
+        let mut mask = [false; 256];
+        if w1_en || w2_en {
+            for (x, m) in mask.iter_mut().enumerate() {
+                *m = self.window_masked_at(x as u8, w1_en, w1_inv, w2_en, w2_inv, logic);
+            }
+        }
+        mask
+    }
+
+    // Per-column color window region (used by composite_line).
+    pub fn color_window_mask(&self) -> [bool; 256] {
+        let (w1_en, w1_inv, w2_en, w2_inv) = Self::window_flags(self.wobjsel, 4);
+        let logic = self.wobjlog >> 2;
+
+        let mut mask = [false; 256];
+        if w1_en || w2_en {
+            for (x, m) in mask.iter_mut().enumerate() {
+                *m = self.window_masked_at(x as u8, w1_en, w1_inv, w2_en, w2_inv, logic);
+            }
+        }
+        mask
     }
 }

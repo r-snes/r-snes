@@ -852,7 +852,7 @@ impl Io {
         self.open_bus = match addr.bank {
             0x00..=0x3F | 0x80..=0xBF => match addr.addr {
                 0x2000..0x2100 => self.open_bus,
-                0x2100..0x2140 => ppu.read(addr.addr),
+                0x2100..0x2140 => ppu.read(addr.addr, self.open_bus),
                 0x2140..0x4380 => self.read_cpu(addr, wram, apu),
                 0x4380..0x6000 => self.open_bus,
 
