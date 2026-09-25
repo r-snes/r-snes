@@ -53,6 +53,9 @@ sdl2 = { version = "0.38.0", features = ["bundled", "static-link"] }
 [target.'cfg(unix)'.dependencies]
 sdl2 = { version = "0.38.0" }
 
+[build-dependencies]
+winresource = "0.1.31"
+
 [features]
 cli = ["dep:clap"]
 plugins = ["dep:piccolo", "dep:piccolo-util", "dep:plugins"]
