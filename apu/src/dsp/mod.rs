@@ -54,6 +54,13 @@ pub struct Dsp {
     /// clearing NON resumes wherever that voice's sample stream got to.
     non: u8,
 
+    /// $2D PMON — pitch modulation enable, one bit per voice. When bit N
+    /// is set (N = 1–7), voice N's pitch is scaled each tick by voice
+    /// N-1's post-envelope output (before L/R volume, so a modulator at
+    /// volume 0 still modulates). Bit 0 is ignored by hardware — voice 0
+    /// has no voice below it — and is masked off on write.
+    pmon: u8,
+
     /// Shared 15-bit noise LFSR (bits 0-14; bit 15 always 0). Advanced by
     /// `advance_noise` at the rate selected by FLG bits 0-4. Seeded
     /// non-zero — an LFSR seeded with 0 would XOR itself into permanent
@@ -135,6 +142,7 @@ impl Dsp {
             // register file — the driver writes $6C itself during setup.
             flg: 0,
             non: 0,
+            pmon: 0,
             noise_lfsr: 0x4000,
             noise_tick_counter: 0,
             efb: 0,
@@ -279,6 +287,12 @@ impl Dsp {
                 // $3D: NON — one bit per voice; see the `non` field doc.
                 0x3D => self.non = value,
 
+                // $2D: PMON — pitch modulation, one bit per voice; see the
+                // `pmon` field doc. Bit 0 is masked off (no effect on
+                // hardware). The raw byte still lands in `registers`
+                // above, so a read-back of $2D returns what was written.
+                0x2D => self.pmon = value & 0xFE,
+
                 // ---- Echo registers (Stage 1: stored, no audio effect
                 // yet — the buffer/FIR/routing land in later stages) ----
                 // $0D: EFB — echo feedback, signed.
@@ -313,9 +327,8 @@ impl Dsp {
                     }
                 }
 
-                // Only pitch modulation (PMON, $2D) remains genuinely
-                // unhandled — echo's registers are now stored above (see
-                // the Stage 1 block), pitch mod isn't started yet.
+                // Everything else is stored in `registers` only (e.g. the
+                // read-only ENVX/OUTX/ENDX slots, unused addresses).
                 _ => {}
             },
         }
