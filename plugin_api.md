@@ -172,17 +172,17 @@ R-SNES supports several ways to request these exact permissions in a more concis
   +-http
 ```
 
-| Permission tree leaf node   | Type   | Functions/Objects injected |
-|:----------------------------|:-------|:---------------------------|
-| `internal.cpu.registers`    | bool\* | `rsnes.cpu`                |
-| `internal.ppu.cgram`        | bool\* | `rsnes.ppu.write_cgram`    |
-| `internal.bus.read`         | bool\* | `rsnes.bus.read`           |
-| `internal.bus.write`        | bool\* | `rsnes.bus.write`          |
-| `internal.input`            | bool\* | `rsnes.input`              |
-| `internal.emulator.dialog`  | bool\* | *nothing* (unimplemented)  |
-| `internal.emulator.pause`   | bool\* | *nothing* (unimplemented)  |
-| `external.filesystem.files` | table of `<filename> = <open_mode>` | `rsnes.files` |
-| `external.http`             | bool\* | *nothing* (unimplemented)  |
+| Permission tree leaf node   | Type   | Functions/Objects injected           |
+|:----------------------------|:-------|:-------------------------------------|
+| `internal.cpu.registers`    | bool\* | [`rsnes.cpu`](#rsnescpu)             |
+| `internal.ppu.cgram`        | bool\* | [`rsnes.ppu.write_cgram`](#rsnesppu) |
+| `internal.bus.read`         | bool\* | [`rsnes.bus.read`](#rsnesbus)        |
+| `internal.bus.write`        | bool\* | [`rsnes.bus.write`](#rsnesbus)       |
+| `internal.input`            | bool\* | [`rsnes.input`](#rsnesinput)         |
+| `internal.emulator.dialog`  | bool\* | *nothing* (unimplemented)            |
+| `internal.emulator.pause`   | bool\* | *nothing* (unimplemented)            |
+| `external.filesystem.files` | table of `<filename> = <open_mode>` | [`rsnes.files`](#rsnesfiles) |
+| `external.http`             | bool\* | *nothing* (unimplemented)            |
 
 \* Fields noted "bool\*" are currently boolean (`true`/`false`) but might be split into more granular permissions in the future, so it is recommended to only pass `"all"` or `"none"` instead of `true`/`false` for your plugin to be forward-compatible
 
@@ -365,3 +365,5 @@ The PPU has 3 memory units which plugins can (**will** in the near future, a lot
 | `rsnes.input.release_start`  | *none*    | `nil`        |
 
 ### `rsnes.files`
+
+> [!WARNING]
