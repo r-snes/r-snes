@@ -52,7 +52,8 @@ impl Voice {
     /// offsets and the ENDX bitmask.
     /// `registers` is the DSP register file; ENVX, OUTX, and ENDX are
     /// written here so the CPU can read them back via `$F3`.
-    pub fn step(&mut self, i: usize, ram: &RawARAM, registers: &mut [u8; 128]) {
+    /// `pmon_source` is the pitch-modulation input for this tick.
+    pub fn step(&mut self, i: usize, ram: &RawARAM, registers: &mut [u8; 128], pmon_source: Option<i32>,) {
         // 1. Envelope update
         if self.adsr.envelope_phase != EnvelopePhase::Off {
             self.adsr.update_envelope();
@@ -86,8 +87,18 @@ impl Voice {
 
         // 3. Pitch counter advance.
         // Every 0x1000 units = one BRR sample consumed.
-        let pitch = self.pitch & 0x3FFF;
-        self.pitch_counter = self.pitch_counter.wrapping_add(pitch);
+        //
+        // PMON formula:
+        let base_pitch = (self.pitch & 0x3FFF) as i32;
+        let pitch = match pmon_source {
+            Some(x) => base_pitch + (((x >> 5) * base_pitch) >> 10),
+            None => base_pitch,
+        };
+
+        // Hardware caps the interpolation position at 0x7FFF, so at most
+        // 7 whole samples can be crossed in one tick.
+        let advanced = (self.pitch_counter as i32 + pitch).min(0x7FFF);
+        self.pitch_counter = advanced as u16;
 
         let samples_to_consume = self.pitch_counter / 0x1000;
         self.pitch_counter %= 0x1000;

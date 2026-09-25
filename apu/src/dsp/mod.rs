@@ -392,6 +392,7 @@ impl Dsp {
         let noise_sample = (self.noise_lfsr << 1) as i16;
         let non = self.non;
         let eon = self.eon;
+        let pmon = self.pmon;
 
         // Split borrows so we can pass &mut voice and &mut self.registers
         // into Voice::step() simultaneously — the borrow checker allows
@@ -401,10 +402,20 @@ impl Dsp {
         let mut echo_in_l: i32 = 0;
         let mut echo_in_r: i32 = 0;
 
+        // Voice i-1's post-envelope output from *this* tick, carried
+        // forward through the loop for pitch modulation.
+        let mut prev_output: i32 = 0;
+
         for (i, voice) in voices.iter_mut().enumerate() {
+            let pmon_source = if pmon & (1 << i) != 0 {
+                Some(prev_output)
+            } else {
+                None
+            };
+
             // Voice::step only reads RAM; reborrow the mutable reference
             // as shared for the duration of this call.
-            voice.step(i, ram, registers);
+            voice.step(i, ram, registers, pmon_source);
 
             if non & (1 << i) != 0 {
                 // NON substitutes the noise generator for this voice's
@@ -416,6 +427,16 @@ impl Dsp {
                 voice.current_sample = noise_sample;
                 registers[(i << 4) | 0x9] = (noise_sample >> 8) as u8;
             }
+
+            // This voice's post-envelope, pre-volume output — the value
+            // that modulates voice i+1 if PMON selects it. Taken after
+            // NON so a noise voice modulates with its noise, and before
+            // L/R volume so a modulator at volume 0 still works (a common
+            // trick: an inaudible voice used purely to bend the next).
+            // Max magnitude is 32768 * 0x7FF >> 11 < 32768, so no clamp
+            // is needed. `& !1` clears bit 0, as the hardware does.
+            let env = voice.adsr.envelope_level as i32;
+            prev_output = ((voice.current_sample as i32 * env) >> 11) & !1;
 
             if eon & (1 << i) != 0 {
                 // EON sums this voice's dry output (post-NON, so a
