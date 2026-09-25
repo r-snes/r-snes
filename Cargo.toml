@@ -2,6 +2,35 @@
 name = "r-snes"
 version = "0.1.0"
 edition = "2024"
+description = "Cycle-accurate Super Nintendo emulator with sandboxed plugins"
+license = "MIT"                                                               # whatever your license is
+authors = ["R-SNES Team contact.rsnes@gmail.com"]
+homepage = "https://github.com/r-snes"
+
+[package.metadata.deb]
+maintainer = "R-SNES Team contact.rsnes@gmail.com"
+copyright = "2026, R-SNES team"
+section = "games"
+priority = "optional"
+depends = "$auto"
+extended-description = "R-SNES is a cycle-accurate SNES emulator written in Rust, with a permission-based plugin system."
+assets = [
+    [
+        "target/release/rsnes",
+        "usr/bin/",
+        "755",
+    ],
+    [
+        "assets/rsnes.desktop",
+        "usr/share/applications/",
+        "644",
+    ],
+    [
+        "assets/rsnes.png",
+        "usr/share/icons/hicolor/256x256/apps/rsnes.png",
+        "644",
+    ],
+]
 
 [workspace]
 members = [
