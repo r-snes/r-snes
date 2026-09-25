@@ -36,7 +36,7 @@ The `permissions` field declares what permissions the plugin request, as describ
 `actions` is a table which defines some functions that the user will be able to manually call, see [**Manual actions**](#manual-actions-user-run).<br>
 `autoactions` defines functions which will called automatically by the emulator, see [**Autoactions**](#autoactions).
 
-All of these fields can be omitted, in which case they will default to doing nothing
+All of these fields can be omitted, in which case they will default to doing nothing.
 
 ## Permission requests
 
@@ -188,15 +188,95 @@ R-SNES supports several ways to request these exact permissions in a more concis
 
 ## Registering actions
 
-quick intro to actions in general?
+Once your plugin has been granted permissions, R-SNES will start running the actions registered by the plugin each time they are triggered.<br>
+There are two types of triggers: manual triggers (which come from the user), and "automatic" triggers which happen on certain events or at set intervals and run actions without user intervention.
 
 ### Manual actions (user-run)
 
-desc of everything under `actions` in the plugin table (only `default` for now?)
+Manual actions are declared under the `actions` table in the plugin table.
+
+For now, it only accepts a single action saved as `actions.default` which is bound to run when the user presses the R (keyboard) key.
+
+Example:
+```lua
+return {
+    permissions = { "ppu" },
+    actions = {
+        default = function()
+            -- write full bright red to CGRAM index 0
+            rsnes.ppu.write_cgram(0, 31)
+        end
+    }
+}
+```
+
+You should be able to register more manual actions once https://github.com/r-snes/r-snes/issues/252 is resolved.
 
 ### Autoactions
 
-desc of everything under `autoactions` in the plugin table: `on_instr` and `on_interval`
+Autoactions allow you to register functions which will be called automatically without user intervention.
+
+#### `autoactions.on_interval`
+
+`on_interval` will run the registered function on a set interval, expressed as a number of seconds:
+
+```lua
+elapsed_secs = 0
+
+return {
+    permissions = {},
+    autoactions = {
+        on_interval = {
+            seconds = 1,
+            action = function()
+                -- keep track of the number of seconds
+                -- the script has run for
+                elapsed_secs = elapsed_secs + 1
+            end,
+        },
+    },
+}
+```
+
+For now, only a single `on_interval` function can be registered, the ability to have several is tracked by https://github.com/r-snes/r-snes/issues/253.
+
+#### `auto_actions.on_instr`
+
+`on_instr` runs the registered function on the start of each instruction executed by the CPU (about a million per second, varies depending on which instructions are run).
+
+The function receives as parameter the opcode of the instruction that has just been read, and the value of PB and PC (which could also be obtained from [`rsnes.cpu`](#rsnescpu))
+
+Here is an example plugin using `on_instr` to store the executed program in a table which could be used in other actions to inspect what the CPU is doing.
+```lua
+return {
+    permissions = {},
+
+    init = function()
+        program = {}
+        program_read = {}
+        setmetatable(program_read, {
+            __index = function() return 0 end,
+        })
+        i_count = 0
+
+        track = true
+    end,
+
+    autoactions = {
+        on_instr = function(opcode, pb, pc)
+            if not track then
+                return
+            end
+
+            i_count = i_count + 1
+            local addr = (pb << 16) + pc
+
+            program[addr] = opcode
+            program_read[addr] = program_read[addr] + 1
+        end,
+    },
+}
+```
 
 ## R-SNES functions/objects
 
