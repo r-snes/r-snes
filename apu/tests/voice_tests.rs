@@ -532,20 +532,18 @@ fn pmon_negative_modulator_lowers_pitch() {
 
 #[test]
 fn pmon_uses_two_step_shift_order() {
-    // (30 >> 5) == 0, so the hardware formula leaves pitch 0x1000 untouched
-    // and exactly one sample is consumed, leaving the counter at 0. The
-    // single-shift shortcut `(x * pitch) >> 15` would give 0x1003 instead
-    // and leave the counter at 3.
-    assert_eq!(pitch_counter_after_one_tick(0x1000, Some(30)), 0x0000);
+    // (30 >> 5) == 0, so the hardware formula leaves pitch 0x1000
+    // untouched. The single-shift shortcut `(x * pitch) >> 15` would give
+    // 0x1003 instead.
+    assert_eq!(pitch_counter_after_one_tick(0x1000, Some(30)), 0x1000);
 }
 
 #[test]
 fn pmon_modulated_pitch_can_exceed_0x3fff() {
     // Largest possible modulator (32766: the output has bit 0 cleared) at
-    // the largest base pitch gives 0x3FFF + 0x3FEF = 0x7FEE, so the counter
-    // ends at 0x7FEE % 0x1000 = 0xFEE. A clamp to 0x3FFF would leave it at
-    // 0xFFF instead.
-    assert_eq!(pitch_counter_after_one_tick(0x3FFF, Some(32766)), 0x0FEE);
+    // the largest base pitch gives 0x3FFF + 0x3FEF = 0x7FEE. A clamp to
+    // 0x3FFF would give 0x3FFF instead.
+    assert_eq!(pitch_counter_after_one_tick(0x3FFF, Some(32766)), 0x7FEE);
 }
 
 #[test]
@@ -553,4 +551,43 @@ fn pmon_most_negative_modulator_stops_the_voice_without_underflow() {
     // (-32768 >> 5) == -1024, which cancels the pitch exactly: 0, never
     // negative. The counter must not move (and must not wrap around).
     assert_eq!(pitch_counter_after_one_tick(0x3FFF, Some(-32768)), 0x0000);
+}
+
+#[test]
+fn pmon_position_caps_at_0x7fff() {
+    // Tick 1: 0x7FEE (as above). Tick 2: hardware drops 4 whole samples
+    // (0x7FEE & 0x3FFF = 0x3FEE), adds 0x7FEE again = 0xBFDC, and caps
+    // the result at 0x7FFF, discarding the excess.
+    let ram = build_test_ram();
+    let mut registers = [0u8; 128];
+    let mut voice = Voice {
+        key_on: true,
+        pitch: 0x3FFF,
+        ..Default::default()
+    };
+    voice.brr.addr = 0x0010;
+    voice.step(1, &ram, &mut registers, Some(32766));
+    assert_eq!(voice.pitch_counter, 0x7FEE);
+    voice.step(1, &ram, &mut registers, Some(32766));
+    assert_eq!(voice.pitch_counter, 0x7FFF, "position must cap at 0x7FFF");
+}
+
+#[test]
+fn unmodulated_max_pitch_never_hits_the_cap() {
+    // Without modulation the position is at most 0x3FFF + 0x3FFF = 0x7FFE,
+    // so the cap never applies and no fraction is ever lost: after 10
+    // ticks at 0x3FFF the fraction is exactly (10 * 0x3FFF) & 0xFFF.
+    let ram = build_test_ram();
+    let mut registers = [0u8; 128];
+    let mut voice = Voice {
+        key_on: true,
+        pitch: 0x3FFF,
+        ..Default::default()
+    };
+    voice.brr.addr = 0x0010;
+    for _ in 0..10 {
+        voice.step(1, &ram, &mut registers, None);
+        assert!(voice.pitch_counter <= 0x7FFE);
+    }
+    assert_eq!(voice.pitch_counter & 0xFFF, ((10u32 * 0x3FFF) & 0xFFF) as u16);
 }

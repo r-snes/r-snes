@@ -22,8 +22,13 @@ pub struct Voice {
     /// Whether this voice is currently keyed on (actively playing).
     pub key_on: bool,
 
-    /// 16-bit pitch counter used to pace sample consumption.
-    /// Every 0x1000 units = 1 BRR sample consumed.
+    /// The DSP's interpolation position (hardware's `interp_pos`),
+    /// 0..=0x7FFF, in units of 1/0x1000 of a sample. The low 12 bits are
+    /// the fractional position used by `interpolate`. The top bits count
+    /// whole samples ahead of the current window, and hardware drops 4 of
+    /// those each tick once they reach 4 (see `step`). Keeping the whole
+    /// value, not just the fraction, is what lets the 0x7FFF cap behave
+    /// exactly as on hardware under strong pitch modulation.
     pub pitch_counter: u16,
 
     /// Most recently output sample (16-bit, pre-envelope). This is the
@@ -48,10 +53,11 @@ pub struct Voice {
 impl Voice {
     /// Advance this voice by one DSP tick.
     ///
-    /// `i` is the voice index (0–7), used to compute ENVX/OUTX register
+    /// `i` is the voice index (0–7), used to compute the ENVX register
     /// offsets and the ENDX bitmask.
-    /// `registers` is the DSP register file; ENVX, OUTX, and ENDX are
-    /// written here so the CPU can read them back via `$F3`.
+    /// `registers` is the DSP register file; ENVX and ENDX are written
+    /// here so the CPU can read them back via `$F3` (OUTX is written by
+    /// `Dsp::step`).
     /// `pmon_source` is the pitch-modulation input for this tick.
     pub fn step(&mut self, i: usize, ram: &RawARAM, registers: &mut [u8; 128], pmon_source: Option<i32>,) {
         // 1. Envelope update
@@ -88,20 +94,21 @@ impl Voice {
         // 3. Pitch counter advance.
         // Every 0x1000 units = one BRR sample consumed.
         //
-        // PMON formula:
+        // PMON formula
         let base_pitch = (self.pitch & 0x3FFF) as i32;
         let pitch = match pmon_source {
             Some(x) => base_pitch + (((x >> 5) * base_pitch) >> 10),
             None => base_pitch,
         };
 
-        // Hardware caps the interpolation position at 0x7FFF, so at most
-        // 7 whole samples can be crossed in one tick.
-        let advanced = (self.pitch_counter as i32 + pitch).min(0x7FFF);
-        self.pitch_counter = advanced as u16;
+        // Update of the interpolation position:
+        let prev_pos = self.pitch_counter & 0x3FFF;
+        let new_pos = (prev_pos as i32 + pitch).min(0x7FFF) as u16;
+        self.pitch_counter = new_pos;
 
-        let samples_to_consume = self.pitch_counter / 0x1000;
-        self.pitch_counter %= 0x1000;
+        // Whole samples crossed this tick. Unmodulated pitch is at most
+        // 0x3FFF, so new_pos <= 0x7FFE: the cap never applies.
+        let samples_to_consume = (new_pos >> 12) - (prev_pos >> 12);
 
         // 4. Shift each newly-reached raw decoded sample into the
         // 4-sample interpolation history as the pitch counter crosses it.
@@ -126,11 +133,12 @@ impl Voice {
         // (how far between the last and next raw sample we currently are).
         self.current_sample = self.interpolate();
 
-        // 6. Update read-only ENVX ($X8) and OUTX ($X9) registers.
+        // 6. Update the read-only ENVX ($X8) register.
         //   ENVX = envelope_level >> 4  (11-bit → 7-bit)
-        //   OUTX = current_sample  >> 8 (signed top byte)
+        // OUTX ($X9) is written by `Dsp::step` instead: it is the
+        // post-envelope output, which is only final after NON may have
+        // substituted noise for this voice's sample.
         registers[(i << 4) | 0x8] = (self.adsr.envelope_level >> 4) as u8;
-        registers[(i << 4) | 0x9] = (self.current_sample >> 8) as u8;
     }
 
     /// Shift a newly decoded raw sample into the 4-sample history,
@@ -144,13 +152,6 @@ impl Voice {
 
     /// Gaussian-interpolate the current output sample from the 4-sample
     /// history and the fractional part of the pitch counter.
-    ///
-    /// `pitch_counter` (0..0x1000 after the advance in `step`) is how far
-    /// past the last whole-sample boundary we are; its top 8 bits (>>4)
-    /// select one of 256 fractional positions into the DSP's 512-entry
-    /// Gaussian kernel, which is laid out as four 256-entry regions — one
-    /// per history tap — so each tap is weighted by how close the
-    /// fractional position is to it.
     ///
     /// The intermediate cast to i16 after the first three taps reproduces
     /// a documented quirk of the real DSP's interpolator (it truncates to

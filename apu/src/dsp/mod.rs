@@ -432,18 +432,21 @@ impl Dsp {
                 // doesn't pause it — so clearing NON later resumes
                 // wherever that voice's sample stream already got to.
                 voice.current_sample = noise_sample;
-                registers[(i << 4) | 0x9] = (noise_sample >> 8) as u8;
             }
 
-            // This voice's post-envelope, pre-volume output — the value
-            // that modulates voice i+1 if PMON selects it. Taken after
-            // NON so a noise voice modulates with its noise, and before
-            // L/R volume so a modulator at volume 0 still works (a common
-            // trick: an inaudible voice used purely to bend the next).
-            // Max magnitude is 32768 * 0x7FF >> 11 < 32768, so no clamp
-            // is needed. `& !1` clears bit 0, as the hardware does.
-            let env = voice.adsr.envelope_level as i32;
-            prev_output = ((voice.current_sample as i32 * env) >> 11) & !1;
+            // This voice's post-envelope, pre-volume output. It is the
+            // value that modulates voice i+1 if PMON selects it, and the
+            // value OUTX reports.
+            prev_output = if voice.adsr.envelope_phase == EnvelopePhase::Off {
+                0
+            } else {
+                let env = voice.adsr.envelope_level as i32;
+                ((voice.current_sample as i32 * env) >> 11) & !1
+            };
+
+            // OUTX ($X9): the signed top byte of that output. Written for
+            // every voice on every tick, so an idle voice reads back 0.
+            registers[(i << 4) | 0x9] = (prev_output >> 8) as u8;
 
             if eon & (1 << i) != 0 {
                 // EON sums this voice's dry output (post-NON, so a

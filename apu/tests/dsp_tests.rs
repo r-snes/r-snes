@@ -630,7 +630,8 @@ fn test_render_zero_envelope_silences_voice() {
 // ENVX, OUTX, ENDX register update tests
 //
 // ENVX ($X8): reads back (envelope_level >> 4) as u8 — 7-bit range 0x00–0x7F.
-// OUTX ($X9): reads back (current_sample  >> 8) as u8 — signed top byte.
+// OUTX ($X9): reads back the post-envelope output >> 8 as u8 — the signed
+//             top byte of ((current_sample * envelope) >> 11) & !1.
 // ENDX ($7C): bit N set when voice N's BRR end-flag fires; cleared on KON.
 // ============================================================
 
@@ -754,25 +755,55 @@ fn test_outx_zero_when_sample_zero() {
 }
 
 #[test]
-fn test_outx_reflects_top_byte_of_current_sample() {
-    // Set current_sample to a known value, step, read OUTX.
-    // OUTX = (current_sample >> 8) as u8 (signed top byte).
+fn test_outx_reflects_post_envelope_output() {
+    // OUTX is the top byte of the output *after* the envelope is applied,
+    // not of the raw interpolated sample. Hold the envelope at half level
+    // so the two differ clearly (about 0x20 vs 0x40 here).
     let mut mem = Memory::new();
     setup_single_voice_end_block(&mut mem);
 
     mem.dsp.voices[0].adsr.envelope_phase = EnvelopePhase::Sustain;
-    mem.dsp.voices[0].adsr.envelope_level = 0x7FF;
+    mem.dsp.voices[0].adsr.envelope_level = 0x400;
     mem.dsp.voices[0].adsr.sustain_rate = 0;
-    mem.dsp.voices[0].current_sample = 0x1234;
+    // Prime the buffer and history (see test_outx_positive_and_negative_
+    // samples) so this tick's interpolated sample is large and non-zero.
+    mem.dsp.voices[0].brr.sample_buffer = [0x4000i16; 16];
+    mem.dsp.voices[0].brr.buffer_fill = 16;
+    mem.dsp.voices[0].brr.nibble_idx = 0;
+    mem.dsp.voices[0].history = [0x4000i16; 4];
 
     mem.dsp.step(&mut mem.ram);
 
-    // After step the BRR buffer will have been consumed and current_sample
-    // updated from decoded data. We test the register reflects *that* value.
-    let sample = mem.dsp.voices[0].current_sample;
-    let expected = (sample >> 8) as u8;
+    let sample = mem.dsp.voices[0].current_sample as i32;
+    let env = mem.dsp.voices[0].adsr.envelope_level as i32;
+    let expected = ((((sample * env) >> 11) & !1) >> 8) as u8;
     let actual = mem.dsp.read_reg(0x09); // voice 0, offset +9
-    assert_eq!(actual, expected, "OUTX must equal current_sample >> 8");
+    assert_eq!(actual, expected, "OUTX must be the post-envelope output >> 8");
+    assert_ne!(
+        actual,
+        (sample >> 8) as u8,
+        "OUTX must not be the pre-envelope sample"
+    );
+}
+
+#[test]
+fn test_outx_zero_when_envelope_zero() {
+    // A loud sample under a zero envelope is silent, and OUTX says so.
+    let mut mem = Memory::new();
+    setup_single_voice_end_block(&mut mem);
+
+    mem.dsp.voices[0].adsr.envelope_phase = EnvelopePhase::Sustain;
+    mem.dsp.voices[0].adsr.envelope_level = 0;
+    mem.dsp.voices[0].adsr.sustain_rate = 0;
+    mem.dsp.voices[0].brr.sample_buffer = [0x4000i16; 16];
+    mem.dsp.voices[0].brr.buffer_fill = 16;
+    mem.dsp.voices[0].brr.nibble_idx = 0;
+    mem.dsp.voices[0].history = [0x4000i16; 4];
+
+    mem.dsp.step(&mut mem.ram);
+
+    assert_ne!(mem.dsp.voices[0].current_sample, 0, "sanity: sample is loud");
+    assert_eq!(mem.dsp.read_reg(0x09), 0, "OUTX must reflect the envelope");
 }
 
 #[test]
@@ -1203,13 +1234,15 @@ fn test_noise_clock_zero_never_advances_lfsr() {
     dsp_gw(&mut mem, 0x3D, 0x01); // NON voice 0
     // FLG left at its default 0: mute/reset clear, noise clock stopped.
 
+    // Checked on the substituted sample rather than OUTX: OUTX now also
+    // follows the envelope, which is still attacking/decaying here.
     mem.dsp.step(&mut mem.ram);
-    let first = mem.dsp.read_reg(0x09);
+    let first = mem.dsp.voices[0].current_sample;
 
     for i in 0..50 {
         mem.dsp.step(&mut mem.ram);
         assert_eq!(
-            mem.dsp.read_reg(0x09),
+            mem.dsp.voices[0].current_sample,
             first,
             "noise clock=0 must never advance the LFSR (tick {i})"
         );
@@ -1232,8 +1265,10 @@ fn test_clearing_non_restores_brr_output() {
     for _ in 0..3 {
         mem.dsp.step(&mut mem.ram);
     }
+    // Sanity check on the substituted sample, not OUTX: OUTX now also
+    // depends on the envelope, which is still in its attack here.
     assert_ne!(
-        mem.dsp.read_reg(0x09),
+        mem.dsp.voices[0].current_sample,
         0,
         "sanity check: noise must be substituted while NON is set"
     );
@@ -1696,7 +1731,7 @@ fn test_echo_defaults_are_a_complete_no_op() {
 }
 
 // ============================================================
-// Pitch modulation ($2D PMON)
+// Pitch modulation — $2D PMON
 // ============================================================
 
 #[test]
