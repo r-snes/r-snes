@@ -25,16 +25,12 @@ type IdleExit = (RSnesEvent, Option<Plugin>);
 #[cfg(not(feature = "plugins"))]
 type IdleExit = RSnesEvent;
 
-/// Update the port-1 controller state for a single button. Goes through
+/// Update the host-side port-1 controller state for a single button. Goes through
 /// `core_mut()` so it works whether the core is held directly or behind an
 /// `Rc<RefCell<...>>` (plugins feature).
+/// The emulated pad only sees it when the game latches the controllers.
 fn set_button(emu: &mut RSnesEmu, button: SnesButton, pressed: bool) {
-    let core = &mut *emu.core_mut();
-    if pressed {
-        core.joypad1 |= button.mask();
-    } else {
-        core.joypad1 &= !button.mask();
-    }
+    emu.core_mut().joypads[0].set(button, pressed);
 }
 
 fn gui_emu_loop(
