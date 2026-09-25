@@ -217,7 +217,7 @@ fn release_keeps_consuming_samples_instead_of_freezing() {
 
     // First tick: resolves the DIR entry, decodes the block, and
     // consumes sample_buffer[0].
-    voice.step(0, &ram, &mut registers);
+    voice.step(0, &ram, &mut registers, None);
 
     // Simulate KOFF exactly as Dsp::write_reg($5C) does.
     voice.key_on = false;
@@ -225,7 +225,7 @@ fn release_keeps_consuming_samples_instead_of_freezing() {
 
     let mut samples = Vec::new();
     for _ in 0..4 {
-        voice.step(0, &ram, &mut registers);
+        voice.step(0, &ram, &mut registers, None);
         samples.push(voice.current_sample);
     }
 
@@ -257,7 +257,7 @@ fn fully_off_voice_stays_idle() {
     let mut registers = [0u8; 128];
     let mut voice = Voice::default(); // key_on=false, phase=Off
 
-    voice.step(0, &ram, &mut registers);
+    voice.step(0, &ram, &mut registers, None);
 
     assert_eq!(voice.current_sample, 0, "untouched voice must stay silent");
     assert_eq!(
@@ -307,7 +307,7 @@ fn non_looping_end_mutes_envelope_immediately() {
     voice.adsr.attack_rate = 15; // instant attack, so a stale pre-fix level would be obviously nonzero
     voice.adsr.envelope_phase = EnvelopePhase::Attack;
 
-    voice.step(0, &ram, &mut registers);
+    voice.step(0, &ram, &mut registers, None);
 
     assert_eq!(
         voice.adsr.envelope_level, 0,
@@ -344,14 +344,14 @@ fn non_looping_end_stops_the_voice_from_replaying() {
     voice.adsr.attack_rate = 15;
     voice.adsr.envelope_phase = EnvelopePhase::Attack;
 
-    voice.step(0, &ram, &mut registers); // hits the end block, mutes
+    voice.step(0, &ram, &mut registers, None); // hits the end block, mutes
 
     let addr_after_end = voice.brr.addr;
     let nibble_idx_after_end = voice.brr.nibble_idx;
     let sample_after_end = voice.current_sample;
 
     for _ in 0..8 {
-        voice.step(0, &ram, &mut registers);
+        voice.step(0, &ram, &mut registers, None);
     }
 
     assert_eq!(
@@ -486,4 +486,71 @@ fn mute_silences_output_without_touching_voice_state() {
         EnvelopePhase::Sustain,
         "MUTE must not touch voice/envelope state — only the final output stage"
     );
+}
+
+// ============================================================
+// Pitch modulation (PMON)
+// ============================================================
+
+/// Run one tick of a keyed-on voice at `pitch` with the given PMON
+/// input, and return `pitch_counter` afterwards.
+fn pitch_counter_after_one_tick(pitch: u16, pmon_source: Option<i32>) -> u16 {
+    let ram = build_test_ram();
+    let mut registers = [0u8; 128];
+    let mut voice = Voice {
+        key_on: true,
+        pitch,
+        ..Default::default()
+    };
+    voice.brr.addr = 0x0010; // DIR entry address, as key_on_voice sets it
+    voice.step(1, &ram, &mut registers, pmon_source);
+    voice.pitch_counter
+}
+
+#[test]
+fn pmon_none_leaves_pitch_unmodulated() {
+    assert_eq!(pitch_counter_after_one_tick(0x0800, None), 0x0800);
+}
+
+#[test]
+fn pmon_zero_modulator_leaves_pitch_unchanged() {
+    // Some(0) takes the modulation path, but a zero modulator adds 0.
+    assert_eq!(pitch_counter_after_one_tick(0x0800, Some(0)), 0x0800);
+}
+
+#[test]
+fn pmon_positive_modulator_raises_pitch() {
+    // 0x800 + (((16384 >> 5) * 0x800) >> 10) = 0x800 + 0x400 = 0xC00 (+50%)
+    assert_eq!(pitch_counter_after_one_tick(0x0800, Some(16384)), 0x0C00);
+}
+
+#[test]
+fn pmon_negative_modulator_lowers_pitch() {
+    // 0x800 + (((-16384 >> 5) * 0x800) >> 10) = 0x800 - 0x400 = 0x400 (-50%)
+    assert_eq!(pitch_counter_after_one_tick(0x0800, Some(-16384)), 0x0400);
+}
+
+#[test]
+fn pmon_uses_two_step_shift_order() {
+    // (30 >> 5) == 0, so the hardware formula leaves pitch 0x1000 untouched
+    // and exactly one sample is consumed, leaving the counter at 0. The
+    // single-shift shortcut `(x * pitch) >> 15` would give 0x1003 instead
+    // and leave the counter at 3.
+    assert_eq!(pitch_counter_after_one_tick(0x1000, Some(30)), 0x0000);
+}
+
+#[test]
+fn pmon_modulated_pitch_can_exceed_0x3fff() {
+    // Largest possible modulator (32766: the output has bit 0 cleared) at
+    // the largest base pitch gives 0x3FFF + 0x3FEF = 0x7FEE, so the counter
+    // ends at 0x7FEE % 0x1000 = 0xFEE. A clamp to 0x3FFF would leave it at
+    // 0xFFF instead.
+    assert_eq!(pitch_counter_after_one_tick(0x3FFF, Some(32766)), 0x0FEE);
+}
+
+#[test]
+fn pmon_most_negative_modulator_stops_the_voice_without_underflow() {
+    // (-32768 >> 5) == -1024, which cancels the pitch exactly: 0, never
+    // negative. The counter must not move (and must not wrap around).
+    assert_eq!(pitch_counter_after_one_tick(0x3FFF, Some(-32768)), 0x0000);
 }

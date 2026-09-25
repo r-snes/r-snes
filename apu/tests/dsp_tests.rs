@@ -1694,3 +1694,105 @@ fn test_echo_defaults_are_a_complete_no_op() {
     assert_eq!(mem.ram[0], 0);
     assert_eq!(mem.ram[1], 0);
 }
+
+// ============================================================
+// Pitch modulation ($2D PMON)
+// ============================================================
+
+#[test]
+fn test_pmon_register_masks_bit0() {
+    // Bit 0 has no hardware effect (voice 0 has no voice below it), so
+    // it's masked off internally — but the raw byte still reads back
+    // unchanged, like every other register.
+    let mut mem = Memory::new();
+    dsp_gw(&mut mem, 0x2D, 0xFF);
+    assert_eq!(mem.dsp.read_reg(0x2D), 0xFF, "raw $2D must read back as written");
+    assert_eq!(mem.dsp.pmon(), 0xFE, "PMON bit 0 must be masked off");
+}
+
+/// Voice 0: the loud self-looping tone from `setup_tone_looping_voice`
+/// (native pitch), with its volume overridden to `voice0_vol`. Voice 1:
+/// the same sample at half pitch (0x0800), keyed on too. Then PMON is
+/// written and the DSP runs for 32 ticks, recording both voices'
+/// `pitch_counter` after every tick.
+fn pmon_counter_trace(pmon: u8, voice0_vol: u8) -> Vec<(u16, u16)> {
+    let mut mem = Memory::new();
+    setup_tone_looping_voice(&mut mem);
+    dsp_vw(&mut mem, 0, 0x0, voice0_vol); // VOL(L)
+    dsp_vw(&mut mem, 0, 0x1, voice0_vol); // VOL(R)
+
+    dsp_vw(&mut mem, 1, 0x0, 100); // VOL(L)
+    dsp_vw(&mut mem, 1, 0x1, 100); // VOL(R)
+    dsp_vw(&mut mem, 1, 0x4, 0); // SRCN 0 (same DIR entry as voice 0)
+    dsp_vw(&mut mem, 1, 0x2, 0x00); // PITCH lo
+    dsp_vw(&mut mem, 1, 0x3, 0x08); // PITCH hi: 0x0800, half rate
+    dsp_vw(&mut mem, 1, 0x5, 0x8F); // ADSR1: fast attack
+    dsp_vw(&mut mem, 1, 0x6, 0xE0); // ADSR2: hold sustain
+    dsp_gw(&mut mem, 0x4C, 0x02); // KON voice 1 (voice 0 already on)
+
+    dsp_gw(&mut mem, 0x2D, pmon);
+
+    (0..32)
+        .map(|_| {
+            mem.dsp.step(&mut mem.ram);
+            (mem.dsp.voices[0].pitch_counter, mem.dsp.voices[1].pitch_counter)
+        })
+        .collect()
+}
+
+fn voice_trace(trace: &[(u16, u16)], voice: usize) -> Vec<u16> {
+    trace.iter().map(|&(v0, v1)| if voice == 0 { v0 } else { v1 }).collect()
+}
+
+#[test]
+fn test_pmon_bit_set_modulates_next_voice() {
+    let baseline = pmon_counter_trace(0x00, 100);
+    let modulated = pmon_counter_trace(0x02, 100);
+    assert_ne!(
+        voice_trace(&baseline, 1),
+        voice_trace(&modulated, 1),
+        "PMON bit 1 must let voice 0's output change voice 1's pitch"
+    );
+    assert_eq!(
+        voice_trace(&baseline, 0),
+        voice_trace(&modulated, 0),
+        "the modulator itself (voice 0) must be unaffected"
+    );
+}
+
+#[test]
+fn test_pmon_bit_clear_leaves_voice_unaffected() {
+    // Only voice 2 is selected; voice 1 must play exactly as with PMON off.
+    let baseline = pmon_counter_trace(0x00, 100);
+    let other_bit = pmon_counter_trace(0x04, 100);
+    assert_eq!(
+        voice_trace(&baseline, 1),
+        voice_trace(&other_bit, 1),
+        "voice 1 must be unmodulated when its PMON bit is clear"
+    );
+}
+
+#[test]
+fn test_pmon_bit0_has_no_effect_on_voice0() {
+    let baseline = pmon_counter_trace(0x00, 100);
+    let bit0 = pmon_counter_trace(0x01, 100);
+    assert_eq!(baseline, bit0, "PMON bit 0 must have no effect at all");
+}
+
+#[test]
+fn test_pmon_modulator_volume_does_not_matter() {
+    // The modulating value is taken before L/R volume, so a silent
+    // (volume 0) modulator bends voice 1 exactly as much as a loud one.
+    let loud = pmon_counter_trace(0x02, 100);
+    let silent = pmon_counter_trace(0x02, 0);
+    assert_eq!(
+        voice_trace(&loud, 1),
+        voice_trace(&silent, 1),
+        "modulation must not depend on the modulator's volume"
+    );
+    assert_ne!(
+        voice_trace(&silent, 1),
+        voice_trace(&pmon_counter_trace(0x00, 0), 1),
+        "a volume-0 modulator must still modulate"
+    );
+}

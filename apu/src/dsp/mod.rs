@@ -186,6 +186,13 @@ impl Dsp {
         self.edl
     }
 
+    /// The pitch-modulation enable mask as actually used (bit 0 masked
+    /// off) — distinct from `read_reg(0x2D)`, which returns the raw byte
+    /// last written. Same relationship as `edl()` vs. `read_reg(0x7D)`.
+    pub fn pmon(&self) -> u8 {
+        self.pmon
+    }
+
     /// Write a DSP register by its 7-bit index and update internal state.
     pub fn write_reg(&mut self, index: u8, value: u8) {
         let idx = (index & 0x7F) as usize;
