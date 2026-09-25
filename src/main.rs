@@ -1,3 +1,4 @@
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 //! This is the main entry point for the R-SNES emulator.
 //! It contains the main loop, which handles GUI events,
 //! emulation updates, and audio output.
