@@ -48,7 +48,7 @@ clap = { version = "^4.6.0", features = ["derive"], optional = true }
 duplicate.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-sdl2 = { version = "0.38.0", features = ["bundled"] }
+sdl2 = { version = "0.38.0", features = ["bundled", "static-link"] }
 
 [target.'cfg(unix)'.dependencies]
 sdl2 = { version = "0.38.0" }
