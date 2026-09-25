@@ -54,6 +54,13 @@ pub struct Dsp {
     /// clearing NON resumes wherever that voice's sample stream got to.
     non: u8,
 
+    /// $2D PMON — pitch modulation enable, one bit per voice. When bit N
+    /// is set (N = 1–7), voice N's pitch is scaled each tick by voice
+    /// N-1's post-envelope output (before L/R volume, so a modulator at
+    /// volume 0 still modulates). Bit 0 is ignored by hardware — voice 0
+    /// has no voice below it — and is masked off on write.
+    pmon: u8,
+
     /// Shared 15-bit noise LFSR (bits 0-14; bit 15 always 0). Advanced by
     /// `advance_noise` at the rate selected by FLG bits 0-4. Seeded
     /// non-zero — an LFSR seeded with 0 would XOR itself into permanent
@@ -135,6 +142,7 @@ impl Dsp {
             // register file — the driver writes $6C itself during setup.
             flg: 0,
             non: 0,
+            pmon: 0,
             noise_lfsr: 0x4000,
             noise_tick_counter: 0,
             efb: 0,
@@ -176,6 +184,13 @@ impl Dsp {
     /// used internally is.
     pub fn edl(&self) -> u8 {
         self.edl
+    }
+
+    /// The pitch-modulation enable mask as actually used (bit 0 masked
+    /// off) — distinct from `read_reg(0x2D)`, which returns the raw byte
+    /// last written. Same relationship as `edl()` vs. `read_reg(0x7D)`.
+    pub fn pmon(&self) -> u8 {
+        self.pmon
     }
 
     /// Write a DSP register by its 7-bit index and update internal state.
@@ -279,6 +294,12 @@ impl Dsp {
                 // $3D: NON — one bit per voice; see the `non` field doc.
                 0x3D => self.non = value,
 
+                // $2D: PMON — pitch modulation, one bit per voice; see the
+                // `pmon` field doc. Bit 0 is masked off (no effect on
+                // hardware). The raw byte still lands in `registers`
+                // above, so a read-back of $2D returns what was written.
+                0x2D => self.pmon = value & 0xFE,
+
                 // ---- Echo registers (Stage 1: stored, no audio effect
                 // yet — the buffer/FIR/routing land in later stages) ----
                 // $0D: EFB — echo feedback, signed.
@@ -313,9 +334,8 @@ impl Dsp {
                     }
                 }
 
-                // Only pitch modulation (PMON, $2D) remains genuinely
-                // unhandled — echo's registers are now stored above (see
-                // the Stage 1 block), pitch mod isn't started yet.
+                // Everything else is stored in `registers` only (e.g. the
+                // read-only ENVX/OUTX/ENDX slots, unused addresses).
                 _ => {}
             },
         }
@@ -379,6 +399,7 @@ impl Dsp {
         let noise_sample = (self.noise_lfsr << 1) as i16;
         let non = self.non;
         let eon = self.eon;
+        let pmon = self.pmon;
 
         // Split borrows so we can pass &mut voice and &mut self.registers
         // into Voice::step() simultaneously — the borrow checker allows
@@ -388,10 +409,20 @@ impl Dsp {
         let mut echo_in_l: i32 = 0;
         let mut echo_in_r: i32 = 0;
 
+        // Voice i-1's post-envelope output from *this* tick, carried
+        // forward through the loop for pitch modulation.
+        let mut prev_output: i32 = 0;
+
         for (i, voice) in voices.iter_mut().enumerate() {
+            let pmon_source = if pmon & (1 << i) != 0 {
+                Some(prev_output)
+            } else {
+                None
+            };
+
             // Voice::step only reads RAM; reborrow the mutable reference
             // as shared for the duration of this call.
-            voice.step(i, ram, registers);
+            voice.step(i, ram, registers, pmon_source);
 
             if non & (1 << i) != 0 {
                 // NON substitutes the noise generator for this voice's
@@ -401,8 +432,21 @@ impl Dsp {
                 // doesn't pause it — so clearing NON later resumes
                 // wherever that voice's sample stream already got to.
                 voice.current_sample = noise_sample;
-                registers[(i << 4) | 0x9] = (noise_sample >> 8) as u8;
             }
+
+            // This voice's post-envelope, pre-volume output. It is the
+            // value that modulates voice i+1 if PMON selects it, and the
+            // value OUTX reports.
+            prev_output = if voice.adsr.envelope_phase == EnvelopePhase::Off {
+                0
+            } else {
+                let env = voice.adsr.envelope_level as i32;
+                ((voice.current_sample as i32 * env) >> 11) & !1
+            };
+
+            // OUTX ($X9): the signed top byte of that output. Written for
+            // every voice on every tick, so an idle voice reads back 0.
+            registers[(i << 4) | 0x9] = (prev_output >> 8) as u8;
 
             if eon & (1 << i) != 0 {
                 // EON sums this voice's dry output (post-NON, so a
