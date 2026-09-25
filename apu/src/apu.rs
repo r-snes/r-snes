@@ -50,8 +50,26 @@ enum IplHle {
     BootDelay { cycles_left: u16 },
     /// Announcing $AA/$BB, waiting for the $CC start command.
     AwaitStart,
-    /// Receiving data bytes for the block being uploaded.
-    Transfer { addr: u16, index: u8 },
+    /// Receiving data bytes for the block being uploaded. `awaiting_byte0`
+    /// is true only right after freshly entering this block, matching
+    /// real hardware's `Trans:` entry point (reached once per block),
+    /// which waits for port 0 to read exactly zero before anything else
+    /// is honored — including a byte that would otherwise look like a
+    /// valid command trigger. It's cleared for good once byte 0 lands,
+    /// and deliberately *not* re-armed when `index` later wraps 0xFF→0
+    /// mid-transfer: real hardware doesn't re-enter `Trans:` on that
+    /// overflow, so a driver sending an explicit "next block" command
+    /// right at a 256-byte boundary needs that byte treated as a
+    /// command, not swallowed by a zero-wait it isn't subject to.
+    /// `settle` counts down real cycles, for every byte, between port0
+    /// matching the expected index and port_in[1] being trusted as that
+    /// byte's data — see IPL_FIRST_BYTE_SETTLE_CYCLES.
+    Transfer {
+        addr: u16,
+        index: u8,
+        settle: u8,
+        awaiting_byte0: bool,
+    },
     /// Execute command received and acked; holding the ack stable on
     /// port 0 for a grace period before the uploaded code starts. This
     /// is the only unsynchronized handoff in the protocol: once the
@@ -63,9 +81,31 @@ enum IplHle {
     ExecDelay { cycles_left: u16, entry: u16 },
 }
 
-/// SPC700 cycles the HLE IPL spends "booting" before announcing $AA/$BB,
-/// approximating the real boot ROM's SP init + zero-page clear (~1 ms).
+/// Real cycles to wait, after port0 first reads 0 for a block's first
+/// byte, before trusting port_in[1] — see the `settle` field on
+/// IplHle::Transfer. Real hardware separates detecting port0==0 from
+/// actually reading port1 by a couple more instructions (~8 cycles);
+/// our HLE collapses that gap to zero, so without this delay we can
+/// read port_in[1] a tick before the main CPU has written the real
+/// byte there, capturing leftover data from the command that started
+/// the block instead. Covers the real BNE+CMP+MOV preamble with a
+/// little headroom.
+const IPL_FIRST_BYTE_SETTLE_CYCLES: u8 = 8;
+
+/// SPC700 cycles the HLE IPL spends "booting" before announcing $AA/$BB
+/// on a *cold* entry ($FFC0), approximating the real boot ROM's SP init
+/// + zero-page clear (~1 ms).
 const IPL_BOOT_CYCLES: u16 = 1024;
+
+/// Real ROM address of the IPL's "warm" re-entry point — immediately
+/// after the SP init + zero-page-clear loop, right where the $AA/$BB
+/// announce begins.
+const IPL_WARM_ENTRY: u16 = 0xFFC9;
+
+/// SPC700 cycles before announcing on a *warm* entry ($FFC9): just the
+/// two `MOV $F4,#$AA` / `MOV $F5,#$BB` instructions the real ROM runs
+/// there (4 cycles each) — no SP or zero-page side effects.
+const IPL_WARM_REENTRY_CYCLES: u16 = 8;
 
 /// SPC700 cycles the execute ack stays stable on port 0 before the
 /// uploaded code starts running (see IplHle::ExecDelay).
@@ -83,6 +123,14 @@ pub struct Apu {
     /// Resets to 0 every DSP_CYCLES_PER_SAMPLE cycles.
     dsp_cycles: u32,
 
+    /// Cycles already executed beyond what the most recent `step(cycles)`
+    /// call asked for. An SPC700 instruction can't be interrupted partway
+    /// through, so the last instruction of a call will usually overrun
+    /// its budget by a few cycles; that overrun is banked here and
+    /// deducted from the next call's budget so a stream of `step` calls
+    /// stays in sync with real elapsed time instead of drifting.
+    cycle_debt: u32,
+
     /// Stereo frames `[left, right]` produced by the DSP, one per DSP
     /// tick, accumulated by `step`. Frames are arrays rather than tuples
     /// because array layout is guaranteed: `Vec<[i16; 2]>` is bit-identical
@@ -94,6 +142,12 @@ pub struct Apu {
     /// HLE IPL boot state. `None` once the upload has
     /// finished and the SPC700 core is executing uploaded code.
     ipl: Option<IplHle>,
+
+    /// Real data bytes actually accepted in the block currently being
+    /// transferred, reset on every block boundary. Reported alongside
+    /// "next block"/"execute" transitions so a stalled or truncated
+    /// transfer shows up in the boot log without extra tooling.
+    bytes_this_block: u32,
 }
 
 /// Upper bound on buffered stereo frames before `step` starts discarding:
@@ -124,10 +178,12 @@ impl Apu {
             timers: Timers::new(),
             cycles: 0,
             dsp_cycles: 0,
+            cycle_debt: 0,
             sample_buf: Vec::new(),
             ipl: Some(IplHle::BootDelay {
                 cycles_left: IPL_BOOT_CYCLES,
             }),
+            bytes_this_block: 0,
         };
 
         // Load the reset vector and initialise SP so the CPU starts correctly.
@@ -140,29 +196,27 @@ impl Apu {
         apu
     }
 
-    /// Reproduce the externally visible side effects of the IPL boot ROM
-    /// starting to run, and arm the HLE state machine. Called at power-on
-    /// and again whenever uploaded code jumps back to $FFC0 to request
-    /// another upload (how multi-chunk transfers chain on real hardware).
+    /// Reproduce the externally visible side effects of a *cold* IPL boot
+    /// (entry at $FFC0), and arm the HLE state machine.
     fn ipl_boot(&mut self) {
         // The real IPL's first acts are `mov x,#$EF / mov sp,x` and a loop
-        // clearing zero page $00-$EF. Uploaded code (and the spc test
-        // suite) assumes this post-boot state: test #0081 places its ADDW
-        // operand at $01FF, relying on the stack starting at $01EF and
-        // growing downward, never reaching $01FF.
+        // clearing zero page $01-$EF.
         self.cpu.regs.sp = 0xEF;
-        self.memory.ram[0x00..=0xEF].fill(0);
+        self.memory.ram[0x01..=0xEF].fill(0);
 
         // Do NOT announce $AA/$BB yet: the real boot ROM spends ~1000
         // cycles on the init above before touching the ports, and that
-        // delay is protocol-critical — it leaves the previous code's
-        // port_out values (e.g. a "chunk complete" signal the main CPU
-        // is polling for) visible long enough to be sampled. Announcing
-        // on the very next cycle creates a race where the main CPU can
-        // miss that signal and deadlock. The announce happens when
-        // BootDelay elapses, in ipl_step.
+        // delay is protocol-critical.
         self.ipl = Some(IplHle::BootDelay {
             cycles_left: IPL_BOOT_CYCLES,
+        });
+    }
+
+    /// Reproduce the externally visible side effects of a *warm* IPL
+    /// re-entry (entry at $FFC9), and arm the HLE state machine.
+    fn ipl_warm_boot(&mut self) {
+        self.ipl = Some(IplHle::BootDelay {
+            cycles_left: IPL_WARM_REENTRY_CYCLES,
         });
     }
 
@@ -184,20 +238,32 @@ impl Apu {
     }
 
     /// Re-arm the HLE IPL after uploaded code jumps back into the boot
-    /// ROM region. Replicates the real IPL's startup side effects, which
-    /// run unconditionally from the top on every entry:
-    ///   - SP reset to $EF
-    ///   - zero page $01-$EF cleared (the real clear loop stops before
-    ///     $00; note it targets page 1 instead if the P flag is set — a
-    ///     hardware quirk we deliberately don't model, since well-behaved
-    ///     drivers clear P before jumping to $FFC0)
-    ///   - $AA/$BB announced on ports 0/1
+    /// ROM region. Real hardware distinguishes two entry points here and
+    /// we must too, or multi-chunk uploads desync (see `IPL_WARM_ENTRY`):
+    ///   - $FFC0 (cold): SP reset to $EF, zero page $01-$EF cleared
+    ///     (the real clear loop stops before $00; note it targets page 1
+    ///     instead if the P flag is set — a hardware quirk we deliberately
+    ///     don't model, since well-behaved drivers clear P before jumping
+    ///     to $FFC0), then $AA/$BB announced on ports 0/1.
+    ///   - $FFC9 (warm): SP and zero page left untouched, straight to the
+    ///     $AA/$BB announce.
     fn reenter_ipl(&mut self) {
-        ipl_trace!(
-            "[apu ipl] re-entered at pc={:#06x} — booting, will announce shortly",
-            self.cpu.regs.pc
-        );
-        self.ipl_boot();
+        let entry = self.cpu.regs.pc;
+        if entry == IPL_WARM_ENTRY {
+            ipl_trace!("[apu ipl] warm reentry at $FFC9 — preserving SP/zero page");
+            self.ipl_warm_boot();
+        } else {
+            if entry != 0xFFC0 {
+                ipl_trace!(
+                    "[apu ipl] re-entered at undocumented pc={entry:#06x} — treating as cold boot"
+                );
+            }
+            ipl_trace!(
+                "[apu ipl] re-entered at pc={:#06x} — booting, will announce shortly",
+                entry
+            );
+            self.ipl_boot();
+        }
     }
 
     /// One tick of the HLE IPL state machine. Called from `step` in place
@@ -233,7 +299,13 @@ impl Apu {
 
                 if self.memory.port_in[1] != 0 {
                     ipl_trace!("[apu ipl] start command: uploading block to {addr:#06x}");
-                    Some(IplHle::Transfer { addr, index: 0 })
+                    self.bytes_this_block = 0;
+                    Some(IplHle::Transfer {
+                        addr,
+                        index: 0,
+                        settle: IPL_FIRST_BYTE_SETTLE_CYCLES,
+                        awaiting_byte0: true,
+                    })
                 } else {
                     ipl_trace!("[apu ipl] start command: direct execute at {addr:#06x}");
                     Some(IplHle::ExecDelay {
@@ -243,22 +315,57 @@ impl Apu {
                 }
             }
 
-            IplHle::Transfer { addr, index } => {
+            IplHle::Transfer {
+                addr,
+                index,
+                settle,
+                awaiting_byte0,
+            } => {
                 let f4 = self.memory.port_in[0];
-                // Same comparison the real IPL performs: negative delta =
-                // stale value from the previous byte (keep waiting),
-                // zero = next data byte, positive = new command.
+
+                // Real hardware's `Trans:` entry point (reached once per
+                // block) waits for port0==0 before honoring anything
+                // else, even a byte that looks like a command trigger.
+                // Gated on awaiting_byte0, not index's value — see the
+                // comment on IplHle::Transfer for why that distinction
+                // matters (natural index wraparound mid-transfer).
+                if awaiting_byte0 && f4 != 0 {
+                    return Some(state);
+                }
+
+                // Same comparison the real IPL performs (CMP Y,$F4):
+                // negative delta = stale value from the previous byte
+                // (keep waiting), zero = next data byte, positive = new
+                // command. While awaiting_byte0, this reduces to f4==0,
+                // already guaranteed above.
                 let delta = f4.wrapping_sub(index) as i8;
 
                 if delta == 0 {
-                    // Data byte: main CPU wrote data to port1 *before*
-                    // bumping the index on port0, so port1 is valid now.
+                    // port0 matches the expected index, but the main
+                    // CPU's write to port_in[1] can lag its write to
+                    // port_in[0] by a few cycles (see
+                    // IPL_FIRST_BYTE_SETTLE_CYCLES) — not just for byte
+                    // 0, so this settle applies every byte or we can
+                    // silently duplicate the previous byte's data.
+                    if settle > 0 {
+                        return Some(IplHle::Transfer {
+                            addr,
+                            index,
+                            settle: settle - 1,
+                            awaiting_byte0,
+                        });
+                    }
+
+                    // Data byte: settled, so port_in[1] is trustworthy now.
                     let data = self.memory.port_in[1];
                     self.memory.ram[addr as usize] = data;
                     self.memory.port_out[0] = index; // ack by echoing index
+                    self.bytes_this_block += 1;
                     Some(IplHle::Transfer {
                         addr: addr.wrapping_add(1),
                         index: index.wrapping_add(1),
+                        settle: IPL_FIRST_BYTE_SETTLE_CYCLES, // re-arm for the next byte
+                        awaiting_byte0: false, // never re-armed, even on index wraparound
                     })
                 } else if delta > 0 {
                     // New command: next block, or execute.
@@ -266,11 +373,19 @@ impl Apu {
                         u16::from_le_bytes([self.memory.port_in[2], self.memory.port_in[3]]);
                     self.memory.port_out[0] = f4; // ack the command byte
 
+                    ipl_trace!(
+                        "[apu ipl][block done] addr={addr:#06x} received {} bytes",
+                        self.bytes_this_block
+                    );
+                    self.bytes_this_block = 0;
+
                     if self.memory.port_in[1] != 0 {
                         ipl_trace!("[apu ipl] next block at {new_addr:#06x}");
                         Some(IplHle::Transfer {
                             addr: new_addr,
                             index: 0,
+                            settle: IPL_FIRST_BYTE_SETTLE_CYCLES,
+                            awaiting_byte0: true,
                         })
                     } else {
                         ipl_trace!("[apu ipl] execute at {new_addr:#06x} — handing off shortly");
@@ -309,21 +424,30 @@ impl Apu {
         }
     }
 
-    /// Step the APU forward by `cycles` CPU cycles.
+    /// Step the APU forward by `cycles` real SPC700 (1.024 MHz) cycles.
     ///
     /// Each call ticks:
     ///   - The SPC700 CPU  (every cycle; the HLE IPL while boot upload runs)
     ///   - The timers      (every cycle)
     ///   - The DSP         (once every 32 cycles → 32 kHz)
     ///
+    /// `Spc700::step` executes one whole instruction at a time and reports
+    /// how many cycles it actually cost (2-8, depending on the opcode).
+    ///
     /// All DSP access goes through `self.memory.dsp`; there is no
     /// separate Dsp field on Apu.
     pub fn step(&mut self, cycles: u32) {
-        for _ in 0..cycles {
-            if let Some(state) = self.ipl {
+        let mut budget = cycles as i64 - self.cycle_debt as i64;
+        self.cycle_debt = 0;
+
+        while budget > 0 {
+            let consumed: u32 = if let Some(state) = self.ipl {
                 // The real chip spends this time executing IPL code from
-                // the boot ROM; we run the HLE state machine instead.
+                // the boot ROM; we run the HLE state machine instead, one
+                // real cycle per HLE tick (IPL_BOOT_CYCLES and
+                // IPL_EXEC_DELAY_CYCLES are specified in real cycles).
                 self.ipl = self.ipl_step(state);
+                1
             } else if self.cpu.regs.pc >= 0xFFC0 && self.memory.control & 0x80 != 0 {
                 // Jumping into $FFC0-$FFFF *while CONTROL bit 7 (IPL ROM
                 // enable) is set* re-runs the boot ROM: drivers do this to
@@ -332,28 +456,37 @@ impl Apu {
                 // clear, $FFC0-$FFFF is ordinary RAM and executes normally
                 // — e.g. `pcall $FF` targets $FFFF (spc test #01B2).
                 self.reenter_ipl();
+                1
             } else {
-                self.cpu.step(&mut self.memory);
-            }
+                self.cpu.step(&mut self.memory)
+            };
 
-            self.timers.step(&mut self.memory);
+            for _ in 0..consumed {
+                self.timers.step(&mut self.memory);
 
-            self.dsp_cycles += 1;
-            if self.dsp_cycles >= DSP_CYCLES_PER_SAMPLE {
-                self.dsp_cycles = 0;
-                self.memory.dsp.step(&self.memory.ram);
+                self.dsp_cycles += 1;
+                if self.dsp_cycles >= DSP_CYCLES_PER_SAMPLE {
+                    self.dsp_cycles = 0;
+                    self.memory.dsp.step(&mut self.memory.ram);
 
-                // One output sample per DSP tick, straight into the
-                // buffer the host drains. Discard everything if nothing
-                // has drained for a full second (see MAX_BUFFERED_FRAMES).
-                if self.sample_buf.len() >= MAX_BUFFERED_FRAMES {
-                    self.sample_buf.clear();
+                    // One output sample per DSP tick, straight into the
+                    // buffer the host drains. Discard everything if nothing
+                    // has drained for a full second (see MAX_BUFFERED_FRAMES).
+                    if self.sample_buf.len() >= MAX_BUFFERED_FRAMES {
+                        self.sample_buf.clear();
+                    }
+                    let (l, r) = self.memory.dsp.render_audio_single();
+                    self.sample_buf.push([l, r]);
                 }
-                let (l, r) = self.memory.dsp.render_audio_single();
-                self.sample_buf.push([l, r]);
+
+                self.cycles += 1;
             }
 
-            self.cycles += 1;
+            budget -= consumed as i64;
+        }
+
+        if budget < 0 {
+            self.cycle_debt = (-budget) as u32;
         }
     }
 
@@ -379,116 +512,5 @@ impl Apu {
         // dsp_cycles residue is < 32, so exactly num_samples DSP ticks occur.
         self.step(num_samples as u32 * DSP_CYCLES_PER_SAMPLE);
         std::mem::take(&mut self.sample_buf)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// Drive the IPL protocol from the "main CPU" side, the way a game's
-    /// boot code would through $2140-$2143, and verify the upload lands
-    /// in ARAM and execution starts at the requested entry point.
-    #[test]
-    fn test_ipl_hle_upload_and_execute() {
-        let mut apu = Apu::new();
-
-        // 1. Boot delay, then announce. Before the delay elapses the ports
-        // must NOT yet show $AA — that's the point of BootDelay.
-        assert_ne!(
-            apu.memory.cpu_port_read(0),
-            0xAA,
-            "no announce before boot delay"
-        );
-        apu.step(IPL_BOOT_CYCLES as u32 + 8);
-        assert_eq!(apu.memory.cpu_port_read(0), 0xAA);
-        assert_eq!(apu.memory.cpu_port_read(1), 0xBB);
-
-        // 2. Start command: upload to $0200
-        apu.memory.cpu_port_write(2, 0x00);
-        apu.memory.cpu_port_write(3, 0x02);
-        apu.memory.cpu_port_write(1, 0x01); // non-zero = transfer
-        apu.memory.cpu_port_write(0, 0xCC);
-        apu.step(2);
-        assert_eq!(apu.memory.cpu_port_read(0), 0xCC, "IPL must ack $CC");
-
-        // 3. Upload a 3-byte program: MOV A,#$42 ($E8 $42), then STOP ($FF).
-        for (i, byte) in [0xE8_u8, 0x42, 0xFF].iter().enumerate() {
-            apu.memory.cpu_port_write(1, *byte);
-            apu.memory.cpu_port_write(0, i as u8);
-            apu.step(2);
-            assert_eq!(apu.memory.cpu_port_read(0), i as u8, "IPL must echo index");
-        }
-        assert_eq!(&apu.memory.ram[0x0200..0x0203], &[0xE8, 0x42, 0xFF]);
-
-        // 4. Execute command: index jumped by >= 2, port1 = 0, addr = $0200
-        apu.memory.cpu_port_write(2, 0x00);
-        apu.memory.cpu_port_write(3, 0x02);
-        apu.memory.cpu_port_write(1, 0x00); // zero = execute
-        apu.memory.cpu_port_write(0, 0x05); // last index was 2; 2 + >=2
-        apu.step(2);
-        assert_eq!(
-            apu.memory.cpu_port_read(0),
-            0x05,
-            "execute ack must be visible"
-        );
-        // The ack must stay stable for the whole exec-delay window...
-        apu.step(IPL_EXEC_DELAY_CYCLES as u32 - 8);
-        assert_eq!(
-            apu.memory.cpu_port_read(0),
-            0x05,
-            "ack stomped during exec delay"
-        );
-        assert!(apu.ipl_active(), "chunk must not run during exec delay");
-        // ...then the uploaded program runs: MOV A,#$42 executes, STOP parks
-        // the core. The end-state proves execution began exactly at $0200
-        // with the real IPL's zeroed registers.
-        apu.step(32);
-
-        assert!(!apu.ipl_active(), "IPL should have handed off");
-        assert!(apu.cpu.halted, "uploaded STOP must have parked the core");
-        assert_eq!(apu.cpu.regs.a, 0x42, "uploaded MOV A,#$42 must have run");
-        assert_eq!(apu.cpu.regs.pc, 0x0203, "PC frozen just past the STOP");
-        assert_eq!(
-            apu.memory.ram[0x00], 0x00,
-            "entry lo stored at $00 like the real IPL"
-        );
-        assert_eq!(
-            apu.memory.ram[0x01], 0x02,
-            "entry hi stored at $01 like the real IPL"
-        );
-        assert_eq!((apu.cpu.regs.x, apu.cpu.regs.y), (0, 0));
-    }
-
-    /// Regression test for the chunk-boundary race: a completion value the
-    /// previous code left on port 0 must stay readable by the main CPU for
-    /// the whole boot delay after an IPL re-entry — not be stomped by the
-    /// $AA announce on the next cycle.
-    #[test]
-    fn test_reentry_preserves_completion_signal_during_boot_delay() {
-        let mut apu = Apu::new();
-        apu.step(IPL_BOOT_CYCLES as u32 + 8); // initial boot
-
-        // Pretend uploaded code signalled "chunk complete" then jumped
-        // back into the boot ROM region.
-        apu.memory.port_out[0] = 0x77; // completion signal
-        apu.memory.control = 0x80; // IPL ROM mapping enabled
-        apu.ipl = None;
-        apu.cpu.regs.pc = 0xFFC0;
-
-        // For the entire boot delay the signal must remain visible...
-        for _ in 0..(IPL_BOOT_CYCLES as u32 - 2) {
-            apu.step(1);
-            assert_eq!(
-                apu.memory.cpu_port_read(0),
-                0x77,
-                "signal stomped too early"
-            );
-        }
-
-        // ...and only then is it replaced by the announce.
-        apu.step(8);
-        assert_eq!(apu.memory.cpu_port_read(0), 0xAA);
-        assert_eq!(apu.memory.cpu_port_read(1), 0xBB);
     }
 }

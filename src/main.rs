@@ -1,6 +1,9 @@
+mod dma;
 mod gui;
-
 mod rsnes;
+
+#[cfg(test)]
+mod test_utils;
 
 use crate::{
     gui::{Gui, GuiFrameData, RSnesEvent, SnesButton},
@@ -62,6 +65,9 @@ fn gui_emu_loop(
         _ => RSnesEmu::new(rsnes),
     };
 
+    gui.audio_play();
+    let mut audio_failed = false;
+
     let closing_ev = 'emu_loop: loop {
         let deadline = Instant::now() + Duration::from_secs_f64(Gui::FRAME_DURATION);
 
@@ -71,6 +77,19 @@ fn gui_emu_loop(
             cfg_select! {
                 feature = "plugins" => gui.unwrap_result(emu.update()),
                 _ => emu.update(),
+            }
+        }
+
+        // Drain whatever audio the real hardware produced this frame and
+        // queue it straight through.
+        if !audio_failed {
+            let samples = emu.core_mut().apu.drain_samples();
+            if !samples.is_empty()
+                && let Err(e) = gui.audio_queue_samples(&samples)
+            {
+                eprintln!("audio output disabled: {e}");
+                gui.audio_stop();
+                audio_failed = true;
             }
         }
 
@@ -111,6 +130,10 @@ fn gui_emu_loop(
         }
         frame_nb += 1;
     };
+
+    if !audio_failed {
+        gui.audio_stop();
+    }
 
     #[cfg(feature = "plugins")]
     if let Some(p) = emu.plugin_mut() {
@@ -248,7 +271,7 @@ fn gui_loop(
                             plugin = new_plugin;
                         }
                         ev
-                    },
+                    }
                     _ => idle_exit,
                 }
             }
@@ -296,14 +319,16 @@ struct Cli {
 fn main() -> Result<(), String> {
     let cli = cfg_select! {
         feature = "cli" => Cli::parse(),
-        _ => {{
-            // args() always contains at least the program name, so only
-            // warn when the user actually passed extra arguments
-            if std::env::args().len() > 1 {
-                eprintln!("CLI feature disabled at compile time, CLI arguments are ignored");
+        _ => {
+            {
+                // args() always contains at least the program name, so only
+                // warn when the user actually passed extra arguments
+                if std::env::args().len() > 1 {
+                    eprintln!("CLI feature disabled at compile time, CLI arguments are ignored");
+                }
+                Cli::default()
             }
-            Cli::default()
-        }}
+        }
     };
 
     let emu = match cli.rom {
@@ -314,8 +339,9 @@ fn main() -> Result<(), String> {
     cfg_select! {
         feature = "plugins" => gui_loop(
             emu,
-            cli.load_plugin_noconfirm.map(|p| Plugin::load_from_file(&p).unwrap())
+            cli.load_plugin_noconfirm
+                .map(|p| Plugin::load_from_file(&p).unwrap()),
         ),
-        _ => gui_loop(emu)
+        _ => gui_loop(emu),
     }
 }

@@ -78,18 +78,21 @@ pub fn create_temp_rom(data: &[u8]) -> (std::path::PathBuf, tempfile::TempDir) {
     (rom_path, dir)
 }
 
+#[cfg(not(tarpaulin_include))]
 pub fn with_sram(mut data: Vec<u8>, header_offset: usize, size_exp: u8) -> Vec<u8> {
     data[header_offset + HEADER_ROM_HARDWARE_OFFSET] = 0x02; // ROM + RAM + battery
     data[header_offset + HEADER_RAM_SIZE_OFFSET] = size_exp;
     data
 }
 
+#[cfg(not(tarpaulin_include))]
 pub fn lorom_with_sram(size_exp: u8) -> Cartridge {
     let data = with_sram(create_valid_lorom(0x10000), LOROM_HEADER_OFFSET, size_exp);
     let (path, _dir) = create_temp_rom(&data);
     Cartridge::load_from_file(path).unwrap()
 }
 
+#[cfg(not(tarpaulin_include))]
 pub fn hirom_with_sram(size_exp: u8) -> Cartridge {
     let data = with_sram(create_valid_hirom(0x10000), HIROM_HEADER_OFFSET, size_exp);
     let (path, _dir) = create_temp_rom(&data);
