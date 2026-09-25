@@ -1,5 +1,6 @@
 use super::RSnesCore;
 
+use crate::gui::SnesButton;
 use common::snes_address::SnesAddress;
 use cpu::cpu::CPU;
 use piccolo::Callback;
@@ -155,7 +156,7 @@ impl RSnesCore {
         let ret = Table::new(ctx.mutation());
 
         macro_rules! create_press_release {
-            ( $key:tt, $bit:tt ) => {
+            ( $key:tt, $button:expr ) => {
                 let clone = emu.clone();
                 ret.set_field(
                     ctx,
@@ -163,7 +164,7 @@ impl RSnesCore {
                     Callback::from_fn(ctx.mutation(), move |_, _, _| {
                         let mut emu = clone.borrow_mut();
 
-                        emu.joypad1 |= 1 << $bit;
+                        emu.joypads[0].set($button, true);
                         Ok(piccolo::CallbackReturn::Return)
                     }),
                 );
@@ -175,26 +176,25 @@ impl RSnesCore {
                     Callback::from_fn(ctx.mutation(), move |_, _, _| {
                         let mut emu = clone.borrow_mut();
 
-                        emu.joypad1 &= !(1 << $bit);
+                        emu.joypads[0].set($button, false);
                         Ok(piccolo::CallbackReturn::Return)
                     }),
                 );
             };
         }
 
-        create_press_release!("b", 15);
-        create_press_release!("y", 14);
-        create_press_release!("select", 13);
-        create_press_release!("start", 12);
-        create_press_release!("start", 12);
-        create_press_release!("up", 11);
-        create_press_release!("down", 10);
-        create_press_release!("left", 9);
-        create_press_release!("right", 8);
-        create_press_release!("a", 7);
-        create_press_release!("x", 6);
-        create_press_release!("l", 5);
-        create_press_release!("r", 4);
+        create_press_release!("b", SnesButton::B);
+        create_press_release!("y", SnesButton::Y);
+        create_press_release!("select", SnesButton::Select);
+        create_press_release!("start", SnesButton::Start);
+        create_press_release!("up", SnesButton::Up);
+        create_press_release!("down", SnesButton::Down);
+        create_press_release!("left", SnesButton::Left);
+        create_press_release!("right", SnesButton::Right);
+        create_press_release!("a", SnesButton::A);
+        create_press_release!("x", SnesButton::X);
+        create_press_release!("l", SnesButton::L);
+        create_press_release!("r", SnesButton::R);
 
         ret
     }
