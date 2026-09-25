@@ -65,7 +65,7 @@ example of one:
 
 For this simple example, let's say all the leaf nodes are booleans:
 | Permission tree leaf node | Type |
-|---------------------------|------|
+|:--------------------------|:-----|
 | `foo.a`                   | bool |
 | `foo.b`                   | bool |
 | `bar`                     | bool |
@@ -173,7 +173,7 @@ R-SNES supports several ways to request these exact permissions in a more concis
 ```
 
 | Permission tree leaf node   | Type   | Functions/Objects injected |
-|-----------------------------|--------|----------------------------|
+|:----------------------------|:-------|:---------------------------|
 | `internal.cpu.registers`    | bool\* | `rsnes.cpu`                |
 | `internal.ppu.cgram`        | bool\* | `rsnes.ppu.write_cgram`    |
 | `internal.bus.read`         | bool\* | `rsnes.bus.read`           |
@@ -284,7 +284,7 @@ return {
 
 `rsnes.cpu` gives read-only access to all CPU registers and to the address bus:
 | Field                   | Type    | Description |
-|-------------------------|---------|-------------|
+|:------------------------|:--------|:------------|
 | `cpu.pc`/`cpu.PC`       | Integer | **P**rogram **B**ank: bank number where the CPU is reading code |
 | `cpu.pc`/`cpu.PC`       | Integer | **P**rogram **C**ounter: address within PB where the CPU is reading code |
 | `cpu.a`/`cpu.A`         | Integer | General purpose **A**cumulator |
@@ -310,7 +310,7 @@ The PPU has 3 memory units which plugins can (**will** in the near future, a lot
 - [OAM](https://snes.nesdev.org/wiki/Sprites): sprite memory stores which tiles (from VRAM) sprites are made of and the position of sprites on screen
 
 | Function                              | Arguments      | Return value |
-|---------------------------------------|----------------|--------------|
+|:--------------------------------------|:---------------|:-------------|
 | `rsnes.ppu.write_cgram(index, color)` | `index`: cgram index 0-255, `color`: 15-bit BGR colour | `nil` |
 
 ([`read_cgram`](https://github.com/r-snes/r-snes/issues/246) and other functions [for VRAM](https://github.com/r-snes/r-snes/issues/247) and [OAM](https://github.com/r-snes/r-snes/issues/248) will come in the future)
@@ -325,11 +325,11 @@ The PPU has 3 memory units which plugins can (**will** in the near future, a lot
 - RAM
 
 | Function                       | Arguments      | Return value |
-|--------------------------------|----------------|--------------|
+|:-------------------------------|:---------------|:-------------|
 | `rsnes.bus.read(addr)`         | `addr`: global SNES address 0-0xFFFFFF | Read byte (Integer 0-255) |
 | `rsnes.bus.write(addr, value)` | `addr`: global SNES address 0-0xFFFFFF, `value`: byte to write | `nil` |
 
-> [!WARN]
+> [!WARNING]
 > Accessing the IO zone with `rsnes.bus` can have intricate side effects compared to other memory regions (i.e. even only reading certain registers can affect internal state, which could alter further reads from the CPU), so where possible you should use other functions such as `rsnes.ppu.write_cgram` to directly access the raw memory instead of going through the IO interface.
 
 ### `rsnes.input`
@@ -337,7 +337,7 @@ The PPU has 3 memory units which plugins can (**will** in the near future, a lot
 `rsnes.input` allows plugins to "press" controller buttons in place of the player
 
 | Function                     | Arguments | Return value |
-|------------------------------|-----------|--------------|
+|:-----------------------------|:----------|:-------------|
 | `rsnes.input.press_a`        | *none*    | `nil`        |
 | `rsnes.input.press_b`        | *none*    | `nil`        |
 | `rsnes.input.press_x`        | *none*    | `nil`        |
