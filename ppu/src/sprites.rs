@@ -16,6 +16,12 @@ impl Renderer {
             return;
         }
 
+        // OBJ window: one mask for the whole layer. 
+        // TMW/TSW bit 4 decide which screen it removes OBJ from.
+        let window = ppu.regs.obj_window_mask();
+        let win_main = ppu.regs.tmw & 0x10 != 0;
+        let win_sub = ppu.regs.tsw & 0x10 != 0;
+
         let objsel = ppu.regs.objsel;
         let oamadd = ppu.regs.oamadd;
 
@@ -82,10 +88,13 @@ impl Renderer {
                 let color = ppu.cgram.read(palette_entry);
 
                 let sx = screen_x as usize;
-                if to_main {
+
+                // Window removes OBJ per-screen where TMW/TSW enable it
+                let masked = window[sx];
+                if to_main && !(win_main && masked) {
                     self.deposit_main(sx, color, z, Layer::Obj, obj_math);
                 }
-                if to_sub {
+                if to_sub && !(win_sub && masked) {
                     self.deposit_sub(sx, color, z, Layer::Obj, obj_math);
                 }
             }
