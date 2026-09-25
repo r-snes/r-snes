@@ -203,7 +203,7 @@ impl Renderer {
 
         let (tile_words, pal_shift) = if p.bpp == 2 { (8usize, 2u8) } else { (16, 4) };
 
-        for x in 0..SCREEN_WIDTH {
+                for x in 0..SCREEN_WIDTH {
             let px = (x + p.scroll_x) & (map_w - 1);
             let py = (y + p.scroll_y) & (map_h - 1);
 
@@ -246,19 +246,6 @@ impl Renderer {
             let z = if priority { p.z_high } else { p.z_low };
 
             let pixel = LinePixel {
-                color,
-                z,
-                layer: p.layer,
-                obj_math: false,
-            };
-            if p.to_main {
-                Self::deposit(&mut self.main_line, x, pixel);
-            }
-            if p.to_sub {
-                Self::deposit(&mut self.sub_line, x, pixel);
-            }
-
-                        let pixel = LinePixel {
                 color,
                 z,
                 layer: p.layer,
