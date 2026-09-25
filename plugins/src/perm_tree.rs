@@ -12,27 +12,28 @@ use piccolo::{Context, Value};
 ///
 /// Full tree:
 /// ```txt
-/// + internal // access stuff within the emulator
-/// | + control // control the emulator, not the components
-/// | | + dialog // allows the plugin to show dialog windows
-/// | | ` pause // pause/resume game
+/// +-internal // access stuff within the emulator
+/// | +-cpu
+/// | | +-registers
 /// | |
-/// | + cpu
-/// | | ` registers
+/// | +-ppu // access framebuffer, loaded objects, etc.
+/// | | +-cgram // touch the colour palette
 /// | |
-/// | + ppu // access framebuffer, loaded objects, etc.
-/// | | ` display // draw to the framebuffer
+/// | +-bus // interact with memory
+/// | | +-read
+/// | | +-write
 /// | |
-/// | ` bus // interact with memory
-/// |   + read
-/// |   ` write
+/// | +-input
+/// | |
+/// | +-emulator // control the emulator, not the components
+/// |   +-dialog // allows the plugin to show dialog windows
+/// |   +-pause // pause/resume game
 /// |
-/// ` external // access to the host system
-///   + filesystem
-///   | + read_file
-///   | ` write_file
+/// +-external // access to the host system
+///   +-filesystem
+///   | +-files
 ///   |
-///   ` http
+///   +-http
 /// ```
 pub trait PermTreeNode: Sized {
     fn from_lua<'gc>(ctx: Context<'gc>, value: Value<'gc>) -> Option<Self>;
@@ -93,7 +94,7 @@ pub struct RSnesPermissions {
 
 #[derive(..PermTree)]
 pub struct InternalPermissions {
-    pub control: ControlPermissions,
+    pub emulator: EmulatorPermissions,
     pub cpu: CpuPermissions,
     pub ppu: PpuPermissions,
     pub bus: BusPermissions,
@@ -101,7 +102,7 @@ pub struct InternalPermissions {
 }
 
 #[derive(..PermTree)]
-pub struct ControlPermissions {
+pub struct EmulatorPermissions {
     pub dialog: bool,
     pub pause: bool,
 }
@@ -113,7 +114,7 @@ pub struct CpuPermissions {
 
 #[derive(..PermTree)]
 pub struct PpuPermissions {
-    pub display: bool,
+    pub cgram: bool,
 }
 
 #[derive(..PermTree)]
@@ -186,7 +187,7 @@ mod test {
         let tree = build_perm_tree(
             r#"{
                 internal = {
-                    control = "all",
+                    emulator = "all",
                     bus = { "read" },
                     "cpu",
                 },
@@ -200,7 +201,7 @@ mod test {
 
         let expected_tree = RSnesPermissions {
             internal: InternalPermissions {
-                control: ControlPermissions::all(),
+                emulator: EmulatorPermissions::all(),
                 bus: BusPermissions {
                     read: true,
                     write: false,
