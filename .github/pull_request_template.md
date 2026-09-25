@@ -4,5 +4,5 @@
 
 ## 🔍 Related Issues
 
-Closes EpitechPromo2027/G-EIP-600-NAN-6-1-eip-florent.charpentier#<issue-number>
+Closes r-snes/r-snes#<issue-number>
 <!-- Replace <issue-number> with the relevant issue ID -->
