@@ -90,7 +90,7 @@ impl LinePixel {
 }
 
 /// Parameters for rendering one BG layer on one scanline.
-pub struct BgParams {
+pub struct BgParams<'a> {
     pub tilemap_base: u16,
     pub tiledata_base: u16,
     pub scroll_x: usize,
@@ -104,6 +104,9 @@ pub struct BgParams {
     pub layer: Layer,
     pub to_main: bool, // enabled on main screen (TM)
     pub to_sub: bool,  // enabled on sub screen (TS)
+    pub window: &'a [bool; 256], // per-column window region for this layer
+    pub win_main: bool, // window removes this layer from main (TMW)
+    pub win_sub: bool,  // window removes this layer from sub (TSW)
 }
 
 pub struct Renderer {
@@ -252,6 +255,22 @@ impl Renderer {
                 Self::deposit(&mut self.main_line, x, pixel);
             }
             if p.to_sub {
+                Self::deposit(&mut self.sub_line, x, pixel);
+            }
+
+                        let pixel = LinePixel {
+                color,
+                z,
+                layer: p.layer,
+                obj_math: false,
+            };
+
+            // Window removes the layer per-screen where TMW/TSW enable it
+            let masked = p.window[x];
+            if p.to_main && !(p.win_main && masked) {
+                Self::deposit(&mut self.main_line, x, pixel);
+            }
+            if p.to_sub && !(p.win_sub && masked) {
                 Self::deposit(&mut self.sub_line, x, pixel);
             }
         }

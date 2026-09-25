@@ -32,6 +32,7 @@ impl Renderer {
 
             let (w64, h64) = ppu.regs.bg_tilemap_size(bg);
             let (scroll_x, scroll_y) = ppu.regs.bg_scroll(bg);
+            let window = ppu.regs.bg_window_mask(bg);
 
             self.render_bg_scanline(
                 ppu,
@@ -50,6 +51,9 @@ impl Renderer {
                     layer: Layer::from_bg(bg),
                     to_main,
                     to_sub,
+                    window: &window,
+                    win_main: ppu.regs.tmw & (1 << bg) != 0,
+                    win_sub: ppu.regs.tsw & (1 << bg) != 0,
                 },
             );
         }
