@@ -4,5 +4,5 @@
 
 ## 🔍 Related Issues
 
-Closes r-snes/r-snes#<issue-number>
+Closes #<issue-number>
 <!-- Replace <issue-number> with the relevant issue ID -->
