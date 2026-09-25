@@ -250,7 +250,7 @@ fn gui_loop(
 ) -> Result<(), String> {
     let mut gui = gui::Gui::new()?;
     const DEFAULT_FRAMEBUFFER: &ppu::rendering::RawFramebuffer =
-        include_bytes!("../logo_framebuffer.raw");
+        include_bytes!("..assets/logo_framebuffer.raw");
 
     loop {
         // move out of the `Option` in case it's `Some`
