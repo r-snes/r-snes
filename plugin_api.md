@@ -336,33 +336,33 @@ The PPU has 3 memory units which plugins can (**will** in the near future, a lot
 
 `rsnes.input` allows plugins to "press" controller buttons in place of the player
 
-| Function                     | Arguments | Return value |
-|:-----------------------------|:----------|:-------------|
-| `rsnes.input.press_a`        | *none*    | `nil`        |
-| `rsnes.input.press_b`        | *none*    | `nil`        |
-| `rsnes.input.press_x`        | *none*    | `nil`        |
-| `rsnes.input.press_y`        | *none*    | `nil`        |
-| `rsnes.input.press_up`       | *none*    | `nil`        |
-| `rsnes.input.press_down`     | *none*    | `nil`        |
-| `rsnes.input.press_left`     | *none*    | `nil`        |
-| `rsnes.input.press_right`    | *none*    | `nil`        |
-| `rsnes.input.press_l`        | *none*    | `nil`        |
-| `rsnes.input.press_r`        | *none*    | `nil`        |
-| `rsnes.input.press_select`   | *none*    | `nil`        |
-| `rsnes.input.press_start`    | *none*    | `nil`        |
-|                              |           |              |
-| `rsnes.input.release_a`      | *none*    | `nil`        |
-| `rsnes.input.release_b`      | *none*    | `nil`        |
-| `rsnes.input.release_x`      | *none*    | `nil`        |
-| `rsnes.input.release_y`      | *none*    | `nil`        |
-| `rsnes.input.release_up`     | *none*    | `nil`        |
-| `rsnes.input.release_down`   | *none*    | `nil`        |
-| `rsnes.input.release_left`   | *none*    | `nil`        |
-| `rsnes.input.release_right`  | *none*    | `nil`        |
-| `rsnes.input.release_l`      | *none*    | `nil`        |
-| `rsnes.input.release_r`      | *none*    | `nil`        |
-| `rsnes.input.release_select` | *none*    | `nil`        |
-| `rsnes.input.release_start`  | *none*    | `nil`        |
+| Function                       | Arguments | Return value |
+|:-------------------------------|:----------|:-------------|
+| `rsnes.input.press_a()`        | *none*    | `nil`        |
+| `rsnes.input.press_b()`        | *none*    | `nil`        |
+| `rsnes.input.press_x()`        | *none*    | `nil`        |
+| `rsnes.input.press_y()`        | *none*    | `nil`        |
+| `rsnes.input.press_up()`       | *none*    | `nil`        |
+| `rsnes.input.press_down()`     | *none*    | `nil`        |
+| `rsnes.input.press_left()`     | *none*    | `nil`        |
+| `rsnes.input.press_right()`    | *none*    | `nil`        |
+| `rsnes.input.press_l()`        | *none*    | `nil`        |
+| `rsnes.input.press_r()`        | *none*    | `nil`        |
+| `rsnes.input.press_select()`   | *none*    | `nil`        |
+| `rsnes.input.press_start()`    | *none*    | `nil`        |
+|                                |           |              |
+| `rsnes.input.release_a()`      | *none*    | `nil`        |
+| `rsnes.input.release_b()`      | *none*    | `nil`        |
+| `rsnes.input.release_x()`      | *none*    | `nil`        |
+| `rsnes.input.release_y()`      | *none*    | `nil`        |
+| `rsnes.input.release_up()`     | *none*    | `nil`        |
+| `rsnes.input.release_down()`   | *none*    | `nil`        |
+| `rsnes.input.release_left()`   | *none*    | `nil`        |
+| `rsnes.input.release_right()`  | *none*    | `nil`        |
+| `rsnes.input.release_l()`      | *none*    | `nil`        |
+| `rsnes.input.release_r()`      | *none*    | `nil`        |
+| `rsnes.input.release_select()` | *none*    | `nil`        |
+| `rsnes.input.release_start()`  | *none*    | `nil`        |
 
 ### `rsnes.files`
 
