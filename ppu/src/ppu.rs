@@ -496,11 +496,6 @@ impl PPU {
     pub fn brightness(&self) -> u8 {
         self.regs.inidisp & 0x0F
     }
-
-    fn unimplemented_read_only(addr: u16) -> u8 {
-        println!("PPU READ IGNORED: ${:04X} (unimplemented register)", addr);
-        0
-    }
 }
 
 #[cfg(test)]

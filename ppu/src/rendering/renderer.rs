@@ -170,8 +170,8 @@ impl Renderer {
         match ppu.regs.bg_mode() {
             0 => self.render_scanline_mode0(ppu, y),
             1 => self.render_scanline_mode1(ppu, y),
-            mode => self.render_scanline_mode1(ppu, y),
-            // mode => {
+            _ => self.render_scanline_mode1(ppu, y),
+            // _ => {
             //     self.render_full_black(y);
             //     println!("PPU mode {} not implemented", mode);
             //     return;
