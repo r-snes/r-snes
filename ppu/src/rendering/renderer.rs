@@ -263,7 +263,12 @@ impl Renderer {
         Self::deposit(
             &mut self.main_line,
             x,
-            LinePixel { color, z, layer, obj_math },
+            LinePixel {
+                color,
+                z,
+                layer,
+                obj_math,
+            },
         );
     }
 
@@ -271,7 +276,12 @@ impl Renderer {
         Self::deposit(
             &mut self.sub_line,
             x,
-            LinePixel { color, z, layer, obj_math },
+            LinePixel {
+                color,
+                z,
+                layer,
+                obj_math,
+            },
         );
     }
 
@@ -332,7 +342,11 @@ impl Renderer {
         let (sr, sg, sb) = (sub & 0x1F, (sub >> 5) & 0x1F, (sub >> 10) & 0x1F);
 
         let (mut r, mut g, mut b) = if subtract {
-            (mr.saturating_sub(sr), mg.saturating_sub(sg), mb.saturating_sub(sb))
+            (
+                mr.saturating_sub(sr),
+                mg.saturating_sub(sg),
+                mb.saturating_sub(sb),
+            )
         } else {
             ((mr + sr).min(31), (mg + sg).min(31), (mb + sb).min(31))
         };

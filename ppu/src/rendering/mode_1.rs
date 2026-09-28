@@ -1,8 +1,8 @@
 use crate::constants::*;
 use crate::ppu::PPU;
 use crate::rendering::renderer::{
-    BgParams, Layer, Renderer, Z_BG1_HIGH, Z_BG1_LOW, Z_BG2_HIGH, Z_BG2_LOW, Z_BG3_HIGH,
-    Z_BG3_LOW, Z_BG3_PRIO,
+    BgParams, Layer, Renderer, Z_BG1_HIGH, Z_BG1_LOW, Z_BG2_HIGH, Z_BG2_LOW, Z_BG3_HIGH, Z_BG3_LOW,
+    Z_BG3_PRIO,
 };
 use crate::vram::RawVRAM;
 

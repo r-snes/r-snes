@@ -271,8 +271,8 @@ impl PPU {
             // ==========================
             0x212C => self.regs.tm = value,
             0x212D => self.regs.ts = value,
-            0x212E => self.regs.tmw = value,     // TODO
-            0x212F => self.regs.tsw = value,     // TODO
+            0x212E => self.regs.tmw = value, // TODO
+            0x212F => self.regs.tsw = value, // TODO
             0x2130 => self.regs.cgwsel = value,
             0x2131 => self.regs.cgadsub = value,
             0x2132 => {
@@ -300,7 +300,6 @@ impl PPU {
 
     pub fn read(&mut self, addr: u16, cpu_open_bus: u8) -> u8 {
         match addr {
-
             // Multiply result (PPU1)
             0x2134 => self.ppu1_read(self.regs.mpy as u8, 0xFF),
             0x2135 => self.ppu1_read((self.regs.mpy >> 8) as u8, 0xFF),

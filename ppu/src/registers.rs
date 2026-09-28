@@ -351,8 +351,16 @@ impl PPURegisters {
     }
 
     pub fn bg_scroll(&self, bg: usize) -> (usize, usize) {
-        let h = if bg == 0 { self.bg1hofs } else { self.bghofs[bg - 1] };
-        let v = if bg == 0 { self.bg1vofs } else { self.bgvofs[bg - 1] };
+        let h = if bg == 0 {
+            self.bg1hofs
+        } else {
+            self.bghofs[bg - 1]
+        };
+        let v = if bg == 0 {
+            self.bg1vofs
+        } else {
+            self.bgvofs[bg - 1]
+        };
         (h as usize, v as usize)
     }
 
