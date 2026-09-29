@@ -1,6 +1,9 @@
+mod dma;
 mod gui;
-
 mod rsnes;
+
+#[cfg(test)]
+mod test_utils;
 
 use crate::{
     gui::{Gui, GuiFrameData, RSnesEvent, SnesButton},
@@ -22,16 +25,12 @@ type IdleExit = (RSnesEvent, Option<Plugin>);
 #[cfg(not(feature = "plugins"))]
 type IdleExit = RSnesEvent;
 
-/// Update the port-1 controller state for a single button. Goes through
+/// Update the host-side port-1 controller state for a single button. Goes through
 /// `core_mut()` so it works whether the core is held directly or behind an
 /// `Rc<RefCell<...>>` (plugins feature).
+/// The emulated pad only sees it when the game latches the controllers.
 fn set_button(emu: &mut RSnesEmu, button: SnesButton, pressed: bool) {
-    let core = &mut *emu.core_mut();
-    if pressed {
-        core.joypad1 |= button.mask();
-    } else {
-        core.joypad1 &= !button.mask();
-    }
+    emu.core_mut().joypads[0].set(button, pressed);
 }
 
 fn gui_emu_loop(
@@ -62,6 +61,9 @@ fn gui_emu_loop(
         _ => RSnesEmu::new(rsnes),
     };
 
+    gui.audio_play();
+    let mut audio_failed = false;
+
     let closing_ev = 'emu_loop: loop {
         let deadline = Instant::now() + Duration::from_secs_f64(Gui::FRAME_DURATION);
 
@@ -71,6 +73,19 @@ fn gui_emu_loop(
             cfg_select! {
                 feature = "plugins" => gui.unwrap_result(emu.update()),
                 _ => emu.update(),
+            }
+        }
+
+        // Drain whatever audio the real hardware produced this frame and
+        // queue it straight through.
+        if !audio_failed {
+            let samples = emu.core_mut().apu.drain_samples();
+            if !samples.is_empty()
+                && let Err(e) = gui.audio_queue_samples(&samples)
+            {
+                eprintln!("audio output disabled: {e}");
+                gui.audio_stop();
+                audio_failed = true;
             }
         }
 
@@ -111,6 +126,10 @@ fn gui_emu_loop(
         }
         frame_nb += 1;
     };
+
+    if !audio_failed {
+        gui.audio_stop();
+    }
 
     #[cfg(feature = "plugins")]
     if let Some(p) = emu.plugin_mut() {

@@ -52,6 +52,15 @@ fn run_chunk(spc_binary: &[u8], last_test_num_seed: u16) -> ChunkResult {
     // protocol by design. Hand the core over explicitly.
     apu.skip_ipl_boot();
 
+    // CONTROL defaults to 0x80 (IPL ROM mapped in) at power-on, and
+    // skip_ipl_boot() doesn't touch it. A real post-boot driver runs with
+    // the ROM switched out, and this harness is standing in for that
+    // driver -- so switch it out here too. Without this, any test in the
+    // suite that reads or writes through $FFC0-$FFFF (directly, or via
+    // wraparound from a lower address) would see the IPL ROM's bytes
+    // instead of the injected binary's own memory there.
+    apu.memory.write8(0x00F1, 0x00);
+
     // Jump straight to the code's entry point instead of going through
     // an upload + execute command.
     apu.cpu.regs.pc = 0x0300;

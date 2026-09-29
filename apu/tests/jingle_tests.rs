@@ -121,7 +121,7 @@ fn test_brr_encoder_uses_prediction_filters() {
         &GOLDEN_BRR_ARP,
     ]
     .iter()
-    .flat_map(|brr| brr.chunks_exact(9).map(|b| (b[0] >> 2) & 0x03))
+    .flat_map(|brr| brr.as_chunks::<9>().0.iter().map(|b| (b[0] >> 2) & 0x03))
     .collect();
     assert!(
         filters.iter().any(|&f| f != 0),

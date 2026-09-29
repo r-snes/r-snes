@@ -256,7 +256,7 @@ fn test1_sine() {
     // We work around this by running step on mem.dsp directly.
     let mut env_phase_logged = false;
     for i in 0..num_output_samples {
-        mem.dsp.step(&mem.ram);
+        mem.dsp.step(&mut mem.ram);
         let (l, _r) = mem.dsp.render_audio_single();
         out.push(l);
 
@@ -327,7 +327,7 @@ fn test2_8voices() {
     let mut out = Vec::with_capacity(num_samples as usize);
 
     for _ in 0..num_samples {
-        mem.dsp.step(&mem.ram);
+        mem.dsp.step(&mut mem.ram);
         let (l, _r) = mem.dsp.render_audio_single();
         out.push(l);
     }
@@ -386,7 +386,7 @@ fn test3_adsr() {
             println!("  Key-off triggered at sample {i}");
         }
 
-        mem.dsp.step(&mem.ram);
+        mem.dsp.step(&mut mem.ram);
         let (l, _r) = mem.dsp.render_audio_single();
         out.push(l);
 
@@ -471,7 +471,7 @@ fn test4_loop() {
     let mut out = Vec::with_capacity(num_samples as usize);
 
     for i in 0..num_samples {
-        mem.dsp.step(&mem.ram);
+        mem.dsp.step(&mut mem.ram);
         let (l, _r) = mem.dsp.render_audio_single();
         out.push(l);
 
@@ -542,7 +542,7 @@ fn test5_stereo() {
     let mut right_out = Vec::with_capacity(num_samples as usize);
 
     for _ in 0..num_samples {
-        mem.dsp.step(&mem.ram);
+        mem.dsp.step(&mut mem.ram);
         let (l, r) = mem.dsp.render_audio_single();
         left_out.push(l);
         right_out.push(r);

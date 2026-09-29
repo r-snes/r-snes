@@ -15,6 +15,11 @@ use apu::cpu::{FLAG_C, FLAG_N, FLAG_P, FLAG_V, FLAG_Z, Spc700};
 fn make() -> (Spc700, Memory) {
     let mut cpu = Spc700::new();
     let mut mem = Memory::new();
+    // Memory::new() defaults CONTROL to 0x80 (IPL ROM mapped in), which
+    // means $FFFE/$FFFF read through the ROM overlay, not RAM. Switch the
+    // ROM out first so the reset vector we write below is what reset()
+    // actually loads.
+    mem.write8(0x00F1, 0x00);
     mem.write8(0xFFFE, 0x00);
     mem.write8(0xFFFF, 0x02);
     cpu.reset(&mut mem);

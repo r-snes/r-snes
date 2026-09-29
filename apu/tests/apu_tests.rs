@@ -9,6 +9,10 @@
 ///     stereo-interleaved samples, silent when no voices active
 ///   - Component wiring: DSP register writes via Memory reach the DSP,
 ///     render_audio reflects DSP state
+///   - IPL boot protocol (HLE): upload/execute handshake over the ports,
+///     chunk-boundary port stability, and cold ($FFC0) vs. warm ($FFC9)
+///     re-entry (SP/zero-page preserved on warm re-entry — the fix for
+///     the multi-chunk upload hang some games hit on a black screen)
 use apu::Apu;
 use apu::dsp::EnvelopePhase;
 
@@ -36,6 +40,14 @@ fn write_nops(apu: &mut Apu, addr: u16, count: usize) {
 /// BRR block at $1000 contains the byte 0x10 (high address byte), which
 /// the CPU would interpret as opcode BPL if it fell inside the sled.
 fn setup_cpu(apu: &mut Apu, start_addr: u16, nop_count: usize) {
+    // Switch the IPL ROM out before touching the reset vector. CONTROL
+    // defaults to 0x80 (ROM mapped in) at power-on, and while it's set,
+    // $FFFE/$FFFF read back through the ROM overlay, not RAM — the ROM's
+    // own vector is always $FFC0, which is exactly why every real reset
+    // boots into the IPL. These tests want direct control over PC for
+    // CPU-level testing rather than exercising the IPL, so we clear bit 7
+    // first, same as a driver would once it's done with the boot ROM.
+    apu.memory.write8(0x00F1, 0x00);
     apu.memory.write8(0xFFFE, (start_addr & 0xFF) as u8);
     apu.memory.write8(0xFFFF, (start_addr >> 8) as u8);
     write_nops(apu, start_addr, nop_count);
@@ -160,12 +172,16 @@ fn test_new_cpu_sp_initialised() {
 
 #[test]
 fn test_new_cpu_pc_loaded_from_reset_vector() {
-    // Default memory is zeroed so reset vector $FFFE/$FFFF = 0x0000,
-    // meaning PC should be 0x0000 on a fresh APU.
+    // CONTROL defaults to 0x80 (IPL ROM mapped in) at power-on, so the
+    // reset vector at $FFFE/$FFFF is read through the ROM overlay, not
+    // underlying RAM — and the ROM's own reset vector is $FFC0, its own
+    // entry point. This is exactly why every real reset boots into the
+    // IPL: whatever's sitting in RAM's reset vector is irrelevant until
+    // a driver clears CONTROL bit 7 itself.
     let apu = Apu::new();
     assert_eq!(
-        apu.cpu.regs.pc, 0x0000,
-        "PC must be loaded from reset vector at $FFFE/$FFFF"
+        apu.cpu.regs.pc, 0xFFC0,
+        "PC must be loaded from the IPL ROM's own reset vector at boot"
     );
 }
 
@@ -203,9 +219,17 @@ fn test_step_advances_cycle_counter() {
     let mut apu = Apu::new();
     setup_cpu(&mut apu, 0x0100, 128);
 
+    // NOP costs 2 real SPC700 cycles and can't be interrupted mid-way,
+    // so asking for a 1-cycle budget still runs the whole NOP: cycles
+    // ends up at 2, with the 1-cycle overrun banked as debt against the
+    // next call (see Apu::step's `cycle_debt`).
     apu.step(1);
-    assert_eq!(apu.cycles, 1);
+    assert_eq!(apu.cycles, 2);
 
+    // That banked debt is paid down first: budget = 9 - 1 = 8, which is
+    // exactly 4 more NOPs (8 cycles), landing back on an exact multiple
+    // of 2 with no debt left over — so the cumulative total across both
+    // calls comes out exactly as requested (1 + 9 = 10).
     apu.step(9);
     assert_eq!(apu.cycles, 10);
 }
@@ -242,8 +266,10 @@ fn test_step_multiple_cycles_advances_pc_multiple_times() {
 
     let pc_before = apu.cpu.regs.pc;
     apu.step(5);
-    // Each NOP advances PC by 1; 5 steps = 5 NOPs = PC + 5
-    assert_eq!(apu.cpu.regs.pc, pc_before.wrapping_add(5));
+    // Each NOP costs 2 real cycles, so a 5-cycle budget only fits 3 whole
+    // NOPs (3*2=6, overrunning the budget by 1, which is banked as debt
+    // rather than fitting a 4th NOP): PC + 3, not PC + 5.
+    assert_eq!(apu.cpu.regs.pc, pc_before.wrapping_add(3));
 }
 
 // ============================================================
@@ -252,18 +278,25 @@ fn test_step_multiple_cycles_advances_pc_multiple_times() {
 
 #[test]
 fn test_dsp_not_ticked_before_32_cycles() {
-    // After 31 cycles the envelope must still be Off (DSP never stepped).
+    // After fewer than 32 cycles the envelope must still be Off (DSP
+    // never stepped).
     let mut apu = Apu::new();
     setup_cpu(&mut apu, 0x0100, 256);
     setup_voice_silent_sample(&mut apu);
 
-    // Step 31 cycles — DSP should not have fired yet
-    apu.step(31);
-    // The voice was keyed on but if the DSP never stepped its envelope
-    // is still in Attack at level 0 (not yet processed).
-    // The key observable: master vol is set, so any DSP output after a
-    // step would be non-zero eventually; here we just check cycles.
-    assert_eq!(apu.cycles, 31);
+    // Step 30 cycles — DSP should not have fired yet. 30, not 31: NOP
+    // costs 2 real cycles and can't be interrupted mid-instruction, so
+    // 31 isn't a reachable stopping point from a fresh (zero-debt) Apu —
+    // the 16th NOP would land exactly on 32 and tick the DSP, which is
+    // exactly the boundary this test needs to stay under.
+    apu.step(30);
+    assert_eq!(apu.cycles, 30);
+    // The voice was keyed on but the DSP hasn't stepped yet, so the
+    // envelope is still at its key-on reset state (Attack, level 0).
+    assert_eq!(
+        apu.memory.dsp.voices[0].adsr.envelope_level, 0,
+        "envelope must not advance before the DSP's first tick at 32 cycles"
+    );
 }
 
 #[test]
@@ -484,5 +517,166 @@ fn test_render_audio_reflects_master_volume() {
     assert!(
         loud_out.iter().any(|&[l, r]| l != 0 || r != 0),
         "non-zero master volume with active voice must produce output"
+    );
+}
+
+// ============================================================
+// IPL boot protocol (HLE)
+// ============================================================
+
+/// Drive the IPL protocol from the "main CPU" side, the way a game's
+/// boot code would through $2140-$2143, and verify the upload lands
+/// in ARAM and execution starts at the requested entry point.
+#[test]
+fn test_ipl_hle_upload_and_execute() {
+    let mut apu = Apu::new();
+
+    // 1. Boot delay, then announce. Before the delay elapses the ports
+    // must NOT yet show $AA — that's the point of the delay.
+    assert_ne!(
+        apu.memory.cpu_port_read(0),
+        0xAA,
+        "no announce before boot delay"
+    );
+    apu.step(1024 + 8);
+    assert_eq!(apu.memory.cpu_port_read(0), 0xAA);
+    assert_eq!(apu.memory.cpu_port_read(1), 0xBB);
+
+    // 2. Start command: upload to $0200
+    apu.memory.cpu_port_write(2, 0x00);
+    apu.memory.cpu_port_write(3, 0x02);
+    apu.memory.cpu_port_write(1, 0x01); // non-zero = transfer
+    apu.memory.cpu_port_write(0, 0xCC);
+    apu.step(2);
+    assert_eq!(apu.memory.cpu_port_read(0), 0xCC, "IPL must ack $CC");
+
+    // 3. Upload a 3-byte program: MOV A,#$42 ($E8 $42), then STOP ($FF).
+    // Each byte now needs 9 cycles before it's echoed, not 2: the IPL
+    // holds off trusting port1 for 8 cycles after port0 matches the
+    // expected index (see IPL_FIRST_BYTE_SETTLE_CYCLES in apu.rs), then
+    // one more cycle to actually accept and echo.
+    for (i, byte) in [0xE8_u8, 0x42, 0xFF].iter().enumerate() {
+        apu.memory.cpu_port_write(1, *byte);
+        apu.memory.cpu_port_write(0, i as u8);
+        apu.step(9);
+        assert_eq!(apu.memory.cpu_port_read(0), i as u8, "IPL must echo index");
+    }
+    assert_eq!(apu.memory.read8(0x0200), 0xE8);
+    assert_eq!(apu.memory.read8(0x0201), 0x42);
+    assert_eq!(apu.memory.read8(0x0202), 0xFF);
+
+    // 4. Execute command: index jumped by >= 2, port1 = 0, addr = $0200
+    apu.memory.cpu_port_write(2, 0x00);
+    apu.memory.cpu_port_write(3, 0x02);
+    apu.memory.cpu_port_write(1, 0x00); // zero = execute
+    apu.memory.cpu_port_write(0, 0x05); // last index was 2; 2 + >=2
+    apu.step(2);
+    assert_eq!(
+        apu.memory.cpu_port_read(0),
+        0x05,
+        "execute ack must be visible"
+    );
+    // The ack must stay stable for the whole exec-delay window...
+    apu.step(256 - 8);
+    assert_eq!(
+        apu.memory.cpu_port_read(0),
+        0x05,
+        "ack stomped during exec delay"
+    );
+    assert!(apu.ipl_active(), "chunk must not run during exec delay");
+    // ...then the uploaded program runs: MOV A,#$42 executes, STOP parks
+    // the core. The end-state proves execution began exactly at $0200
+    // with the real IPL's zeroed registers.
+    apu.step(32);
+
+    assert!(!apu.ipl_active(), "IPL should have handed off");
+    assert_eq!(apu.cpu.regs.a, 0x42, "uploaded MOV A,#$42 must have run");
+    assert_eq!(apu.cpu.regs.pc, 0x0203, "PC frozen just past the STOP");
+    assert_eq!(
+        apu.memory.read8(0x00),
+        0x00,
+        "entry lo stored at $00 like the real IPL"
+    );
+    assert_eq!(
+        apu.memory.read8(0x01),
+        0x02,
+        "entry hi stored at $01 like the real IPL"
+    );
+    assert_eq!((apu.cpu.regs.x, apu.cpu.regs.y), (0, 0));
+}
+
+/// Regression test for the chunk-boundary race: a completion value the
+/// previous code left on port 0 must stay readable by the main CPU for
+/// the whole boot delay after an IPL re-entry — not be stomped by the
+/// $AA announce on the next cycle.
+#[test]
+fn test_reentry_preserves_completion_signal_during_boot_delay() {
+    let mut apu = Apu::new();
+    apu.step(1024 + 8); // initial boot
+
+    // Pretend uploaded code signalled "chunk complete" then jumped back
+    // into the boot ROM region at the cold entry point ($FFC0).
+    apu.skip_ipl_boot(); // hand control to the (simulated) uploaded code
+    apu.memory.port_out[0] = 0x77; // completion signal
+    apu.memory.control = 0x80; // IPL ROM mapping enabled
+    apu.cpu.regs.pc = 0xFFC0;
+
+    // For the entire boot delay the signal must remain visible...
+    for _ in 0..(1024 - 2) {
+        apu.step(1);
+        assert_eq!(
+            apu.memory.cpu_port_read(0),
+            0x77,
+            "signal stomped too early"
+        );
+    }
+
+    // ...and only then is it replaced by the announce.
+    apu.step(8);
+    assert_eq!(apu.memory.cpu_port_read(0), 0xAA);
+    assert_eq!(apu.memory.cpu_port_read(1), 0xBB);
+}
+
+/// Regression test for the multi-chunk upload bug that hung games like
+/// Super Mario World on a black screen: a driver that stashes its own
+/// transfer bookkeeping in zero page and re-enters the IPL at $FFC9 for
+/// its second chunk must see that data survive — a warm re-entry must
+/// NOT reset SP or clear zero page. (Confirmed against Anomie's SPC700
+/// doc: jumping to $FFC9 "skip[s] resetting the stack and page 0".)
+#[test]
+fn test_warm_reentry_at_ffc9_preserves_zero_page_and_sp() {
+    let mut apu = Apu::new();
+    apu.step(1024 + 8); // initial cold boot + announce
+    apu.skip_ipl_boot(); // hand control to the (simulated) uploaded code
+
+    // Simulate the driver's own state mid-upload: a custom SP (moved off
+    // the IPL's $EF) and a sentinel byte in zero page that only survives
+    // if the warm-reentry path does NOT run the clear loop.
+    apu.cpu.regs.sp = 0x80;
+    apu.memory.write8(0x0010, 0x99);
+
+    // Uploaded code jumps to $FFC9 instead of $FFC0 to request the next
+    // chunk without clearing its own bookkeeping.
+    apu.memory.control = 0x80; // IPL ROM mapping enabled
+    apu.cpu.regs.pc = 0xFFC9;
+
+    apu.step(1); // triggers the reentry check (pc >= $FFC0 && bit 7 set)
+
+    assert_eq!(apu.cpu.regs.sp, 0x80, "warm reentry must not reset SP");
+    assert_eq!(
+        apu.memory.read8(0x0010),
+        0x99,
+        "warm reentry must not clear zero page"
+    );
+
+    // The announce still happens, just much sooner than a cold boot's
+    // ~1000-cycle delay.
+    apu.step(8 + 4);
+    assert_eq!(apu.memory.cpu_port_read(0), 0xAA);
+    assert_eq!(apu.memory.cpu_port_read(1), 0xBB);
+    assert_eq!(
+        apu.memory.read8(0x0010),
+        0x99,
+        "sentinel must still be intact after announce"
     );
 }

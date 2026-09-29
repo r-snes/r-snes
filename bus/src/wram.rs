@@ -1,3 +1,4 @@
+use crate::bus::AccessSpeed;
 use crate::constants::WRAM_SIZE;
 
 use common::snes_address::SnesAddress;
@@ -56,15 +57,15 @@ impl Wram {
     ///
     /// # Panics
     /// Panics if the address is invalid or out of bounds.
-    pub fn read(&self, addr: SnesAddress) -> u8 {
+    pub fn read(&self, addr: SnesAddress) -> (u8, AccessSpeed) {
         let offset = Self::to_offset(addr);
-
-        *self.data.get(offset).unwrap_or_else(|| {
+        let byte = *self.data.get(offset).unwrap_or_else(|| {
             panic!(
                 "ERROR: Couldn't extract value from RAM at address: {:06X}",
                 usize::from(addr)
             )
-        })
+        });
+        (byte, AccessSpeed::Slow)
     }
 
     /// Writes a byte to WRAM at the given `SnesAddress`.
@@ -73,7 +74,7 @@ impl Wram {
     ///
     /// # Panics
     /// Panics if the address is invalid or out of bounds.
-    pub fn write(&mut self, addr: SnesAddress, value: u8) {
+    pub fn write(&mut self, addr: SnesAddress, value: u8) -> AccessSpeed {
         let offset = Self::to_offset(addr);
         if offset < self.data.len() {
             self.data[offset] = value;
@@ -81,6 +82,8 @@ impl Wram {
             // Shouldn't come here, panics just in case
             Self::panic_invalid_addr(addr);
         }
+
+        AccessSpeed::Slow
     }
 }
 
@@ -135,13 +138,13 @@ mod tests {
         let second_full_bank_addr = snes_addr!(0x7F:0x3E58);
 
         wram.write(mirrored_addr, 0x43);
-        assert_eq!(wram.read(mirrored_addr), 0x43);
+        assert_eq!(wram.read(mirrored_addr).0, 0x43);
 
         wram.write(first_full_bank_addr, 0xF3);
-        assert_eq!(wram.read(first_full_bank_addr), 0xF3);
+        assert_eq!(wram.read(first_full_bank_addr).0, 0xF3);
 
         wram.write(second_full_bank_addr, 0x2E);
-        assert_eq!(wram.read(second_full_bank_addr), 0x2E);
+        assert_eq!(wram.read(second_full_bank_addr).0, 0x2E);
     }
 
     #[test]
@@ -152,16 +155,16 @@ mod tests {
         let second_bank_end = snes_addr!(0x7F:0x0000);
 
         wram.write(first_bank_end, 0xF3);
-        assert_eq!(wram.read(first_bank_end), 0xF3);
+        assert_eq!(wram.read(first_bank_end).0, 0xF3);
 
-        assert_eq!(wram.read(second_bank_start), 0x00); // To check if first bank don't override
+        assert_eq!(wram.read(second_bank_start).0, 0x00); // To check if first bank don't override
 
         wram.write(second_bank_start, 0x2E);
-        assert_eq!(wram.read(second_bank_start), 0x2E);
+        assert_eq!(wram.read(second_bank_start).0, 0x2E);
 
-        assert_eq!(wram.read(first_bank_end), 0xF3); // To check if second bank don't override first bank
+        assert_eq!(wram.read(first_bank_end).0, 0xF3); // To check if second bank don't override first bank
 
         wram.write(second_bank_end, 0x45);
-        assert_eq!(wram.read(second_bank_end), 0x45);
+        assert_eq!(wram.read(second_bank_end).0, 0x45);
     }
 }

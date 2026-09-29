@@ -4,6 +4,7 @@ pub mod sram;
 
 pub mod test_rom;
 
+use crate::bus::AccessSpeed;
 use crate::cartridge::error::RomError;
 use crate::cartridge::header::RomHeader;
 use crate::cartridge::header::mapping_mode::MappingMode;
@@ -195,23 +196,34 @@ impl Cartridge {
 }
 
 impl Cartridge {
+    pub fn rom_speed(addr: SnesAddress, memsel: bool) -> AccessSpeed {
+        if addr.bank >= 0x80 && memsel {
+            AccessSpeed::Fast
+        } else {
+            AccessSpeed::Slow
+        }
+    }
     /// Reads a byte from the cartridge at the given `SnesAddress`.
     ///
     /// Returns `None` when no chip on the board responds, leaving the caller
     /// to return open bus.
-    pub fn read(&self, addr: SnesAddress) -> Option<u8> {
+    pub fn read(&self, addr: SnesAddress, memsel: bool) -> (Option<u8>, AccessSpeed) {
+        let rom_speed = Self::rom_speed(addr, memsel);
         match self.decode(addr) {
-            CartridgeTarget::Rom(offset) => self.rom.get(offset).copied(),
-            CartridgeTarget::Sram(linear) => self.sram.read(linear),
-            CartridgeTarget::Unmapped => None,
+            CartridgeTarget::Rom(offset) => (self.rom.get(offset).copied(), rom_speed),
+            CartridgeTarget::Sram(linear) => (self.sram.read(linear), AccessSpeed::Slow),
+            CartridgeTarget::Unmapped => (None, rom_speed),
         }
     }
 
     /// Writes a byte to the cartridge at the given `SnesAddress`. Writes to the ROM are ignored.
-    pub fn write(&mut self, addr: SnesAddress, value: u8) {
+    pub fn write(&mut self, addr: SnesAddress, value: u8, memsel: bool) -> AccessSpeed {
         match self.decode(addr) {
-            CartridgeTarget::Sram(linear) => self.sram.write(linear, value),
-            CartridgeTarget::Rom(_) | CartridgeTarget::Unmapped => {}
+            CartridgeTarget::Sram(linear) => {
+                self.sram.write(linear, value);
+                AccessSpeed::Slow
+            }
+            CartridgeTarget::Rom(_) | CartridgeTarget::Unmapped => Self::rom_speed(addr, memsel),
         }
     }
 }
@@ -224,6 +236,22 @@ mod tests {
     use crate::constants::{COPIER_HEADER_SIZE, HIROM_BANK_SIZE, LOROM_BANK_SIZE};
     use common::snes_address::snes_addr;
 
+    /// Helper trait for tests which just want to read/write a byte without caring
+    /// about access speeds
+    trait TestHelper {
+        fn just_read(&self, addr: SnesAddress) -> Option<u8>;
+        fn just_write(&mut self, addr: SnesAddress, value: u8);
+    }
+
+    impl TestHelper for Cartridge {
+        fn just_read(&self, addr: SnesAddress) -> Option<u8> {
+            self.read(addr, false).0
+        }
+        fn just_write(&mut self, addr: SnesAddress, value: u8) {
+            self.write(addr, value, false);
+        }
+    }
+
     #[test]
     fn test_detect_lorom() {
         let data = create_valid_lorom(0x10000);
@@ -231,7 +259,7 @@ mod tests {
 
         let cartridge = Cartridge::load_from_file(path).unwrap();
         assert_eq!(cartridge.map, MappingMode::LoRom);
-        assert_eq!(cartridge.read(snes_addr!(0:0x8000)).unwrap(), 0);
+        assert_eq!(cartridge.just_read(snes_addr!(0:0x8000)).unwrap(), 0);
     }
 
     #[test]
@@ -241,7 +269,7 @@ mod tests {
 
         let cartridge = Cartridge::load_from_file(path).unwrap();
         assert_eq!(cartridge.map, MappingMode::HiRom);
-        assert_eq!(cartridge.read(snes_addr!(0:0x8000)).unwrap(), 0);
+        assert_eq!(cartridge.just_read(snes_addr!(0:0x8000)).unwrap(), 0);
     }
 
     #[test]
@@ -282,8 +310,8 @@ mod tests {
         let mut cartridge = Cartridge::load_from_file(&path).unwrap();
 
         let addr = snes_addr!(0:0x8000);
-        cartridge.write(addr, 0x99);
-        assert_eq!(cartridge.read(addr).unwrap(), 0);
+        cartridge.just_write(addr, 0x99);
+        assert_eq!(cartridge.just_read(addr).unwrap(), 0);
     }
 
     #[test]
@@ -686,25 +714,25 @@ mod tests {
     fn test_sram_lorom_mirrors_within_window() {
         let mut cartridge = lorom_with_sram(0x01);
 
-        cartridge.write(snes_addr!(0x70:0x0000), 0x42);
+        cartridge.just_write(snes_addr!(0x70:0x0000), 0x42);
 
-        assert_eq!(cartridge.read(snes_addr!(0x70:0x0800)).unwrap(), 0x42);
-        assert_eq!(cartridge.read(snes_addr!(0x70:0x7800)).unwrap(), 0x42);
-        assert_eq!(cartridge.read(snes_addr!(0x7D:0x0000)).unwrap(), 0x42);
-        assert_eq!(cartridge.read(snes_addr!(0xF0:0x0000)).unwrap(), 0x42);
+        assert_eq!(cartridge.just_read(snes_addr!(0x70:0x0800)).unwrap(), 0x42);
+        assert_eq!(cartridge.just_read(snes_addr!(0x70:0x7800)).unwrap(), 0x42);
+        assert_eq!(cartridge.just_read(snes_addr!(0x7D:0x0000)).unwrap(), 0x42);
+        assert_eq!(cartridge.just_read(snes_addr!(0xF0:0x0000)).unwrap(), 0x42);
     }
 
     #[test]
     fn test_sram_hirom_chunks_and_mirroring() {
         let mut cartridge = hirom_with_sram(0x05);
 
-        cartridge.write(snes_addr!(0x20:0x6000), 0x11);
-        cartridge.write(snes_addr!(0x21:0x6000), 0x22);
+        cartridge.just_write(snes_addr!(0x20:0x6000), 0x11);
+        cartridge.just_write(snes_addr!(0x21:0x6000), 0x22);
 
-        assert_eq!(cartridge.read(snes_addr!(0x20:0x6000)).unwrap(), 0x11);
-        assert_eq!(cartridge.read(snes_addr!(0x21:0x6000)).unwrap(), 0x22);
-        assert_eq!(cartridge.read(snes_addr!(0x24:0x6000)).unwrap(), 0x11);
-        assert_eq!(cartridge.read(snes_addr!(0xA1:0x6000)).unwrap(), 0x22);
+        assert_eq!(cartridge.just_read(snes_addr!(0x20:0x6000)).unwrap(), 0x11);
+        assert_eq!(cartridge.just_read(snes_addr!(0x21:0x6000)).unwrap(), 0x22);
+        assert_eq!(cartridge.just_read(snes_addr!(0x24:0x6000)).unwrap(), 0x11);
+        assert_eq!(cartridge.just_read(snes_addr!(0xA1:0x6000)).unwrap(), 0x22);
     }
 
     #[test]
@@ -712,20 +740,20 @@ mod tests {
         let mut cartridge = lorom_with_sram(0x03);
         let addr = snes_addr!(0x70:0x0010);
 
-        cartridge.write(addr, 0x99);
-        assert_eq!(cartridge.read(addr).unwrap(), 0x99);
+        cartridge.just_write(addr, 0x99);
+        assert_eq!(cartridge.just_read(addr).unwrap(), 0x99);
     }
 
     #[test]
     fn test_sram_powers_up_uninitialized() {
         // Games detect a fresh chip via a magic value or checksum.
         let cartridge = lorom_with_sram(0x03);
-        assert_eq!(cartridge.read(snes_addr!(0x70:0x0000)).unwrap(), 0xFF);
+        assert_eq!(cartridge.just_read(snes_addr!(0x70:0x0000)).unwrap(), 0xFF);
     }
 
     #[test]
     fn test_read_unmapped_returns_none() {
         let cartridge = lorom_with_sram(0x03);
-        assert_eq!(cartridge.read(snes_addr!(0x00:0x6000)), None);
+        assert_eq!(cartridge.just_read(snes_addr!(0x00:0x6000)), None);
     }
 }

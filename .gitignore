@@ -19,6 +19,8 @@ target/
 # ROM files extensions
 *.smc
 *.sfc
+*.sym
+*.srm
 
 # Added by cargo
 /target

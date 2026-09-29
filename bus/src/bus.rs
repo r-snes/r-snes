@@ -8,6 +8,28 @@ use ppu::ppu::PPU;
 use std::error::Error;
 use std::path::Path;
 
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum AccessSpeed {
+    /// Fastest access, takes 6 master cycles
+    Fast,
+
+    /// Slow access, takes 8 master cycles
+    Slow,
+
+    /// Slowest access, takes 12 master cycles
+    XSlow,
+}
+
+impl AccessSpeed {
+    pub fn cycles(self) -> u32 {
+        match self {
+            Self::Fast => 6,
+            Self::Slow => 8,
+            Self::XSlow => 12,
+        }
+    }
+}
+
 pub struct Bus {
     pub wram: Wram,
     pub cart: Cartridge,
@@ -25,9 +47,9 @@ impl Bus {
 
     duplicate! {
         [
-            DUP_method DUP_parameters                            DUP_return_t DUP_method_param DUP_cart;
-            [read]     [&mut self, addr: SnesAddress]            [u8]         [addr]           [self.cart.read(addr).unwrap_or(self.io.open_bus)];
-            [write]    [&mut self, addr: SnesAddress, value: u8] [()]         [addr, value]    [self.cart.write(addr, value)];
+            DUP_method DUP_parameters                            DUP_return_t        DUP_method_param DUP_cart;
+            [read]     [&mut self, addr: SnesAddress]            [(u8, AccessSpeed)] [addr]           [(|(b, s): (Option<_>, _)|(b.unwrap_or(self.io.open_bus), s))(self.cart.read(addr, self.io.memsel & 1 != 0))];
+            [write]    [&mut self, addr: SnesAddress, value: u8] [AccessSpeed]       [addr, value]    [self.cart.write(addr, value, self.io.memsel & 1 != 0)];
         ]
         pub fn DUP_method(DUP_parameters, ppu: &mut PPU, apu: &mut Apu) -> DUP_return_t {
             match addr.bank {
@@ -65,19 +87,19 @@ mod tests {
 
         let addr = snes_addr!(0:0x0010);
         bus.write(addr, 0x42, &mut ppu, &mut apu);
-        assert_eq!(bus.read(addr, &mut ppu, &mut apu), 0x42);
+        assert_eq!(bus.read(addr, &mut ppu, &mut apu).0, 0x42);
 
         let addr_mirror = snes_addr!(0x80:0x0010);
-        assert_eq!(bus.read(addr, &mut ppu, &mut apu), 0x42);
-        assert_eq!(bus.read(addr_mirror, &mut ppu, &mut apu), 0x42);
+        assert_eq!(bus.read(addr, &mut ppu, &mut apu).0, 0x42);
+        assert_eq!(bus.read(addr_mirror, &mut ppu, &mut apu).0, 0x42);
 
         let real_addr = snes_addr!(0x7E:0x0010);
-        assert_eq!(bus.read(real_addr, &mut ppu, &mut apu), 0x42);
+        assert_eq!(bus.read(real_addr, &mut ppu, &mut apu).0, 0x42);
 
         bus.write(real_addr, 0x21, &mut ppu, &mut apu);
-        assert_eq!(bus.read(real_addr, &mut ppu, &mut apu), 0x21);
-        assert_eq!(bus.read(addr, &mut ppu, &mut apu), 0x21);
-        assert_eq!(bus.read(addr_mirror, &mut ppu, &mut apu), 0x21);
+        assert_eq!(bus.read(real_addr, &mut ppu, &mut apu).0, 0x21);
+        assert_eq!(bus.read(addr, &mut ppu, &mut apu).0, 0x21);
+        assert_eq!(bus.read(addr_mirror, &mut ppu, &mut apu).0, 0x21);
     }
 
     #[test]
@@ -89,11 +111,11 @@ mod tests {
 
         bus.io.open_bus = 0x20;
         let addr = snes_addr!(0:0x5000);
-        let read_value = bus.read(addr, &mut ppu, &mut apu);
+        let read_value = bus.read(addr, &mut ppu, &mut apu).0;
         assert_eq!(read_value, 0x20);
 
         bus.write(addr, 0x40, &mut ppu, &mut apu);
-        let read_value = bus.read(addr, &mut ppu, &mut apu);
+        let read_value = bus.read(addr, &mut ppu, &mut apu).0;
         assert_eq!(read_value, 0x40);
     }
 
@@ -106,14 +128,14 @@ mod tests {
         let mut bus = Bus::new(&rom_path).unwrap();
 
         let addr = snes_addr!(0:0x8001);
-        assert_eq!(bus.read(addr, &mut ppu, &mut apu), 0x42);
+        assert_eq!(bus.read(addr, &mut ppu, &mut apu).0, 0x42);
         bus.write(addr, 0x21, &mut ppu, &mut apu);
-        assert_eq!(bus.read(addr, &mut ppu, &mut apu), 0x42);
+        assert_eq!(bus.read(addr, &mut ppu, &mut apu).0, 0x42);
 
         let other_addr = snes_addr!(0x40:0x8001);
-        assert_eq!(bus.read(other_addr, &mut ppu, &mut apu), 0);
+        assert_eq!(bus.read(other_addr, &mut ppu, &mut apu).0, 0);
         bus.write(other_addr, 0x21, &mut ppu, &mut apu);
-        assert_eq!(bus.read(other_addr, &mut ppu, &mut apu), 0);
+        assert_eq!(bus.read(other_addr, &mut ppu, &mut apu).0, 0);
     }
 
     #[test]
@@ -126,7 +148,7 @@ mod tests {
         // Create an address mapped to an offset beyond the 128 KiB dummy ROM.
         let addr = snes_addr!(0x7D:0xFFFF);
         bus.io.open_bus = 123;
-        assert_eq!(bus.read(addr, &mut ppu, &mut apu), 123);
+        assert_eq!(bus.read(addr, &mut ppu, &mut apu).0, 123);
     }
 
     // ---- APU communication port tests (from the APU link branch) ----
@@ -146,7 +168,7 @@ mod tests {
 
         apu.memory.port_out[0] = 0xAB; // simulate SPC700 having written this
         let addr = snes_addr!(0:0x2140);
-        assert_eq!(bus.read(addr, &mut ppu, &mut apu), 0xAB);
+        assert_eq!(bus.read(addr, &mut ppu, &mut apu).0, 0xAB);
     }
 
     #[test]
@@ -193,7 +215,7 @@ mod tests {
         let io_addr = snes_addr!(0:0x4300); // DMAP0 — real register storage
         bus.write(io_addr, 0x55, &mut ppu, &mut apu);
 
-        assert_eq!(bus.read(io_addr, &mut ppu, &mut apu), 0x55);
+        assert_eq!(bus.read(io_addr, &mut ppu, &mut apu).0, 0x55);
         assert_eq!(
             bus.io.dma_channels[0].dmap, 0x55,
             "write went to the DMA register"

@@ -15,6 +15,11 @@ use apu::cpu::{FLAG_B, FLAG_C, FLAG_H, FLAG_I, FLAG_N, FLAG_P, FLAG_V, FLAG_Z, S
 fn make_cpu_mem() -> (Spc700, Memory) {
     let mut cpu = Spc700::new();
     let mut mem = Memory::new();
+    // Memory::new() defaults CONTROL to 0x80 (IPL ROM mapped in), which
+    // means $FFFE/$FFFF read through the ROM overlay, not RAM. Switch the
+    // ROM out first so the reset vector we write below is what reset()
+    // actually loads.
+    mem.write8(0x00F1, 0x00);
     // Point reset vector at $0200
     mem.write8(0xFFFE, 0x00);
     mem.write8(0xFFFF, 0x02);
@@ -42,6 +47,12 @@ fn emit_seq(mem: &mut Memory, pc: u16, bytes: &[u8]) {
 fn test_reset_loads_pc_from_vector() {
     let mut cpu = Spc700::new();
     let mut mem = Memory::new();
+    // Fresh Memory defaults CONTROL to 0x80 (ROM mapped in), so $FFFE/
+    // $FFFF read through the IPL ROM overlay, not RAM, by default —
+    // switch it off so the vector we write below is the one reset()
+    // actually loads (see memory_tests.rs's IPL ROM overlay section for
+    // the overlay itself).
+    mem.write8(0x00F1, 0x00);
     mem.write8(0xFFFE, 0x34);
     mem.write8(0xFFFF, 0x12);
     cpu.reset(&mut mem);
@@ -65,11 +76,18 @@ fn test_reset_clears_psw() {
 
 #[test]
 fn test_reset_zero_vector_sets_pc_zero() {
-    // Default memory is zeroed, so vector = $0000
+    // CONTROL defaults to 0x80 (IPL ROM mapped in) on a fresh Memory, so
+    // $FFFE/$FFFF read through the ROM overlay rather than the (zeroed)
+    // underlying RAM — and the ROM's own reset vector is $FFC0, its own
+    // entry point. This is exactly why every real reset boots into the
+    // IPL rather than whatever happens to be sitting in RAM.
     let mut cpu = Spc700::new();
     let mut mem = Memory::new();
     cpu.reset(&mut mem);
-    assert_eq!(cpu.regs.pc, 0x0000);
+    assert_eq!(
+        cpu.regs.pc, 0xFFC0,
+        "PC must be loaded from the IPL ROM's own reset vector"
+    );
 }
 
 // ============================================================
@@ -994,6 +1012,11 @@ fn test_cycles_accumulate_across_multiple_steps() {
 fn test_pc_wraps_at_0xffff() {
     let mut cpu = Spc700::new();
     let mut mem = Memory::new();
+    // Fresh Memory defaults CONTROL to 0x80 (ROM mapped in): without
+    // switching it off, the NOP we write below would be shadowed by the
+    // IPL ROM's own last byte on read. This test is about PC-wraparound
+    // arithmetic, not IPL behaviour, so disable the overlay.
+    mem.write8(0x00F1, 0x00);
     // Place a NOP at $FFFF (after reset vector bytes, which are at $FFFE/$FFFF
     // but we test the fetch wrapping separately from reset)
     cpu.regs.pc = 0xFFFF;
