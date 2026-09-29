@@ -878,7 +878,7 @@ mod tests {
         assert_eq!(hi & 0x7F, 0x3A);
     }
 
-        /// The high-byte read of CGDATA drives only bits 0-6; bit 7 comes from the
+    /// The high-byte read of CGDATA drives only bits 0-6; bit 7 comes from the
     /// PPU2 open bus, filled by PPU::read from the shared PPU2 latch.
     #[test]
     fn test_cgram_high_byte_open_bus_bit7() {
@@ -1221,5 +1221,32 @@ mod tests {
 
         advance_to_scanline_start(&mut ppu, VBLANK_START_LINE);
         assert_eq!(ppu.visible_line(), None);
+    }
+
+    // ============================================================
+    // MPYL, MPYM, MPYH
+    // ============================================================
+
+    /// The multiply result is recomputed when M7A is written, not only M7B.
+    #[test]
+    fn test_mode7_multiply_recomputed_on_m7a() {
+        let mut ppu = PPU::new();
+        ppu.write(0x211C, 0x00);
+        ppu.write(0x211C, 0x04); // M7B high = 4
+        ppu.write(0x211B, 0x03);
+        ppu.write(0x211B, 0x00); // M7A = 3 -> recompute 3*4 = 12
+        assert_eq!(ppu.read(0x2134, 0), 0x0C);
+        assert_eq!(ppu.read(0x2135, 0), 0x00);
+    }
+
+    /// Only the high byte of M7B feeds the multiplier; the low byte is ignored.
+    #[test]
+    fn test_mode7_multiply_uses_m7b_high_byte_only() {
+        let mut ppu = PPU::new();
+        ppu.write(0x211B, 0x05);
+        ppu.write(0x211B, 0x00); // M7A = 5
+        ppu.write(0x211C, 0xAB); // becomes M7B low, irrelevant to the result
+        ppu.write(0x211C, 0x02); // M7B high = 2 -> 5*2 = 10
+        assert_eq!(ppu.read(0x2134, 0), 0x0A);
     }
 }
