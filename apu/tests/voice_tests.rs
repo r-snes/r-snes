@@ -589,5 +589,8 @@ fn unmodulated_max_pitch_never_hits_the_cap() {
         voice.step(1, &ram, &mut registers, None);
         assert!(voice.pitch_counter <= 0x7FFE);
     }
-    assert_eq!(voice.pitch_counter & 0xFFF, ((10u32 * 0x3FFF) & 0xFFF) as u16);
+    assert_eq!(
+        voice.pitch_counter & 0xFFF,
+        ((10u32 * 0x3FFF) & 0xFFF) as u16
+    );
 }

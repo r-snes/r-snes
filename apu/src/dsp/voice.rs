@@ -59,7 +59,13 @@ impl Voice {
     /// here so the CPU can read them back via `$F3` (OUTX is written by
     /// `Dsp::step`).
     /// `pmon_source` is the pitch-modulation input for this tick.
-    pub fn step(&mut self, i: usize, ram: &RawARAM, registers: &mut [u8; 128], pmon_source: Option<i32>,) {
+    pub fn step(
+        &mut self,
+        i: usize,
+        ram: &RawARAM,
+        registers: &mut [u8; 128],
+        pmon_source: Option<i32>,
+    ) {
         // 1. Envelope update
         if self.adsr.envelope_phase != EnvelopePhase::Off {
             self.adsr.update_envelope();

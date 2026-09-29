@@ -778,7 +778,10 @@ fn test_outx_reflects_post_envelope_output() {
     let env = mem.dsp.voices[0].adsr.envelope_level as i32;
     let expected = ((((sample * env) >> 11) & !1) >> 8) as u8;
     let actual = mem.dsp.read_reg(0x09); // voice 0, offset +9
-    assert_eq!(actual, expected, "OUTX must be the post-envelope output >> 8");
+    assert_eq!(
+        actual, expected,
+        "OUTX must be the post-envelope output >> 8"
+    );
     assert_ne!(
         actual,
         (sample >> 8) as u8,
@@ -802,7 +805,10 @@ fn test_outx_zero_when_envelope_zero() {
 
     mem.dsp.step(&mut mem.ram);
 
-    assert_ne!(mem.dsp.voices[0].current_sample, 0, "sanity: sample is loud");
+    assert_ne!(
+        mem.dsp.voices[0].current_sample, 0,
+        "sanity: sample is loud"
+    );
     assert_eq!(mem.dsp.read_reg(0x09), 0, "OUTX must reflect the envelope");
 }
 
@@ -1242,8 +1248,7 @@ fn test_noise_clock_zero_never_advances_lfsr() {
     for i in 0..50 {
         mem.dsp.step(&mut mem.ram);
         assert_eq!(
-            mem.dsp.voices[0].current_sample,
-            first,
+            mem.dsp.voices[0].current_sample, first,
             "noise clock=0 must never advance the LFSR (tick {i})"
         );
     }
@@ -1268,8 +1273,7 @@ fn test_clearing_non_restores_brr_output() {
     // Sanity check on the substituted sample, not OUTX: OUTX now also
     // depends on the envelope, which is still in its attack here.
     assert_ne!(
-        mem.dsp.voices[0].current_sample,
-        0,
+        mem.dsp.voices[0].current_sample, 0,
         "sanity check: noise must be substituted while NON is set"
     );
 
@@ -1741,7 +1745,11 @@ fn test_pmon_register_masks_bit0() {
     // unchanged, like every other register.
     let mut mem = Memory::new();
     dsp_gw(&mut mem, 0x2D, 0xFF);
-    assert_eq!(mem.dsp.read_reg(0x2D), 0xFF, "raw $2D must read back as written");
+    assert_eq!(
+        mem.dsp.read_reg(0x2D),
+        0xFF,
+        "raw $2D must read back as written"
+    );
     assert_eq!(mem.dsp.pmon(), 0xFE, "PMON bit 0 must be masked off");
 }
 
@@ -1770,13 +1778,19 @@ fn pmon_counter_trace(pmon: u8, voice0_vol: u8) -> Vec<(u16, u16)> {
     (0..32)
         .map(|_| {
             mem.dsp.step(&mut mem.ram);
-            (mem.dsp.voices[0].pitch_counter, mem.dsp.voices[1].pitch_counter)
+            (
+                mem.dsp.voices[0].pitch_counter,
+                mem.dsp.voices[1].pitch_counter,
+            )
         })
         .collect()
 }
 
 fn voice_trace(trace: &[(u16, u16)], voice: usize) -> Vec<u16> {
-    trace.iter().map(|&(v0, v1)| if voice == 0 { v0 } else { v1 }).collect()
+    trace
+        .iter()
+        .map(|&(v0, v1)| if voice == 0 { v0 } else { v1 })
+        .collect()
 }
 
 #[test]
