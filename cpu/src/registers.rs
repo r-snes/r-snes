@@ -1,3 +1,5 @@
+//! Structs defining the CPU registers
+
 use std::fmt;
 
 /// A struct which represents the WDC 65C816's registers
@@ -14,8 +16,9 @@ pub struct Registers {
     /// which use direct addressing
     pub D: u16,
 
-    /// The index registers: used for 2D computations or memory access
+    /// Primary index register: used for 2D computations or memory access
     pub X: u16,
+    /// Secondary index register: used for 2D computations or memory access
     pub Y: u16,
 
     /// Processor status register: contains various CPU flags
@@ -36,6 +39,7 @@ pub struct Registers {
 
 #[allow(non_snake_case, reason = "We are naming register in all caps")]
 #[derive(Copy, Clone, PartialEq, Eq)]
+/// Processor status register: holds 8 status flags
 pub struct RegisterP {
     /// Carry flag: typically set when an arithmetic operation "carries out"
     pub C: bool,
