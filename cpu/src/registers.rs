@@ -3,7 +3,7 @@
 use std::fmt;
 
 /// A struct which represents the WDC 65C816's registers
-#[allow(non_snake_case, reason = "We are naming register in all caps")]
+#[expect(non_snake_case, reason = "We are naming register in all caps")]
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub struct Registers {
     /// The accumulator register: stores the result of most operations
@@ -37,7 +37,7 @@ pub struct Registers {
     pub S: u16,
 }
 
-#[allow(non_snake_case, reason = "We are naming register in all caps")]
+#[expect(non_snake_case, reason = "We are naming register in all caps")]
 #[derive(Copy, Clone, PartialEq, Eq)]
 /// Processor status register: holds 8 status flags
 pub struct RegisterP {

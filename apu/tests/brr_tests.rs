@@ -8,8 +8,6 @@
 //!   - Brr struct defaults and field semantics
 //!   - BrrState block-advance and wrap logic
 
-#![allow(clippy::field_reassign_with_default)] // default-then-assign reads better in test setup
-
 use apu::Memory;
 use apu::dsp::{Brr, decode_brr_block, decode_brr_nibble};
 
@@ -353,8 +351,10 @@ fn test_brr_default_state() {
 
 #[test]
 fn test_brr_nibble_idx_increments() {
-    let mut brr = Brr::default();
-    brr.nibble_idx = 0;
+    let mut brr = apu::dsp::Brr {
+        nibble_idx: 0,
+        ..Default::default()
+    };
     brr.nibble_idx += 1;
     assert_eq!(brr.nibble_idx, 1);
     brr.nibble_idx = 15;
@@ -365,9 +365,11 @@ fn test_brr_nibble_idx_increments() {
 #[test]
 fn test_brr_addr_advances_by_9_at_block_boundary() {
     // Simulate what decode_next_block does when there is no end flag
-    let mut brr = Brr::default();
-    brr.addr = 0x1000;
-    brr.nibble_idx = 16; // exhausted
+    let mut brr = apu::dsp::Brr {
+        addr: 0x1000,
+        nibble_idx: 16,
+        ..Default::default()
+    };
 
     // The DSP advances addr by 9 at the end of a normal block
     if brr.nibble_idx >= 16 {
@@ -381,9 +383,12 @@ fn test_brr_addr_advances_by_9_at_block_boundary() {
 
 #[test]
 fn test_brr_loop_addr_stored_separately() {
-    let mut brr = Brr::default();
-    brr.addr = 0x2000;
-    brr.loop_addr = 0x1500;
+    let mut brr = apu::dsp::Brr {
+        addr: 0x2000,
+        loop_addr: 0x1500,
+        ..Default::default()
+    };
+
     // On a loop event the DSP copies loop_addr → addr
     brr.addr = brr.loop_addr;
     assert_eq!(brr.addr, 0x1500);
@@ -392,9 +397,11 @@ fn test_brr_loop_addr_stored_separately() {
 #[test]
 fn test_brr_history_preserved_across_blocks() {
     // prev1/prev2 are NOT reset between normal blocks
-    let mut brr = Brr::default();
-    brr.prev1 = 1234;
-    brr.prev2 = 5678;
+    let mut brr = apu::dsp::Brr {
+        prev1: 1234,
+        prev2: 5678,
+        ..Default::default()
+    };
     // Simulate a normal block advance (no loop)
     brr.addr = brr.addr.wrapping_add(9);
     assert_eq!(brr.prev1, 1234, "prev1 must survive a block advance");
@@ -404,9 +411,12 @@ fn test_brr_history_preserved_across_blocks() {
 #[test]
 fn test_brr_history_reset_on_loop() {
     // On a loop event, prev1 and prev2 are zeroed
-    let mut brr = Brr::default();
-    brr.prev1 = 9999;
-    brr.prev2 = 8888;
+    let mut brr = apu::dsp::Brr {
+        prev1: 9999,
+        prev2: 8888,
+        ..Default::default()
+    };
+
     brr.addr = brr.loop_addr;
     brr.prev1 = 0;
     brr.prev2 = 0;
@@ -417,11 +427,13 @@ fn test_brr_history_reset_on_loop() {
 #[test]
 fn test_brr_buffer_fill_set_after_decode() {
     // After decode_next_block, buffer_fill should be 16
-    let mut brr = Brr::default();
     // Simulate what the DSP does after a successful block decode
-    brr.sample_buffer = [100i16; 16];
-    brr.buffer_fill = 16;
-    brr.nibble_idx = 0;
+    let brr = apu::dsp::Brr {
+        sample_buffer: [100i16; 16],
+        buffer_fill: 16,
+        nibble_idx: 0,
+        ..Default::default()
+    };
     assert_eq!(brr.buffer_fill, 16);
     assert_eq!(brr.nibble_idx, 0);
 }

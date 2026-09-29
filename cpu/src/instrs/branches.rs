@@ -3,16 +3,16 @@ use instr_metalang_procmacro::cpu_instr_no_inc_pc;
 
 duplicate! {
     [
-        DUP_name    DUP_flag;
-        [bcs]       [ cpu.registers.P.C]; // Branch if Carry Set
-        [bcc]       [!cpu.registers.P.C]; // Branch if Carry Clear
-        [beq]       [ cpu.registers.P.Z]; // Branch if EQual
-        [bne]       [!cpu.registers.P.Z]; // Branch if Not Equal
-        [bmi]       [ cpu.registers.P.N]; // Branch if MInus
-        [bpl]       [!cpu.registers.P.N]; // Branch if PLus
-        [bvs]       [ cpu.registers.P.V]; // Branch if oVerflow Set
-        [bvc]       [!cpu.registers.P.V]; // Branch if oVerflow Clear
-        [bra]       [true]; // BRanch Always
+        DUP_name    DUP_flag                DUP_attr;
+        [bcs]       [ cpu.registers.P.C]    []; // Branch if Carry Set
+        [bcc]       [!cpu.registers.P.C]    []; // Branch if Carry Clear
+        [beq]       [ cpu.registers.P.Z]    []; // Branch if EQual
+        [bne]       [!cpu.registers.P.Z]    []; // Branch if Not Equal
+        [bmi]       [ cpu.registers.P.N]    []; // Branch if MInus
+        [bpl]       [!cpu.registers.P.N]    []; // Branch if PLus
+        [bvs]       [ cpu.registers.P.V]    []; // Branch if oVerflow Set
+        [bvc]       [!cpu.registers.P.V]    []; // Branch if oVerflow Clear
+        [bra]       [true]                  [#[expect(clippy::nonminimal_bool, reason = "false positive for BRA")]]; // BRanch Always
     ]
     cpu_instr_no_inc_pc!(DUP_name {
         meta FETCH8_IMM;
@@ -29,7 +29,7 @@ duplicate! {
         }
 
         // idle if the branch is taken across a page boundary (cpu doc note 6)
-        #[allow(clippy::nonminimal_bool, reason = "false positive for BRA")]
+        DUP_attr
         meta IDLE_IF DUP_flag
             && cpu.registers.E
             && *cpu.internal_data_bus.hi() != *cpu.registers.PC.hi();
@@ -49,22 +49,25 @@ cpu_instr_no_inc_pc!(brl {
 
 #[cfg(test)]
 mod test {
-    #![expect(clippy::nonminimal_bool)]
+    #![expect(
+        clippy::nonminimal_bool,
+        reason = "`DUP1_set is !true or !false in the duplicated tests"
+    )]
     use super::super::test_prelude::*;
     use duplicate::duplicate_item;
 
     // duplicate for all branch instructions
     #[duplicate_item(
-        DUP1_name   DUP1_opcode DUP1_flag   DUP1_set;
-        [bcs]       [0xb0]      [regs.P.C]  [true];
-        [bcc]       [0x90]      [regs.P.C]  [false];
-        [beq]       [0xf0]      [regs.P.Z]  [true];
-        [bne]       [0xd0]      [regs.P.Z]  [false];
-        [bmi]       [0x30]      [regs.P.N]  [true];
-        [bpl]       [0x10]      [regs.P.N]  [false];
-        [bvs]       [0x70]      [regs.P.V]  [true];
-        [bvc]       [0x50]      [regs.P.V]  [false];
-        [bra]       [0x80]      [let _]     [0]; // for BRA, don't even set anything
+        DUP1_name   DUP1_opcode DUP1_flag   DUP1_set    DUP1_regs;
+        [bcs]       [0xb0]      [regs.P.C]  [true]      [mut regs];
+        [bcc]       [0x90]      [regs.P.C]  [false]     [mut regs];
+        [beq]       [0xf0]      [regs.P.Z]  [true]      [mut regs];
+        [bne]       [0xd0]      [regs.P.Z]  [false]     [mut regs];
+        [bmi]       [0x30]      [regs.P.N]  [true]      [mut regs];
+        [bpl]       [0x10]      [regs.P.N]  [false]     [mut regs];
+        [bvs]       [0x70]      [regs.P.V]  [true]      [mut regs];
+        [bvc]       [0x50]      [regs.P.V]  [false]     [mut regs];
+        [bra]       [0x80]      [let _]     [0]         [regs]; // for BRA, don't even set anything
     )]
     mod DUP1_name {
         use super::*;
@@ -75,8 +78,7 @@ mod test {
                 return; // always pass test for BRA, it never takes a branch
             }
 
-            #[allow(unused_mut, reason = "for BRA")]
-            let mut regs = Registers {
+            let DUP1_regs = Registers {
                 PB: 0x12,
                 PC: 0x3456,
                 ..Default::default()
@@ -98,8 +100,7 @@ mod test {
 
         #[test]
         fn branch_taken_no_page_crossed() {
-            #[allow(unused_mut, reason = "for BRA")]
-            let mut regs = Registers {
+            let DUP1_regs = Registers {
                 PB: 0x12,
                 PC: 0x3456,
                 ..Default::default()
@@ -128,7 +129,6 @@ mod test {
         )]
         #[test]
         fn DUP2_name() {
-            #[allow(unused_mut, reason = "for BRA")]
             let mut regs = Registers {
                 PB: 0x12,
                 PC: 0x3456,
