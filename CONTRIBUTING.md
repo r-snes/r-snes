@@ -7,6 +7,7 @@ Thanks for your interest in R-SNES! This document explains what kind of contribu
 - [What you can contribute](#what-you-can-contribute)
 - [Development setup](#development-setup)
 - [Project structure](#project-structure)
+- [Branches and commits](#branches-and-commits)
 - [Workflow and pull requests](#workflow-and-pull-requests)
 - [Testing policy](#testing-policy)
 - [Code quality](#code-quality)
@@ -27,7 +28,7 @@ We welcome:
 - **Questions and ideas** in [GitHub Discussions](https://github.com/r-snes/r-snes/discussions).
 
 > [!IMPORTANT]
-> **We do not accept contributions to the core emulation** (the internal behaviour of the CPU, APU, PPU and other emulated chips). This part of the project is developed by the core team only. Pull requests changing it can be subject to discussion but will never be merged as is.
+> **We do not accept contributions to the core emulation** (the internal behaviour of the CPU, APU, PPU and other emulated chips). This part of the project is developed by the core team only. Pull requests changing it can be subject to discussions but will never be merged as is.
 
 If you're unsure whether your idea falls within scope, **open an issue before starting to work on it** so we can discuss it first.
 
@@ -67,17 +68,57 @@ Each emulated component (CPU, audio processor, special chips, etc.) lives in **a
 
 ---
 
+## Branches and commits
+
+### Branch names
+
+Even when working on your fork, give your branch a meaningful name: it appears on your pull request.
+
+- Start with a **verb** describing what the branch does.
+- Separate words with **hyphens** (`-`), in lowercase.
+- Keep it **short**: a few words are enough.
+
+```text
+add-reset-button
+fix-controller-input-lag
+update-contributing-guide
+```
+
+> [!NOTE]
+> Branches whose name starts with `ga-ignore-` are skipped by CI. Don't use this prefix for a branch you intend to open a PR from.
+
+### Commit messages
+
+We use [gitmoji](https://gitmoji.dev/) for commit messages. Each gitmoji has a specific meaning, so pick the one that best matches your change.
+
+A commit message is made of:
+
+1. the **gitmoji** matching the change;
+2. a **verb** in the imperative form (`Add`, `Fix`, `Use`, `Replace`, `Switch`, ...);
+3. a **short summary** of the change.
+
+```text
+✨ Add reset button to the emulator window
+🐛 Fix crash when loading a ROM without header
+♻️ Replace manual parsing with a match statement
+✅ Add tests for controller input mapping
+📝 Update build instructions in README
+```
+
+Keep commit messages **short** (aim for about 50 characters, and no more than 72). If a change needs more explanation, put it in the commit body or the PR description rather than in the title.
+
+Since pull requests are squash-merged, **your PR title becomes the commit message on `main`**. Please write it following the same convention.
+
+---
+
 ## Workflow and pull requests
 
-1. Fork the repository and create a branch from `main` for your change.
+1. Fork the repository and create a branch from `main` for your change, named as described in [Branch names](#branch-names).
 2. Push your work and open a pull request targeting `main`. If it addresses an issue, reference it in the description (e.g. `Closes #42`).
 3. CI runs automatically on every push and pull request. **All checks must pass** before a PR can be merged.
 4. Once reviewed and approved, the PR is **squashed and merged**.
 
 Squash-merging keeps the history of `main` short and readable: one commit per PR. The detailed commit history remains available on the PR itself if you need to dig into how a change was built.
-
-> [!NOTE]
-> Branches whose name starts with `ga-ignore-` are skipped by CI. Don't use this prefix for a branch you intend to open a PR from.
 
 ---
 
@@ -152,6 +193,7 @@ cargo tarpaulin
 ```
 
 - [ ] The change does not touch the core emulation.
+- [ ] Commit messages and the PR title follow the [gitmoji convention](#commit-messages).
 - [ ] Code is formatted and produces no warnings.
 - [ ] Public items are documented.
 - [ ] Tests are added or updated according to the [testing policy](#testing-policy).
