@@ -6,3 +6,6 @@ edition = "2024"
 [dependencies]
 common = { path = "../common" }
 sdl2 = "0.38"
+
+[lints]
+workspace = true
