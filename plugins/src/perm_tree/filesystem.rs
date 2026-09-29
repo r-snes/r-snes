@@ -281,7 +281,6 @@ impl PermTreeFromAllOr for FilePermissions {
 
 impl PermTreeNode for FileReadWriteOptions {
     fn from_lua<'gc>(ctx: Context<'gc>, value: Value<'gc>) -> Option<Self> {
-
         match value {
             Value::String(s) if s.as_bytes() == b"all" => Some(Default::default()),
             Value::String(s) if s.as_bytes() == b"create_only" => Some(Self::NewOnly),
@@ -634,34 +633,35 @@ mod test {
         // (AO, NO), (NO, W), and (AOC, W), (AOC, RW), (RO, AO),
         // (RO, AOC), (RO, NO), (RO, W), (RO, WC), (RW, WC)
         for noncomparable in [
+            // AO,NO
             (append_only, new_only),
-
+            // NO, W
             (new_only, append),
             (new_only, trunc),
             (new_only, start),
-
+            // AOC, W
             (append_only_create, append),
             (append_only_create, trunc),
             (append_only_create, start),
-
+            // AOC, RW
             (append_only_create, append_read),
             (append_only_create, trunc_read),
             (append_only_create, start_read),
-
+            // RO, AO
             (read_only, append_only),
-
+            // RO, AOC
             (read_only, append_only_create),
-
+            // RO, NO
             (read_only, new_only),
-
+            // RO, W
             (read_only, append),
             (read_only, trunc),
             (read_only, start),
-
+            // RO, WC
             (read_only, append_create),
             (read_only, trunc_create),
             (read_only, start_create),
-
+            // RW, WC
             (append_read, append_create),
             (append_read, start_create),
             (append_read, trunc_create),

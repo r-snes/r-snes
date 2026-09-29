@@ -167,7 +167,9 @@ impl<'a> PluginPermRequest<'a> {
                                         let mode = match mode {
                                             OverwriteMode::AppendOnly => "AppendOnly",
                                             OverwriteMode::CanSeek { read: false, .. } => "Write",
-                                            OverwriteMode::CanSeek { read: true, .. } => "Read/Write",
+                                            OverwriteMode::CanSeek { read: true, .. } => {
+                                                "Read/Write"
+                                            }
                                         };
                                         &format!(
                                             ": {mode}{}",
