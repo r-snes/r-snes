@@ -25,10 +25,13 @@ We welcome:
 - **Bug reports**, with as much detail as possible (ROM, steps to reproduce, expected vs. actual behaviour).
 - **Documentation** improvements.
 - **Tests** that increase coverage or reproduce known bugs.
+- **Plugins**:
+  - examples showcasing or teaching parts of the plugin API.
+  - complex plugins that bring impressive functionality to a game and that you'd like to share.
 - **Questions and ideas** in [GitHub Discussions](https://github.com/r-snes/r-snes/discussions).
 
 > [!IMPORTANT]
-> **We do not accept contributions to the core emulation** (the internal behaviour of the CPU, APU, PPU and other emulated chips). This part of the project is developed by the core team only. Pull requests changing it can be subject to discussions but will never be merged as is.
+> **The core emulation** (the internal behaviour of the CPU, APU, PPU and other emulated chips) **is developed by the core team.** We do not accept pull requests implementing major features or reworking large parts of it, but **minor contributions are welcome**, as long as the core team remains the author of the work as a whole.
 
 If you're unsure whether your idea falls within scope, **open an issue before starting to work on it** so we can discuss it first.
 
@@ -107,7 +110,7 @@ A commit message is made of:
 
 Keep commit messages **short** (aim for about 50 characters, and no more than 72). If a change needs more explanation, put it in the commit body or the PR description rather than in the title.
 
-Since pull requests are squash-merged, **your PR title becomes the commit message on `main`**. Please write it following the same convention.
+Since pull requests are squash-merged, **your PR title is used as the default commit message on `main`**. Maintainers can still edit it before merging, but please write it following the same convention.
 
 ---
 
@@ -139,6 +142,12 @@ Tests are run and coverage is measured with `cargo tarpaulin`, configured by the
 cargo tarpaulin
 ```
 
+When running the tests several times in a row, add `--skip-clean` to reuse existing build artifacts (tarpaulin cleans them by default) and get faster rebuilds:
+
+```sh
+cargo tarpaulin --skip-clean
+```
+
 - **Any failing test blocks the merge.**
 - The workspace must keep **at least 80% code coverage**. Tarpaulin fails below this threshold, which fails CI.
 
@@ -166,12 +175,14 @@ Code must compile with **no warnings**, including Clippy lints. CI runs Clippy w
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 ```
 
-Warnings are almost always worth fixing. If a warning is genuinely expected in a specific case, silence it with `#[expect(...)]` or `#[allow(...)]`, as locally as possible, and **always give a reason**.
+Warnings are almost always worth fixing. If a warning is genuinely expected in a specific case, silence it with `#[expect(...)]`, as locally as possible, and **always give a reason**.
 
-For example, CPU register fields are named in uppercase to match the CPU documentation, so the lint is disabled for that struct only:
+Do not use `#[allow(...)]`: an `allow` stays silently in place even once the lint no longer triggers, leaving useless noise behind. An `expect` emits a warning as soon as the expected lint stops triggering, so unnecessary exceptions get caught and removed.
+
+For example, CPU register fields are named in uppercase to match the CPU documentation, so the lint is silenced for that struct only:
 
 ```rust
-#[allow(non_snake_case, reason = "We are naming register in all caps")]
+#[expect(non_snake_case, reason = "We are naming register in all caps")]
 ```
 
 Keep these exceptions rare.
@@ -192,7 +203,6 @@ cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo tarpaulin
 ```
 
-- [ ] The change does not touch the core emulation.
 - [ ] Commit messages and the PR title follow the [gitmoji convention](#commit-messages).
 - [ ] Code is formatted and produces no warnings.
 - [ ] Public items are documented.
