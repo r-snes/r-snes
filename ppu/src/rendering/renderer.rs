@@ -412,6 +412,7 @@ impl Renderer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ppu::PPU;
 
     // ============================================================
     // Helpers
@@ -428,6 +429,31 @@ mod tests {
         ppu.write(0x2100, inidisp);
         ppu.write(0x2105, mode & 0x07);
         ppu
+    }
+
+    fn make_renderer() -> Renderer {
+        let mut r = Renderer::new();
+        r.current_brightness = 15;
+        r
+    }
+
+    // Mode 1 PPU, full brightness, no force blank.
+    fn make_ppu() -> PPU {
+        let mut ppu = PPU::new();
+        ppu.write(0x2100, 0x0F);
+        ppu.write(0x2105, 0x01);
+        ppu
+    }
+
+    fn set_color(ppu: &mut PPU, entry: u8, color: u16) {
+        ppu.write(0x2121, entry);
+        ppu.write(0x2122, (color & 0xFF) as u8);
+        ppu.write(0x2122, (color >> 8) as u8);
+    }
+
+    fn fb_pixel(r: &Renderer, x: usize) -> (u8, u8, u8) {
+        let i = x * 3;
+        (r.framebuffer[i], r.framebuffer[i + 1], r.framebuffer[i + 2])
     }
 
     // ============================================================
@@ -658,5 +684,174 @@ mod tests {
         // Call 2: delay 72 -> 71, brightness steps 15 -> 14
         renderer.render_scanline(&ppu, 0);
         assert_eq!(renderer.current_brightness, 14);
+    }
+
+    // ============================================================
+    // color_math (pure)
+    // ============================================================
+
+    #[test]
+    fn test_color_math_add() {
+        assert_eq!(Renderer::color_math(0x0001, 0x0002, false, false), 0x0003);
+    }
+
+    #[test]
+    fn test_color_math_add_saturates() {
+        // 31 + 31 clamps to 31
+        assert_eq!(Renderer::color_math(0x001F, 0x001F, false, false), 0x001F);
+    }
+
+    #[test]
+    fn test_color_math_subtract() {
+        assert_eq!(Renderer::color_math(0x0005, 0x0002, true, false), 0x0003);
+    }
+
+    #[test]
+    fn test_color_math_subtract_clamps_to_zero() {
+        assert_eq!(Renderer::color_math(0x0002, 0x0005, true, false), 0x0000);
+    }
+
+    #[test]
+    fn test_color_math_half_add() {
+        // (8 + 4) / 2 = 6
+        assert_eq!(Renderer::color_math(0x0008, 0x0004, false, true), 0x0006);
+    }
+
+    #[test]
+    fn test_color_math_half_subtract() {
+        // (12 - 4) / 2 = 4
+        assert_eq!(Renderer::color_math(0x000C, 0x0004, true, true), 0x0004);
+    }
+
+    #[test]
+    fn test_color_math_channels_independent() {
+        let main = 1 | (2 << 5) | (3 << 10);
+        let sub = 4 | (5 << 5) | (6 << 10);
+        let expected = 5 | (7 << 5) | (9 << 10);
+        assert_eq!(Renderer::color_math(main, sub, false, false), expected);
+    }
+
+    // ============================================================
+    // Compositing / color math integration (via composite_line)
+    // ============================================================
+
+    // Deposit one BG1 main pixel, run color math against the fixed colour, and
+    // return the framebuffer pixel at x=0.
+    fn composite_bg1_with_fixed(main: u16, coldata_write: u8, cgadsub: u8) -> (u8, u8, u8) {
+        let mut r = make_renderer();
+        let mut ppu = make_ppu();
+        ppu.write(0x2132, coldata_write); // fixed colour
+        ppu.write(0x2130, 0x00); // CGWSEL bit1=0 -> fixed colour operand
+        ppu.write(0x2131, cgadsub);
+        r.deposit_main(0, main, Z_BG1_LOW, Layer::Bg1, false);
+        r.composite_line(&ppu, 0);
+        fb_pixel(&r, 0)
+    }
+
+    #[test]
+    fn test_composite_add() {
+        // main R=8, fixed R=4, BG1 math + add -> R=12
+        let got = composite_bg1_with_fixed(0x0008, 0x24, 0x01);
+        assert_eq!(got, Renderer::apply_brightness(0x000C, 15));
+    }
+
+    #[test]
+    fn test_composite_subtract() {
+        // main R=12, fixed R=4, BG1 math + subtract -> R=8
+        let got = composite_bg1_with_fixed(0x000C, 0x24, 0x81);
+        assert_eq!(got, Renderer::apply_brightness(0x0008, 15));
+    }
+
+    #[test]
+    fn test_composite_half() {
+        // main R=8, fixed R=4, BG1 math + half add -> R=6
+        // NOTE: real HW inhibits half against the fixed colour; this asserts
+        // current behaviour (half always applied).
+        let got = composite_bg1_with_fixed(0x0008, 0x24, 0x41);
+        assert_eq!(got, Renderer::apply_brightness(0x0006, 15));
+    }
+
+    #[test]
+    fn test_composite_math_disabled_when_layer_bit_clear() {
+        // CGADSUB=0 -> BG1 not enabled for math -> main colour passes through
+        let got = composite_bg1_with_fixed(0x0008, 0x24, 0x00);
+        assert_eq!(got, Renderer::apply_brightness(0x0008, 15));
+    }
+
+    #[test]
+    fn test_composite_add_saturates() {
+        // main R=31, fixed R=31, add -> clamps to 31
+        let got = composite_bg1_with_fixed(0x001F, 0x3F, 0x01);
+        assert_eq!(got, Renderer::apply_brightness(0x001F, 15));
+    }
+
+    #[test]
+    fn test_composite_clip_to_black() {
+        let mut r = make_renderer();
+        let mut ppu = make_ppu();
+        ppu.write(0x2130, 0xC0); // CGWSEL bits7-6 = 11 -> clip main to black always
+        ppu.write(0x2131, 0x00); // no math
+        r.deposit_main(0, 0x7FFF, Z_BG1_LOW, Layer::Bg1, false);
+        r.composite_line(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 0), (0, 0, 0));
+    }
+
+    #[test]
+    fn test_composite_obj_math_requires_high_palette() {
+        let mut ppu = make_ppu();
+        ppu.write(0x2132, 0x24); // fixed R=4
+        ppu.write(0x2130, 0x00); // fixed operand
+        ppu.write(0x2131, 0x10); // CGADSUB: OBJ math enable, add
+
+        // Palette 0-3 sprite (obj_math=false): no math, main passes through.
+        let mut r = make_renderer();
+        r.deposit_main(0, 0x0008, Z_OBJ2, Layer::Obj, false);
+        r.composite_line(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 0), Renderer::apply_brightness(0x0008, 15));
+
+        // Palette 4-7 sprite (obj_math=true): math applies -> R=12.
+        let mut r = make_renderer();
+        r.deposit_main(0, 0x0008, Z_OBJ2, Layer::Obj, true);
+        r.composite_line(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 0), Renderer::apply_brightness(0x000C, 15));
+    }
+
+    #[test]
+    fn test_composite_fixed_vs_subscreen_operand() {
+        // main R=8 (BG1), sub pixel R=2 (BG2), fixed colour R=4.
+        // CGWSEL bit1=1 -> operand is sub (R=2) -> R=10.
+        let mut r = make_renderer();
+        let mut ppu = make_ppu();
+        ppu.write(0x2132, 0x24); // fixed R=4
+        ppu.write(0x2130, 0x02); // use subscreen
+        ppu.write(0x2131, 0x01); // BG1 math, add
+        r.deposit_main(0, 0x0008, Z_BG1_LOW, Layer::Bg1, false);
+        r.deposit_sub(0, 0x0002, Z_BG2_LOW, Layer::Bg2, false);
+        r.composite_line(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 0), Renderer::apply_brightness(0x000A, 15));
+
+        // CGWSEL bit1=0 -> operand is fixed colour (R=4) -> R=12.
+        let mut r = make_renderer();
+        ppu.write(0x2130, 0x00);
+        r.deposit_main(0, 0x0008, Z_BG1_LOW, Layer::Bg1, false);
+        r.deposit_sub(0, 0x0002, Z_BG2_LOW, Layer::Bg2, false);
+        r.composite_line(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 0), Renderer::apply_brightness(0x000C, 15));
+    }
+
+    #[test]
+    fn test_sub_backdrop_is_fixed_colour() {
+        // No layers. main backdrop = CGRAM[0] (R=8), sub backdrop = COLDATA (R=4).
+        // Backdrop math enabled, use subscreen -> operand = sub backdrop = COLDATA.
+        let mut r = make_renderer();
+        let mut ppu = make_ppu();
+        set_color(&mut ppu, 0, 0x0008); // main backdrop R=8
+        ppu.write(0x2132, 0x24); // COLDATA R=4
+        ppu.write(0x2130, 0x02); // use subscreen
+        ppu.write(0x2131, 0x20); // CGADSUB backdrop math enable, add
+        ppu.write(0x212C, 0x00);
+        ppu.write(0x212D, 0x00);
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 0), Renderer::apply_brightness(0x000C, 15));
     }
 }
