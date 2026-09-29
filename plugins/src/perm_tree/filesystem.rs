@@ -102,26 +102,19 @@ impl FileReadWriteOptions {
     /// Whether these file write options may touch
     /// existing files at all
     pub fn can_touch_existing(self) -> bool {
-        !matches!(self, Self::NewOnly | Self::ReadOnly)
+        matches!(self, Self::CanOverwrite { .. })
     }
 
     /// Whether these file write options may overwrite
     /// existing data in files (just appending counts as false)
     pub fn can_overwrite_existing(self) -> bool {
-        use OverwriteMode::*;
-
-        #[expect(
-            clippy::match_like_matches_macro,
-            reason = "matches! formats pooly here"
-        )]
-        match self {
-            Self::NewOnly => false,
-            Self::ReadOnly => false,
+        matches!(
+            self,
             Self::CanOverwrite {
-                mode: AppendOnly, ..
-            } => false,
-            _ => true,
-        }
+                mode: OverwriteMode::CanSeek { .. },
+                ..
+            }
+        )
     }
 
     /// Whether these file read/write options can read data in a file
@@ -220,7 +213,7 @@ impl PartialOrd for FilePermissions {
         for (filepath, write_options) in &self.files {
             if let Some(other_options) = other.files.get(filepath) {
                 // both have the same file, combine with the comparison of
-                // write options
+                // read/write options
                 acc = combine_ordering(acc, write_options.partial_cmp(other_options)?)?;
             } else {
                 // self has a file which other doesn't, so combine with greater
@@ -243,7 +236,7 @@ impl PartialOrd for FilePermissions {
 impl PermTreeFromAllOr for FilePermissions {
     fn from_lua_inner<'gc>(ctx: Context<'gc>, value: Value<'gc>) -> Option<Self> {
         let Value::Table(tab) = value else {
-            eprintln!("write permissions should be a table");
+            eprintln!("read/write permissions should be a table");
             return None;
         };
 
@@ -272,7 +265,7 @@ impl PermTreeFromAllOr for FilePermissions {
 
                     ret.files.insert(pathbuf, FileReadWriteOptions::from_lua(ctx, v)?);
                 }
-                _ => eprintln!("unexpected key val combo in file write permissions"),
+                _ => eprintln!("unexpected key val combo in file read/write permissions"),
             }
         }
         Some(ret)
@@ -339,7 +332,7 @@ impl PermTreeNode for FileReadWriteOptions {
                 Some(Self::CanOverwrite { create, mode })
             }
             _ => {
-                eprintln!("invalid value to construct file write opts");
+                eprintln!("invalid value to construct file read/write opts");
                 None
             }
         }
@@ -478,6 +471,7 @@ mod test {
         assert!(opts.can_create_new());
         assert!(opts.can_overwrite_existing());
         assert!(opts.can_seek());
+        assert!(opts.can_read());
 
         assert_eq!(
             opts,
