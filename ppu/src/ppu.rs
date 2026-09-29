@@ -571,8 +571,8 @@ mod tests {
         // Reset the read address to 0 and read the two bytes back.
         ppu.write(0x2102, 0x00);
         ppu.write(0x2103, 0x00);
-        assert_eq!(ppu.read(0x2138), 0xBE);
-        assert_eq!(ppu.read(0x2138), 0xEF);
+        assert_eq!(ppu.read(0x2138, 0), 0xBE);
+        assert_eq!(ppu.read(0x2138, 0), 0xEF);
     }
 
     // ============================================================
@@ -638,13 +638,13 @@ mod tests {
 
         ppu.write(0x210B, 0x01);
         assert_eq!(ppu.regs.bg12nba, 0x01);
-        assert_eq!(ppu.regs.bg1_tiledata_addr(), 0x1000);
+        assert_eq!(ppu.regs.bg_tiledata_addr(0), 0x1000);
 
         ppu.write(0x210B, 0x00);
-        assert_eq!(ppu.regs.bg1_tiledata_addr(), 0x0000);
+        assert_eq!(ppu.regs.bg_tiledata_addr(0), 0x0000);
 
         ppu.write(0x210B, 0x0F);
-        assert_eq!(ppu.regs.bg1_tiledata_addr(), 0xF000);
+        assert_eq!(ppu.regs.bg_tiledata_addr(0), 0xF000);
 
         ppu.write(0x210C, 0x23);
         assert_eq!(ppu.regs.bg34nba, 0x23);
@@ -775,8 +775,8 @@ mod tests {
         ppu.vram.memory[0x0005] = 0x1234;
         ppu.write(0x2116, 0x05);
         ppu.write(0x2117, 0x00);
-        assert_eq!(ppu.read(0x2139), 0x34);
-        assert_eq!(ppu.read(0x213A), 0x12);
+        assert_eq!(ppu.read(0x2139, 0), 0x34);
+        assert_eq!(ppu.read(0x213A, 0), 0x12);
 
         // Sequential writes increment address
         ppu.write(0x2116, 0x00);
@@ -830,6 +830,37 @@ mod tests {
     }
 
     // ============================================================
+    // $2134–$2136 - MPY (Mode 7 multiply result)
+    // ============================================================
+
+    /// M7A (signed 16) * high byte of M7B (signed 8) -> signed 24-bit result,
+    /// recomputed on each M7A/M7B write and read back through MPYL/M/H.
+    #[test]
+    fn test_mode7_multiply() {
+        let mut ppu = PPU::new();
+
+        // M7A = 0x0002, M7B high byte = 0x03 -> 2 * 3 = 6
+        ppu.write(0x211B, 0x02);
+        ppu.write(0x211B, 0x00);
+        ppu.write(0x211C, 0x00);
+        ppu.write(0x211C, 0x03);
+
+        assert_eq!(ppu.read(0x2134, 0), 0x06);
+        assert_eq!(ppu.read(0x2135, 0), 0x00);
+        assert_eq!(ppu.read(0x2136, 0), 0x00);
+
+        // Signed: M7A = -1 (0xFFFF), M7B high = 0x02 -> -2 = 0xFFFFFE
+        ppu.write(0x211B, 0xFF);
+        ppu.write(0x211B, 0xFF);
+        ppu.write(0x211C, 0x00);
+        ppu.write(0x211C, 0x02);
+
+        assert_eq!(ppu.read(0x2134, 0), 0xFE);
+        assert_eq!(ppu.read(0x2135, 0), 0xFF);
+        assert_eq!(ppu.read(0x2136, 0), 0xFF);
+    }
+
+    // ============================================================
     // $2121/$2122/$213B - CGRAM
     // ============================================================
 
@@ -841,10 +872,30 @@ mod tests {
         ppu.write(0x2122, 0xEF); // lo
         ppu.write(0x2122, 0x3A); // hi
         ppu.write(0x2121, 0x00);
-        let lo = ppu.read(0x213B);
-        let hi = ppu.read(0x213B);
+        let lo = ppu.read(0x213B, 0);
+        let hi = ppu.read(0x213B, 0);
         assert_eq!(lo, 0xEF);
         assert_eq!(hi & 0x7F, 0x3A);
+    }
+
+        /// The high-byte read of CGDATA drives only bits 0-6; bit 7 comes from the
+    /// PPU2 open bus, filled by PPU::read from the shared PPU2 latch.
+    #[test]
+    fn test_cgram_high_byte_open_bus_bit7() {
+        let mut ppu = PPU::new();
+        // Store a colour whose high byte is 0 so any bit 7 seen must be open bus.
+        ppu.write(0x2121, 0x00);
+        ppu.write(0x2122, 0x00);
+        ppu.write(0x2122, 0x00);
+
+        ppu.write(0x2121, 0x00);
+        let _lo = ppu.read(0x213B, 0); // Low phase: refreshes PPU2 latch to 0x00
+
+        // Force the PPU2 latch bit 7 *after* the low read, right before the
+        // high read that must expose it as open bus.
+        ppu.ppu2_open_bus = 0x80;
+        let hi = ppu.read(0x213B, 0);
+        assert_eq!(hi & 0x80, 0x80);
     }
 
     // ============================================================
@@ -881,8 +932,8 @@ mod tests {
     // $212C–$2133 - Color math / layer enable / SETINI
     // ============================================================
 
-    /// Writing $212C must update tm; bg1_enabled reflects bit 0.
-    /// Writing $212D–$2133 must store verbatim.
+    /// Writing $212C must update tm.
+    /// Writing $212D–$2133 must store verbatim (COLDATA handled separately).
     #[test]
     fn test_write_color_math_and_layer_registers() {
         let mut ppu = PPU::new();
@@ -896,7 +947,6 @@ mod tests {
             (0x212F, |r| r.tsw),
             (0x2130, |r| r.cgwsel),
             (0x2131, |r| r.cgadsub),
-            (0x2132, |r| r.coldata),
             (0x2133, |r| r.setini),
         ];
         for &(addr, getter) in cases {
@@ -909,6 +959,26 @@ mod tests {
                 addr
             );
         }
+    }
+
+    // ============================================================
+    // $2132 - COLDATA (channel-selective, accumulates into BGR555)
+    // ============================================================
+
+    /// COLDATA bits 7-5 select B/G/R; bits 4-0 set the intensity of the
+    /// selected channels, accumulating into a 15-bit fixed colour.
+    #[test]
+    fn test_write_coldata() {
+        let mut ppu = PPU::new();
+
+        ppu.write(0x2132, 0x3F); // R (bit5) = 0x1F
+        assert_eq!(ppu.regs.coldata, 0x001F);
+
+        ppu.write(0x2132, 0x50); // G (bit6) = 0x10
+        assert_eq!(ppu.regs.coldata, 0x001F | (0x10 << 5));
+
+        ppu.write(0x2132, 0x9F); // B (bit7) = 0x1F
+        assert_eq!(ppu.regs.coldata, 0x001F | (0x10 << 5) | (0x1F << 10));
     }
 
     // ============================================================
@@ -931,22 +1001,22 @@ mod tests {
     }
 
     // ============================================================
-    // $2107 - BG1SC / bg1_tilemap_addr()
+    // $2107 - BG1SC / bg_tilemap_addr()
     // ============================================================
 
-    /// bg1_tilemap_addr must derive the VRAM address from bits[7:2] of bgsc[0].
+    /// bg_tilemap_addr must derive the VRAM address from bits[7:2] of bgsc[0].
     #[test]
     fn test_bg1_tilemap_addr() {
         let mut ppu = PPU::new();
 
         ppu.write(0x2107, 0b00000100);
-        assert_eq!(ppu.regs.bg1_tilemap_addr(), 0x0400);
+        assert_eq!(ppu.regs.bg_tilemap_addr(0), 0x0400);
 
         ppu.write(0x2107, 0x00);
-        assert_eq!(ppu.regs.bg1_tilemap_addr(), 0x0000);
+        assert_eq!(ppu.regs.bg_tilemap_addr(0), 0x0000);
 
         ppu.write(0x2107, 0xFF);
-        assert_eq!(ppu.regs.bg1_tilemap_addr(), 0x3F * 0x400);
+        assert_eq!(ppu.regs.bg_tilemap_addr(0), 0x3F * 0x400);
     }
 
     // ============================================================

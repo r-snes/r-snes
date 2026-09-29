@@ -76,7 +76,7 @@ impl Renderer {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::constants::SCREEN_WIDTH;
     use crate::ppu::PPU;
     use crate::rendering::renderer::Renderer;
 
@@ -254,6 +254,7 @@ mod tests {
         renderer.current_brightness = 15;
 
         let mut ppu = make_ppu_mode1();
+        ppu.write(0x2100, 0x0F); // full brightness so the colour survives compositing
 
         // Tilemap at 0x0400 (bg1sc=0x04), CHR data at 0x0000
         ppu.write(0x2107, 0x04);
@@ -265,7 +266,7 @@ mod tests {
         // CGRAM palette 0 entry 1 = pure red (BGR555)
         ppu.cgram.memory[0x01] = 0x001F;
 
-        renderer.render_scanline_mode1(&ppu, 0);
+        renderer.render_scanline(&ppu, 0);
 
         let (r, _g, _b) = Renderer::apply_brightness(0x001F, 15);
         assert_eq!(renderer.framebuffer[0], r);

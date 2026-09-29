@@ -214,7 +214,7 @@ mod tests {
         }
     }
 
-    // ============================================================
+        // ============================================================
     // render_scanline_mode0 - palette
     // ============================================================
 
@@ -232,7 +232,7 @@ mod tests {
         for row in 0..8 {
             ppu.vram.memory[CHR_BASE + 8 + row] = 0x00FF; // tile 1 CHR: all pixels color index 1
         }
-        renderer.render_scanline_mode0(&ppu, 0);
+        renderer.render_scanline(&ppu, 0);
         let expected = Renderer::apply_brightness(ppu.cgram.read(1), 15);
         for x in 0..SCREEN_WIDTH {
             assert_eq!(pixel(&renderer, x, 0), expected, "x={}", x);
@@ -250,7 +250,7 @@ mod tests {
         for row in 0..8 {
             ppu2.vram.memory[CHR_BASE + 8 + row] = 0x00FF;
         }
-        renderer.render_scanline_mode0(&ppu2, 0);
+        renderer.render_scanline(&ppu2, 0);
         let expected = Renderer::apply_brightness(ppu2.cgram.read(5), 15);
         for x in 0..SCREEN_WIDTH {
             assert_eq!(pixel(&renderer, x, 0), expected, "x={}", x);
@@ -284,8 +284,8 @@ mod tests {
 
             white = Renderer::apply_brightness(ppu_n.cgram.read(1), 15);
 
-            r_normal.render_scanline_mode0(&ppu_n, 0);
-            r_flipped.render_scanline_mode0(&ppu_f, 0);
+            r_normal.render_scanline(&ppu_n, 0);
+            r_flipped.render_scanline(&ppu_f, 0);
 
             assert_eq!(pixel(&r_normal, 0, 0), white, "normal x=0");
             assert_eq!(pixel(&r_normal, 7, 0), black, "normal x=7");
@@ -309,14 +309,14 @@ mod tests {
             ppu_f.vram.memory[0] = 0x8001; // flip_y (bit 15)
 
             // Scanline 0: normal sees row 0 (full), flipped sees row 7 (empty)
-            r_normal.render_scanline_mode0(&ppu_n, 0);
-            r_flipped.render_scanline_mode0(&ppu_f, 0);
+            r_normal.render_scanline(&ppu_n, 0);
+            r_flipped.render_scanline(&ppu_f, 0);
             assert_eq!(pixel(&r_normal, 0, 0), white, "normal scanline 0");
             assert_eq!(pixel(&r_flipped, 0, 0), black, "flipped scanline 0");
 
             // Scanline 7: normal sees row 7 (empty), flipped sees row 0 (full)
-            r_normal.render_scanline_mode0(&ppu_n, 7);
-            r_flipped.render_scanline_mode0(&ppu_f, 7);
+            r_normal.render_scanline(&ppu_n, 7);
+            r_flipped.render_scanline(&ppu_f, 7);
             assert_eq!(pixel(&r_normal, 0, 7), black, "normal scanline 7");
             assert_eq!(pixel(&r_flipped, 0, 7), white, "flipped scanline 7");
         }
@@ -345,7 +345,7 @@ mod tests {
         ppu.write(0x210D, 0x08);
         ppu.write(0x210D, 0x00);
 
-        renderer.render_scanline_mode0(&ppu, 0);
+        renderer.render_scanline(&ppu, 0);
 
         let white = Renderer::apply_brightness(ppu.cgram.read(1), 15);
         assert_eq!(pixel(&renderer, 0, 0), white);
