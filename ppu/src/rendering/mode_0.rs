@@ -362,51 +362,53 @@ mod tests {
     // ============================================================
 
     // Each mode-0 BG owns a 32-colour CGRAM region: BG1->0, BG2->32, BG3->64,
-    // BG4->96. Verifies palette 0 entry 1 of BG2/BG3/BG4 lands at 33/65/97.
+    // BG4->96. These verify palette 0 entry 1 of BG2/BG3/BG4 lands at 33/65/97.
+
     #[test]
-    fn test_mode0_palette_offsets() {
-        // BG2 -> CGRAM[33]
-        {
-            let mut r = make_renderer();
-            let mut ppu = make_ppu_mode0();
-            ppu.write(0x2108, 0x08); // BG2SC tilemap 0x0800
-            ppu.write(0x210B, 0x20); // BG2 CHR nibble 2 -> 0x2000
-            ppu.write(0x212C, 0x02); // BG2 on main
-            ppu.vram.memory[0x0800] = 0x0000; // explicit: tile 0, palette 0
-            for row in 0..8 {
-                ppu.vram.memory[0x2000 + row] = 0x00FF;
-            }
-            set_color(&mut ppu, 33, 0x001F);
-            r.render_scanline(&ppu, 0);
-            assert_eq!(pixel(&r, 0, 0), Renderer::apply_brightness(0x001F, 15));
+    fn test_mode0_palette_offset_bg2() {
+        let mut r = make_renderer();
+        let mut ppu = make_ppu_mode0();
+        ppu.write(0x2108, 0x08); // BG2SC tilemap 0x0800
+        ppu.write(0x210B, 0x20); // BG2 CHR nibble 2 -> 0x2000
+        ppu.write(0x212C, 0x02); // BG2 on main
+        ppu.vram.memory[0x0800] = 0x0000; // explicit: tile 0, palette 0
+        for row in 0..8 {
+            ppu.vram.memory[0x2000 + row] = 0x00FF;
         }
-        // BG3 -> CGRAM[65]
-        {
-            let mut r = make_renderer();
-            let mut ppu = make_ppu_mode0();
-            ppu.write(0x2109, 0x0C); // BG3SC tilemap 0x0C00
-            ppu.write(0x210C, 0x03); // BG3 CHR nibble 3 -> 0x3000
-            ppu.write(0x212C, 0x04); // BG3 on main
-            for row in 0..8 {
-                ppu.vram.memory[0x3000 + row] = 0x00FF;
-            }
-            set_color(&mut ppu, 65, 0x001F);
-            r.render_scanline(&ppu, 0);
-            assert_eq!(pixel(&r, 0, 0), Renderer::apply_brightness(0x001F, 15));
+        set_color(&mut ppu, 33, 0x001F);
+        r.render_scanline(&ppu, 0);
+        assert_eq!(pixel(&r, 0, 0), Renderer::apply_brightness(0x001F, 15));
+    }
+
+    #[test]
+    fn test_mode0_palette_offset_bg3() {
+        let mut r = make_renderer();
+        let mut ppu = make_ppu_mode0();
+        ppu.write(0x2109, 0x0C); // BG3SC tilemap 0x0C00
+        ppu.write(0x210C, 0x03); // BG3 CHR nibble 3 -> 0x3000
+        ppu.write(0x212C, 0x04); // BG3 on main
+        ppu.vram.memory[0x0C00] = 0x0000; // explicit: tile 0, palette 0
+        for row in 0..8 {
+            ppu.vram.memory[0x3000 + row] = 0x00FF;
         }
-        // BG4 -> CGRAM[97]
-        {
-            let mut r = make_renderer();
-            let mut ppu = make_ppu_mode0();
-            ppu.write(0x210A, 0x08); // BG4SC tilemap 0x0800
-            ppu.write(0x210C, 0x40); // BG4 CHR nibble 4 -> 0x4000
-            ppu.write(0x212C, 0x08); // BG4 on main
-            for row in 0..8 {
-                ppu.vram.memory[0x4000 + row] = 0x00FF;
-            }
-            set_color(&mut ppu, 97, 0x001F);
-            r.render_scanline(&ppu, 0);
-            assert_eq!(pixel(&r, 0, 0), Renderer::apply_brightness(0x001F, 15));
+        set_color(&mut ppu, 65, 0x001F);
+        r.render_scanline(&ppu, 0);
+        assert_eq!(pixel(&r, 0, 0), Renderer::apply_brightness(0x001F, 15));
+    }
+
+    #[test]
+    fn test_mode0_palette_offset_bg4() {
+        let mut r = make_renderer();
+        let mut ppu = make_ppu_mode0();
+        ppu.write(0x210A, 0x08); // BG4SC tilemap 0x0800
+        ppu.write(0x210C, 0x40); // BG4 CHR nibble 4 -> 0x4000
+        ppu.write(0x212C, 0x08); // BG4 on main
+        ppu.vram.memory[0x0800] = 0x0000; // explicit: tile 0, palette 0
+        for row in 0..8 {
+            ppu.vram.memory[0x4000 + row] = 0x00FF;
         }
+        set_color(&mut ppu, 97, 0x001F);
+        r.render_scanline(&ppu, 0);
+        assert_eq!(pixel(&r, 0, 0), Renderer::apply_brightness(0x001F, 15));
     }
 }
