@@ -22,6 +22,10 @@ members = [
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)'] }
 missing_docs = "warn"
 
+[workspace.lints.clippy]
+allow_attributes = "deny"
+allow_attributes_without_reason = "deny"
+
 # common dependencies used across the workspace
 [workspace.dependencies]
 piccolo = { git = "https://github.com/kyren/piccolo" }
