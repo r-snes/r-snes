@@ -456,6 +456,47 @@ mod tests {
         (r.framebuffer[i], r.framebuffer[i + 1], r.framebuffer[i + 2])
     }
 
+    // BG1 (mode 1, 4bpp): tilemap word 0x0000, CHR word 0x1000, palette 0
+    // entry 1 = `color`. Renders `color` on every pixel of the layer.
+    fn setup_bg1_uniform(ppu: &mut PPU, color: u16) {
+        ppu.write(0x2107, 0x00); // BG1SC tilemap 0x0000, 32x32
+        let nba = (ppu.regs.bg12nba & 0xF0) | 0x01;
+        ppu.write(0x210B, nba); // BG1 CHR nibble 1 -> word 0x1000
+        for row in 0..8 {
+            ppu.vram.memory[0x1000 + row] = 0x00FF; // plane 0 -> color index 1
+        }
+        set_color(ppu, 0x01, color);
+    }
+
+    // BG2 (mode 1, 4bpp): tilemap word 0x0800, CHR word 0x2000, palette 1
+    // entry 1 = `color`.
+    fn setup_bg2_uniform(ppu: &mut PPU, color: u16) {
+        ppu.write(0x2108, 0x08); // BG2SC tilemap word 0x0800
+        let nba = (ppu.regs.bg12nba & 0x0F) | (0x02 << 4);
+        ppu.write(0x210B, nba); // BG2 CHR nibble 2 -> word 0x2000
+        for i in 0..(32 * 32) {
+            ppu.vram.memory[0x0800 + i] = 0x0400; // tile 0, palette 1
+        }
+        for row in 0..8 {
+            ppu.vram.memory[0x2000 + row] = 0x00FF;
+        }
+        set_color(ppu, 0x11, color); // palette 1 entry 1
+    }
+
+    // BG3 (mode 1, 2bpp): tilemap word 0x0C00, CHR word 0x3000, palette 2,
+    // priority bit set on every tile. entry = `color`.
+    fn setup_bg3_high_prio(ppu: &mut PPU, color: u16) {
+        ppu.write(0x2109, 0x0C); // BG3SC tilemap word 0x0C00
+        ppu.write(0x210C, 0x03); // BG34NBA: BG3 CHR nibble 3 -> word 0x3000
+        for i in 0..(32 * 32) {
+            ppu.vram.memory[0x0C00 + i] = 0x2800; // tile 0, palette 2, priority bit
+        }
+        for row in 0..8 {
+            ppu.vram.memory[0x3000 + row] = 0x00FF; // 2bpp plane 0 -> index 1
+        }
+        set_color(ppu, 9, color); // palette 2 entry 1 (2*4 + 1)
+    }
+
     // ============================================================
     // Renderer::new
     // ============================================================
@@ -625,27 +666,6 @@ mod tests {
     }
 
     // ============================================================
-    // render_scanline - unimplemented mode falls back to black
-    // ============================================================
-
-    /// An unimplemented BG mode must output black for the scanline without panicking.
-    #[test]
-    fn test_render_scanline_unknown_mode_outputs_black() {
-        let mut renderer = Renderer::new();
-        for b in renderer.framebuffer.iter_mut() {
-            *b = 0xFF;
-        }
-        let ppu = make_ppu_with_mode(0, false, 15); // mode 0 not implemented
-        renderer.render_scanline(&ppu, 0);
-        for x in 0..SCREEN_WIDTH {
-            let idx = x * 3;
-            assert_eq!(renderer.framebuffer[idx], 0);
-            assert_eq!(renderer.framebuffer[idx + 1], 0);
-            assert_eq!(renderer.framebuffer[idx + 2], 0);
-        }
-    }
-
-    // ============================================================
     // update_brightness (tested via render_scanline)
     // ============================================================
 
@@ -729,6 +749,28 @@ mod tests {
         let sub = 4 | (5 << 5) | (6 << 10);
         let expected = 5 | (7 << 5) | (9 << 10);
         assert_eq!(Renderer::color_math(main, sub, false, false), expected);
+    }
+
+    // ============================================================
+    // deposit / z-order
+    // ============================================================
+
+    #[test]
+    fn test_deposit_higher_z_wins() {
+        let mut r = Renderer::new();
+        r.deposit_main(0, 0x0001, Z_BG2_LOW, Layer::Bg2, false);
+        r.deposit_main(0, 0x0002, Z_BG1_LOW, Layer::Bg1, false); // higher z
+        assert_eq!(r.main_line[0].color, 0x0002);
+        assert!(r.main_line[0].layer == Layer::Bg1);
+    }
+
+    #[test]
+    fn test_deposit_lower_z_ignored() {
+        let mut r = Renderer::new();
+        r.deposit_main(0, 0x0002, Z_BG1_LOW, Layer::Bg1, false);
+        r.deposit_main(0, 0x0001, Z_BG2_LOW, Layer::Bg2, false); // lower z
+        assert_eq!(r.main_line[0].color, 0x0002);
+        assert!(r.main_line[0].layer == Layer::Bg1);
     }
 
     // ============================================================
@@ -853,5 +895,171 @@ mod tests {
         ppu.write(0x212D, 0x00);
         r.render_scanline(&ppu, 0);
         assert_eq!(fb_pixel(&r, 0), Renderer::apply_brightness(0x000C, 15));
+    }
+
+    // ============================================================
+    // Layer routing (TM / TS) and gating
+    // ============================================================
+
+    #[test]
+    fn test_layer_routing_main_only() {
+        let mut r = make_renderer();
+        let mut ppu = make_ppu();
+        setup_bg1_uniform(&mut ppu, 0x1234);
+        ppu.write(0x212C, 0x01); // TM: BG1 on main
+        ppu.write(0x212D, 0x00);
+        r.render_scanline_mode1(&ppu, 0);
+        assert!(r.main_line[0].layer == Layer::Bg1);
+        assert_eq!(r.main_line[0].color, 0x1234);
+        assert!(r.sub_line[0].layer == Layer::Backdrop);
+    }
+
+    #[test]
+    fn test_layer_routing_sub_only() {
+        let mut r = make_renderer();
+        let mut ppu = make_ppu();
+        setup_bg1_uniform(&mut ppu, 0x1234);
+        ppu.write(0x212C, 0x00);
+        ppu.write(0x212D, 0x01); // TS: BG1 on sub
+        r.render_scanline_mode1(&ppu, 0);
+        assert!(r.main_line[0].layer == Layer::Backdrop);
+        assert!(r.sub_line[0].layer == Layer::Bg1);
+        assert_eq!(r.sub_line[0].color, 0x1234);
+    }
+
+    #[test]
+    fn test_layer_routing_both() {
+        let mut r = make_renderer();
+        let mut ppu = make_ppu();
+        setup_bg1_uniform(&mut ppu, 0x1234);
+        ppu.write(0x212C, 0x01);
+        ppu.write(0x212D, 0x01);
+        r.render_scanline_mode1(&ppu, 0);
+        assert!(r.main_line[0].layer == Layer::Bg1);
+        assert!(r.sub_line[0].layer == Layer::Bg1);
+    }
+
+    #[test]
+    fn test_tm_gating_disabled_layer_not_on_main() {
+        let mut r = make_renderer();
+        let mut ppu = make_ppu();
+        setup_bg1_uniform(&mut ppu, 0x1234);
+        ppu.write(0x212C, 0x00); // BG1 disabled on main
+        ppu.write(0x212D, 0x00);
+        r.render_scanline_mode1(&ppu, 0);
+        assert!(r.main_line[0].layer == Layer::Backdrop);
+    }
+
+    // ============================================================
+    // Priority ordering (full pipeline)
+    // ============================================================
+
+    #[test]
+    fn test_priority_bg1_over_bg2() {
+        let mut r = make_renderer();
+        let mut ppu = make_ppu();
+        setup_bg1_uniform(&mut ppu, 0x001F); // red
+        setup_bg2_uniform(&mut ppu, 0x7C00); // blue
+        ppu.write(0x212C, 0x03); // BG1 + BG2 on main
+        r.render_scanline(&ppu, 0);
+        // BG1 (Z=8) beats BG2 (Z=7)
+        assert_eq!(fb_pixel(&r, 0), Renderer::apply_brightness(0x001F, 15));
+    }
+
+    #[test]
+    fn test_bg3_priority_bit_lifts_above_bg1() {
+        let mut r = make_renderer();
+        let mut ppu = make_ppu();
+        setup_bg1_uniform(&mut ppu, 0x001F); // red, BG1 low prio
+        setup_bg3_high_prio(&mut ppu, 0x7C00); // blue, BG3 high prio
+        ppu.write(0x212C, 0x05); // BG1 + BG3 on main
+
+        // Without BGMODE bit3: BG1 (Z=8) beats BG3 high (Z=5).
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 0), Renderer::apply_brightness(0x001F, 15));
+
+        // With BGMODE bit3: BG3 high (Z=13) beats everything.
+        let mut r = make_renderer();
+        ppu.write(0x2105, 0x01 | 0x08);
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 0), Renderer::apply_brightness(0x7C00, 15));
+    }
+
+    // ============================================================
+    // Tilemap sizes (sub-screen selection)
+    // ============================================================
+
+    #[test]
+    fn test_tilemap_64x32_second_screen() {
+        let mut r = make_renderer();
+        let mut ppu = make_ppu();
+        ppu.write(0x2107, 0x01); // BG1SC: tilemap 0x0000, w64
+        let nba = (ppu.regs.bg12nba & 0xF0) | 0x01;
+        ppu.write(0x210B, nba);
+        ppu.write(0x212C, 0x01);
+
+        // Screen 1 (cols 32-63) at tilemap 0x0400: tile 1 opaque.
+        ppu.vram.memory[0x0400] = 0x0001;
+        for row in 0..8 {
+            ppu.vram.memory[0x1000 + 16 + row] = 0x00FF; // tile 1 CHR (4bpp)
+        }
+        set_color(&mut ppu, 0x01, 0x001F);
+
+        // Scroll x=256 -> screen x=0 maps to tile column 32 (screen 1).
+        ppu.write(0x210D, 0x00);
+        ppu.write(0x210D, 0x01);
+
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 0), Renderer::apply_brightness(0x001F, 15));
+    }
+
+    #[test]
+    fn test_tilemap_32x64_second_screen() {
+        let mut r = make_renderer();
+        let mut ppu = make_ppu();
+        ppu.write(0x2107, 0x02); // BG1SC: tilemap 0x0000, h64
+        let nba = (ppu.regs.bg12nba & 0xF0) | 0x01;
+        ppu.write(0x210B, nba);
+        ppu.write(0x212C, 0x01);
+
+        // Lower screen (rows 32-63) at tilemap 0x0400: tile 1 opaque.
+        ppu.vram.memory[0x0400] = 0x0001;
+        for row in 0..8 {
+            ppu.vram.memory[0x1000 + 16 + row] = 0x00FF;
+        }
+        set_color(&mut ppu, 0x01, 0x001F);
+
+        // Scroll y=256 -> screen y=0 maps to tile row 32 (lower screen).
+        ppu.write(0x210E, 0x00);
+        ppu.write(0x210E, 0x01);
+
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 0), Renderer::apply_brightness(0x001F, 15));
+    }
+
+    #[test]
+    fn test_tilemap_64x64_bottom_right_screen() {
+        let mut r = make_renderer();
+        let mut ppu = make_ppu();
+        ppu.write(0x2107, 0x03); // BG1SC: w64 + h64
+        let nba = (ppu.regs.bg12nba & 0xF0) | 0x01;
+        ppu.write(0x210B, nba);
+        ppu.write(0x212C, 0x01);
+
+        // Bottom-right screen (SC3) at offset 0xC00: tile 1 opaque.
+        ppu.vram.memory[0x0C00] = 0x0001;
+        for row in 0..8 {
+            ppu.vram.memory[0x1000 + 16 + row] = 0x00FF;
+        }
+        set_color(&mut ppu, 0x01, 0x001F);
+
+        // Scroll x=256, y=256 -> screen (0,0) maps to tile (row 32, col 32) = SC3.
+        ppu.write(0x210D, 0x00);
+        ppu.write(0x210D, 0x01);
+        ppu.write(0x210E, 0x00);
+        ppu.write(0x210E, 0x01);
+
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 0), Renderer::apply_brightness(0x001F, 15));
     }
 }
