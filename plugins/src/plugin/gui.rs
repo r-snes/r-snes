@@ -164,9 +164,14 @@ impl<'a> PluginPermRequest<'a> {
                                     FileReadWriteOptions::NewOnly => "NewOnly",
                                     FileReadWriteOptions::ReadOnly => "ReadOnly",
                                     FileReadWriteOptions::CanOverwrite { create, mode } => {
+                                        let mode = match mode {
+                                            OverwriteMode::AppendOnly => "AppendOnly",
+                                            OverwriteMode::CanSeek { read: false, .. } => "Write",
+                                            OverwriteMode::CanSeek { read: true, .. } => "Read/Write",
+                                        };
                                         &format!(
-                                            ": {}{mode:?}",
-                                            if *create { "Create + " } else { "" }
+                                            ": {mode}{}",
+                                            if *create { " + Create" } else { "" }
                                         )
                                     }
                                 };
