@@ -54,109 +54,118 @@ mod test {
         reason = "`DUP1_set is !true or !false in the duplicated tests"
     )]
     use super::super::test_prelude::*;
-    use duplicate::duplicate_item;
+    use duplicate::{duplicate, duplicate_item};
 
     // duplicate for all branch instructions
-    #[duplicate_item(
-        DUP1_name   DUP1_opcode DUP1_flag   DUP1_set    DUP1_regs;
-        [bcs]       [0xb0]      [regs.P.C]  [true]      [mut regs];
-        [bcc]       [0x90]      [regs.P.C]  [false]     [mut regs];
-        [beq]       [0xf0]      [regs.P.Z]  [true]      [mut regs];
-        [bne]       [0xd0]      [regs.P.Z]  [false]     [mut regs];
-        [bmi]       [0x30]      [regs.P.N]  [true]      [mut regs];
-        [bpl]       [0x10]      [regs.P.N]  [false]     [mut regs];
-        [bvs]       [0x70]      [regs.P.V]  [true]      [mut regs];
-        [bvc]       [0x50]      [regs.P.V]  [false]     [mut regs];
-        [bra]       [0x80]      [let _]     [0]         [regs]; // for BRA, don't even set anything
-    )]
-    mod DUP1_name {
-        use super::*;
+    duplicate! {
+        [
+            DUP1_name   DUP1_opcode DUP1_jump(do_jump);
+            [bcs]       [0xb0]      [C: do_jump,];
+            [bcc]       [0x90]      [C: !do_jump,];
+            [beq]       [0xf0]      [Z: do_jump,];
+            [bne]       [0xd0]      [Z: !do_jump,];
+            [bmi]       [0x30]      [N: do_jump,];
+            [bpl]       [0x10]      [N: !do_jump,];
+            [bvs]       [0x70]      [V: do_jump,];
+            [bvc]       [0x50]      [V: !do_jump,];
+            [bra]       [0x80]      []; // for BRA, don't even set anything
+        ]
+        mod DUP1_name {
+            use crate::registers::RegisterP;
+            use super::*;
 
-        #[test]
-        fn branch_not_taken() {
-            if DUP1_opcode == 0x80 {
-                return; // always pass test for BRA, it never takes a branch
+            #[test]
+            fn branch_not_taken() {
+                if DUP1_opcode == 0x80 {
+                    return; // always pass test for BRA, it never takes a branch
+                }
+
+                let regs = Registers {
+                    PB: 0x12,
+                    PC: 0x3456,
+                    P: RegisterP {
+                        DUP1_jump([false])
+                        ..0.into()
+                    },
+                    ..Default::default()
+                };
+
+                let mut expected_regs = regs;
+                let mut cpu = CPU::new(regs);
+
+                expect_opcode_fetch(&mut cpu, DUP1_opcode);
+                expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3457), 0xe1, "jump offset");
+                // branch is not taken, straight to opcode fetch
+                expect_opcode_fetch_cycle(&mut cpu);
+
+                expected_regs.PC = 0x3458; // just go to next instruction, no jump
+                assert_eq!(*cpu.regs(), expected_regs);
             }
 
-            let DUP1_regs = Registers {
-                PB: 0x12,
-                PC: 0x3456,
-                ..Default::default()
-            };
+            #[test]
+            fn branch_taken_no_page_crossed() {
+                let regs = Registers {
+                    PB: 0x12,
+                    PC: 0x3456,
+                    P: RegisterP {
+                        DUP1_jump([true])
+                        ..0.into()
+                    },
+                    ..Default::default()
+                };
 
-            DUP1_flag = !DUP1_set; // branch not taken
+                let mut expected_regs = regs;
+                let mut cpu = CPU::new(regs);
 
-            let mut expected_regs = regs;
-            let mut cpu = CPU::new(regs);
+                expect_opcode_fetch(&mut cpu, DUP1_opcode);
+                expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3457), 0x30, "jump offset");
+                expect_internal_cycle(&mut cpu, "branch taken");
+                // no more idle, no page boundary crossed
+                expect_opcode_fetch_cycle(&mut cpu);
 
-            expect_opcode_fetch(&mut cpu, DUP1_opcode);
-            expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3457), 0xe1, "jump offset");
-            // branch is not taken, straight to opcode fetch
-            expect_opcode_fetch_cycle(&mut cpu);
-
-            expected_regs.PC = 0x3458; // just go to next instruction, no jump
-            assert_eq!(*cpu.regs(), expected_regs);
-        }
-
-        #[test]
-        fn branch_taken_no_page_crossed() {
-            let DUP1_regs = Registers {
-                PB: 0x12,
-                PC: 0x3456,
-                ..Default::default()
-            };
-
-            DUP1_flag = DUP1_set; // case where we do jump
-
-            let mut expected_regs = regs;
-            let mut cpu = CPU::new(regs);
-
-            expect_opcode_fetch(&mut cpu, DUP1_opcode);
-            expect_read_cycle(&mut cpu, snes_addr!(0x12:0x3457), 0x30, "jump offset");
-            expect_internal_cycle(&mut cpu, "branch taken");
-            // no more idle, no page boundary crossed
-            expect_opcode_fetch_cycle(&mut cpu);
-
-            expected_regs.PC = 0x3488;
-            assert_eq!(*cpu.regs(), expected_regs);
-        }
-
-        // duplicate over emu/non-emu: idle only in emu
-        #[duplicate_item(
-            DUP2_name                       DUP2_emu;
-            [branch_taken_page_crossed_emu] [true];
-            [branch_taken_page_crossed_nat] [false];
-        )]
-        #[test]
-        fn DUP2_name() {
-            let mut regs = Registers {
-                PB: 0x12,
-                PC: 0x3456,
-                ..Default::default()
-            };
-
-            DUP1_flag = DUP1_set; // case where we do jump
-            regs.E = DUP2_emu;
-
-            let mut expected_regs = regs;
-            let mut cpu = CPU::new(regs);
-
-            expect_opcode_fetch(&mut cpu, DUP1_opcode);
-            // we jump to 0x60 lower, crossing a page boundary
-            expect_read_cycle(
-                &mut cpu,
-                snes_addr!(0x12:0x3457),
-                -0x60_i8 as u8,
-                "jump offset",
-            );
-            expect_internal_cycle(&mut cpu, "branch taken");
-            if DUP2_emu {
-                expect_internal_cycle(&mut cpu, "branch taken across page boundary");
+                expected_regs.PC = 0x3488;
+                assert_eq!(*cpu.regs(), expected_regs);
             }
-            expect_opcode_fetch_cycle(&mut cpu);
 
-            expected_regs.PC = 0x33f8;
-            assert_eq!(*cpu.regs(), expected_regs);
+            // duplicate over emu/non-emu: idle only in emu
+            #[duplicate_item(
+                DUP2_name                       DUP2_emu;
+                [branch_taken_page_crossed_emu] [true];
+                [branch_taken_page_crossed_nat] [false];
+            )]
+            #[test]
+            fn DUP2_name() {
+                let regs = Registers {
+                    PB: 0x12,
+                    PC: 0x3456,
+                    P: RegisterP {
+                        DUP1_jump([true])
+                        ..0.into()
+                    },
+                    E: DUP2_emu,
+                    ..Default::default()
+                };
+
+                let mut expected_regs = regs;
+                let mut cpu = CPU::new(regs);
+
+                expect_opcode_fetch(&mut cpu, DUP1_opcode);
+                // we jump to 0x60 lower, crossing a page boundary
+                expect_read_cycle(
+                    &mut cpu,
+                    snes_addr!(0x12:0x3457),
+                    -0x60_i8 as u8,
+                    "jump offset",
+                );
+                expect_internal_cycle(&mut cpu, "branch taken");
+                if DUP2_emu {
+                    expect_internal_cycle(&mut cpu, "branch taken across page boundary");
+                }
+                expect_opcode_fetch_cycle(&mut cpu);
+
+                expected_regs.PC = 0x33f8;
+                assert_eq!(*cpu.regs(), expected_regs);
+            }
         }
     }
 
