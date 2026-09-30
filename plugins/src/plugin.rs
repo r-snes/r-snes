@@ -1,3 +1,5 @@
+//! Main module declaring the Plugin struct and related types
+
 // uncomment below if code coverage is getting too low, as
 // it would be "fine" to count GUI code towards coverage
 // #[cfg(not(tarpaulin_include))]
@@ -14,18 +16,30 @@ use piccolo as picc;
 use piccolo::io as p_io;
 use std::fs;
 
+/// Error type describing the various reasons why a
+/// plugin might have failed to load.
 #[derive(Debug)]
 pub enum PluginLoadError {
+    /// Error opening the file: either does not exist or isn't readable
     OpenError(std::io::Error),
+    /// Error creating a buffered reader for the file
     BufCreationError(std::io::Error),
+    /// Error when reading the file
     ReadError(std::io::Error),
+    /// Error executing the file as lua (could be either that
+    /// it's not valid lua, or a lua runtime error)
     LuaError(picc::error::ExternError),
+    /// The value returned by the plugin file is not a valid plugin table
     PluginTabError(picc::error::ExternError),
 }
 
+/// A Lua plugin which may be loaded in the R-SNES emulator
 pub struct Plugin {
+    /// The lua VM
     pub lua: picc::Lua,
+    /// The path of the file if loaded from disk
     pub path: Option<PathBuf>,
+    /// What the plugin file returned: perm requests, functions etc.
     pub table: PluginTable,
 
     /// Runtime scheduling cursor for `autoactions.on_interval`: the
@@ -43,6 +57,7 @@ pub struct Plugin {
 /// the plugin file
 #[derive(Debug, Default)]
 pub struct PluginTable {
+    /// Permissions requested by the plugin
     pub perms: RSnesPermissions,
 
     /// Actions which can be run manually by the user
@@ -71,9 +86,12 @@ pub struct PluginActions {
     pub default: Option<picc::StashedClosure>,
 }
 
+/// An action to run at a set interval
 #[derive(Debug)]
 pub struct IntervalAction {
+    /// Interval to wait between calls
     pub interval_seconds: f64,
+    /// Function to run
     pub action: picc::StashedClosure,
 }
 
@@ -81,6 +99,7 @@ pub struct IntervalAction {
 /// automatically on certain events
 #[derive(Debug, Default)]
 pub struct PluginAutoActions {
+    /// Closure stored to run on each CPU cycle
     pub on_instr: Option<picc::StashedClosure>,
 
     /// Fires at a fixed interval of *emulated* time (see [`IntervalAction`]).
@@ -336,6 +355,7 @@ impl Plugin {
         Self::load_from_raw(source.as_slice(), Some(path.to_path_buf()))
     }
 
+    /// Load a plugin from a byte slice
     pub fn load_from_raw(
         file: &[u8],
         path: Option<std::path::PathBuf>,
@@ -372,6 +392,7 @@ impl Plugin {
         })
     }
 
+    /// Build a [`PluginPermRequest`] for this plugin
     pub fn perm_request(&self) -> PluginPermRequest<'_> {
         PluginPermRequest {
             plugin: self,
@@ -455,6 +476,7 @@ impl Plugin {
         Self::run_lua_with_args(lua, stashed, args)
     }
 
+    /// Runs a stashed lua function with no arguments
     pub fn run_lua<F, R>(lua: &mut picc::Lua, stashed: &F) -> Result<R, picc::ExternError>
     where
         F: for<'gc> picc::stash::Fetchable<Fetched<'gc>: Into<picc::Function<'gc>>>,

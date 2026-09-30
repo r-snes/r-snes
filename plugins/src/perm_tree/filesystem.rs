@@ -1,3 +1,5 @@
+//! Filesystem-related permissions
+
 use std::{path::PathBuf, string::FromUtf8Error};
 
 use piccolo::{Context, Value};
@@ -38,9 +40,15 @@ pub enum FileReadWriteOptions {
     ReadOnly,
 
     /// May overwrite (at least append) an existing file
-    CanOverwrite { create: bool, mode: OverwriteMode },
+    CanOverwrite {
+        /// Create bit
+        create: bool,
+        /// How the file may be overwritten
+        mode: OverwriteMode,
+    },
 }
 
+/// Enum describing how existing files can be overwritten
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum OverwriteMode {
     /// Open in append mode but don't allow seeking at all,
