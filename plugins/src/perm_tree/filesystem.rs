@@ -299,7 +299,7 @@ impl PermTreeNode for FileReadWriteOptions {
                     }
                 };
 
-                let mode: OverwriteMode = match tab.get_value(ctx, "overwrite_mode") {
+                let mode: OverwriteMode = match tab.get_value(ctx, "mode") {
                     Value::String(s) if s.as_bytes() == b"append_only" => {
                         if read.is_some() {
                             eprintln!("invalid \"read\" node on append_only");
@@ -735,18 +735,18 @@ mod test {
                 ["new_file.txt"] = "create_only",
 
                 append_only = {
-                    overwrite_mode = "append_only",
+                    mode = "append_only",
                     -- create = false, -- defaults to false
                 },
 
                 truncate_or_create = {
-                    overwrite_mode = "truncate",
+                    mode = "truncate",
                     create = true,
                 },
 
                 -- this starts by appending but can seek anywhere to edit the whole file
                 append = {
-                    overwrite_mode = "append",
+                    mode = "append",
                     read = true,
                 },
 
