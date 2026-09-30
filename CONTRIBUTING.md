@@ -77,11 +77,12 @@ Each emulated component (CPU, audio processor, special chips, etc.) lives in **a
 
 Even when working on your fork, give your branch a meaningful name: it appears on your pull request.
 
-- Start with a **verb** describing what the branch does.
+- Start with a **verb** describing what the branch does. For new features, use the `implement` verb written as `impl`
 - Separate words with **hyphens** (`-`), in lowercase.
 - Keep it **short**: a few words are enough.
 
 ```text
+impl-ppu-mode5
 add-reset-button
 fix-controller-input-lag
 update-contributing-guide
