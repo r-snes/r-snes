@@ -181,7 +181,7 @@ R-SNES supports several ways to request these exact permissions in a more concis
 | `internal.input`            | bool\* | [`rsnes.input`](#rsnesinput)         |
 | `internal.emulator.dialog`  | bool\* | *nothing* (unimplemented)            |
 | `internal.emulator.pause`   | bool\* | *nothing* (unimplemented)            |
-| `external.filesystem.files` | table of `<filename> = <open_mode>` | [`rsnes.files`](#rsnesfiles) |
+| `external.filesystem.files` | [filesystem request](#filesystem-request) | [`rsnes.files`](#rsnesfiles) |
 | `external.http`             | bool\* | *nothing* (unimplemented)            |
 
 \* Fields noted "bool\*" are currently boolean (`true`/`false`) but might be split into more granular permissions in the future, so it is recommended to only pass `"all"` or `"none"` instead of `true`/`false` for your plugin to be forward-compatible
@@ -367,3 +367,50 @@ The PPU has 3 memory units which plugins can (**will** in the near future, a lot
 ### `rsnes.files`
 
 > [!WARNING]
+> Filesystem access is still a work in progress (more than other things), the interface we currently expose is neither complete nor very practical, and it is subject to change
+
+`rsnes.files` gives access to individual files requested in `external.filesystem.files`
+
+#### Filesystem request
+
+For now, filesystem requests are of the form
+```lua
+return {
+    external = {
+        filesystem = {
+            files = {
+                "filename1" = <open_options>,
+                "filename2" = "all",
+                "filename3", -- defaults to "all" like regular perm nodes
+            }
+        }
+    }
+}
+```
+
+The filenames (like `"filename1"`) can either be relative or absolute, which are both bad options, so we plan to improve things in the future.<br>
+An absolute path would be something that starts with a `/` and then specifies a full path from the root of the filesystem, but this full path is OS-dependent, which would plugins non-portable.<br>
+A relative path is something like we have in the example, it's basically any path which doesn't start with a `/` and is therefore relative to the current working directory of the R-SNES process, which will likely be unintuitive for users.<br>
+Better options will come in future versions
+
+`<open_options>` can have the following values:
+
+| Open options   | Description                       | Granted methods |
+|:---------------|:----------------------------------|:----------------|
+| `"read_only"`    | Open a file only for reading     | `file.read`     |
+| `"create_only"`  | Open a file only if doesn't exist already (can't read nor write existing files) | *all file methods* |
+| `{ mode = "append_only", create = true/false }`  | Open a file for writing only, only appending to a file if it exists (prevents erasing data in existing files). The plugin will be allowed to create a new file only if `create` is set to true.<br>`create` defaults to `false` if unspecified. | `file.write` |
+| `{ mode = "truncate"/"append"/"start", create = true/false, read = true/false }`  | Open a file for writing and optionally reading.<br>- `"truncate"` fully clears the file on open (as by `file.clear()`).<br>- `"append"` opens the file in append mode, meaning the file cursor is placed at the end of file so that calls to `file.write` append to the file leaving existing file contents intact.<br>- `"start"` Opens the file without clearing it and leaves the file cursor at the start of the file, meaning that `file.write` will overwrite existing file contents (if any) each time it is called, leaving potential existing contents past the file cursor untouched.<br><br>`create` behaves the same as for `"append_only"`.<br>`read` defaults to `false` if unspecified, and gives `file.read` when `true`. | `file.write`, `file.seek`, `file.truncate`, `file.clear`, optionally `file.read` |
+| `"all"` | Equivalent to `{ mode = "truncate", create = true, read = true }` | *all file methods* |
+
+#### File methods
+
+All "methods" on files objects from `rsnes.files` are free functions, they should be called with `file.method(...)` (and not `file:method(...)` as all standard lua I/O methods do)
+
+| Method | Description |
+|:-------|:------------|
+| `read(mode)` | [Standard lua `read` method](https://www.lua.org/manual/5.4/manual.html#pdf-file:read) **only `"a"` supported** | |
+| `write(contents, ...)` | [Standard lua `write` method](https://www.lua.org/manual/5.4/manual.html#pdf-file:write) | |
+| `seek(origin, offset)` | [Standard lua `seek` method](https://www.lua.org/manual/5.4/manual.html#pdf-file:seek) |
+| `truncate(size)` | Resizes the file on disk to the specified integer `size` using [`set_len`](https://doc.rust-lang.org/std/fs/struct.File.html#method.set_len) (which calls [`ftruncate`](https://linux.die.net/man/2/ftruncate)). Leaves the file cursor at its current position, you may want to call `file.seek("set", size)` to put at the cursor at the new end of file, or `file.seek("set")` (the default value of `offset` is 0) to place the cursor at the start of the file.
+| `clear()` | Shortcut for `file.truncate(0); file.seek("set")`
