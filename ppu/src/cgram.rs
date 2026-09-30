@@ -1,12 +1,24 @@
+//! Palette memory (CGRAM): 512 bytes, stored as 256 15-bit BGR555 colors.
+//!
+//! The CPU accesses it through CGADD ($2121) for the word address,
+//! CGDATA ($2122) for writes and RDCGRAM ($213B) for reads.
+//! Writes and reads go through a shared two-step latch (low byte, then high byte),
+//! reset by any CGADD write. Bit 7 of the high byte is not stored
+//! and reads back from the PPU2 open bus.
+
 use crate::constants::CGRAM_SIZE;
 use crate::registers::PPURegisters;
 use crate::write_twice::BytePhase;
 use common::u16_split::U16Split;
 
+/// Palette memory, its word address and the open bus used by reads.
 pub struct CGRAM {
-    pub memory: [u16; CGRAM_SIZE / 2], // CGRAM stored as u16 words
-    word_addr: u8,                     // Internal 8-bit word address (0–255)
-    pub ppu_open_bus: u8,              // bit 7 used during high-byte read
+    /// CGRAM content, stored as 16-bit words (one color per word).
+    pub memory: [u16; CGRAM_SIZE / 2],
+    /// Internal 8-bit word address (0-255).
+    word_addr: u8,
+    /// Last value on the PPU open bus, bit 7 used during high-byte reads.
+    pub ppu_open_bus: u8,
 }
 
 impl Default for CGRAM {
@@ -16,6 +28,7 @@ impl Default for CGRAM {
 }
 
 impl CGRAM {
+    /// Creates a zeroed CGRAM.
     pub fn new() -> Self {
         Self {
             memory: [0; CGRAM_SIZE / 2],
@@ -28,6 +41,7 @@ impl CGRAM {
     // $2121 - CGADD
     // ============================================================
 
+    /// Writes CGADD ($2121): sets the word address and resets the latch to the low byte.
     pub fn write_addr(&mut self, PPURegisters { cgram_latch, .. }: &mut PPURegisters, value: u8) {
         self.word_addr = value;
         cgram_latch.reset();
@@ -37,6 +51,7 @@ impl CGRAM {
     // $2122 - CGDATA (Write-twice)
     // ============================================================
 
+    /// Writes CGDATA ($2122): latches the low byte, then stores the full word on the second write.
     pub fn write_data(&mut self, PPURegisters { cgram_latch, .. }: &mut PPURegisters, value: u8) {
         if let Some((lo, hi)) = cgram_latch.write(value) {
             let word = &mut self.memory[self.word_addr as usize];
@@ -51,6 +66,7 @@ impl CGRAM {
     // $213B - CGDATAREAD
     // ============================================================
 
+    /// Reads RDCGRAM ($213B): low byte first, then high byte with bit 7 from open bus.
     pub fn read_data(&mut self, PPURegisters { cgram_latch, .. }: &mut PPURegisters) -> u8 {
         let word = self.memory[self.word_addr as usize];
         let value = match cgram_latch.phase {
@@ -70,6 +86,7 @@ impl CGRAM {
     // Helpers
     // ============================================================
 
+    /// Returns the color at `word_index`, without side effects (used by rendering).
     pub fn read(&self, word_index: u8) -> u16 {
         self.memory[word_index as usize]
     }

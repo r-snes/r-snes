@@ -1,3 +1,10 @@
+//! PPU register file ($2100-$213F) and its internal latches.
+//!
+//! Holds the raw values of the write registers ($2100-$2133), the read
+//! registers ($2134-$213F) and the hidden latches used by write-twice
+//! registers (BG scroll, Mode 7, CGRAM, H/V counters).
+//! Helpers decode the fields used by rendering (BG mode, tilemap and CHR addresses).
+
 use crate::write_twice::WriteTwice;
 
 /// PPU Registers placeholder definitions
@@ -225,22 +232,24 @@ pub struct PPURegisters {
     // ============================================================
     // Latches (internal hardware state, not directly addressable)
     // ============================================================
-    /// Shared latch for all BGnHOFS/BGnVOFS writes ($210D-$2114)
-    /// bgofs_latch is written on every BGnHOFS and BGnVOFS write
-    /// bghofs_latch is written on every BGnHOFS write only
+
+    /// Shared latch for all BGnHOFS/BGnVOFS writes ($210D-$2114).
+    /// Written on every BGnHOFS and BGnVOFS write.
     pub bgofs_latch: u8,
+    /// Second BG scroll latch, written on every BGnHOFS write only.
+    /// Provides the low 3 bits of the next BGnHOFS value.
     pub bghofs_latch: u8,
 
-    // Shared latch for all Mode 7 writes ($210D-$2120, $211B-$211E)
+    /// Shared latch for all Mode 7 writes ($210D-$210E, $211B-$2120).
     pub mode7_latch: u8,
 
-    // Internal flip-flop for CGDATA ($2122) and CGDATAREAD ($213B) - shared per hardware
+    /// Internal flip-flop for CGDATA ($2122) and CGDATAREAD ($213B), shared per hardware.
     pub cgram_latch: WriteTwice,
 
-    // Internal flip-flop for OPHCT ($213C) reads
+    /// Internal flip-flop for OPHCT ($213C) reads.
     pub ophct_latch: WriteTwice,
 
-    // Internal flip-flop for OPVCT ($213D) reads
+    /// Internal flip-flop for OPVCT ($213D) reads.
     pub opvct_latch: WriteTwice,
 }
 
@@ -251,6 +260,7 @@ impl Default for PPURegisters {
 }
 
 impl PPURegisters {
+    /// Creates a register file with every register and latch cleared.
     pub fn new() -> Self {
         Self {
             inidisp: 0,
@@ -319,44 +329,60 @@ impl PPURegisters {
     // Helpers
     // ============================================================
 
+    /// Returns true if BG1 is enabled on the main screen (TM bit 0).
     pub fn bg1_enabled(&self) -> bool {
         (self.tm & 0x01) != 0
     }
 
+    /// Returns the current BG mode (BGMODE bits 0-2).
     pub fn bg_mode(&self) -> u8 {
         self.bgmode & 0x07
     }
 
-    // Tilemap addresses - bgsc[n] bits[7:2] in 0x400-word steps
+    // ============================================================
+    // Tilemap addresses
+    // ============================================================
+
+    /// Returns the BG1 tilemap word address (BG1SC bits 2-7, 0x400-word steps).
     pub fn bg1_tilemap_addr(&self) -> u16 {
         (self.bgsc[0] as u16 >> 2) * 0x400
     }
 
+    /// Returns the BG2 tilemap word address (BG2SC bits 2-7, 0x400-word steps).
     pub fn bg2_tilemap_addr(&self) -> u16 {
         (self.bgsc[1] as u16 >> 2) * 0x400
     }
 
+    /// Returns the BG3 tilemap word address (BG3SC bits 2-7, 0x400-word steps).
     pub fn bg3_tilemap_addr(&self) -> u16 {
         (self.bgsc[2] as u16 >> 2) * 0x400
     }
 
+    /// Returns the BG4 tilemap word address (BG4SC bits 2-7, 0x400-word steps).
     pub fn bg4_tilemap_addr(&self) -> u16 {
         (self.bgsc[3] as u16 >> 2) * 0x400
     }
 
-    // CHR base addresses - BG12NBA low/high nibble, BG34NBA low/high nibble, in 0x1000-word steps
+    // ============================================================
+    // CHR base addresses
+    // ============================================================
+
+    /// Returns the BG1 CHR word address (BG12NBA low nibble, 0x1000-word steps).
     pub fn bg1_tiledata_addr(&self) -> u16 {
         (self.bg12nba as u16 & 0x0F) << 12
     }
 
+    /// Returns the BG2 CHR word address (BG12NBA high nibble, 0x1000-word steps).
     pub fn bg2_tiledata_addr(&self) -> u16 {
         (self.bg12nba as u16 >> 4) << 12
     }
 
+    /// Returns the BG3 CHR word address (BG34NBA low nibble, 0x1000-word steps).
     pub fn bg3_tiledata_addr(&self) -> u16 {
         (self.bg34nba as u16 & 0x0F) << 12
     }
 
+    /// Returns the BG4 CHR word address (BG34NBA high nibble, 0x1000-word steps).
     pub fn bg4_tiledata_addr(&self) -> u16 {
         (self.bg34nba as u16 >> 4) << 12
     }

@@ -1,3 +1,11 @@
+//! Scanline renderer: composes the PPU layers into an RGB888 framebuffer.
+//!
+//! Each scanline starts with the backdrop color (CGRAM entry 0), then the BG mode
+//! renderer and the sprites draw on top through a per-column z-buffer.
+//! Force blank outputs black and INIDISP brightness is applied to every pixel.
+//! The framebuffer is double-buffered: the PPU writes to the back buffer,
+//! the GUI reads the front one.
+
 use crate::constants::*;
 use crate::ppu::PPU;
 
@@ -15,17 +23,29 @@ pub type RawFramebuffer = [u8; SCREEN_WIDTH * SCREEN_HEIGHT * 3];
 // Only BG1 and OBJ are rendered for now; the values are spaced so the other
 // layers slot in later without renumbering.
 // ============================================================
+
+/// Z-order of the backdrop (always behind everything).
 pub const Z_BACKDROP: u8 = 0;
+/// Z-order of priority 0 sprites.
 pub const Z_OBJ0: u8 = 3;
+/// Z-order of priority 1 sprites.
 pub const Z_OBJ1: u8 = 6;
+/// Z-order of low priority BG1 tiles.
 pub const Z_BG1_LOW: u8 = 8;
+/// Z-order of priority 2 sprites.
 pub const Z_OBJ2: u8 = 9;
+/// Z-order of high priority BG1 tiles.
 pub const Z_BG1_HIGH: u8 = 11;
+/// Z-order of priority 3 sprites.
 pub const Z_OBJ3: u8 = 12;
 
+/// Double-buffered framebuffer and per-scanline rendering state.
 pub struct Renderer {
-    pub framebuffer: Box<RawFramebuffer>, // back buffer, PPU writes here
-    pub presented: Box<RawFramebuffer>,   // front buffer, GUI reads here
+    /// Back buffer, the PPU writes here.
+    pub framebuffer: Box<RawFramebuffer>,
+    /// Front buffer, the GUI reads here.
+    pub presented: Box<RawFramebuffer>,
+    /// Brightness currently applied to the output (0-15).
     pub current_brightness: u8,
 
     /// Per-column z-order of the pixel currently written on the scanline
@@ -42,6 +62,7 @@ impl Default for Renderer {
 }
 
 impl Renderer {
+    /// Creates a renderer with black buffers at full brightness.
     pub fn new() -> Self {
         Self {
             framebuffer: Box::new([0; SCREEN_WIDTH * SCREEN_HEIGHT * 3]),
@@ -52,14 +73,17 @@ impl Renderer {
         }
     }
 
+    /// Swaps the back and front buffers, making the last rendered frame visible.
     pub fn swap_buffers(&mut self) {
         std::mem::swap(&mut self.framebuffer, &mut self.presented);
     }
 
+    /// Returns the front buffer (last complete frame).
     pub fn presented(&self) -> &RawFramebuffer {
         &self.presented
     }
 
+    /// Renders framebuffer row `y`: backdrop, BG layers, then sprites.
     pub fn render_scanline(&mut self, ppu: &PPU, y: usize) {
         // Hardware force blank: output black
         if ppu.force_blank() {
@@ -113,6 +137,7 @@ impl Renderer {
         }
     }
 
+    /// Converts a BGR555 color to RGB888, scaled by `brightness` (0-15).
     pub fn apply_brightness(color: u16, brightness: u16) -> (u8, u8, u8) {
         let mut r = color & 0x1F;
         let mut g = (color >> 5) & 0x1F;
@@ -129,6 +154,7 @@ impl Renderer {
         (r8, g8, b8)
     }
 
+    /// Writes an RGB pixel to the back buffer, ignoring the z-buffer.
     pub fn set_pixel(&mut self, x: usize, y: usize, r: u8, g: u8, b: u8) {
         let index = (y * SCREEN_WIDTH + x) * 3;
         self.framebuffer[index] = r;
