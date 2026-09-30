@@ -36,7 +36,6 @@ pub struct PPU {
     /// Master cycles elapsed inside the current scanline (0..1364).
     pub h_cycles: u32,
     pub frame: u64,
-    pub odd_frame: bool,
 
     // Separate open-bus latches for the PPU1 (5C77) and PPU2 (5C78) chips.
     pub ppu1_open_bus: u8,
@@ -59,7 +58,6 @@ impl PPU {
             scanline: 0,
             h_cycles: 0,
             frame: 0,
-            odd_frame: false,
             ppu1_open_bus: 0,
             ppu2_open_bus: 0,
         }
@@ -379,7 +377,7 @@ impl PPU {
                 if self.regs.counter_latch {
                     val |= 0x40; // bit 6: H/V counter latch flag
                 }
-                if self.odd_frame {
+                if self.odd_frame() {
                     val |= 0x80; // bit 7: interlace field (toggles each frame)
                 }
                 let result = self.ppu2_read(val, 0xDF); // bit 5 undriven
