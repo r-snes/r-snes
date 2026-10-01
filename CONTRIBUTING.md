@@ -4,6 +4,7 @@ Thanks for your interest in R-SNES! This document explains what kind of contribu
 
 ## Table of contents
 
+- [Core team](#core-team)
 - [What you can contribute](#what-you-can-contribute)
 - [Development setup](#development-setup)
 - [Project structure](#project-structure)
@@ -12,6 +13,19 @@ Thanks for your interest in R-SNES! This document explains what kind of contribu
 - [Testing policy](#testing-policy)
 - [Code quality](#code-quality)
 - [Checklist before opening a PR](#checklist-before-opening-a-pr)
+
+---
+
+## Core team
+
+R-SNES is maintained by its core team:
+
+- [@ClementBaziret](https://github.com/ClementBaziret)
+- [@C0Florent](https://github.com/C0Florent)
+- [@Tholarr](https://github.com/Tholarr)
+- [@tibaudlemaout](https://github.com/tibaudlemaout)
+
+The core team develops the core emulation, and is the only one whose approvals count towards merging pull requests (see [Workflow and pull requests](#workflow-and-pull-requests)).
 
 ---
 
@@ -120,7 +134,8 @@ Since pull requests are squash-merged, **your PR title is used as the default co
 1. Fork the repository and create a branch from `main` for your change, named as described in [Branch names](#branch-names).
 2. Push your work and open a pull request targeting `main`. If it addresses an issue, reference it in the description (e.g. `Closes #42`).
 3. CI runs automatically on every push and pull request. **All checks must pass** before a PR can be merged.
-4. Once reviewed and approved, the PR is **squashed and merged**.
+4. The PR is reviewed. Anyone is welcome to review pull requests and leave comments, but only approvals from [core team](#core-team) members count: a PR needs **2 core team approvals** before it can be merged.
+5. Once approved, the PR is **squashed and merged** by a core team member.
 
 Squash-merging keeps the history of `main` short and readable: one commit per PR. The detailed commit history remains available on the PR itself if you need to dig into how a change was built.
 
