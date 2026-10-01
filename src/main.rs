@@ -61,8 +61,21 @@ fn gui_emu_loop(
         _ => RSnesEmu::new(rsnes),
     };
 
-    gui.audio_play();
+    /// Audio frames (32 kHz stereo pairs) to keep queued on the device:
+    /// ~64 ms, about four video frames. Enough cushion that one slow frame
+    /// never empties the queue, small enough to keep input-to-sound
+    /// latency low.
+    const TARGET_QUEUED_FRAMES: u32 = 2_048;
+    /// The DSP's native output rate; queued frames / this = seconds queued.
+    const AUDIO_RATE_HZ: f64 = 32_000.0;
+    /// Longest single pacing sleep, so input and the window stay responsive
+    /// even if the queue somehow grows far past the target.
+    const MAX_PACING_SLEEP: Duration = Duration::from_millis(50);
+
     let mut audio_failed = false;
+    // Playback starts paused and only begins once TARGET_QUEUED_FRAMES are
+    // queued, so the device never starts from an empty queue.
+    let mut audio_playing = false;
 
     let closing_ev = 'emu_loop: loop {
         let deadline = Instant::now() + Duration::from_secs_f64(Gui::FRAME_DURATION);
@@ -86,6 +99,20 @@ fn gui_emu_loop(
                 eprintln!("audio output disabled: {e}");
                 gui.audio_stop();
                 audio_failed = true;
+            }
+        }
+
+        // Start playback once the cushion is built. If the queue ever runs
+        // dry anyway (a long stall), pause and rebuild the cushion rather
+        // than letting SDL alternate between sound and silence.
+        if !audio_failed {
+            let queued = gui.audio_buffered_frames();
+            if !audio_playing && queued >= TARGET_QUEUED_FRAMES {
+                gui.audio_play();
+                audio_playing = true;
+            } else if audio_playing && queued == 0 {
+                gui.audio_stop();
+                audio_playing = false;
             }
         }
 
@@ -120,14 +147,31 @@ fn gui_emu_loop(
             }
         }
 
-        let now = Instant::now();
-        if now < deadline {
-            std::thread::sleep(deadline - now);
+        // Pace on the audio queue: the sound device consumes exactly 32 kHz,
+        // so letting it set the speed keeps emulation in step with real
+        // time and absorbs the 60.0988 Hz (SNES) vs 60 Hz mismatch. Sleep
+        // only for the audio queued beyond the target; at or below it, go
+        // straight to the next frame. Without audio, fall back to the
+        // fixed frame deadline.
+        let sleep = if audio_failed {
+            deadline.saturating_duration_since(Instant::now())
+        } else if !audio_playing {
+            Duration::ZERO // still building the cushion: run flat out
+        } else {
+            let excess = gui
+                .audio_buffered_frames()
+                .saturating_sub(TARGET_QUEUED_FRAMES);
+            Duration::from_secs_f64(excess as f64 / AUDIO_RATE_HZ).min(MAX_PACING_SLEEP)
+        };
+        if !sleep.is_zero() {
+            std::thread::sleep(sleep);
         }
         frame_nb += 1;
     };
 
     if !audio_failed {
+        // Pause and discard anything still queued, whether or not
+        // playback had started yet.
         gui.audio_stop();
     }
 
