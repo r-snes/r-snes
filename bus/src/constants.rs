@@ -58,7 +58,7 @@ pub const COPIER_HEADER_SIZE: usize = 512;
 
 /// Delay between V-Blank start and the auto-read strobe (~74.5 dots).
 pub const AUTO_JOYPAD_START_DELAY: u32 = 298;
-const _: () = assert!(AUTO_JOYPAD_START_DELAY as f64 / 4 as f64 == 74.5);
+const _: () = assert!(AUTO_JOYPAD_START_DELAY as f64 / 4_f64 == 74.5);
 /// Total duration of the auto-read, during which HVBJOY bit 0 is set.
 pub const AUTO_JOYPAD_READ_CYCLES: u32 = 4224;
 /// Master cycles per serial bit (16 bits spread evenly over the read).
