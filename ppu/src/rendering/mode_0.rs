@@ -1,5 +1,5 @@
 use crate::ppu::PPU;
-use crate::rendering::renderer::{BgParams, Layer, Priority, Renderer};
+use crate::rendering::renderer::{BgParams, BitDepth, Layer, Priority, Renderer};
 use crate::vram::RawVRAM;
 
 impl Renderer {
@@ -38,7 +38,7 @@ impl Renderer {
                     tiledata_base: ppu.regs.bg_tiledata_addr(bg),
                     scroll_x,
                     scroll_y,
-                    bpp: 2,
+                    bpp: BitDepth::Two,
                     palette_base: PALETTE_BASE[bg],
                     w64,
                     h64,

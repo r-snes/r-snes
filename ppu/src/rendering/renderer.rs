@@ -48,6 +48,31 @@ impl Priority {
     }
 }
 
+/// Bit depth of a BG layer's tiles. Drives tile size in VRAM and palette shift.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum BitDepth {
+    Two,
+    Four,
+}
+
+impl BitDepth {
+    // Words per tile in VRAM: 2bpp = 8, 4bpp = 16.
+    fn tile_words(self) -> usize {
+        match self {
+            BitDepth::Two => 8,
+            BitDepth::Four => 16,
+        }
+    }
+
+    // Palette block shift: 2bpp = 4 colours (shift 2), 4bpp = 16 colours (shift 4).
+    fn pal_shift(self) -> u8 {
+        match self {
+            BitDepth::Two => 2,
+            BitDepth::Four => 4,
+        }
+    }
+}
+
 /// Identity of the layer that produced a pixel. Needed by color math, which
 /// enables/disables per layer (CGADSUB) and treats OBJ specially.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -108,7 +133,7 @@ pub struct BgParams {
     pub tiledata_base: u16,
     pub scroll_x: usize,
     pub scroll_y: usize,
-    pub bpp: u8,          // 2 or 4
+    pub bpp: BitDepth,
     pub palette_base: u8, // CGRAM colour offset (mode 0 per-layer); 0 otherwise
     pub w64: bool,        // tilemap 64 tiles wide
     pub h64: bool,        // tilemap 64 tiles tall
@@ -211,7 +236,8 @@ impl Renderer {
         let map_h = if p.h64 { 512 } else { 256 };
         let screens_wide = if p.w64 { 2 } else { 1 };
 
-        let (tile_words, pal_shift) = if p.bpp == 2 { (8usize, 2u8) } else { (16, 4) };
+        let tile_words = p.bpp.tile_words();
+        let pal_shift = p.bpp.pal_shift();
 
         for x in 0..SCREEN_WIDTH {
             let px = (x + p.scroll_x) & (map_w - 1);
@@ -240,10 +266,13 @@ impl Renderer {
             let fy = if flip_y { 7 - fine_y } else { fine_y };
 
             let tile_word_base = p.tiledata_base as usize + tile_index as usize * tile_words;
-            let color_index = if p.bpp == 2 {
-                Self::decode_2bpp_tile_pixel_from(&ppu.vram.memory, tile_word_base, fx, fy)
-            } else {
-                Self::decode_4bpp_tile_pixel_from(&ppu.vram.memory, tile_word_base, fx, fy)
+            let color_index = match p.bpp {
+                BitDepth::Two => {
+                    Self::decode_2bpp_tile_pixel_from(&ppu.vram.memory, tile_word_base, fx, fy)
+                }
+                BitDepth::Four => {
+                    Self::decode_4bpp_tile_pixel_from(&ppu.vram.memory, tile_word_base, fx, fy)
+                }
             };
 
             // Transparent pixel -> do nothing

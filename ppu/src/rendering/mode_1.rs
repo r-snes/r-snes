@@ -1,5 +1,5 @@
 use crate::ppu::PPU;
-use crate::rendering::renderer::{BgParams, Layer, Priority, Renderer};
+use crate::rendering::renderer::{BgParams, BitDepth, Layer, Priority, Renderer};
 use crate::vram::RawVRAM;
 
 impl Renderer {
@@ -14,9 +14,9 @@ impl Renderer {
 
         // (bg_index, bpp, z_low, z_high)
         let layers = [
-            (0usize, 4u8, Priority::Bg1Low, Priority::Bg1High),
-            (1, 4, Priority::Bg2Low, Priority::Bg2High),
-            (2, 2, Priority::Bg3Low, bg3_high),
+            (0usize, BitDepth::Four, Priority::Bg1Low, Priority::Bg1High),
+            (1, BitDepth::Four, Priority::Bg2Low, Priority::Bg2High),
+            (2, BitDepth::Two, Priority::Bg3Low, bg3_high),
         ];
 
         for (bg, bpp, z_low, z_high) in layers {
