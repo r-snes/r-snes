@@ -229,9 +229,9 @@ pub struct PPURegisters {
     /// On read: counter_latch = 0; ophct_byte = 0; opvct_byte = 0
     pub stat78: u8, // Bits: FLxMVVVV | Interlace field (F), counter latch (L), PPU2 open bus (x), NTSC/PAL (M), PPU2 version (V)
 
-    // ============================================================
-    // Latches (internal hardware state, not directly addressable)
-    // ============================================================
+    /// ============================================================
+    /// Latches (internal hardware state, not directly addressable)
+    /// ============================================================
 
     /// Shared latch for all BGnHOFS/BGnVOFS writes ($210D-$2114).
     /// Written on every BGnHOFS and BGnVOFS write.
