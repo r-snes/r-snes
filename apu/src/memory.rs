@@ -1,3 +1,6 @@
+//! The SPC700 address space: 64 KB audio RAM, the $F0-$FF I/O
+//! registers and the IPL ROM overlay. See [`Memory`].
+
 use crate::dsp::Dsp;
 use common::u16_split::U16Split;
 
@@ -53,7 +56,13 @@ pub struct Memory {
     ///
     /// `port_in[n]`  — value written by the SNES CPU, read by SPC700 at $F4+n
     /// `port_out[n]` — value written by SPC700 at $F4+n, read by SNES CPU
+    ///
+    /// This field holds the SNES CPU → SPC700 direction.
     pub port_in: [u8; 4],
+
+    /// $F4–$F7 — SPC700 → SNES CPU direction of the communication ports.
+    /// `port_out[n]` is written by the SPC700 at $F4+n and read by the SNES
+    /// CPU through `cpu_port_read` (see `port_in` for the full picture).
     pub port_out: [u8; 4],
 
     /// $FA–$FC — Timer divisors (write-only from SPC700 perspective).
@@ -73,6 +82,9 @@ impl Default for Memory {
 }
 
 impl Memory {
+    /// Create the APU memory in its hardware reset state: RAM zeroed, DSP
+    /// reset, IPL ROM mapped in (CONTROL = $80), timers stopped and all
+    /// communication ports cleared.
     pub fn new() -> Self {
         Self {
             ram: Box::new([0; _]),
@@ -90,6 +102,7 @@ impl Memory {
         }
     }
 
+    /// Read one byte from the SPC700 address space, without side effects.
     pub fn read8(&self, addr: u16) -> u8 {
         match addr {
             // ---- SPC700 I/O ports ($00F0–$00FF) ----
@@ -178,12 +191,14 @@ impl Memory {
         }
     }
 
+    /// Read a little-endian 16-bit word at `addr` (low byte first).
     pub fn read16(&self, addr: u16) -> u16 {
         let lo = self.read8(addr) as u16;
         let hi = self.read8(addr.wrapping_add(1)) as u16;
         (hi << 8) | lo
     }
 
+    /// Write one byte to the SPC700 address space.
     pub fn write8(&mut self, addr: u16, val: u8) {
         match addr {
             // $F0 TEST — only relevant during hardware boot; ignore safely.
@@ -240,6 +255,10 @@ impl Memory {
         }
     }
 
+    /// Write a little-endian 16-bit word at `addr` (low byte first).
+    ///
+    /// Each byte goes through [`Memory::write8`], so I/O side effects
+    /// apply, and the high byte's address wraps from $FFFF to $0000.
     pub fn write16(&mut self, addr: u16, value: u16) {
         self.write8(addr, *value.lo());
         self.write8(addr.wrapping_add(1), *value.hi());
