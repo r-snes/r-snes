@@ -9,7 +9,7 @@ impl Renderer {
     pub fn render_scanline_mode0(&mut self, ppu: &PPU, y: usize) {
         // Mode 0: BG1-BG4, all 2bpp. Each BG owns a separate 32-colour region:
         // BG1 -> 0, BG2 -> 32, BG3 -> 64, BG4 -> 96.
-        const PAL_BASE: [u8; 4] = [0, 32, 64, 96];
+        const PALETTE_BASE: [u8; 4] = [0, 32, 64, 96];
         const Z_LOW: [u8; 4] = [Z_BG1_LOW, Z_BG2_LOW, Z_BG3_LOW, Z_BG4_LOW];
         const Z_HIGH: [u8; 4] = [Z_BG1_HIGH, Z_BG2_HIGH, Z_BG3_HIGH, Z_BG4_HIGH];
 
@@ -32,7 +32,7 @@ impl Renderer {
                     scroll_x,
                     scroll_y,
                     bpp: 2,
-                    palette_base: PAL_BASE[bg],
+                    palette_base: PALETTE_BASE[bg],
                     w64,
                     h64,
                     z_low: Z_LOW[bg],
