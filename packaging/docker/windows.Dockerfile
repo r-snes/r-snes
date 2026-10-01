@@ -2,6 +2,7 @@
 # packaging/build-release.sh.
 FROM ubuntu:24.04 AS build
 
+ARG RUST_VERSION
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PATH=/root/.cargo/bin:$PATH
 
@@ -12,7 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     cmake \
     mingw-w64
 
-RUN curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain 1.95.0
+RUN curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain ${RUST_VERSION:-1.95.0}
 RUN rustup target add x86_64-pc-windows-gnu
 
 WORKDIR /src

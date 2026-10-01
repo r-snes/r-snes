@@ -13,6 +13,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VERSION="$(grep -m1 '^version' "$ROOT/Cargo.toml" | cut -d'"' -f2)"
+RUST_VERSION="1.95.0"
 OUT="$ROOT/dist/v$VERSION"
 
 targets=(${*:-windows deb rpm})
@@ -26,7 +27,7 @@ done
 mkdir -p "$OUT"
 for target in "${targets[@]}"; do
     echo "==> Building $target"
-    docker build -f "$ROOT/packaging/docker/$target.Dockerfile" --build-arg VERSION="$VERSION" --output "$OUT" "$ROOT"
+    docker build -f "$ROOT/packaging/docker/$target.Dockerfile" --build-arg VERSION="$VERSION" --build-arg RUST_VERSION="$RUST_VERSION" --output "$OUT" "$ROOT"
 done
 
 cd "$OUT"

@@ -1,6 +1,7 @@
 # Builds the R-SNES .deb package. Run through packaging/build-release.sh.
 FROM ubuntu:22.04 AS build
 
+ARG RUST_VERSION
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PATH=/root/.cargo/bin:$PATH
 
@@ -11,7 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libsdl2-dev \
     dpkg-dev
 
-RUN curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain 1.95.0
+RUN curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain ${RUST_VERSION:-1.95.0}
 RUN cargo install --locked cargo-deb
 
 WORKDIR /src

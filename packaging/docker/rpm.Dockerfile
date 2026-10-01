@@ -1,11 +1,12 @@
 # Builds the R-SNES .rpm package. Run through packaging/build-release.sh.
 FROM fedora:43 AS build
 
+ARG RUST_VERSION
 ENV PATH=/root/.cargo/bin:$PATH
 
 RUN dnf install -y gcc pkgconf-pkg-config SDL2-devel wayland-devel
 
-RUN curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain 1.95.0
+RUN curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain ${RUST_VERSION:-1.95.0}
 RUN cargo install --locked cargo-generate-rpm
 
 WORKDIR /src
