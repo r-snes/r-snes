@@ -49,7 +49,17 @@ pub struct Plugin {
     /// This is deliberately kept outside of `PluginTable` since it's
     /// mutable runtime state, not parsed plugin configuration.
     pub next_interval_master_cycle: Option<u64>,
+    /// Runtime scheduling cursor for `autoactions.on_real_interval`: the
+    /// wall-clock instant at which the next real-time interval should
+    /// fire. Like `next_interval_master_cycle`, it is `None` until the
+    /// first `update()` call initializes it, and it is mutable runtime
+    /// state rather than parsed plugin configuration.
     pub next_real_interval_instant: Option<std::time::Instant>,
+    /// Wall-clock reference point for `autoactions.on_real_interval`: the
+    /// instant real-time scheduling started. The elapsed real time passed
+    /// to `run_on_real_interval` is measured from here, the way the
+    /// emulated-time interval counts from `master_cycles == 0`. `None`
+    /// until the first `update()` call sets it.
     pub real_interval_origin: Option<std::time::Instant>,
 }
 
