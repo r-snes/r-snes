@@ -1,3 +1,7 @@
+//! This is the main entry point for the R-SNES emulator.
+//! It contains the main loop, which handles GUI events,
+//! emulation updates, and audio output.
+
 mod dma;
 mod gui;
 mod rsnes;
