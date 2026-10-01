@@ -1,8 +1,5 @@
 use crate::ppu::PPU;
-use crate::rendering::renderer::{
-    BgParams, Layer, Renderer, Z_BG1_HIGH, Z_BG1_LOW, Z_BG2_HIGH, Z_BG2_LOW, Z_BG3_HIGH, Z_BG3_LOW,
-    Z_BG4_HIGH, Z_BG4_LOW,
-};
+use crate::rendering::renderer::{BgParams, Layer, Priority, Renderer};
 use crate::vram::RawVRAM;
 
 impl Renderer {
@@ -10,8 +7,18 @@ impl Renderer {
         // Mode 0: BG1-BG4, all 2bpp. Each BG owns a separate 32-colour region:
         // BG1 -> 0, BG2 -> 32, BG3 -> 64, BG4 -> 96.
         const PALETTE_BASE: [u8; 4] = [0, 32, 64, 96];
-        const Z_LOW: [u8; 4] = [Z_BG1_LOW, Z_BG2_LOW, Z_BG3_LOW, Z_BG4_LOW];
-        const Z_HIGH: [u8; 4] = [Z_BG1_HIGH, Z_BG2_HIGH, Z_BG3_HIGH, Z_BG4_HIGH];
+        const Z_LOW: [Priority; 4] = [
+            Priority::Bg1Low,
+            Priority::Bg2Low,
+            Priority::Bg3Low,
+            Priority::Bg4Low,
+        ];
+        const Z_HIGH: [Priority; 4] = [
+            Priority::Bg1High,
+            Priority::Bg2High,
+            Priority::Bg3High,
+            Priority::Bg4High,
+        ];
 
         for bg in 0..4 {
             let to_main = ppu.regs.tm & (1 << bg) != 0;

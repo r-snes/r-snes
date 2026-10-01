@@ -1,7 +1,7 @@
 use crate::constants::*;
 use crate::oam::OAM;
 use crate::ppu::PPU;
-use crate::rendering::renderer::{Layer, Renderer, Z_OBJ0, Z_OBJ1, Z_OBJ2, Z_OBJ3};
+use crate::rendering::renderer::{Layer, Priority, Renderer};
 
 // VRAM is 32768 words, sprite CHR addresses wrap within it.
 const VRAM_WORD_MASK: usize = (VRAM_SIZE / 2) - 1;
@@ -34,11 +34,11 @@ impl Renderer {
                 sy = h - 1 - sy;
             }
 
-            let z = match sprite.priority {
-                0 => Z_OBJ0,
-                1 => Z_OBJ1,
-                2 => Z_OBJ2,
-                _ => Z_OBJ3,
+            let prio = match sprite.priority {
+                0 => Priority::Obj0,
+                1 => Priority::Obj1,
+                2 => Priority::Obj2,
+                _ => Priority::Obj3,
             };
 
             // Sprites do color math only when using palettes 4-7.
@@ -83,10 +83,10 @@ impl Renderer {
 
                 let sx = screen_x as usize;
                 if to_main {
-                    self.deposit_main(sx, color, z, Layer::Obj, obj_math);
+                    self.deposit_main(sx, color, prio, Layer::Obj, obj_math);
                 }
                 if to_sub {
-                    self.deposit_sub(sx, color, z, Layer::Obj, obj_math);
+                    self.deposit_sub(sx, color, prio, Layer::Obj, obj_math);
                 }
             }
         }

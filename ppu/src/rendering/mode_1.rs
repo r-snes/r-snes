@@ -1,8 +1,5 @@
 use crate::ppu::PPU;
-use crate::rendering::renderer::{
-    BgParams, Layer, Renderer, Z_BG1_HIGH, Z_BG1_LOW, Z_BG2_HIGH, Z_BG2_LOW, Z_BG3_HIGH, Z_BG3_LOW,
-    Z_BG3_PRIO,
-};
+use crate::rendering::renderer::{BgParams, Layer, Priority, Renderer};
 use crate::vram::RawVRAM;
 
 impl Renderer {
@@ -10,16 +7,16 @@ impl Renderer {
         // Mode 1: BG1/BG2 4bpp, BG3 2bpp. No per-layer palette offset.
         // BGMODE bit3 lifts BG3 high-priority tiles above every other layer.
         let bg3_high = if ppu.regs.bgmode & 0x08 != 0 {
-            Z_BG3_PRIO
+            Priority::Bg3Prio
         } else {
-            Z_BG3_HIGH
+            Priority::Bg3High
         };
 
         // (bg_index, bpp, z_low, z_high)
         let layers = [
-            (0usize, 4u8, Z_BG1_LOW, Z_BG1_HIGH),
-            (1, 4, Z_BG2_LOW, Z_BG2_HIGH),
-            (2, 2, Z_BG3_LOW, bg3_high),
+            (0usize, 4u8, Priority::Bg1Low, Priority::Bg1High),
+            (1, 4, Priority::Bg2Low, Priority::Bg2High),
+            (2, 2, Priority::Bg3Low, bg3_high),
         ];
 
         for (bg, bpp, z_low, z_high) in layers {
