@@ -1,20 +1,21 @@
+//! Bit-level instruction tests (feature/spc700-bit-ops)
+//!
+//! One file for the entire PR — grows by opcode group as each is added.
+//! Currently covers:
+//! - SET1/CLR1 d.bit ($02,$12,$22,$32,$42,$52,$62,$72,$82,$92,$A2,$B2,$C2,$D2,$E2,$F2)
+//! - BBS/BBC d.bit,rel ($03,$13,$23,$33,$43,$53,$63,$73,$83,$93,$A3,$B3,$C3,$D3,$E3,$F3)
+//! - TSET1 !a ($0E)
+//! - TCLR1 !a ($4E)
+//! - MOV1 C,m.b ($AA)
+//! - MOV1 m.b,C ($CA)
+//! - OR1 C,m.b ($0A)
+//! - OR1 m.b,C ($2A)
+//! - AND1 C,m.b ($4A)
+//! - AND1 m.b,C ($6A)
+//! - EOR1 C,m.b ($8A)
+//! - NOT1 m.b ($EA)
+
 use apu::Memory;
-/// Bit-level instruction tests (feature/spc700-bit-ops)
-///
-/// One file for the entire PR — grows by opcode group as each is added.
-/// Currently covers:
-/// - SET1/CLR1 d.bit ($02,$12,$22,$32,$42,$52,$62,$72,$82,$92,$A2,$B2,$C2,$D2,$E2,$F2)
-/// - BBS/BBC d.bit,rel ($03,$13,$23,$33,$43,$53,$63,$73,$83,$93,$A3,$B3,$C3,$D3,$E3,$F3)
-/// - TSET1 !a ($0E)
-/// - TCLR1 !a ($4E)
-/// - MOV1 C,m.b ($AA)
-/// - MOV1 m.b,C ($CA)
-/// - OR1 C,m.b ($0A)
-/// - OR1 m.b,C ($2A)
-/// - AND1 C,m.b ($4A)
-/// - AND1 m.b,C ($6A)
-/// - EOR1 C,m.b ($8A)
-/// - NOT1 m.b ($EA)
 use apu::cpu::{FLAG_C, FLAG_N, FLAG_P, FLAG_Z, Spc700};
 
 // ============================================================

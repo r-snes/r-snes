@@ -1,20 +1,21 @@
-/// Memory tests — APU address space
-///
-/// Covers every address region that matters for APU-internal operation:
-///
-///   - Normal RAM ($0000–$00EF, $0100–$EFFF): read/write/independence
-///   - $F0 TEST:          write ignored, read returns 0
-///   - $F1 CONTROL:       write stored, port-clear bits work
-///   - $F2 DSPADDR:       latch stores 7-bit index
-///   - $F3 DSPDATA:       routes through latch to DSP read_reg/write_reg
-///   - $F4–$F7 CPUIO:     SPC700 write → port_out; SNES write → port_in
-///   - $F8–$F9 AUXRAM:    normal RAM behaviour
-///   - $FA–$FC TIMERDIV:  write stored in timer_div, read returns 0xFF
-///   - $FD–$FF TIMEROUT:  read returns counter, read8_mut clears it
-///   - $F200–$F27F:       direct DSP window (test-code path)
-///   - $FFC0–$FFFF:       IPL boot ROM overlay — wins on reads while CONTROL bit 7 is set, hidden (plain RAM) when clear, writes always land in RAM regardless
-///   - read16/write16:    little-endian, correct wrapping at $FFFF
-///   - cpu_port_write/read: SNES↔APU communication helpers
+//! Memory tests — APU address space
+//!
+//! Covers every address region that matters for APU-internal operation:
+//!
+//!   - Normal RAM ($0000–$00EF, $0100–$EFFF): read/write/independence
+//!   - $F0 TEST:          write ignored, read returns 0
+//!   - $F1 CONTROL:       write stored, port-clear bits work
+//!   - $F2 DSPADDR:       latch stores 7-bit index
+//!   - $F3 DSPDATA:       routes through latch to DSP read_reg/write_reg
+//!   - $F4–$F7 CPUIO:     SPC700 write → port_out; SNES write → port_in
+//!   - $F8–$F9 AUXRAM:    normal RAM behaviour
+//!   - $FA–$FC TIMERDIV:  write stored in timer_div, read returns 0xFF
+//!   - $FD–$FF TIMEROUT:  read returns counter, read8_mut clears it
+//!   - $F200–$F27F:       direct DSP window (test-code path)
+//!   - $FFC0–$FFFF:       IPL boot ROM overlay — wins on reads while CONTROL bit 7 is set, hidden (plain RAM) when clear, writes always land in RAM regardless
+//!   - read16/write16:    little-endian, correct wrapping at $FFFF
+//!   - cpu_port_write/read: SNES↔APU communication helpers
+
 use apu::Memory;
 
 // ============================================================
