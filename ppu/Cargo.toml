@@ -5,7 +5,9 @@ edition = "2024"
 
 [dependencies]
 common = { path = "../common" }
-sdl2.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-sdl2 = { workspace = true, features = ["bundled"] }
+sdl2 = { workspace = true, features = ["bundled", "static-link"] }
+
+[target.'cfg(unix)'.dependencies]
+sdl2 = { workspace = true }
