@@ -24,3 +24,6 @@ target/
 
 # Added by cargo
 /target
+
+# Release files built by packaging/build-release.sh
+/dist
