@@ -1,3 +1,6 @@
+//! Proc macro crate which implements the DSL used
+//! to implement the R-SNES CPU
+
 mod parser;
 use parser::{Cycle, Instr, InstrBody, VarWidth};
 

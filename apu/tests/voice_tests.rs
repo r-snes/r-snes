@@ -1,10 +1,11 @@
+//! Voice and per-voice register mapping tests
+//!
+//! Covers Voice and Brr default state, all per-voice DSP register
+//! mappings (VOL, PITCH, SRCN, ADSR1, ADSR2), independence across all
+//! 8 voices, Release-phase playback continuation, Gaussian
+//! interpolation, and the global FLG register's RESET/MUTE effects.
+
 use apu::Memory;
-/// Voice and per-voice register mapping tests
-///
-/// Covers Voice and Brr default state, all per-voice DSP register
-/// mappings (VOL, PITCH, SRCN, ADSR1, ADSR2), independence across all
-/// 8 voices, Release-phase playback continuation, Gaussian
-/// interpolation, and the global FLG register's RESET/MUTE effects.
 use apu::dsp::{Adsr, Brr, Dsp, EnvelopePhase, Voice};
 use apu::memory::RawARAM;
 

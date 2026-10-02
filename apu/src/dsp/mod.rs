@@ -1,3 +1,9 @@
+//! The S-DSP: 8 voices, BRR decoding, ADSR/GAIN envelopes, noise, echo
+//! and the final stereo mix.
+//!
+//! The SPC700 reaches the 128 DSP registers through the $F2 (address)
+//! and $F3 (data) ports; see [`Dsp::read_reg`] for the register map.
+
 mod adsr;
 mod brr;
 mod voice;
@@ -121,6 +127,11 @@ impl Default for Dsp {
 }
 
 impl Dsp {
+    /// Create a DSP with every register cleared, all voices silent and the
+    /// noise generator seeded.
+    ///
+    /// Master volume starts at 0, so nothing is audible until the driver
+    /// writes MVOLL/MVOLR ($0C/$1C).
     pub fn new() -> Self {
         Self {
             registers: [0u8; 128],

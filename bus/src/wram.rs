@@ -1,3 +1,5 @@
+//! Provides `Wram`, the 128 KiB Work RAM of the SNES
+
 use crate::bus::AccessSpeed;
 use crate::constants::WRAM_SIZE;
 
@@ -14,6 +16,7 @@ use common::snes_address::SnesAddress;
 ///
 /// Warning: bank 0x7F is not mirrored, so `0x7F1000` is independent.
 pub struct Wram {
+    /// Raw WRAM contents: bank 0x7E followed by bank 0x7F
     pub data: Box<[u8; WRAM_SIZE]>,
 }
 

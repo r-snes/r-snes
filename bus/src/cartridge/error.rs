@@ -1,9 +1,15 @@
+//! Errors which can occur when loading a ROM
+
 use std::fmt;
 
+/// Error returned when a ROM file cannot be loaded into a cartridge
 #[derive(Debug)]
 pub enum RomError {
+    /// The ROM file could not be opened or read
     IoError(std::io::Error),
+    /// The ROM file is smaller than a single LoROM bank
     FileTooSmall,
+    /// The mapping mode could not be detected, or differs from the one in the header
     IncorrectMapping,
 }
 

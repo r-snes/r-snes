@@ -1,13 +1,14 @@
+//! 16-bit opcodes tests
+//! Currently covers:
+//! - MOVW YA,dp ($BA)
+//! - MOVW dp,YA ($DA)
+//! - ADDW YA,dp ($7A)
+//! - SUBW YA,dp ($9A)
+//! - CMPW YA,dp ($5A)
+//! - DECW dp ($1A)
+//! - INCW dp ($3A)
+
 use apu::Memory;
-/// 16-bit opcodes tests
-/// Currently covers:
-/// - MOVW YA,dp ($BA)
-/// - MOVW dp,YA ($DA)
-/// - ADDW YA,dp ($7A)
-/// - SUBW YA,dp ($9A)
-/// - CMPW YA,dp ($5A)
-/// - DECW dp ($1A)
-/// - INCW dp ($3A)
 use apu::cpu::{FLAG_C, FLAG_N, FLAG_P, FLAG_Z, Spc700};
 
 // ============================================================

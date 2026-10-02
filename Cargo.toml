@@ -18,26 +18,31 @@ members = [
     "product_order/product_order_derive",
 ]
 
+[workspace.lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)'] }
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+allow_attributes = "deny"
+allow_attributes_without_reason = "deny"
+
 # common dependencies used across the workspace
 [workspace.dependencies]
 piccolo = { git = "https://github.com/kyren/piccolo" }
 piccolo-util = { git = "https://github.com/kyren/piccolo" }
-common = { version = "0.1.0", path = "./common"}
+common = { version = "0.1.0", path = "./common" }
 duplicate = "2.0.1"
 
 [dependencies]
 common.workspace = true
-bus = { version = "0.1.0", path = "./bus"}
-cpu = { version = "0.1.0", path = "./cpu"}
-ppu = { version = "0.1.0", path = "./ppu"}
-apu = { version = "0.1.0", path = "./apu"}
-
+bus = { version = "0.1.0", path = "./bus" }
+cpu = { version = "0.1.0", path = "./cpu" }
+ppu = { version = "0.1.0", path = "./ppu" }
+apu = { version = "0.1.0", path = "./apu" }
 plugins = { version = "0.1.0", path = "./plugins", optional = true }
 piccolo = { workspace = true, optional = true }
 piccolo-util = { workspace = true, optional = true }
-
 egui-sdl2 = { version = "0.4.0", features = ["canvas-backend"] }
-
 rfd = "0.17.2"
 clap = { version = "^4.6.0", features = ["derive"], optional = true }
 duplicate.workspace = true
@@ -46,12 +51,12 @@ duplicate.workspace = true
 sdl2 = { version = "0.38.0", features = ["bundled"] }
 
 [target.'cfg(unix)'.dependencies]
-sdl2 = { version = "0.38.0"}
+sdl2 = { version = "0.38.0" }
 
 [features]
 cli = ["dep:clap"]
 plugins = ["dep:piccolo", "dep:piccolo-util", "dep:plugins"]
 default = ["cli", "plugins"]
 
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)'] }
+[lints]
+workspace = true

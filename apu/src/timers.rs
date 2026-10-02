@@ -1,3 +1,5 @@
+//! The three SPC700 hardware timers ($FA-$FF). See [`Timers`].
+
 use crate::memory::Memory;
 
 /// The SPC700's three hardware timers ($FA-$FF).
@@ -39,6 +41,9 @@ impl Default for Timers {
 }
 
 impl Timers {
+    /// Create the timers in their reset state: all stage counters at 0 and
+    /// every timer considered disabled, so the first enable bit seen in
+    /// CONTROL counts as a rising edge.
     pub fn new() -> Self {
         Self {
             cycle: 0,

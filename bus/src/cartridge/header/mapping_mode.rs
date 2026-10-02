@@ -1,3 +1,6 @@
+//! Mapping mode, ROM speed of a cartridge, and detection of
+//! the mapping mode from the ROM data
+
 use crate::constants::{
     HEADER_CHECKSUM_COMPLEMENT_OFFSET, HEADER_CHECKSUM_OFFSET, HEADER_SIZE,
     HEADER_SPEED_MAP_OFFSET, HEADER_TITLE_LEN, HIROM_BANK_SIZE, HIROM_HEADER_OFFSET,
@@ -13,7 +16,9 @@ use strum_macros::Display;
 /// speed in bit 4), so this struct groups them and allows a unified
 /// `from_byte` function
 pub struct SpeedAndMappingMode {
+    /// Mapping mode, from the low 4 bits
     pub mapping_mode: MappingMode,
+    /// ROM speed, from bit 4
     pub rom_speed: RomSpeed,
 }
 
@@ -41,18 +46,21 @@ pub enum MappingMode {
 /// Can be either Slow or Fast
 #[derive(Display, Debug, Clone, Copy, PartialEq)]
 pub enum RomSpeed {
+    /// SlowROM
     Slow,
+    /// FastROM
     Fast,
 }
 
-/// Creates `RomSpeed` and `MappingMode` values from a byte extracted from the ROM header.
-///
-/// Args:
-///     byte: Byte from the ROM header representing the ROM speed and mapping mode.
-///
-/// Returns:
-///     A SpeedAndMappingMode struct which contains the rom speed and the mapping mode
 impl SpeedAndMappingMode {
+    /// Creates `RomSpeed` and `MappingMode` values from a byte extracted from the ROM header.
+    ///
+    /// Args:
+    ///     byte: Byte from the ROM header representing the ROM speed and mapping mode.
+    ///
+    /// Returns:
+    ///     A SpeedAndMappingMode struct which contains the rom speed and the mapping mode,
+    ///     or `None` if the mapping mode is unknown
     pub fn from_byte(byte: u8) -> Option<SpeedAndMappingMode> {
         let mapping_mode = match byte & 0x0F {
             0x0 => MappingMode::LoRom,

@@ -1,11 +1,12 @@
+//! Direct page ALU instruction tests (feature/spc700-dp-alu)
+//!
+//! One file for the entire PR — grows by operation family as each is
+//! added: OR, AND, EOR, CMP, ADC, SBC, each across all addressing modes.
+//!
+//! Currently covers:
+//!   - OR  family ($04,$05,$06,$07,$09,$14,$15,$16,$17,$18,$19)
+
 use apu::Memory;
-/// Direct page ALU instruction tests (feature/spc700-dp-alu)
-///
-/// One file for the entire PR — grows by operation family as each is
-/// added: OR, AND, EOR, CMP, ADC, SBC, each across all addressing modes.
-///
-/// Currently covers:
-///   - OR  family ($04,$05,$06,$07,$09,$14,$15,$16,$17,$18,$19)
 use apu::cpu::{FLAG_C, FLAG_N, FLAG_P, FLAG_V, FLAG_Z, Spc700};
 
 // ============================================================

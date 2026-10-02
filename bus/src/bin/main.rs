@@ -1,3 +1,6 @@
+//! Debug tool which loads the ROM given as first argument and
+//! prints its header
+
 use bus::bus::Bus;
 use std::{env, error::Error};
 

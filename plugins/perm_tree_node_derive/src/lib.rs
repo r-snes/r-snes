@@ -1,3 +1,5 @@
+//! Implements a [`PermTreeNode derive macro`](derive_perm_tree_node)
+
 use {
     proc_macro::TokenStream,
     proc_macro2 as pm2,
@@ -9,6 +11,9 @@ use {
 };
 
 #[proc_macro_derive(PermTreeNode)]
+/// Derives a `PermTreeNode` on a struct, which enables building
+/// the struct from Lua values, assuming all its field implement
+/// `PermTreeNode` already
 pub fn derive_perm_tree_node(input: TokenStream) -> TokenStream {
     derive_perm_tree_node_impl(input.into()).into()
 }

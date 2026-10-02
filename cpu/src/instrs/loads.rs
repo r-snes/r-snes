@@ -43,7 +43,10 @@ duplicate! {
 
 #[cfg(test)]
 mod tests {
-    #![expect(clippy::nonminimal_bool)]
+    #![expect(
+        clippy::nonminimal_bool,
+        reason = "duplicated tests substitute boolean literals into conditions"
+    )]
     use crate::{instrs::test_prelude::*, registers::RegisterP};
     use duplicate::duplicate_item;
 

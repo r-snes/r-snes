@@ -1,3 +1,12 @@
+//! Sprite attribute memory (OAM): 544 bytes describing the 128 sprites.
+//!
+//! Table 1 (512 bytes) holds 4 bytes per sprite: X low bits, Y, tile and attributes.
+//! Table 2 (32 bytes) holds 2 bits per sprite: X bit 8 and the size bit.
+//! The CPU accesses it through OAMADD ($2102/$2103) for the address,
+//! OAMDATA ($2104) for writes and RDOAM ($2138) for reads.
+//! Writes to table 1 are word-based through a latch, writes to table 2 are immediate.
+//! Also handles per-scanline sprite evaluation and the STAT77 overflow flags.
+
 use common::u16_split::U16Split;
 
 // OAM layout:
@@ -34,6 +43,7 @@ pub struct Sprite {
     pub large: bool,
 }
 
+/// Sprite attribute memory, its internal address and the STAT77 flags.
 pub struct OAM {
     /// Raw OAM data: 512 bytes table 1 + 32 bytes table 2.
     data: [u8; OAM_SIZE],
@@ -63,6 +73,7 @@ impl Default for OAM {
 }
 
 impl OAM {
+    /// Creates a zeroed OAM with both flags cleared.
     pub fn new() -> Self {
         Self {
             data: [0; OAM_SIZE],

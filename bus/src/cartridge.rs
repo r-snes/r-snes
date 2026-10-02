@@ -1,3 +1,6 @@
+//! Provides `Cartridge`, which holds the game ROM and the S-RAM, and
+//! decodes the addresses to the chips of the cartridge board
+
 pub mod error;
 pub mod header;
 pub mod sram;
@@ -29,9 +32,13 @@ use std::path::Path;
 /// ROM data is read-only and any write attempts are ignored.
 #[derive(PartialEq)]
 pub struct Cartridge {
+    /// ROM data, without the copier header
     pub rom: Vec<u8>,
+    /// Mapping mode detected from the ROM data
     pub map: MappingMode,
+    /// Header parsed from the ROM
     pub header: RomHeader,
+    /// Static RAM of the cartridge (empty if the cartridge has none)
     pub sram: Sram,
 }
 
@@ -48,6 +55,16 @@ enum CartridgeTarget {
 }
 
 impl Cartridge {
+    /// Loads a cartridge from the ROM file at `path`
+    ///
+    /// Removes the copier header if present, detects the mapping mode,
+    /// parses the header and allocates the S-RAM it declares.
+    ///
+    /// # Errors
+    /// - `RomError::IoError` if the file cannot be read
+    /// - `RomError::FileTooSmall` if the file is smaller than a LoROM bank
+    /// - `RomError::IncorrectMapping` if the mapping mode cannot be
+    ///   detected, or does not match the one in the header
     pub fn load_from_file<P: AsRef<Path>>(path: P) -> Result<Self, RomError> {
         let mut file = File::open(path).map_err(RomError::IoError)?;
         let mut buffer = Vec::new();
@@ -196,6 +213,10 @@ impl Cartridge {
 }
 
 impl Cartridge {
+    /// Access speed of the ROM at the given `SnesAddress`
+    ///
+    /// Banks `0x80–0xFF` are fast when `memsel` (MEMSEL bit 0) is set,
+    /// every other access is slow.
     pub fn rom_speed(addr: SnesAddress, memsel: bool) -> AccessSpeed {
         if addr.bank >= 0x80 && memsel {
             AccessSpeed::Fast

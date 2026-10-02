@@ -1,9 +1,10 @@
+//! SPC700 CPU tests
+//!
+//! Covers every implemented instruction, all flag outcomes, both
+//! dp_base() states (FLAG_P set/clear), cycle counts, PC advancement,
+//! reset(), set_flag/get_flag, and the step() dispatch table.
+
 use apu::Memory;
-/// SPC700 CPU tests
-///
-/// Covers every implemented instruction, all flag outcomes, both
-/// dp_base() states (FLAG_P set/clear), cycle counts, PC advancement,
-/// reset(), set_flag/get_flag, and the step() dispatch table.
 use apu::cpu::{FLAG_B, FLAG_C, FLAG_H, FLAG_I, FLAG_N, FLAG_P, FLAG_V, FLAG_Z, Spc700};
 
 // ============================================================

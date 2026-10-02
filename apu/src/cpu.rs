@@ -1,27 +1,55 @@
+//! SPC700 CPU core: registers, status flags and instruction execution.
+//! See [`Spc700`].
+
 use crate::memory::Memory;
 
+/// The SPC700 register file.
 #[derive(Default)]
 pub struct Registers {
-    pub a: u8,   // Accumulator
-    pub x: u8,   // Index X
-    pub y: u8,   // Index Y
-    pub sp: u8,  // Stack Pointer
-    pub pc: u16, // Program Counter
-    pub psw: u8, // Processor Status Word (flags)
+    /// Accumulator.
+    pub a: u8,
+    /// Index register X.
+    pub x: u8,
+    /// Index register Y.
+    pub y: u8,
+    /// Stack pointer. The stack always lives in page 1 ($0100–$01FF).
+    pub sp: u8,
+    /// Program counter.
+    pub pc: u16,
+    /// Processor status word; see the `FLAG_*` bit masks.
+    pub psw: u8,
 }
 
-// Processor status flags
-pub const FLAG_C: u8 = 0x01; // Carry
-pub const FLAG_Z: u8 = 0x02; // Zero
-pub const FLAG_I: u8 = 0x04; // Interrupt
-pub const FLAG_H: u8 = 0x08; // Half-Carry
-pub const FLAG_B: u8 = 0x10; // Break
-pub const FLAG_P: u8 = 0x20; // Direct Page
-pub const FLAG_V: u8 = 0x40; // Overflow
-pub const FLAG_N: u8 = 0x80; // Negative
+// Processor status flags (bit masks into `Registers::psw`).
 
+/// PSW bit 0 — Carry. For subtraction and compares, 1 means "no borrow".
+pub const FLAG_C: u8 = 0x01;
+/// PSW bit 1 — Zero: set when the last result was 0.
+pub const FLAG_Z: u8 = 0x02;
+/// PSW bit 2 — Interrupt enable. Nothing on the SNES raises SPC700
+/// interrupts, so this has no practical effect.
+pub const FLAG_I: u8 = 0x04;
+/// PSW bit 3 — Half-carry: carry out of bit 3 (for subtraction, 1 means
+/// no half-borrow).
+pub const FLAG_H: u8 = 0x08;
+/// PSW bit 4 — Break: set by the BRK instruction.
+pub const FLAG_B: u8 = 0x10;
+/// PSW bit 5 — Direct page select: 0 = page 0 ($00xx), 1 = page 1 ($01xx).
+pub const FLAG_P: u8 = 0x20;
+/// PSW bit 6 — Signed overflow.
+pub const FLAG_V: u8 = 0x40;
+/// PSW bit 7 — Negative: copy of bit 7 of the last result.
+pub const FLAG_N: u8 = 0x80;
+
+/// The SPC700 CPU core.
+///
+/// Executes one whole instruction per call to [`Spc700::step`] against a
+/// [`Memory`], and keeps a running count of the cycles it has consumed.
 pub struct Spc700 {
+    /// Architectural registers.
     pub regs: Registers,
+    /// Total cycles executed since creation. Wraps on overflow, so only the
+    /// difference between two readings is meaningful.
     pub cycles: u32,
 
     /// Set by SLEEP ($EF) and STOP ($FF); cleared only by reset. On the
@@ -38,6 +66,9 @@ impl Default for Spc700 {
 }
 
 impl Spc700 {
+    /// Create a CPU with all registers zeroed and not halted.
+    ///
+    /// Call [`Spc700::reset`] afterwards to load the reset vector.
     pub fn new() -> Self {
         Self {
             regs: Registers::default(),
@@ -46,6 +77,11 @@ impl Spc700 {
         }
     }
 
+    /// Hardware reset: load PC from the reset vector at $FFFE, set SP to
+    /// $FF, clear PSW and wake the core if SLEEP/STOP halted it.
+    ///
+    /// The vector is read through `mem`, so while the IPL ROM is mapped in
+    /// it comes from the boot ROM (pointing at $FFC0).
     pub fn reset(&mut self, mem: &mut Memory) {
         self.regs.pc = mem.read16(0xFFFE); // Reset vector
         self.regs.sp = 0xFF;
@@ -335,6 +371,9 @@ impl Spc700 {
     }
 
     // Flag helpers
+
+    /// Set (`value == true`) or clear the PSW bits selected by `mask`
+    /// (one of the `FLAG_*` constants).
     pub fn set_flag(&mut self, mask: u8, value: bool) {
         if value {
             self.regs.psw |= mask;
@@ -343,6 +382,7 @@ impl Spc700 {
         }
     }
 
+    /// Return true if any PSW bit selected by `mask` is set.
     pub fn get_flag(&self, mask: u8) -> bool {
         (self.regs.psw & mask) != 0
     }
@@ -410,42 +450,49 @@ impl Spc700 {
         self.cycles += 2;
     }
 
+    /// `MOV A, #imm` ($E8): load an immediate byte into A. Sets N and Z.
     pub fn inst_lda_imm(&mut self, mem: &mut Memory) {
         self.regs.a = self.read_immediate(mem);
         self.set_zn_flags(self.regs.a);
         self.cycles += 2;
     }
 
+    /// `MOV X, #imm` ($CD): load an immediate byte into X. Sets N and Z.
     pub fn inst_ldx_imm(&mut self, mem: &mut Memory) {
         self.regs.x = self.read_immediate(mem);
         self.set_zn_flags(self.regs.x);
         self.cycles += 2;
     }
 
+    /// `MOV Y, #imm` ($8D): load an immediate byte into Y. Sets N and Z.
     pub fn inst_ldy_imm(&mut self, mem: &mut Memory) {
         self.regs.y = self.read_immediate(mem);
         self.set_zn_flags(self.regs.y);
         self.cycles += 2;
     }
 
+    /// `MOV !abs, A` ($C5): store A at a 16-bit absolute address. No flags.
     pub fn inst_sta_abs(&mut self, mem: &mut Memory) {
         let addr = self.read_immediate16(mem);
         mem.write8(addr, self.regs.a);
         self.cycles += 4;
     }
 
+    /// `MOV !abs, X` ($C9): store X at a 16-bit absolute address. No flags.
     pub fn inst_stx_abs(&mut self, mem: &mut Memory) {
         let addr = self.read_immediate16(mem);
         mem.write8(addr, self.regs.x);
         self.cycles += 4;
     }
 
+    /// `MOV !abs, Y` ($CC): store Y at a 16-bit absolute address. No flags.
     pub fn inst_sty_abs(&mut self, mem: &mut Memory) {
         let addr = self.read_immediate16(mem);
         mem.write8(addr, self.regs.y);
         self.cycles += 4;
     }
 
+    /// `MOV A, !abs` ($E5): load A from a 16-bit absolute address. Sets N and Z.
     pub fn inst_lda_abs(&mut self, mem: &mut Memory) {
         let addr = self.read_immediate16(mem);
         self.regs.a = mem.read8_mut(addr);
@@ -453,6 +500,7 @@ impl Spc700 {
         self.cycles += 4;
     }
 
+    /// `MOV X, !abs` ($E9): load X from a 16-bit absolute address. Sets N and Z.
     pub fn inst_ldx_abs(&mut self, mem: &mut Memory) {
         let addr = self.read_immediate16(mem);
         self.regs.x = mem.read8_mut(addr);
@@ -460,6 +508,7 @@ impl Spc700 {
         self.cycles += 4;
     }
 
+    /// `MOV Y, !abs` ($EC): load Y from a 16-bit absolute address. Sets N and Z.
     pub fn inst_ldy_abs(&mut self, mem: &mut Memory) {
         let addr = self.read_immediate16(mem);
         self.regs.y = mem.read8_mut(addr);
@@ -468,6 +517,8 @@ impl Spc700 {
     }
 
     // Load from direct page
+
+    /// `MOV A, dp` ($E4): load A from the direct page (page chosen by P). Sets N and Z.
     pub fn inst_lda_dp(&mut self, mem: &mut Memory) {
         let offset = self.read_immediate(mem) as u16;
         let addr = self.dp_base() | offset;
@@ -476,6 +527,7 @@ impl Spc700 {
         self.cycles += 3;
     }
 
+    /// `MOV X, dp` ($F8): load X from the direct page (page chosen by P). Sets N and Z.
     pub fn inst_ldx_dp(&mut self, mem: &mut Memory) {
         let offset = self.read_immediate(mem) as u16;
         let addr = self.dp_base() | offset;
@@ -484,6 +536,7 @@ impl Spc700 {
         self.cycles += 3;
     }
 
+    /// `MOV Y, dp` ($EB): load Y from the direct page (page chosen by P). Sets N and Z.
     pub fn inst_ldy_dp(&mut self, mem: &mut Memory) {
         let offset = self.read_immediate(mem) as u16;
         let addr = self.dp_base() | offset;
@@ -492,6 +545,7 @@ impl Spc700 {
         self.cycles += 3;
     }
 
+    /// `MOV dp, A` ($C4): store A in the direct page (page chosen by P). No flags.
     pub fn inst_sta_dp(&mut self, mem: &mut Memory) {
         let offset = self.read_immediate(mem) as u16;
         let addr = self.dp_base() | offset;
@@ -499,6 +553,7 @@ impl Spc700 {
         self.cycles += 3;
     }
 
+    /// `MOV dp, X` ($D8): store X in the direct page (page chosen by P). No flags.
     pub fn inst_stx_dp(&mut self, mem: &mut Memory) {
         let offset = self.read_immediate(mem) as u16;
         let addr = self.dp_base() | offset;
@@ -506,6 +561,7 @@ impl Spc700 {
         self.cycles += 3;
     }
 
+    /// `MOV dp, Y` ($CB): store Y in the direct page (page chosen by P). No flags.
     pub fn inst_sty_dp(&mut self, mem: &mut Memory) {
         let offset = self.read_immediate(mem) as u16;
         let addr = self.dp_base() | offset;
@@ -513,6 +569,7 @@ impl Spc700 {
         self.cycles += 3;
     }
 
+    /// `ADC A, #imm` ($88): A = A + imm + C. Sets N, V, H, Z and C.
     pub fn inst_adc_imm(&mut self, mem: &mut Memory) {
         let value = self.read_immediate(mem);
         self.regs.a = self.adc_flags(self.regs.a, value);
@@ -530,6 +587,8 @@ impl Spc700 {
         self.cycles += 2;
     }
 
+    /// `SBC A, #imm` ($A8): A = A - imm - !C (C = 1 means no borrow).
+    /// Sets N, V, H, Z and C.
     pub fn inst_sbc_imm(&mut self, mem: &mut Memory) {
         let value = self.read_immediate(mem);
         self.regs.a = self.sbc_flags(self.regs.a, value);

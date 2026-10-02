@@ -17,3 +17,6 @@ plugins = { path = "../" }
 permission_derive_macro = { path = "../permission_derive_macro" }
 piccolo = { workspace = true }
 runtime-macros = "1.1.1"
+
+[lints]
+workspace = true

@@ -1,36 +1,37 @@
+//! SNES APU Comprehensive Test
+//!
+//! This program exercises every major part of the APU:
+//!
+//!   Test 1 — BRR encoder helper + single-voice sine wave
+//!     Verifies that BRR encoding/decoding round-trips correctly.
+//!     Writes "test1_sine.raw".
+//!
+//!   Test 2 — All 8 voices simultaneously (different pitches)
+//!     Puts a simple tone on each voice at a different pitch value,
+//!     confirming the mixer sums all 8 channels.
+//!     Writes "test2_8voices.raw".
+//!
+//!   Test 3 — ADSR phase progression
+//!     One voice with a clearly audible attack → decay → sustain → release
+//!     shape. Prints envelope level milestones to stdout.
+//!     Writes "test3_adsr.raw".
+//!
+//!   Test 4 — BRR loop flag
+//!     Encodes a short one-block sample with the loop flag set,
+//!     verifies it keeps playing rather than going silent.
+//!     Writes "test4_loop.raw".
+//!
+//!   Test 5 — Stereo pan
+//!     Two voices: one panned hard left, one hard right.
+//!     Writes "test5_stereo.raw".
+//!
+//! All output files are raw signed 16-bit little-endian PCM at 32 000 Hz mono
+//! (tests 1–4) or stereo interleaved (test 5).
+//! Play back with e.g.:
+//!   ffplay -f s16le -ar 32000 -ac 1 test1_sine.raw
+//!   ffplay -f s16le -ar 32000 -ac 2 test5_stereo.raw
+
 use apu::Memory;
-/// SNES APU Comprehensive Test
-///
-/// This program exercises every major part of the APU:
-///
-///   Test 1 — BRR encoder helper + single-voice sine wave
-///     Verifies that BRR encoding/decoding round-trips correctly.
-///     Writes "test1_sine.raw".
-///
-///   Test 2 — All 8 voices simultaneously (different pitches)
-///     Puts a simple tone on each voice at a different pitch value,
-///     confirming the mixer sums all 8 channels.
-///     Writes "test2_8voices.raw".
-///
-///   Test 3 — ADSR phase progression
-///     One voice with a clearly audible attack → decay → sustain → release
-///     shape. Prints envelope level milestones to stdout.
-///     Writes "test3_adsr.raw".
-///
-///   Test 4 — BRR loop flag
-///     Encodes a short one-block sample with the loop flag set,
-///     verifies it keeps playing rather than going silent.
-///     Writes "test4_loop.raw".
-///
-///   Test 5 — Stereo pan
-///     Two voices: one panned hard left, one hard right.
-///     Writes "test5_stereo.raw".
-///
-/// All output files are raw signed 16-bit little-endian PCM at 32 000 Hz mono
-/// (tests 1–4) or stereo interleaved (test 5).
-/// Play back with e.g.:
-///   ffplay -f s16le -ar 32000 -ac 1 test1_sine.raw
-///   ffplay -f s16le -ar 32000 -ac 2 test5_stereo.raw
 use apu::dsp::EnvelopePhase;
 use std::fs::File;
 use std::io::Write;
