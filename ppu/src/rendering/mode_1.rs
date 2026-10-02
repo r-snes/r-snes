@@ -11,7 +11,7 @@ use crate::rendering::renderer::{BgParams, BitDepth, Layer, Priority, Renderer};
 use crate::vram::RawVRAM;
 
 impl Renderer {
-    /// Renders BG1 in Mode 1 on framebuffer row `y`.
+    /// Renders BG1-BG3 in Mode 1 on framebuffer row `y`.
     pub fn render_scanline_mode1(&mut self, ppu: &PPU, y: usize) {
         // Mode 1: BG1/BG2 4bpp, BG3 2bpp. No per-layer palette offset.
         // BGMODE bit3 lifts BG3 high-priority tiles above every other layer.

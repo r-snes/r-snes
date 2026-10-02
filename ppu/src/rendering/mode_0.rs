@@ -11,7 +11,7 @@ use crate::rendering::renderer::{BgParams, BitDepth, Layer, Priority, Renderer};
 use crate::vram::RawVRAM;
 
 impl Renderer {
-    /// Renders BG1 in Mode 0 on framebuffer row `y`.
+    /// Renders BG1-BG4 in Mode 0 on framebuffer row `y`.
     pub fn render_scanline_mode0(&mut self, ppu: &PPU, y: usize) {
         // Mode 0: BG1-BG4, all 2bpp. Each BG owns a separate 32-colour region:
         // BG1 -> 0, BG2 -> 32, BG3 -> 64, BG4 -> 96.
