@@ -69,6 +69,7 @@ piccolo = { git = "https://github.com/kyren/piccolo" }
 piccolo-util = { git = "https://github.com/kyren/piccolo" }
 common = { version = "0.1.0", path = "./common" }
 duplicate = "2.0.1"
+sdl2 = { version = "0.38.0" }
 
 [dependencies]
 common.workspace = true
@@ -85,10 +86,10 @@ clap = { version = "^4.6.0", features = ["derive"], optional = true }
 duplicate.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-sdl2 = { version = "0.38.0", features = ["bundled", "static-link"] }
+sdl2 = { workspace = true, features = ["bundled", "static-link"] }
 
 [target.'cfg(unix)'.dependencies]
-sdl2 = { version = "0.38.0" }
+sdl2 = { workspace = true }
 
 [build-dependencies]
 winresource = "0.1.31"

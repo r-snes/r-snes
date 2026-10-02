@@ -6,68 +6,57 @@
 //! BG3 uses 8 palettes of 4 colors (entries 0-31). Color 0 is transparent.
 //! BGMODE bit 3 moves high priority BG3 tiles in front of every other layer.
 
-use crate::constants::*;
 use crate::ppu::PPU;
-use crate::rendering::renderer::{Renderer, Z_BG1_HIGH, Z_BG1_LOW};
+use crate::rendering::renderer::{BgParams, BitDepth, Layer, Priority, Renderer};
 use crate::vram::RawVRAM;
 
 impl Renderer {
     /// Renders BG1 in Mode 1 on framebuffer row `y`.
     pub fn render_scanline_mode1(&mut self, ppu: &PPU, y: usize) {
-        // VRAM word addresses
-        let tilemap_base = ppu.regs.bg1_tilemap_addr(); // tilemap
-        let tiledata_base = ppu.regs.bg1_tiledata_addr(); // CHR data
+        // Mode 1: BG1/BG2 4bpp, BG3 2bpp. No per-layer palette offset.
+        // BGMODE bit3 lifts BG3 high-priority tiles above every other layer.
+        let bg3_high = if ppu.regs.bgmode & 0x08 != 0 {
+            Priority::Bg3Prio
+        } else {
+            Priority::Bg3High
+        };
 
-        // BG1 scroll registers
-        let scroll_x = ppu.regs.bg1hofs as usize;
-        let scroll_y = ppu.regs.bg1vofs as usize;
+        // (bg_index, bpp, z_low, z_high)
+        let layers = [
+            (0usize, BitDepth::Four, Priority::Bg1Low, Priority::Bg1High),
+            (1, BitDepth::Four, Priority::Bg2Low, Priority::Bg2High),
+            (2, BitDepth::Two, Priority::Bg3Low, bg3_high),
+        ];
 
-        for x in 0..SCREEN_WIDTH {
-            // ============================================================
-            // Screen pixel -> tile coordinates
-            // ============================================================
-            let px = (x + scroll_x) & 0xFF;
-            let py = (y + scroll_y) & 0xFF;
-
-            let tile_col = px >> 3;
-            let tile_row = py >> 3;
-            let fine_x = px & 7;
-            let fine_y = py & 7;
-
-            // ==========================================================================
-            // Read tilemap entry
-            // ==========================================================================
-            let map_word_addr = tilemap_base as usize + tile_row * 32 + tile_col;
-            let entry = ppu.vram.memory[map_word_addr];
-
-            let tile_index = entry & 0x03FF; // bits 9:0
-            let palette_num = (entry >> 10) & 0x07; // bits 12:10
-            let priority = (entry & 0x2000) != 0; // bit 13
-            let flip_x = (entry & 0x4000) != 0; // bit 14
-            let flip_y = (entry & 0x8000) != 0; // bit 15
-
-            // Apply flip
-            let fx = if flip_x { 7 - fine_x } else { fine_x };
-            let fy = if flip_y { 7 - fine_y } else { fine_y };
-
-            // ============================================================
-            // Decode 4bpp pixel from CHR data
-            // ============================================================
-            let tile_word_base = tiledata_base as usize + tile_index as usize * 16;
-            let color_index =
-                Self::decode_4bpp_tile_pixel_from(&ppu.vram.memory, tile_word_base, fx, fy);
-
-            // Transparent pixel -> do nothing
-            if color_index == 0 {
+        for (bg, bpp, z_low, z_high) in layers {
+            let to_main = ppu.regs.tm & (1 << bg) != 0;
+            let to_sub = ppu.regs.ts & (1 << bg) != 0;
+            if !to_main && !to_sub {
                 continue;
             }
 
-            let palette_entry = ((palette_num as u8) << 4) | color_index;
-            let color = ppu.cgram.read(palette_entry);
+            let (w64, h64) = ppu.regs.bg_tilemap_size(bg);
+            let (scroll_x, scroll_y) = ppu.regs.bg_scroll(bg);
 
-            let (r, g, b) = Self::apply_brightness(color, self.current_brightness as u16);
-            let z = if priority { Z_BG1_HIGH } else { Z_BG1_LOW };
-            self.set_pixel_z(x, y, r, g, b, z);
+            self.render_bg_scanline(
+                ppu,
+                y,
+                &BgParams {
+                    tilemap_base: ppu.regs.bg_tilemap_addr(bg),
+                    tiledata_base: ppu.regs.bg_tiledata_addr(bg),
+                    scroll_x,
+                    scroll_y,
+                    bpp,
+                    palette_base: 0,
+                    w64,
+                    h64,
+                    z_low,
+                    z_high,
+                    layer: Layer::from_bg(bg),
+                    to_main,
+                    to_sub,
+                },
+            );
         }
     }
 
@@ -79,10 +68,10 @@ impl Renderer {
         y: usize,
     ) -> u8 {
         // Planes 0+1: p0 = low byte, p1 = high byte
-        let [p0, p1] = vram[tile_word_base + y].to_le_bytes();
+        let [p0, p1] = vram[(tile_word_base + y) & 0x7FFF].to_le_bytes();
 
         // Planes 2+3: words 8-15
-        let [p2, p3] = vram[tile_word_base + y + 8].to_le_bytes();
+        let [p2, p3] = vram[(tile_word_base + y + 8) & 0x7FFF].to_le_bytes();
 
         let bit = 7 - x;
         ((p0 >> bit) & 1)
@@ -94,7 +83,7 @@ impl Renderer {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::constants::SCREEN_WIDTH;
     use crate::ppu::PPU;
     use crate::rendering::renderer::Renderer;
 
@@ -272,6 +261,7 @@ mod tests {
         renderer.current_brightness = 15;
 
         let mut ppu = make_ppu_mode1();
+        ppu.write(0x2100, 0x0F); // full brightness so the colour survives compositing
 
         // Tilemap at 0x0400 (bg1sc=0x04), CHR data at 0x0000
         ppu.write(0x2107, 0x04);
@@ -283,7 +273,7 @@ mod tests {
         // CGRAM palette 0 entry 1 = pure red (BGR555)
         ppu.cgram.memory[0x01] = 0x001F;
 
-        renderer.render_scanline_mode1(&ppu, 0);
+        renderer.render_scanline(&ppu, 0);
 
         let (r, _g, _b) = Renderer::apply_brightness(0x001F, 15);
         assert_eq!(renderer.framebuffer[0], r);

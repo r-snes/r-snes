@@ -9,7 +9,7 @@
 use crate::constants::*;
 use crate::oam::OAM;
 use crate::ppu::PPU;
-use crate::rendering::renderer::{Renderer, Z_OBJ0, Z_OBJ1, Z_OBJ2, Z_OBJ3};
+use crate::rendering::renderer::{Layer, Priority, Renderer};
 
 // VRAM is 32768 words, sprite CHR addresses wrap within it.
 const VRAM_WORD_MASK: usize = (VRAM_SIZE / 2) - 1;
@@ -17,6 +17,13 @@ const VRAM_WORD_MASK: usize = (VRAM_SIZE / 2) - 1;
 impl Renderer {
     /// Render all visible sprites on scanline `y`
     pub fn render_sprites(&mut self, ppu: &PPU, y: usize) {
+        // OBJ enable on main / sub screen (TM / TS bit 4).
+        let to_main = ppu.regs.tm & 0x10 != 0;
+        let to_sub = ppu.regs.ts & 0x10 != 0;
+        if !to_main && !to_sub {
+            return;
+        }
+
         let objsel = ppu.regs.objsel;
         let oamadd = ppu.regs.oamadd;
 
@@ -35,12 +42,15 @@ impl Renderer {
                 sy = h - 1 - sy;
             }
 
-            let z = match sprite.priority {
-                0 => Z_OBJ0,
-                1 => Z_OBJ1,
-                2 => Z_OBJ2,
-                _ => Z_OBJ3,
+            let prio = match sprite.priority {
+                0 => Priority::Obj0,
+                1 => Priority::Obj1,
+                2 => Priority::Obj2,
+                _ => Priority::Obj3,
             };
+
+            // Sprites do color math only when using palettes 4-7.
+            let obj_math = sprite.palette >= 4;
 
             for col in 0..w {
                 let screen_x = sprite.x + col as i16;
@@ -79,8 +89,13 @@ impl Renderer {
                 let palette_entry = 128 + sprite.palette * 16 + color_index;
                 let color = ppu.cgram.read(palette_entry);
 
-                let (r, g, b) = Self::apply_brightness(color, self.current_brightness as u16);
-                self.set_pixel_z(screen_x as usize, y, r, g, b, z);
+                let sx = screen_x as usize;
+                if to_main {
+                    self.deposit_main(sx, color, prio, Layer::Obj, obj_math);
+                }
+                if to_sub {
+                    self.deposit_sub(sx, color, prio, Layer::Obj, obj_math);
+                }
             }
         }
     }
