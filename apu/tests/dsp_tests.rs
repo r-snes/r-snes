@@ -1773,11 +1773,10 @@ fn test_eon_set_writes_voice_output_into_echo_buffer() {
 #[test]
 fn test_echo_output_reaches_final_mix_even_with_mvol_zeroed() {
     // Zero master volume so the dry mix contributes exactly nothing to
-    // the final output (render_audio_single scales only the dry sum by
-    // MVOL, then adds the echo output on top unscaled) — anything
-    // audible in the result can only be coming from echo, isolating
-    // that the echo path genuinely reaches the final mix rather than
-    // just landing correctly in RAM.
+    // the final output (MVOL scales only the dry sum; the echo joins it
+    // scaled by EVOL instead) — anything audible in the result can only
+    // be coming from echo, isolating that the echo path genuinely reaches
+    // the final mix rather than just landing correctly in RAM.
     let mut mem = booted_memory();
     setup_tone_looping_voice(&mut mem);
     dsp_gw(&mut mem, 0x6D, 0x50); // ESA = page 0x50
@@ -1786,6 +1785,8 @@ fn test_echo_output_reaches_final_mix_even_with_mvol_zeroed() {
     dsp_gw(&mut mem, 0x4D, 0x01); // EON voice 0
     dsp_gw(&mut mem, 0x0C, 0); // MVOLL = 0
     dsp_gw(&mut mem, 0x1C, 0); // MVOLR = 0
+    dsp_gw(&mut mem, 0x2C, 127); // EVOLL
+    dsp_gw(&mut mem, 0x3C, 127); // EVOLR
 
     for _ in 0..10 {
         mem.dsp.step(&mut mem.ram);
@@ -1795,6 +1796,50 @@ fn test_echo_output_reaches_final_mix_even_with_mvol_zeroed() {
     assert!(
         l != 0 || r != 0,
         "echo output must reach the final mix even when MVOL zeroes the dry mix"
+    );
+}
+
+/// Final mix of a voice routed only through echo: MVOL = 0 so nothing dry
+/// is heard, echo volume set to `evol` on both channels.
+fn echo_only_mix(evol: i8) -> (i16, i16) {
+    let mut mem = booted_memory();
+    setup_tone_looping_voice(&mut mem);
+    dsp_gw(&mut mem, 0x6D, 0x50); // ESA = page 0x50
+    dsp_gw(&mut mem, 0x7D, 0x01); // EDL = 1
+    dsp_vw(&mut mem, 1, 0xF, 127); // isolate FIR tap 1
+    dsp_gw(&mut mem, 0x4D, 0x01); // EON voice 0
+    dsp_gw(&mut mem, 0x0C, 0); // MVOLL = 0
+    dsp_gw(&mut mem, 0x1C, 0); // MVOLR = 0
+    dsp_gw(&mut mem, 0x2C, evol as u8); // EVOLL
+    dsp_gw(&mut mem, 0x3C, evol as u8); // EVOLR
+
+    for _ in 0..10 {
+        mem.dsp.step(&mut mem.ram);
+    }
+    mem.dsp.render_audio_single()
+}
+
+#[test]
+fn test_evol_zero_keeps_echo_out_of_the_final_mix() {
+    // Drivers often route voices into the echo buffer with EVOL = 0 (the
+    // Super Metroid intro does: EON = $01, EVOL = 0), so echo is computed
+    // and written but must not be heard.
+    assert_eq!(
+        echo_only_mix(0),
+        (0, 0),
+        "EVOL = 0 must silence the echo in the final mix"
+    );
+}
+
+#[test]
+fn test_negative_evol_inverts_echo_in_final_mix() {
+    let (pos_l, pos_r) = echo_only_mix(127);
+    let (neg_l, neg_r) = echo_only_mix(-127);
+
+    assert!(pos_l != 0 || pos_r != 0, "sanity check: echo must be audible");
+    assert!(
+        (pos_l as i32 + neg_l as i32).abs() <= 1 && (pos_r as i32 + neg_r as i32).abs() <= 1,
+        "EVOL = -127 must mirror EVOL = 127 (got {pos_l},{pos_r} vs {neg_l},{neg_r})"
     );
 }
 
