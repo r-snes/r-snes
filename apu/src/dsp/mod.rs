@@ -79,9 +79,14 @@ pub struct Dsp {
     /// `Adsr::tick_due`).
     noise_tick_counter: u16,
 
-    // ---- Echo registers (Stage 1: storage/roundtrip only — the actual
-    // echo buffer, FIR filtering, and voice routing land in later stages;
-    // none of these affect audio output yet). ----
+    // ---- Echo registers ----
+    /// $2C EVOLL / $3C EVOLR — echo output volume, signed (-128..+127).
+    /// Scales the FIR-filtered echo before it joins the final mix, the
+    /// same way MVOL scales the dry mix. 0 = echo processed (and written
+    /// to the buffer) but not heard.
+    echo_vol_left: i8,
+    echo_vol_right: i8,
+
     /// $0D EFB — echo feedback, signed (-128..+127). Scales the echo
     /// buffer's own most recent output before it's written back into the
     /// buffer, so echoes decay (or grow, or invert) over repetitions.
@@ -168,6 +173,8 @@ impl Dsp {
             pmon: 0,
             noise_lfsr: 0x4000,
             noise_tick_counter: 0,
+            echo_vol_left: 0,
+            echo_vol_right: 0,
             efb: 0,
             eon: 0,
             esa: 0,
@@ -324,8 +331,11 @@ impl Dsp {
                 // above, so a read-back of $2D returns what was written.
                 0x2D => self.pmon = value & 0xFE,
 
-                // ---- Echo registers (Stage 1: stored, no audio effect
-                // yet — the buffer/FIR/routing land in later stages) ----
+                // $2C/$3C: EVOLL/EVOLR — echo output volume (signed).
+                0x2C => self.echo_vol_left = value as i8,
+                0x3C => self.echo_vol_right = value as i8,
+
+                // ---- Echo registers ----
                 // $0D: EFB — echo feedback, signed.
                 0x0D => self.efb = value as i8,
                 // $4D: EON — one bit per voice; see the `eon` field doc.
@@ -645,8 +655,10 @@ impl Dsp {
         left = (left * self.master_vol_left as i32) >> 7;
         right = (right * self.master_vol_right as i32) >> 7;
 
-        left += self.echo_out_l as i32;
-        right += self.echo_out_r as i32;
+        // Echo joins the mix scaled by its own volume, EVOL ($2C/$3C),
+        // the same signed i8 × i32 → >> 7 pattern as MVOL.
+        left += (self.echo_out_l as i32 * self.echo_vol_left as i32) >> 7;
+        right += (self.echo_out_r as i32 * self.echo_vol_right as i32) >> 7;
 
         // A second clamp is required: master vol can amplify the
         // already-summed dry mix past i16 range.
