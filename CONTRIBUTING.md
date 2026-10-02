@@ -25,7 +25,7 @@ R-SNES is maintained by its core team:
 - [@Tholarr](https://github.com/Tholarr)
 - [@tibaudlemaout](https://github.com/tibaudlemaout)
 
-The core team develops the core emulation, and is the only one whose approvals count towards merging pull requests (see [Workflow and pull requests](#workflow-and-pull-requests)).
+The core team develops the core emulation, and only their approvals count towards the "at least 2 approvals" requirement for merging pull requests (see [Workflow and pull requests](#workflow-and-pull-requests)).
 
 ---
 
