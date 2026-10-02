@@ -103,7 +103,7 @@ R-SNES supports several ways to request these exact permissions in a more concis
       },
   }
   ```
-- If you really want to be explicit about requesting no permissions from `baz.c`, you can leave `c = "none"`, but you can get the exact same result by simply not mentioning `c` at all, nodes that are omitted default to their `"none"` value:
+- If you really want to be explicit about requesting no permissions from `baz.c`, you can leave `c = "none"`, but you can get the exact same result by simply not mentioning `c` at all, nodes that are omitted default to their `"none"` (or `false` for bools) value:
   ```lua
   return {
       permissions = {
@@ -115,24 +115,12 @@ R-SNES supports several ways to request these exact permissions in a more concis
       },
   }
   ```
-- If you want your plugin to be forward compatible with later versions which might divide `bar` into several nodes, you can replace its `true` value with `"all"`, it will produce the exact same result (likewise, `"none"` can be used in place of `false`).
+- Lastly, you can replace instances of `node = "all"` (or `node = true`) with just `"node"`, to rewrite `baz.d` for example:
   ```lua
   return {
       permissions = {
           foo = "all",
-          bar = "all",
-          baz = {
-              d = "all",
-          },
-      },
-  }
-  ```
-- Lastly, you can replace instances of `node = "all"` with just `"node"`, to rewrite `baz.d` for example:
-  ```lua
-  return {
-      permissions = {
-          foo = "all",
-          bar = "all",
+          bar = true,
           baz = { "d" },
       },
   }
@@ -184,7 +172,7 @@ R-SNES supports several ways to request these exact permissions in a more concis
 | `external.filesystem.files` | [filesystem request](#filesystem-request) | [`rsnes.files`](#rsnesfiles) |
 | `external.http`             | bool\* | *nothing* (unimplemented)            |
 
-\* Fields noted "bool\*" are currently boolean (`true`/`false`) but might be split into more granular permissions in the future, so it is recommended to only pass `"all"` or `"none"` instead of `true`/`false` for your plugin to be forward-compatible
+\* Fields noted "bool\*" are currently boolean (`true`/`false`) but may be split into more granular permissions in the future.
 
 ## Registering actions
 
