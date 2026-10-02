@@ -489,11 +489,29 @@ fn test_dsp_register_write_via_f2_f3_reaches_dsp() {
 }
 
 #[test]
-fn test_dsp_register_write_via_direct_window_reaches_dsp() {
+fn test_f200_range_is_plain_ram_not_dsp() {
+    // $F200–$F27F is ordinary RAM on hardware. Games upload sample data
+    // there (Super Metroid's driver does), so routing it to the DSP sent
+    // sample bytes into DIR/ESA/EDL/FIR and corrupted playback.
     let mut apu = Apu::new();
 
-    apu.memory.write8(0xF200 + 0x1C, 0x66); // MVOLR via direct window
-    assert_eq!(apu.memory.dsp.read_reg(0x1C), 0x66);
+    apu.memory.write8(0xF200 + 0x1C, 0x66); // would be MVOLR in the old window
+
+    assert_eq!(
+        apu.memory.dsp.read_reg(0x1C),
+        0x00,
+        "a write to $F21C must not reach the DSP"
+    );
+    assert_eq!(
+        apu.memory.ram[0xF21C],
+        0x66,
+        "a write to $F21C must land in RAM"
+    );
+    assert_eq!(
+        apu.memory.read8(0xF21C),
+        0x66,
+        "a read of $F21C must return RAM, not a DSP register"
+    );
 }
 
 #[test]

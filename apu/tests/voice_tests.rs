@@ -13,10 +13,12 @@ use apu::memory::RawARAM;
 // Helpers
 // ============================================================
 
-const DSP_BASE: u16 = 0xF200;
-
+/// Write a per-voice DSP register through the Memory bus, the way SPC700
+/// code does: register index to $F2 (DSPADDR), then the value to $F3
+/// (DSPDATA). Voice N's registers live at $N0–$N9.
 fn dsp_vw(mem: &mut Memory, voice: u8, reg: u8, val: u8) {
-    mem.write8(DSP_BASE + ((voice as u16) << 4) + reg as u16, val);
+    mem.write8(0x00F2, (voice << 4) | reg);
+    mem.write8(0x00F3, val);
 }
 
 /// A single BRR block, shift=12 filter=0 (each nibble decodes

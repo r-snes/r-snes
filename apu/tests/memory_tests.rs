@@ -11,7 +11,7 @@
 //!   - $F8–$F9 AUXRAM:    normal RAM behaviour
 //!   - $FA–$FC TIMERDIV:  write stored in timer_div, read returns 0xFF
 //!   - $FD–$FF TIMEROUT:  read returns counter, read8_mut clears it
-//!   - $F200–$F27F:       direct DSP window (test-code path)
+//!   - $F200–$F27F:       plain RAM — must never alias the DSP registers
 //!   - $FFC0–$FFFF:       IPL boot ROM overlay — wins on reads while CONTROL bit 7 is set, hidden (plain RAM) when clear, writes always land in RAM regardless
 //!   - read16/write16:    little-endian, correct wrapping at $FFFF
 //!   - cpu_port_write/read: SNES↔APU communication helpers
@@ -558,45 +558,49 @@ fn test_timer_out_all_three_independent() {
 }
 
 // ============================================================
-// $F200–$F27F — Direct DSP register window (test-code path)
+// $F200–$F27F — plain RAM (regression: once aliased the DSP)
 // ============================================================
+//
+// This range used to be a test-only shortcut onto the DSP registers.
+// Games upload sample data there (Super Metroid's driver does), so the
+// shortcut sent sample bytes into DIR/ESA/EDL/FIR and corrupted playback.
+// The DSP is reachable only through $F2/$F3, as on hardware.
 
 #[test]
-fn test_direct_dsp_window_write_read() {
+fn test_f200_range_write_read_is_plain_ram() {
     let mut mem = Memory::new();
-    mem.write8(0xF200, 0x7F); // voice 0 VOL L via direct window
+    mem.write8(0xF200, 0x7F);
     assert_eq!(mem.read8(0xF200), 0x7F);
+    assert_eq!(mem.ram[0xF200], 0x7F, "the byte must be stored in RAM");
 }
 
 #[test]
-fn test_direct_dsp_window_reaches_dsp() {
+fn test_f200_range_write_does_not_reach_dsp() {
     let mut mem = Memory::new();
-    mem.write8(0xF200 + 0x5D, 0x08); // DIR register via direct window
-    assert_eq!(mem.dsp.read_reg(0x5D), 0x08);
-}
-
-#[test]
-fn test_direct_dsp_window_and_f2f3_protocol_share_same_dsp() {
-    // A write via the direct window must be visible through $F3,
-    // and vice versa — they're the same underlying DSP register file.
-    let mut mem = Memory::new();
-
-    // Write via direct window, read via $F2/$F3 protocol
-    mem.write8(0xF200 + 0x0C, 0x55); // MVOLL via direct window
-    mem.write8(0x00F2, 0x0C);
+    mem.write8(0xF200 + 0x5D, 0x08); // would have been DIR in the old window
     assert_eq!(
-        mem.read8(0x00F3),
-        0x55,
-        "direct-window write must be visible via $F3"
+        mem.dsp.read_reg(0x5D),
+        0x00,
+        "a write to $F25D must not change the DSP's DIR register"
     );
+    assert_eq!(mem.ram[0xF25D], 0x08);
+}
 
-    // Write via $F2/$F3 protocol, read via direct window
+#[test]
+fn test_f2f3_write_is_not_visible_in_f200_range() {
+    // The reverse direction: a real DSP register write must not show
+    // through at $F2xx, which must keep returning its own RAM byte.
+    let mut mem = Memory::new();
+    mem.write8(0xF200 + 0x1C, 0xAB); // RAM byte at $F21C
+
     mem.write8(0x00F2, 0x1C);
-    mem.write8(0x00F3, 0x66); // MVOLR via protocol
+    mem.write8(0x00F3, 0x66); // MVOLR via the real protocol
+
+    assert_eq!(mem.dsp.read_reg(0x1C), 0x66, "$F3 write must reach the DSP");
     assert_eq!(
         mem.read8(0xF200 + 0x1C),
-        0x66,
-        "$F3 write must be visible via direct window"
+        0xAB,
+        "$F21C must still read its RAM byte, not MVOLR"
     );
 }
 

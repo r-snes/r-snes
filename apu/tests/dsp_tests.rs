@@ -15,16 +15,21 @@ use apu::dsp::{Dsp, EnvelopePhase};
 // Helpers
 // ============================================================
 
-const DSP_BASE: u16 = 0xF200;
-
-/// Write a per-voice DSP register through the Memory bus.
-fn dsp_vw(mem: &mut Memory, voice: u8, reg: u8, val: u8) {
-    mem.write8(DSP_BASE + ((voice as u16) << 4) + reg as u16, val);
+/// Write any DSP register through the Memory bus, the way SPC700 code
+/// does: register index to $F2 (DSPADDR), then the value to $F3 (DSPDATA).
+fn dsp_write(mem: &mut Memory, reg: u8, val: u8) {
+    mem.write8(0x00F2, reg);
+    mem.write8(0x00F3, val);
 }
 
-/// Write a global DSP register through the Memory bus.
+/// Write a per-voice DSP register (voice N's registers live at $N0–$N9).
+fn dsp_vw(mem: &mut Memory, voice: u8, reg: u8, val: u8) {
+    dsp_write(mem, (voice << 4) | reg, val);
+}
+
+/// Write a global DSP register.
 fn dsp_gw(mem: &mut Memory, reg: u8, val: u8) {
-    mem.write8(DSP_BASE + reg as u16, val);
+    dsp_write(mem, reg, val);
 }
 
 /// Build a minimal valid 9-byte BRR block in APU RAM.
