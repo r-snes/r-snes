@@ -24,7 +24,8 @@ COPY . .
 RUN --mount=type=cache,target=/root/.cargo/registry \
     --mount=type=cache,target=/root/.cargo/git \
     --mount=type=cache,id=r-snes-target-deb,target=/src/target \
-    cargo deb --output /out/
+    cargo deb --output /src/r-snes.deb
 
 FROM scratch
-COPY --from=build /out/ /
+ARG VERSION
+COPY --from=build /src/r-snes.deb /r-snes_${VERSION}_amd64.deb

@@ -11,7 +11,6 @@ RUN cargo install --locked cargo-generate-rpm
 
 WORKDIR /src
 COPY . .
-RUN mkdir /out
 
 # The cargo registry and target/ are cache mounts so they are reused between
 # builds. target/ gets its own id per Dockerfile: build scripts compiled on
@@ -21,7 +20,8 @@ RUN --mount=type=cache,target=/root/.cargo/registry \
     --mount=type=cache,target=/root/.cargo/git \
     --mount=type=cache,id=r-snes-target-rpm,target=/src/target \
     cargo build --release \
-    && cargo generate-rpm --output /out/
+    && cargo generate-rpm --output /src/r-snes.rpm
 
 FROM scratch
-COPY --from=build /out/ /
+ARG VERSION
+COPY --from=build /src/r-snes.rpm /r-snes_${VERSION}_x86_64.rpm

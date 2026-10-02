@@ -2,9 +2,9 @@
 # Builds the R-SNES release files with Docker and puts them in dist/v<version>/,
 # ready to be uploaded to the release page:
 #
-#   r-snes-<version>-windows-x86_64.exe   (packaging/docker/windows.Dockerfile)
-#   r-snes_<version>-1_amd64.deb          (packaging/docker/deb.Dockerfile)
-#   r-snes-<version>-1.x86_64.rpm         (packaging/docker/rpm.Dockerfile)
+#   r-snes_<version>_x86_64.exe   (packaging/docker/windows.Dockerfile)
+#   r-snes_<version>_amd64.deb    (packaging/docker/deb.Dockerfile)
+#   r-snes_<version>_x86_64.rpm   (packaging/docker/rpm.Dockerfile)
 #   SHA256SUMS
 #
 # Usage: packaging/build-release.sh [windows] [deb] [rpm]   (default: all of them)

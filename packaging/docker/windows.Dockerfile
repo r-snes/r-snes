@@ -31,4 +31,4 @@ RUN --mount=type=cache,target=/root/.cargo/registry \
 
 FROM scratch
 ARG VERSION
-COPY --from=build /src/r-snes.exe /r-snes-${VERSION}-windows-x86_64.exe
+COPY --from=build /src/r-snes.exe /r-snes_${VERSION}_x86_64.exe
