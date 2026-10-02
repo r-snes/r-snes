@@ -1,3 +1,5 @@
+//! Region information of a ROM: `Country` and `VideoStandard`
+
 use strum_macros::Display;
 
 /// Represents the country or region code of a SNES ROM.
@@ -5,27 +7,49 @@ use strum_macros::Display;
 /// Covers official regions and some miscellaneous/other codes.
 #[derive(Display, Debug, Clone, Copy, PartialEq)]
 pub enum Country {
+    /// International release (never produced by `Country::from_byte`)
     International,
+    /// Japan (`0x00`)
     Japan,
+    /// USA (`0x01`)
     USA,
+    /// Europe (`0x02`)
     Europe,
+    /// Scandinavia (`0x03`)
     Scandinavia,
+    /// Finland (`0x04`)
     Finland,
+    /// Denmark (`0x05`)
     Denmark,
+    /// France (`0x06`)
     France,
+    /// Holland (`0x07`)
     Holland,
+    /// Spain (`0x08`)
     Spain,
+    /// Germany (`0x09`)
     Germany,
+    /// Italy (`0x0A`)
     Italy,
+    /// China (`0x0B`)
     China,
+    /// Indonesia (`0x0C`)
     Indonesia,
+    /// South Korea (`0x0D`)
     SouthKorea,
+    /// Common / international (`0x0E`)
     Common,
+    /// Canada (`0x0F`)
     Canada,
+    /// Brazil (`0x10`)
     Brazil,
+    /// Australia (`0x11`)
     Australia,
+    /// Other region (`0x12`)
     OtherX,
+    /// Other region (`0x13`)
     OtherY,
+    /// Other region (`0x14`)
     OtherZ,
 }
 
@@ -34,8 +58,11 @@ pub enum Country {
 /// Mainly NTSC or PAL, with an "Other" option for unknown/unsupported regions.
 #[derive(Display, Debug, Clone, Copy, PartialEq)]
 pub enum VideoStandard {
+    /// NTSC (60 Hz)
     NTSC,
+    /// PAL (50 Hz)
     PAL,
+    /// Unknown or unsupported standard
     Other,
 }
 

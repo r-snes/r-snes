@@ -1,3 +1,5 @@
+//! Provides `RomHeader`, the metadata parsed from the ROM header
+
 use std::fmt;
 
 use crate::cartridge::header::cartridge_hardware::CartridgeHardware;
@@ -15,18 +17,31 @@ use crate::constants::{
 /// Contains all metadata extracted from the ROM header.
 #[derive(PartialEq, Clone, Debug)]
 pub struct RomHeader {
-    pub bytes: [u8; HEADER_SIZE], // Raw bytes of the ROM header
+    /// Raw bytes of the ROM header
+    pub bytes: [u8; HEADER_SIZE],
+    /// Game title (21 characters, padded with spaces)
     pub title: String,
-    pub rom_speed: RomSpeed,         // ROM speed : fast or slow
-    pub mapping_mode: MappingMode,   // Mapping mode specified in the header
-    pub hardware: CartridgeHardware, // Type of hardware in cartridge (Coprocessor, RAM, etc...)
+    /// ROM speed : fast or slow
+    pub rom_speed: RomSpeed,
+    /// Mapping mode specified in the header
+    pub mapping_mode: MappingMode,
+    /// Type of hardware in cartridge (Coprocessor, RAM, etc...)
+    pub hardware: CartridgeHardware,
+    /// ROM size exponent: the ROM is `1024 << rom_size` bytes
     pub rom_size: u8,
+    /// S-RAM size exponent, see `RomHeader::ram_size_bytes`
     pub ram_size: u8,
-    pub country: Country,              // Country/region code of the ROM
-    pub video_standard: VideoStandard, // based on the country (NTSC/PAL/Other)
+    /// Country/region code of the ROM
+    pub country: Country,
+    /// Video standard, based on the country (NTSC/PAL/Other)
+    pub video_standard: VideoStandard,
+    /// Developer ID
     pub developer_id: u8,
+    /// Version number of the ROM (0 for the original release)
     pub rom_version: u8,
+    /// Complement of `Self::checksum`
     pub checksum_complement: u16,
+    /// Checksum of the ROM data
     pub checksum: u16,
 }
 

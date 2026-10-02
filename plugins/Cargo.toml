@@ -22,3 +22,6 @@ example = ["dep:eframe"]
 [[bin]]
 name = "main"
 required-features = ["example"]
+
+[lints]
+workspace = true

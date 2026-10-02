@@ -102,6 +102,11 @@ pub const WAVE_ARP: [i16; 32] = [
 // is 16 ticks. All three tracks last exactly 1024 ticks (16 s) per loop.
 // -------------------------------------------------------------------------
 
+/// Voice 0: lead melody, played on `WAVE_LEAD` with vibrato.
+///
+/// Each entry is `(pitch, ticks)`: a DSP pitch value held for `ticks`
+/// 64 Hz ticks, or `REST` to key the voice off for that long. Compiled
+/// to the driver's track format by `build_track`.
 pub const TRACK_LEAD: &[(u16, u8)] = &[
     (0x1519, 32), // E5
     (0x1c29, 16), // A5
@@ -139,6 +144,8 @@ pub const TRACK_LEAD: &[(u16, u8)] = &[
     (REST, 16),
 ];
 
+/// Voice 1: root-note bass line, played on `WAVE_BASS`.
+/// Same `(pitch, ticks)` format as `TRACK_LEAD`.
 pub const TRACK_BASS: &[(u16, u8)] = &[
     (0x0385, 32),  // A2
     (0x0385, 32),  // A2
@@ -163,6 +170,8 @@ pub const TRACK_BASS: &[(u16, u8)] = &[
     (0x0385, 128), // A2
 ];
 
+/// Voice 2: broken-chord arpeggio in eighth notes, played on `WAVE_ARP`
+/// in GAIN mode. Same `(pitch, ticks)` format as `TRACK_LEAD`.
 pub const TRACK_ARP: &[(u16, u8)] = &[
     (0x0385, 16), // A3
     (0x0546, 16), // E4

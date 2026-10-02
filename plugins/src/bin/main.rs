@@ -1,3 +1,5 @@
+//! Example crate for the plugin perm request GUI
+
 use eframe::egui;
 use egui::ScrollArea;
 use plugins::plugin::{Plugin, gui::PermOutcome, gui::PluginPermRequest};

@@ -1,3 +1,6 @@
+//! Provides [`SnesAddress`] and [`snes_addr!`] to represent
+//! addresses in the global SNES address space
+
 use std::convert::From;
 
 /// Common struct used to represent memory addresses in the global

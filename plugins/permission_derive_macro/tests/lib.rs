@@ -1,3 +1,5 @@
+//! integration test crate for Permission derive
+
 use permission_derive_macro::Permission;
 use plugins::permission::Permission;
 

@@ -11,6 +11,10 @@ use common::u16_split::*;
 use std::io::Write;
 use tempfile::tempdir;
 
+/// Creates a valid 64 bytes header for the given mapping mode
+///
+/// The header describes a 256 KiB FastROM USA cartridge without
+/// S-RAM or coprocessor.
 #[cfg(not(tarpaulin_include))]
 pub fn create_valid_header(map: MappingMode) -> Vec<u8> {
     let mut header = vec![0u8; HEADER_SIZE];
@@ -46,6 +50,10 @@ pub fn create_valid_header(map: MappingMode) -> Vec<u8> {
     header
 }
 
+/// Creates zeroed LoROM data of `size` bytes containing a valid header
+///
+/// # Panics
+/// Panics if `size` is smaller than a LoROM bank (32 KiB)
 #[cfg(not(tarpaulin_include))]
 pub fn create_valid_lorom(size: usize) -> Vec<u8> {
     assert!(size >= LOROM_BANK_SIZE, "ROM must be at least 32KiB");
@@ -57,6 +65,10 @@ pub fn create_valid_lorom(size: usize) -> Vec<u8> {
     rom
 }
 
+/// Creates zeroed HiROM data of `size` bytes containing a valid header
+///
+/// # Panics
+/// Panics if `size` is smaller than a HiROM bank (64 KiB)
 #[cfg(not(tarpaulin_include))]
 pub fn create_valid_hirom(size: usize) -> Vec<u8> {
     assert!(size >= HIROM_BANK_SIZE, "ROM must be at least 64KiB");
@@ -68,6 +80,10 @@ pub fn create_valid_hirom(size: usize) -> Vec<u8> {
     rom
 }
 
+/// Writes `data` to a ROM file in a new temporary directory
+///
+/// Returns the path of the file and the directory, which is deleted when dropped,
+/// so it must be kept alive as long as the file is used.
 #[cfg(not(tarpaulin_include))]
 pub fn create_temp_rom(data: &[u8]) -> (std::path::PathBuf, tempfile::TempDir) {
     let dir = tempdir().unwrap();
@@ -78,6 +94,8 @@ pub fn create_temp_rom(data: &[u8]) -> (std::path::PathBuf, tempfile::TempDir) {
     (rom_path, dir)
 }
 
+/// Patches the header located at `header_offset` in `data` to declare a
+/// battery-backed S-RAM of `1024 << size_exp` bytes
 #[cfg(not(tarpaulin_include))]
 pub fn with_sram(mut data: Vec<u8>, header_offset: usize, size_exp: u8) -> Vec<u8> {
     data[header_offset + HEADER_ROM_HARDWARE_OFFSET] = 0x02; // ROM + RAM + battery
@@ -85,6 +103,7 @@ pub fn with_sram(mut data: Vec<u8>, header_offset: usize, size_exp: u8) -> Vec<u
     data
 }
 
+/// Creates a 64 KiB LoROM cartridge with an S-RAM of `1024 << size_exp` bytes
 #[cfg(not(tarpaulin_include))]
 pub fn lorom_with_sram(size_exp: u8) -> Cartridge {
     let data = with_sram(create_valid_lorom(0x10000), LOROM_HEADER_OFFSET, size_exp);
@@ -92,6 +111,7 @@ pub fn lorom_with_sram(size_exp: u8) -> Cartridge {
     Cartridge::load_from_file(path).unwrap()
 }
 
+/// Creates a 64 KiB HiROM cartridge with an S-RAM of `1024 << size_exp` bytes
 #[cfg(not(tarpaulin_include))]
 pub fn hirom_with_sram(size_exp: u8) -> Cartridge {
     let data = with_sram(create_valid_hirom(0x10000), HIROM_HEADER_OFFSET, size_exp);

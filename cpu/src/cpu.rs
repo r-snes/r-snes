@@ -1,3 +1,6 @@
+//! Main module for the CPU struct and the enums it uses
+//! to describe state
+
 use crate::{instrs::instr_tab::*, registers::Registers};
 use common::snes_address::SnesAddress;
 use instr_metalang_procmacro::cpu_instr_no_inc_pc;
@@ -85,6 +88,9 @@ pub enum CycleResult {
 }
 
 impl CPU {
+    /// Construct a CPU with all registers zeroed
+    ///
+    /// See [`CPU::poweron`] for the hardware-accurate power-on state
     pub fn new(registers: Registers) -> Self {
         Self {
             registers,

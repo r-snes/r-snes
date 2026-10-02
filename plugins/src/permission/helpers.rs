@@ -1,3 +1,5 @@
+//! Helpers around the [`Permission`] trait
+
 use super::Permission;
 
 /// Helper enum to make it easier to implement

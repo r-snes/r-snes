@@ -1,3 +1,5 @@
+//! Plugin GUI elements and functions
+
 use egui::{CollapsingHeader, RichText, Style, TextFormat, WidgetText, text::LayoutJob};
 
 use crate::{
@@ -10,15 +12,24 @@ use crate::{
 /// clicked; the host reads this after each frame to know what to do.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum PermOutcome {
+    /// A perm request is still pending, neither granted nor denied
     #[default]
     Pending,
+    /// Perm request has been granted (user clicked the "accept" button)
     Granted,
+    /// Perm request has been denied (explicit "deny" or cancel out of the plugin load)
     Denied,
 }
 
+/// GUI state for a permission request
 pub struct PluginPermRequest<'a> {
+    /// The plugin requesting permissions
     pub plugin: &'a Plugin,
+    /// Whether the "none" nodes of the permission tree should be rendered
+    /// (has a checkbox so the user can enable/disable)
     pub show_none: bool,
+    /// Outcome of the perm request (to read after each rendered frame):
+    /// updates when the user clicks the "accept" or "deny" buttons
     pub outcome: PermOutcome,
 }
 
@@ -91,6 +102,7 @@ impl<'a> PluginPermRequest<'a> {
         });
     }
 
+    /// Top-level function to render the perm request GUI
     pub fn show_gui(&mut self, ui: &mut egui::Ui) {
         ui.separator();
 

@@ -1,7 +1,12 @@
-/// Two-write latch used by registers like BG1HOFS, BG1VOFS, CGDATA.
-/// Models a hardware flipflop: first access = low byte, second = high byte.
+//! Two-step latch for 8-bit ports that access a 16-bit value.
+//!
+//! The first access targets the low byte and the second one the high byte.
+//! Used by CGDATA/RDCGRAM and OPHCT/OPVCT.
+
+/// Two-step latch: first access = low byte, second = high byte.
 pub struct WriteTwice {
     latch: u8,
+    /// Next byte to access.
     pub phase: BytePhase,
 }
 
@@ -16,6 +21,7 @@ pub enum BytePhase {
 }
 
 impl BytePhase {
+    /// Switches between Low and High.
     pub fn flip(&mut self) {
         *self = match self {
             BytePhase::Low => BytePhase::High,
@@ -23,6 +29,7 @@ impl BytePhase {
         };
     }
 
+    /// Returns true if the phase is High.
     pub fn is_high(&self) -> bool {
         *self == BytePhase::High
     }
@@ -35,6 +42,7 @@ impl Default for WriteTwice {
 }
 
 impl WriteTwice {
+    /// Creates a latch in Low phase.
     pub fn new() -> Self {
         Self {
             latch: 0,
@@ -58,6 +66,7 @@ impl WriteTwice {
         }
     }
 
+    /// Resets the phase to Low.
     pub fn reset(&mut self) {
         self.phase = BytePhase::Low;
     }

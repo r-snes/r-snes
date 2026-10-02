@@ -1,3 +1,5 @@
+//! Implements a derive macro for the `Permission` trait
+
 use {
     proc_macro::TokenStream,
     quote::{ToTokens, quote},
@@ -8,6 +10,9 @@ use {
 };
 
 #[proc_macro_derive(Permission)]
+/// Derive macro for `Permission` trait, intended for structs where all members
+/// implement `Permission` already, builds the `none()` and `all()` values
+/// by calling `all()`/`none()` on all fields of the struct
 pub fn derive_permission(input: TokenStream) -> TokenStream {
     derive_permission_impl(input.into()).into()
 }

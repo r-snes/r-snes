@@ -1,3 +1,6 @@
+//! Module declaring the `Permission` trait used for
+//! all permissions
+
 pub mod helpers;
 
 /// Trait representing any kind of permission, with varying degrees

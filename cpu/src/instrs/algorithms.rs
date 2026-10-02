@@ -128,7 +128,13 @@ pub fn trb<T: Reg>(op: &mut T, a: T, p: &mut RegisterP) {
 
 #[cfg(test)]
 mod tests {
-    #![expect(clippy::bool_assert_comparison, clippy::nonminimal_bool)]
+    #![expect(
+        clippy::bool_assert_comparison,
+        clippy::nonminimal_bool,
+        reason = "duplicated tests substitute boolean literals into assertions"
+    )]
+    #![expect(non_snake_case, reason = "adc test names use `_` as flag placeholders")]
+
     use crate::registers::RegisterP;
     use duplicate::duplicate_item;
 
@@ -232,7 +238,6 @@ mod tests {
         [adc_z_vc]  [0x8000][0x8000][false]     [0]         [true]  [false] [true]  [true];
         //   zn** impossible: 0 is positive
     )]
-    #[allow(non_snake_case)]
     #[test]
     fn DUP_name() {
         let mut p = RegisterP {

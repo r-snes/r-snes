@@ -1,3 +1,10 @@
+//! Top-level PPU: owns the registers and the video memories, and drives the timing.
+//!
+//! `write` and `read` dispatch the CPU accesses to $2100-$213F toward the right
+//! register or memory (VRAM, CGRAM, OAM), including the BG and Mode 7 scroll latches.
+//! `tick` advances the PPU by one master cycle and reports dot, H-Blank,
+//! scanline, V-Blank and frame boundaries through `PpuEvent`.
+
 use crate::cgram::CGRAM;
 use crate::constants::*;
 use crate::oam::OAM;
@@ -5,6 +12,7 @@ use crate::registers::PPURegisters;
 use crate::vram::VRAM;
 use common::u16_split::U16Split;
 
+/// Timing event raised by `PPU::tick`.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum PpuEvent {
     /// A new dot began mid-scanline.
@@ -15,6 +23,7 @@ pub enum PpuEvent {
     ScanlineStart(ScanlineKind),
 }
 
+/// Kind of scanline reported by `PpuEvent::ScanlineStart`.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ScanlineKind {
     /// Any line that isn't a V-Blank boundary, visible or not.
@@ -25,16 +34,23 @@ pub enum ScanlineKind {
     FrameStart,
 }
 
+/// The PPU: registers, video memories and timing counters.
 pub struct PPU {
+    /// PPU registers and internal latches.
     pub regs: PPURegisters,
+    /// Video memory.
     pub vram: VRAM,
+    /// Palette memory.
     pub cgram: CGRAM,
+    /// Sprite attribute memory.
     pub oam: OAM,
 
     // Timing
+    /// Current scanline (0..262).
     pub scanline: u16,
     /// Master cycles elapsed inside the current scanline (0..1364).
     pub h_cycles: u32,
+    /// Number of frames elapsed since power-on.
     pub frame: u64,
 }
 
@@ -45,6 +61,7 @@ impl Default for PPU {
 }
 
 impl PPU {
+    /// Creates a PPU at the start of scanline 0 of frame 0.
     pub fn new() -> Self {
         Self {
             regs: PPURegisters::new(),
@@ -57,10 +74,12 @@ impl PPU {
         }
     }
 
+    /// Returns true if the current frame number is odd.
     pub fn odd_frame(&self) -> bool {
         !self.frame.is_multiple_of(2)
     }
 
+    /// Handles a CPU write to a PPU register ($2100-$2133).
     pub fn write(&mut self, addr: u16, value: u8) {
         match addr {
             // ==========================
@@ -280,6 +299,7 @@ impl PPU {
         }
     }
 
+    /// Handles a CPU read from a PPU register ($2134-$213F).
     pub fn read(&mut self, addr: u16) -> u8 {
         match addr {
             // ==========================
@@ -351,6 +371,7 @@ impl PPU {
         }
     }
 
+    /// Returns the first V-Blank line: 225, or 240 with overscan (SETINI bit 2).
     pub fn vblank_start_line(&self) -> u16 {
         if self.regs.setini & 0x04 != 0 {
             VBLANK_START_LINE_OVERSCAN
@@ -406,10 +427,12 @@ impl PPU {
         }
     }
 
+    /// Returns true if forced blanking is on (INIDISP bit 7).
     pub fn force_blank(&self) -> bool {
         (self.regs.inidisp & 0x80) != 0
     }
 
+    /// Returns the screen brightness (INIDISP bits 0-3, 0-15).
     pub fn brightness(&self) -> u8 {
         self.regs.inidisp & 0x0F
     }

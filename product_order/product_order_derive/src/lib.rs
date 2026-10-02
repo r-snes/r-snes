@@ -1,3 +1,6 @@
+//! Implements a [`PartialOrd` derive macro](strict_partial_ord)
+//! which follows product order logic
+
 use {
     proc_macro::TokenStream,
     quote::{ToTokens, format_ident, quote},

@@ -1,18 +1,19 @@
-/// APU integration tests
-///
-/// Covers:
-///   - Apu::new(): reset vector loaded, SP initialised, cycle counters zero
-///   - Apu::step(): CPU ticked every cycle, DSP ticked every 32 cycles,
-///     total cycle counter advances correctly
-///   - DSP tick rate: exactly 1 DSP tick per 32 CPU cycles
-///   - render_audio(): correct output length, advances cycles, produces
-///     stereo-interleaved samples, silent when no voices active
-///   - Component wiring: DSP register writes via Memory reach the DSP,
-///     render_audio reflects DSP state
-///   - IPL boot protocol (HLE): upload/execute handshake over the ports,
-///     chunk-boundary port stability, and cold ($FFC0) vs. warm ($FFC9)
-///     re-entry (SP/zero-page preserved on warm re-entry — the fix for
-///     the multi-chunk upload hang some games hit on a black screen)
+//! APU integration tests
+//!
+//! Covers:
+//!   - Apu::new(): reset vector loaded, SP initialised, cycle counters zero
+//!   - Apu::step(): CPU ticked every cycle, DSP ticked every 32 cycles,
+//!     total cycle counter advances correctly
+//!   - DSP tick rate: exactly 1 DSP tick per 32 CPU cycles
+//!   - render_audio(): correct output length, advances cycles, produces
+//!     stereo-interleaved samples, silent when no voices active
+//!   - Component wiring: DSP register writes via Memory reach the DSP,
+//!     render_audio reflects DSP state
+//!   - IPL boot protocol (HLE): upload/execute handshake over the ports,
+//!     chunk-boundary port stability, and cold ($FFC0) vs. warm ($FFC9)
+//!     re-entry (SP/zero-page preserved on warm re-entry — the fix for
+//!     the multi-chunk upload hang some games hit on a black screen)
+
 use apu::Apu;
 use apu::dsp::EnvelopePhase;
 

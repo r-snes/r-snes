@@ -1,3 +1,7 @@
+//! Standalone PPU demo: fills VRAM, CGRAM and OAM with a test scene
+//! (BG1 color bands in mode 1, one 8x8 and one 16x16 sprite)
+//! and displays one rendered frame in an SDL2 window.
+
 use ppu::constants::*;
 use ppu::ppu::PPU;
 use ppu::rendering::renderer::Renderer;

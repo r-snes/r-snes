@@ -1,3 +1,5 @@
+//! Parsing of the SNES ROM header, which describes the cartridge
+
 pub mod cartridge_hardware;
 pub mod country;
 pub mod mapping_mode;

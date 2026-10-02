@@ -1,3 +1,5 @@
+//! Types describing the hardware present on the cartridge board
+
 use std::fmt;
 use strum_macros::Display;
 
@@ -6,7 +8,9 @@ use strum_macros::Display;
 /// Contains an HardwareLayout and an optionnal Coprocessor
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CartridgeHardware {
+    /// Chips present on the board (ROM, RAM, battery, coprocessor)
     pub layout: HardwareLayout,
+    /// Coprocessor on the board, `None` if the layout has none
     pub coprocessor: Option<Coprocessor>,
 }
 
@@ -15,24 +19,31 @@ pub struct CartridgeHardware {
 /// Includes combinations of ROM, RAM, Battery and Coprocessor.
 #[derive(Display, Debug, Clone, Copy, PartialEq)]
 pub enum HardwareLayout {
+    /// ROM only
     #[strum(serialize = "Rom")]
     RomOnly,
 
+    /// ROM and RAM
     #[strum(serialize = "Rom + Ram")]
     RomRam,
 
+    /// ROM and battery-backed RAM
     #[strum(serialize = "Rom + Ram + Battery")]
     RomRamBattery,
 
+    /// ROM and coprocessor
     #[strum(serialize = "Rom + Coprocessor")]
     RomCoprocessor,
 
+    /// ROM, coprocessor and RAM
     #[strum(serialize = "Rom + Coprocessor + Ram")]
     RomCoprocessorRam,
 
+    /// ROM, coprocessor and battery-backed RAM
     #[strum(serialize = "Rom + Coprocessor + Ram + Battery")]
     RomCoprocessorRamBattery,
 
+    /// ROM, coprocessor and battery
     #[strum(serialize = "Rom + Coprocessor + Battery")]
     RomCoprocessorBattery,
 }
@@ -42,13 +53,21 @@ pub enum HardwareLayout {
 /// Some coprocessors have additional identifiers (e.g., DSP number).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Coprocessor {
+    /// DSP math coprocessor, with its version number (DSP-1, DSP-2, ...)
     DSP(u8),
+    /// Graphics Support Unit (Super FX)
     GSU,
+    /// OBC-1 sprite management chip
     OBC1,
+    /// SA-1 accelerator (65C816-based CPU)
     SA1,
+    /// S-DD1 decompression chip
     SDD1,
+    /// S-RTC real-time clock
     SRTC,
+    /// Other coprocessor (header code `0xE`)
     Other,
+    /// Custom coprocessor (header code `0xF`)
     Custom,
 }
 
@@ -93,7 +112,7 @@ impl CartridgeHardware {
     ///     byte: Byte from the ROM header representing hardware configuration.
     ///
     /// Returns:
-    ///     A `CartridgeHardware` struct containing the ROM layout and an Option<Coprocessor>
+    ///     A `CartridgeHardware` struct containing the ROM layout and an `Option<Coprocessor>`
     pub fn from_byte(byte: u8) -> CartridgeHardware {
         let layout = match byte & 0x0F {
             0x0 => HardwareLayout::RomOnly,

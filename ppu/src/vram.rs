@@ -1,12 +1,23 @@
+//! Video memory (VRAM): 64 KB, stored as 32K 16-bit words.
+//!
+//! The CPU accesses it through VMADD ($2116/$2117) for the address,
+//! VMDATA ($2118/$2119) for writes and RDVRAM ($2139/$213A) for reads.
+//! VMAIN ($2115) sets the address increment and whether it happens
+//! after the low or the high byte. Reads go through a prefetch latch.
+
 use crate::constants::VRAM_SIZE;
 use crate::registers::PPURegisters;
 use common::u16_split::U16Split;
 
+/// Raw VRAM content, as 32K 16-bit words.
 pub type RawVRAM = [u16; VRAM_SIZE / 2];
 
+/// Video memory and its read latch.
 pub struct VRAM {
-    pub memory: Box<RawVRAM>, // VRAM stored as u16 words
-    pub vram_latch: u16,      // word latch for reads
+    /// VRAM content, stored as 16-bit words.
+    pub memory: Box<RawVRAM>,
+    /// Prefetched word returned by VRAM reads.
+    pub vram_latch: u16,
 }
 
 impl Default for VRAM {
@@ -16,6 +27,7 @@ impl Default for VRAM {
 }
 
 impl VRAM {
+    /// Creates a zeroed VRAM.
     pub fn new() -> Self {
         Self {
             memory: Box::new([0; _]),
@@ -27,6 +39,7 @@ impl VRAM {
     // Address increment logic
     // ============================================================
 
+    /// Returns the address increment set by VMAIN bits 0-1 (1, 32 or 128).
     pub fn increment_amount(regs: &PPURegisters) -> u16 {
         match regs.vmain & 0b11 {
             0 => 1,
@@ -36,10 +49,12 @@ impl VRAM {
         }
     }
 
+    /// Returns true if the address increments after a low byte access (VMAIN bit 7 clear).
     pub fn increment_after_low(regs: &PPURegisters) -> bool {
         (regs.vmain & 0x80) == 0
     }
 
+    /// Returns true if the address increments after a high byte access (VMAIN bit 7 set).
     pub fn increment_after_high(regs: &PPURegisters) -> bool {
         (regs.vmain & 0x80) != 0
     }
@@ -52,16 +67,19 @@ impl VRAM {
     // VMADD ($2116 / $2117)
     // ============================================================
 
+    /// Sets the full VRAM address and reloads the latch.
     pub fn write_vmadd(&mut self, PPURegisters { vmadd, .. }: &mut PPURegisters, addr: u16) {
         *vmadd = addr & 0x7FFF;
         self.load_latch(*vmadd);
     }
 
+    /// Writes VMADDL ($2116) and reloads the latch.
     pub fn write_vmadd_low(&mut self, PPURegisters { vmadd, .. }: &mut PPURegisters, value: u8) {
         *vmadd.lo_mut() = value;
         self.load_latch(*vmadd);
     }
 
+    /// Writes VMADDH ($2117) and reloads the latch.
     pub fn write_vmadd_high(&mut self, PPURegisters { vmadd, .. }: &mut PPURegisters, value: u8) {
         *vmadd.hi_mut() = value & 0x7F;
         self.load_latch(*vmadd);
@@ -71,6 +89,7 @@ impl VRAM {
     // VRAM DATA WRITE ($2118 / $2119)
     // ============================================================
 
+    /// Writes a full word, as VMDATAL then VMDATAH.
     pub fn write_vmdata(&mut self, regs: &mut PPURegisters, value: u16) {
         let addr = (regs.vmadd & 0x7FFF) as usize;
         *self.memory[addr].lo_mut() = *value.lo();
@@ -87,6 +106,7 @@ impl VRAM {
         }
     }
 
+    /// Writes VMDATAL ($2118): low byte at the current address.
     pub fn write_vmdatal(&mut self, regs: &mut PPURegisters, value: u8) {
         let addr = (regs.vmadd & 0x7FFF) as usize;
         *self.memory[addr].lo_mut() = value;
@@ -96,6 +116,7 @@ impl VRAM {
         }
     }
 
+    /// Writes VMDATAH ($2119): high byte at the current address.
     pub fn write_vmdatah(&mut self, regs: &mut PPURegisters, value: u8) {
         let addr = (regs.vmadd & 0x7FFF) as usize;
         *self.memory[addr].hi_mut() = value;
@@ -109,6 +130,7 @@ impl VRAM {
     // VRAM DATA READ ($2139 / $213A)
     // ============================================================
 
+    /// Reads a full word, as RDVRAML then RDVRAMH.
     pub fn read_vmdata(&mut self, regs: &mut PPURegisters) -> u16 {
         let lo = *self.vram_latch.lo();
 
@@ -127,6 +149,7 @@ impl VRAM {
         (lo as u16) | ((hi as u16) << 8)
     }
 
+    /// Reads RDVRAML ($2139): low byte of the latch.
     pub fn read_vmdatal(&mut self, regs: &mut PPURegisters) -> u8 {
         let value = *self.vram_latch.lo();
 
@@ -138,6 +161,7 @@ impl VRAM {
         value
     }
 
+    /// Reads RDVRAMH ($213A): high byte of the latch.
     pub fn read_vmdatah(&mut self, regs: &mut PPURegisters) -> u8 {
         let value = *self.vram_latch.hi();
 
@@ -153,6 +177,7 @@ impl VRAM {
     // Helpers
     // ============================================================
 
+    /// Loads the word at `vmadd` into the latch.
     pub fn load_latch(&mut self, vmadd: u16) {
         self.vram_latch = self.memory[(vmadd & 0x7FFF) as usize];
     }

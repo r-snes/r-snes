@@ -1,13 +1,25 @@
-pub mod cgram;
-pub mod constants;
-pub mod oam;
-pub mod ppu;
-pub mod registers;
-pub mod sprites;
-pub mod vram;
-pub mod write_twice;
+//! Crate implementing the SNES PPU (Picture Processing Unit):
+//! registers, video memories (VRAM, CGRAM, OAM),
+//! scanline timing and rendering.
 
+/// Palette memory.
+pub mod cgram;
+/// Hardware constants.
+pub mod constants;
+/// Sprite attribute memory.
+pub mod oam;
+/// Main PPU state and timing.
+pub mod ppu;
+/// PPU registers.
+pub mod registers;
+/// Scanline rendering.
 pub mod rendering;
+/// Sprite handling.
+pub mod sprites;
+/// Video memory.
+pub mod vram;
+/// Two-step byte latch.
+pub mod write_twice;
 
 // re-export the most important types for easy access
 pub use ppu::PPU;
