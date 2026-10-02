@@ -79,7 +79,7 @@ mod test {
     fn build_detailed() {
         assert_eq!(
             build_from_lua(
-                "{ field1 = true, node1 = \"all\", node2 = { \"a\", \"b\" }, }",
+                "{ field1 = \"all\", node1 = \"all\", node2 = { \"a\", \"b\" }, }",
                 PermTreeRoot::from_lua
             ),
             Some(PermTreeRoot {
