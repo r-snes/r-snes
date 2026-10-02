@@ -1,3 +1,6 @@
+//! Top-level APU: ties the SPC700, memory, timers and DSP together and
+//! high-level emulates the IPL boot ROM. See [`Apu`].
+
 use crate::{cpu::Spc700, memory::Memory, timers::Timers};
 
 // The SPC700 CPU runs at 1.024 MHz.
@@ -111,9 +114,21 @@ const IPL_WARM_REENTRY_CYCLES: u16 = 8;
 /// uploaded code starts running (see IplHle::ExecDelay).
 const IPL_EXEC_DELAY_CYCLES: u16 = 256;
 
+/// The complete SNES audio subsystem.
+///
+/// Advance it with [`Apu::step`] in real SPC700 cycles, talk to it from the
+/// main CPU side through [`Memory::cpu_port_write`] / [`Memory::cpu_port_read`]
+/// on `memory`, and collect the produced audio with [`Apu::drain_samples`].
+///
+/// A freshly created `Apu` starts inside the (high-level emulated) IPL boot
+/// ROM, waiting for the main CPU to upload a sound driver. Use
+/// [`Apu::skip_ipl_boot`] to bypass this when running code directly.
 pub struct Apu {
+    /// The SPC700 CPU core running the uploaded sound driver.
     pub cpu: Spc700,
+    /// APU address space: 64 KB audio RAM, I/O registers and the DSP.
     pub memory: Memory,
+    /// The three hardware timers, clocked once per CPU cycle.
     pub timers: Timers,
 
     /// Total CPU cycles elapsed since APU creation.
@@ -171,6 +186,11 @@ impl Apu {
     /// accumulator (see RSnes::update_apu_cycles).
     pub const CLOCK_HZ: u64 = 1_024_000;
 
+    /// Create an APU in its power-on state.
+    ///
+    /// The CPU is reset, SP and zero page get their post-IPL values, and
+    /// the HLE IPL boot ROM is armed: after its boot delay it announces
+    /// $AA/$BB on ports 0/1 and waits for the main CPU to upload a driver.
     pub fn new() -> Self {
         let mut apu = Self {
             cpu: Spc700::new(),

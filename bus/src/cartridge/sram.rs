@@ -1,3 +1,5 @@
+//! Provides `Sram`, the static RAM of the cartridge
+
 use crate::cartridge::header::RomHeader;
 
 /// Static RAM on the cartridge board.
@@ -11,6 +13,7 @@ pub struct Sram {
 }
 
 impl Sram {
+    /// Creates an S-RAM of the size declared in the ROM header
     pub fn new(header: &RomHeader) -> Self {
         let size = header.ram_size_bytes();
 
@@ -21,6 +24,7 @@ impl Sram {
         }
     }
 
+    /// Whether the cartridge has an S-RAM chip
     pub fn is_present(&self) -> bool {
         !self.data.is_empty()
     }
@@ -37,6 +41,9 @@ impl Sram {
         }
     }
 
+    /// Writes a byte, ignored if the cartridge has no S-RAM.
+    ///
+    /// `linear` is mirrored the same way as in `Sram::read`.
     pub fn write(&mut self, linear: usize, value: u8) {
         if self.is_present() {
             let offset = linear & self.mask;

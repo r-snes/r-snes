@@ -1,9 +1,10 @@
+//! ALU and arithmetic instruction tests
+//!
+//! Currently covers:
+//!   - INC A ($BC)
+//!  - DEC A ($9C)
+
 use apu::Memory;
-/// ALU and arithmetic instruction tests
-///
-/// Currently covers:
-///   - INC A ($BC)
-///  - DEC A ($9C)
 use apu::cpu::{FLAG_C, FLAG_H, FLAG_N, FLAG_P, FLAG_V, FLAG_Z, Spc700};
 
 // ============================================================

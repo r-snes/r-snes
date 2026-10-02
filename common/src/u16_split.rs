@@ -1,3 +1,5 @@
+//! Helpers to manipulate individual bytes of a `u16`
+
 /// Extension trait for [`u16`] which defines additional methods
 /// allowing to "split" references (mutable or not) to a [`u16`] into
 /// two separate references to its individual bytes (as [`u8`]s)

@@ -1,5 +1,6 @@
+//! Jump/branch/misc instruction tests
+
 use apu::Memory;
-/// Jump/branch/misc instruction tests
 use apu::cpu::{FLAG_B, FLAG_I, FLAG_N, FLAG_Z, Spc700};
 
 // ============================================================

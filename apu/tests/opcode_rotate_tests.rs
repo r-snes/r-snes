@@ -1,8 +1,9 @@
+//! Rotate instruction tests
+//!
+//! Currently covers:
+//!   - ROL A ($3C)
+
 use apu::Memory;
-/// Rotate instruction tests
-///
-/// Currently covers:
-///   - ROL A ($3C)
 use apu::cpu::{FLAG_C, FLAG_N, FLAG_P, FLAG_Z, Spc700};
 
 // ============================================================

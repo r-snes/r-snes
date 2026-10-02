@@ -1,8 +1,17 @@
+//! BG Mode 0 renderer: four 2bpp background layers.
+//!
+//! Each pixel reads a tilemap entry (tile number, palette, priority, flips),
+//! then decodes the 2bpp tile data from VRAM.
+//! Each layer has its own block of 8 palettes of 4 colors in CGRAM:
+//! BG1 uses entries 0-31, BG2 32-63, BG3 64-95 and BG4 96-127.
+//! Color 0 is transparent.
+
 use crate::ppu::PPU;
 use crate::rendering::renderer::{BgParams, BitDepth, Layer, Priority, Renderer};
 use crate::vram::RawVRAM;
 
 impl Renderer {
+    /// Renders BG1 in Mode 0 on framebuffer row `y`.
     pub fn render_scanline_mode0(&mut self, ppu: &PPU, y: usize) {
         // Mode 0: BG1-BG4, all 2bpp. Each BG owns a separate 32-colour region:
         // BG1 -> 0, BG2 -> 32, BG3 -> 64, BG4 -> 96.
@@ -52,6 +61,7 @@ impl Renderer {
         }
     }
 
+    /// Returns the color index (0-3) of pixel (`x`, `y`) in the 2bpp tile at `tile_word_base`.
     pub fn decode_2bpp_tile_pixel_from(
         vram: &RawVRAM,
         tile_word_base: usize,

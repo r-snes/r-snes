@@ -1,3 +1,6 @@
+//! Provides `Io`, the I/O registers of the SNES CPU side, along with
+//! the types used to describe their state
+
 use crate::bus::AccessSpeed;
 use crate::constants::{AUTO_JOYPAD_BIT_CYCLES, AUTO_JOYPAD_START_DELAY, JOYOUT_LATCH};
 use crate::joypad::ControllerPort;
@@ -195,17 +198,23 @@ pub struct Io {
     pub open_bus: u8,
 }
 
+/// WRAM bank selected by bit 0 of WMADDH (`0x2183`)
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 #[repr(u8)]
 pub enum WmAddBank {
+    /// First WRAM bank (bit 0 cleared)
     #[default]
     Bank7E = 0x7E,
+    /// Second WRAM bank (bit 0 set)
     Bank7F = 0x7F,
 }
 
+/// 17-bit WRAM address held by WMADDL/M/H, used by WMDATA
 #[derive(Copy, Clone, Debug, Default)]
 pub struct WmAddress {
+    /// WRAM bank (the 17th bit of the address)
     pub bank: WmAddBank,
+    /// Address within the bank
     pub addr: u16,
 }
 
@@ -341,22 +350,26 @@ impl From<u8> for WmAddBank {
 }
 
 impl WmAddBank {
+    /// Returns the other WRAM bank
     pub fn flipped(self) -> Self {
         match self {
             Self::Bank7E => Self::Bank7F,
             Self::Bank7F => Self::Bank7E,
         }
     }
+    /// Switches to the other WRAM bank
     pub fn flip(&mut self) {
         *self = self.flipped();
     }
 }
 
 impl WmAddress {
+    /// Converts to the corresponding address in the global SNES address space
     pub fn to_snes_addr(self) -> SnesAddress {
         snes_addr!((self.bank as u8):self.addr)
     }
 
+    /// Advances to the next byte, carrying into the bank (wraps from `0x7FFFFF` to `0x7E0000`)
     pub fn inc(&mut self) {
         let (addr, v) = self.addr.overflowing_add(1);
 
@@ -515,18 +528,22 @@ impl Io {
     // HVBJOY ($4212) - screen and joypad status
     // ================================================================
 
+    /// Bit 7: set while the PPU is in V-Blank.
     pub fn set_vblank(&mut self, on: bool) {
         Self::set_bit(&mut self.hvbjoy, Self::HVBJOY_VBLANK, on);
     }
 
+    /// Check whether the V-Blank flag is set.
     pub fn in_vblank(&self) -> bool {
         self.hvbjoy & Self::HVBJOY_VBLANK != 0
     }
 
+    /// Bit 6: set while the PPU is in H-Blank.
     pub fn set_hblank(&mut self, on: bool) {
         Self::set_bit(&mut self.hvbjoy, Self::HVBJOY_HBLANK, on);
     }
 
+    /// Check whether the H-Blank flag is set.
     pub fn in_hblank(&self) -> bool {
         self.hvbjoy & Self::HVBJOY_HBLANK != 0
     }
@@ -537,6 +554,7 @@ impl Io {
         Self::set_bit(&mut self.hvbjoy, Self::HVBJOY_AUTO_JOYPAD, on);
     }
 
+    /// Check whether the auto-joypad read is in progress.
     pub fn auto_joypad_busy(&self) -> bool {
         self.hvbjoy & Self::HVBJOY_AUTO_JOYPAD != 0
     }
@@ -825,6 +843,13 @@ impl Io {
 }
 
 impl Io {
+    /// Access speed of the I/O register at the given `SnesAddress`.
+    ///
+    /// `0x4000–0x41FF` (manual joypad registers) is extra slow, every
+    /// other I/O address is fast.
+    ///
+    /// # Panics
+    /// Panics if the address is outside of the I/O zone.
     pub fn speed(addr: SnesAddress) -> AccessSpeed {
         match addr.addr {
             0x2000..=0x20FF => AccessSpeed::Fast,

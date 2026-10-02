@@ -1,3 +1,11 @@
+//! Sprite (OBJ) rendering for one scanline.
+//!
+//! Uses the OAM evaluation to get the sprites on the line, then draws them
+//! from the last evaluated to the first. Sprites are 4bpp, use the CGRAM
+//! entries 128-255 and are placed in the z-buffer according to their priority (0-3).
+//! Multi-tile sprites wrap the tile number per nibble (X in the low nibble,
+//! Y in the high nibble).
+
 use crate::constants::*;
 use crate::oam::OAM;
 use crate::ppu::PPU;

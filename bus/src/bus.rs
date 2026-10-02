@@ -1,3 +1,6 @@
+//! Main module for the `Bus` struct, which dispatches memory
+//! accesses to the right components, and the `AccessSpeed` enum
+
 use crate::cartridge::Cartridge;
 use crate::io::Io;
 use crate::wram::Wram;
@@ -8,6 +11,8 @@ use ppu::ppu::PPU;
 use std::error::Error;
 use std::path::Path;
 
+/// Speed of a memory access, which depends on the region being accessed
+/// (and on MEMSEL for the cartridge ROM)
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum AccessSpeed {
     /// Fastest access, takes 6 master cycles
@@ -21,6 +26,7 @@ pub enum AccessSpeed {
 }
 
 impl AccessSpeed {
+    /// Number of master cycles taken by an access at this speed
     pub fn cycles(self) -> u32 {
         match self {
             Self::Fast => 6,
@@ -30,13 +36,23 @@ impl AccessSpeed {
     }
 }
 
+/// The SNES memory bus, as seen by the main CPU
+///
+/// Owns the memory components living on the bus and routes each access
+/// according to the SNES memory map:
 pub struct Bus {
+    /// Work RAM (128 KiB)
     pub wram: Wram,
+    /// Game cartridge
     pub cart: Cartridge,
+    /// I/O registers
     pub io: Io,
 }
 
 impl Bus {
+    /// Creates a bus with the cartridge loaded from the ROM file at `rom_path`
+    ///
+    /// Returns an error if the ROM file cannot be loaded
     pub fn new<P: AsRef<Path>>(rom_path: P) -> Result<Self, Box<dyn Error>> {
         Ok(Self {
             cart: Cartridge::load_from_file(rom_path)?,
@@ -47,10 +63,11 @@ impl Bus {
 
     duplicate! {
         [
-            DUP_method DUP_parameters                            DUP_return_t        DUP_method_param DUP_cart;
-            [read]     [&mut self, addr: SnesAddress]            [(u8, AccessSpeed)] [addr]           [(|(b, s): (Option<_>, _)|(b.unwrap_or(self.io.open_bus), s))(self.cart.read(addr, self.io.memsel & 1 != 0))];
-            [write]    [&mut self, addr: SnesAddress, value: u8] [AccessSpeed]       [addr, value]    [self.cart.write(addr, value, self.io.memsel & 1 != 0)];
+            DUP_method DUP_parameters                            DUP_return_t        DUP_method_param DUP_cart                                                                                                        DUP_doc;
+            [read]     [&mut self, addr: SnesAddress]            [(u8, AccessSpeed)] [addr]           [(|(b, s): (Option<_>, _)|(b.unwrap_or(self.io.open_bus), s))(self.cart.read(addr, self.io.memsel & 1 != 0))]   ["Reads a byte at the given `SnesAddress`, along with the access speed.\n\nReturns open bus if no cartridge chip responds."];
+            [write]    [&mut self, addr: SnesAddress, value: u8] [AccessSpeed]       [addr, value]    [self.cart.write(addr, value, self.io.memsel & 1 != 0)]                                                         ["Writes a byte at the given `SnesAddress`, and returns the access speed."];
         ]
+        #[doc = DUP_doc]
         pub fn DUP_method(DUP_parameters, ppu: &mut PPU, apu: &mut Apu) -> DUP_return_t {
             match addr.bank {
                 0x00..=0x3F | 0x80..=0xBF => match addr.addr {

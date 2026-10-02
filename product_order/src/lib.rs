@@ -1,3 +1,6 @@
+//! Crate implementing various utilities to work with
+//! [product orders](https://en.wikipedia.org/wiki/Product_order)
+
 #[doc(inline)]
 pub use product_order_derive::PartialOrd;
 

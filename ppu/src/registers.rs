@@ -1,3 +1,10 @@
+//! PPU register file ($2100-$213F) and its internal latches.
+//!
+//! Holds the raw values of the write registers ($2100-$2133), the read
+//! registers ($2134-$213F) and the hidden latches used by write-twice
+//! registers (BG scroll, Mode 7, CGRAM, H/V counters).
+//! Helpers decode the fields used by rendering (BG mode, tilemap and CHR addresses).
+
 use crate::write_twice::WriteTwice;
 
 /// PPU Registers placeholder definitions
@@ -222,29 +229,30 @@ pub struct PPURegisters {
     /// On read: counter_latch = 0; ophct_byte = 0; opvct_byte = 0
     pub stat78: u8, // Bits: FLxMVVVV | Interlace field (F), counter latch (L), PPU2 open bus (x), NTSC/PAL (M), PPU2 version (V)
 
-    // ============================================================
-    // Latches (internal hardware state, not directly addressable)
-    // ============================================================
-    /// Shared latch for all BGnHOFS/BGnVOFS writes ($210D-$2114)
-    /// bgofs_latch is written on every BGnHOFS and BGnVOFS write
-    /// bghofs_latch is written on every BGnHOFS write only
+    /// ============================================================
+    /// Latches (internal hardware state, not directly addressable)
+    /// ============================================================
+
+    /// Shared latch for all BGnHOFS/BGnVOFS writes ($210D-$2114).
+    /// Written on every BGnHOFS and BGnVOFS write.
     pub bgofs_latch: u8,
+    /// Second BG scroll latch, written on every BGnHOFS write only.
+    /// Provides the low 3 bits of the next BGnHOFS value.
     pub bghofs_latch: u8,
 
-    // Shared latch for all Mode 7 writes ($210D-$2120, $211B-$211E)
+    /// Shared latch for all Mode 7 writes ($210D-$210E, $211B-$2120).
     pub mode7_latch: u8,
 
-    // Internal flip-flop for CGDATA ($2122) and CGDATAREAD ($213B) - shared per hardware
+    /// Internal flip-flop for CGDATA ($2122) and CGDATAREAD ($213B), shared per hardware.
     pub cgram_latch: WriteTwice,
 
-    // Internal flip-flop for OPHCT ($213C) reads
+    /// Internal flip-flop for OPHCT ($213C) reads.
     pub ophct_latch: WriteTwice,
 
-    // Internal flip-flop for OPVCT ($213D) reads
+    /// Internal flip-flop for OPVCT ($213D) reads.
     pub opvct_latch: WriteTwice,
 
-    // Set when the H/V counters are latched (SLHV $2137 read). Cleared when
-    // STAT78 ($213F) is read. Reflected in STAT78 bit 6.
+    /// H/V counter latch flag: set by an SLHV ($2137) read, cleared by a STAT78 ($213F) read; shown in STAT78 bit 6.
     pub counter_latch: bool,
 }
 
@@ -255,6 +263,7 @@ impl Default for PPURegisters {
 }
 
 impl PPURegisters {
+    /// Creates a register file with every register and latch cleared.
     pub fn new() -> Self {
         Self {
             inidisp: 0,
@@ -324,18 +333,26 @@ impl PPURegisters {
     // Helpers
     // ============================================================
 
+    /// Returns true if BG1 is enabled on the main screen (TM bit 0).
     pub fn bg1_enabled(&self) -> bool {
         (self.tm & 0x01) != 0
     }
 
+    /// Returns the current BG mode (BGMODE bits 0-2).
     pub fn bg_mode(&self) -> u8 {
         self.bgmode & 0x07
     }
 
+    // ============================================================
+    // Per-BG helpers
+    // ============================================================
+
+    /// Returns the tilemap word address of BG `bg` (BGnSC bits 2-7, 0x400-word steps).
     pub fn bg_tilemap_addr(&self, bg: usize) -> u16 {
         (self.bgsc[bg] as u16 >> 2) * 0x400
     }
 
+    /// Returns the CHR word address of BG `bg` (BG12NBA/BG34NBA nibble, 0x1000-word steps).
     pub fn bg_tiledata_addr(&self, bg: usize) -> u16 {
         let nib = match bg {
             0 => self.bg12nba & 0x0F,
@@ -346,10 +363,12 @@ impl PPURegisters {
         (nib as u16) << 12
     }
 
+    /// Returns the tilemap size of BG `bg` as (64 tiles wide, 64 tiles tall) (BGnSC bits 0-1).
     pub fn bg_tilemap_size(&self, bg: usize) -> (bool, bool) {
         (self.bgsc[bg] & 0x01 != 0, self.bgsc[bg] & 0x02 != 0)
     }
 
+    /// Returns the (horizontal, vertical) scroll of BG `bg` (BGnHOFS / BGnVOFS).
     pub fn bg_scroll(&self, bg: usize) -> (usize, usize) {
         let h = if bg == 0 {
             self.bg1hofs
@@ -364,8 +383,7 @@ impl PPURegisters {
         (h as usize, v as usize)
     }
 
-    // $213F read side effects: clear the counter latch and reset the
-    // OPHCT/OPVCT read toggles.
+    /// STAT78 ($213F) read side effects: clears the counter latch and resets the OPHCT/OPVCT toggles.
     pub fn read_stat78_side_effects(&mut self) {
         self.counter_latch = false;
         self.ophct_latch.reset();

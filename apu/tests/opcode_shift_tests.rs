@@ -1,8 +1,9 @@
+//! Shift instruction tests
+//!
+//! Currently covers:
+//!   - ASL A ($1C)
+
 use apu::Memory;
-/// Shift instruction tests
-///
-/// Currently covers:
-///   - ASL A ($1C)
 use apu::cpu::{FLAG_C, FLAG_N, FLAG_P, FLAG_Z, Spc700};
 
 // ============================================================

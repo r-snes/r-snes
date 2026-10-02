@@ -4,8 +4,6 @@
 //! fast-path (rate=15), exponential decay/sustain steps, release
 //! fixed-rate fade, and the full A→D→S→R→Off cycle.
 
-#![allow(clippy::field_reassign_with_default)] // default-then-assign reads better in test setup
-
 use apu::dsp::{Adsr, EnvelopePhase};
 
 // ============================================================

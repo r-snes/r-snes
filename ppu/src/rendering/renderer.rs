@@ -1,3 +1,11 @@
+//! Scanline renderer: composes the PPU layers into an RGB888 framebuffer.
+//!
+//! Each scanline starts with the backdrop color (CGRAM entry 0), then the BG mode
+//! renderer and the sprites draw on top through a per-column z-buffer.
+//! Force blank outputs black and INIDISP brightness is applied to every pixel.
+//! The framebuffer is double-buffered: the PPU writes to the back buffer,
+//! the GUI reads the front one.
+
 use crate::constants::*;
 use crate::ppu::PPU;
 
@@ -26,23 +34,38 @@ pub type RawFramebuffer = [u8; SCREEN_WIDTH * SCREEN_HEIGHT * 3];
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Priority {
+    /// Backdrop, always behind everything.
     Backdrop = 0,
+    /// Low priority BG4 tiles.
     Bg4Low = 1,
+    /// Low priority BG3 tiles.
     Bg3Low = 2,
+    /// Priority 0 sprites.
     Obj0 = 3,
+    /// High priority BG4 tiles.
     Bg4High = 4,
+    /// High priority BG3 tiles.
     Bg3High = 5,
+    /// Priority 1 sprites.
     Obj1 = 6,
+    /// Low priority BG2 tiles.
     Bg2Low = 7,
+    /// Low priority BG1 tiles.
     Bg1Low = 8,
+    /// Priority 2 sprites.
     Obj2 = 9,
+    /// High priority BG2 tiles.
     Bg2High = 10,
+    /// High priority BG1 tiles.
     Bg1High = 11,
+    /// Priority 3 sprites.
     Obj3 = 12,
-    Bg3Prio = 13, // mode 1, BGMODE bit3: BG3 high-prio above all
+    /// High priority BG3 tiles in mode 1 with BGMODE bit 3 set, above everything.
+    Bg3Prio = 13,
 }
 
 impl Priority {
+    /// Returns the raw z value.
     pub fn value(self) -> u8 {
         self as u8
     }
@@ -51,7 +74,9 @@ impl Priority {
 /// Bit depth of a BG layer's tiles. Drives tile size in VRAM and palette shift.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum BitDepth {
+    /// 2 bits per pixel (4 colors per palette).
     Two,
+    /// 4 bits per pixel (16 colors per palette).
     Four,
 }
 
@@ -77,15 +102,22 @@ impl BitDepth {
 /// enables/disables per layer (CGADSUB) and treats OBJ specially.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Layer {
+    /// Backdrop color.
     Backdrop,
+    /// Background layer 1.
     Bg1,
+    /// Background layer 2.
     Bg2,
+    /// Background layer 3.
     Bg3,
+    /// Background layer 4.
     Bg4,
+    /// Sprites.
     Obj,
 }
 
 impl Layer {
+    /// Returns the layer of BG index `bg` (0 = BG1 .. 3 = BG4).
     pub fn from_bg(bg: usize) -> Layer {
         match bg {
             0 => Layer::Bg1,
@@ -111,10 +143,13 @@ impl Layer {
 /// One composited pixel of a screen (main or sub), before color math.
 #[derive(Clone, Copy)]
 pub struct LinePixel {
+    /// BGR555 color.
     pub color: u16,
+    /// Z-order value (see `Priority`).
     pub z: u8,
+    /// Layer that produced the pixel.
     pub layer: Layer,
-    // OBJ pixels only do color math when the sprite uses palettes 4-7.
+    /// True if color math applies to this OBJ pixel (sprite palettes 4-7 only).
     pub obj_math: bool,
 }
 
@@ -129,24 +164,41 @@ impl LinePixel {
 
 /// Parameters for rendering one BG layer on one scanline.
 pub struct BgParams {
+    /// Tilemap word address in VRAM.
     pub tilemap_base: u16,
+    /// CHR data word address in VRAM.
     pub tiledata_base: u16,
+    /// Horizontal scroll.
     pub scroll_x: usize,
+    /// Vertical scroll.
     pub scroll_y: usize,
+    /// Tile bit depth.
     pub bpp: BitDepth,
-    pub palette_base: u8, // CGRAM colour offset (mode 0 per-layer); 0 otherwise
-    pub w64: bool,        // tilemap 64 tiles wide
-    pub h64: bool,        // tilemap 64 tiles tall
+    /// CGRAM color offset (mode 0 per-layer block); 0 otherwise.
+    pub palette_base: u8,
+    /// Tilemap is 64 tiles wide.
+    pub w64: bool,
+    /// Tilemap is 64 tiles tall.
+    pub h64: bool,
+    /// Z-order of low priority tiles.
     pub z_low: Priority,
+    /// Z-order of high priority tiles.
     pub z_high: Priority,
+    /// Layer identity, for color math.
     pub layer: Layer,
-    pub to_main: bool, // enabled on main screen (TM)
-    pub to_sub: bool,  // enabled on sub screen (TS)
+    /// Enabled on the main screen (TM).
+    pub to_main: bool,
+    /// Enabled on the sub screen (TS).
+    pub to_sub: bool,
 }
 
+/// Double-buffered framebuffer and per-scanline rendering state.
 pub struct Renderer {
-    pub framebuffer: Box<RawFramebuffer>, // back buffer, PPU writes here
-    pub presented: Box<RawFramebuffer>,   // front buffer, GUI reads here
+    /// Back buffer, the PPU writes here.
+    pub framebuffer: Box<RawFramebuffer>,
+    /// Front buffer, the GUI reads here.
+    pub presented: Box<RawFramebuffer>,
+    /// Brightness currently applied to the output (0-15).
     pub current_brightness: u8,
 
     // Per-column top pixel of each screen for the scanline being rendered.
@@ -163,6 +215,7 @@ impl Default for Renderer {
 }
 
 impl Renderer {
+    /// Creates a renderer with black buffers at full brightness.
     pub fn new() -> Self {
         Self {
             framebuffer: Box::new([0; SCREEN_WIDTH * SCREEN_HEIGHT * 3]),
@@ -174,14 +227,17 @@ impl Renderer {
         }
     }
 
+    /// Swaps the back and front buffers, making the last rendered frame visible.
     pub fn swap_buffers(&mut self) {
         std::mem::swap(&mut self.framebuffer, &mut self.presented);
     }
 
+    /// Returns the front buffer (last complete frame).
     pub fn presented(&self) -> &RawFramebuffer {
         &self.presented
     }
 
+    /// Renders framebuffer row `y`: backdrop, BG layers, then sprites.
     pub fn render_scanline(&mut self, ppu: &PPU, y: usize) {
         // Hardware force blank: output black
         if ppu.force_blank() {
@@ -321,6 +377,7 @@ impl Renderer {
         );
     }
 
+    /// Deposits an OBJ pixel on the sub screen. `obj_math` must be true if the sprite uses palette 4-7.
     pub fn deposit_sub(
         &mut self,
         x: usize,
@@ -435,6 +492,7 @@ impl Renderer {
         }
     }
 
+    /// Converts a BGR555 color to RGB888, scaled by `brightness` (0-15).
     pub fn apply_brightness(color: u16, brightness: u16) -> (u8, u8, u8) {
         let mut r = color & 0x1F;
         let mut g = (color >> 5) & 0x1F;
@@ -451,6 +509,7 @@ impl Renderer {
         (r8, g8, b8)
     }
 
+    /// Writes an RGB pixel to the back buffer, ignoring the z-buffer.
     pub fn set_pixel(&mut self, x: usize, y: usize, r: u8, g: u8, b: u8) {
         let index = (y * SCREEN_WIDTH + x) * 3;
         self.framebuffer[index] = r;
