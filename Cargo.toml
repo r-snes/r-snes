@@ -2,6 +2,43 @@
 name = "r-snes"
 version = "0.1.0"
 edition = "2024"
+description = "Cycle-accurate Super Nintendo emulator with sandboxed plugins"
+license = "MIT"
+authors = ["R-SNES Team <contact.rsnes@gmail.com>"]
+homepage = "https://github.com/r-snes"
+
+# Packaging for `cargo deb` and `cargo generate-rpm` (see packaging/build-release.sh).
+[package.metadata.deb]
+maintainer = "R-SNES Team <contact.rsnes@gmail.com>"
+copyright = "2026, R-SNES team"
+section = "games"
+priority = "optional"
+depends = "$auto"
+extended-description = "R-SNES is a cycle-accurate SNES emulator written in Rust, with a permission-based plugin system."
+assets = [
+    [
+        "target/release/r-snes",
+        "usr/bin/",
+        "755",
+    ],
+    [
+        "packaging/r-snes.desktop",
+        "usr/share/applications/",
+        "644",
+    ],
+    [
+        "assets/r-snes.png",
+        "usr/share/icons/hicolor/512x512/apps/",
+        "644",
+    ],
+]
+
+[package.metadata.generate-rpm]
+assets = [
+    { source = "target/release/r-snes", dest = "/usr/bin/r-snes", mode = "755" },
+    { source = "packaging/r-snes.desktop", dest = "/usr/share/applications/r-snes.desktop", mode = "644" },
+    { source = "assets/r-snes.png", dest = "/usr/share/icons/hicolor/512x512/apps/r-snes.png", mode = "644" },
+]
 
 [workspace]
 members = [
@@ -53,6 +90,9 @@ sdl2 = { workspace = true, features = ["bundled", "static-link"] }
 
 [target.'cfg(unix)'.dependencies]
 sdl2 = { workspace = true }
+
+[build-dependencies]
+winresource = "0.1.31"
 
 [features]
 cli = ["dep:clap"]

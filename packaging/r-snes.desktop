@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=R-SNES
+Comment=Cycle-accurate Super Nintendo emulator
+Exec=r-snes %f
+Icon=r-snes
+Terminal=false
+Categories=Game;Emulator;
+MimeType=application/vnd.nintendo.snes.rom;
