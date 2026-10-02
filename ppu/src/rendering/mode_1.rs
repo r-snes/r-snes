@@ -11,7 +11,7 @@ use crate::rendering::renderer::{BgParams, BitDepth, Layer, Priority, Renderer};
 use crate::vram::RawVRAM;
 
 impl Renderer {
-    /// Renders BG1 in Mode 1 on framebuffer row `y`.
+    /// Renders BG1-BG3 in Mode 1 on framebuffer row `y`.
     pub fn render_scanline_mode1(&mut self, ppu: &PPU, y: usize) {
         // Mode 1: BG1/BG2 4bpp, BG3 2bpp. No per-layer palette offset.
         // BGMODE bit3 lifts BG3 high-priority tiles above every other layer.
@@ -50,6 +50,7 @@ impl Renderer {
                     palette_base: 0,
                     w64,
                     h64,
+                    tile16: ppu.regs.bg_tile16(bg),
                     z_low,
                     z_high,
                     layer: Layer::from_bg(bg),
@@ -232,7 +233,6 @@ mod tests {
     #[test]
     fn test_render_mode1_transparent_tile_leaves_framebuffer() {
         let mut renderer = Renderer::new();
-        renderer.current_brightness = 15;
 
         let mut ppu = make_ppu_mode1();
         // Tilemap entry at (0,0): tile 0, all-zero CHR -> transparent
@@ -258,7 +258,6 @@ mod tests {
     #[test]
     fn test_render_mode1_opaque_pixel_written() {
         let mut renderer = Renderer::new();
-        renderer.current_brightness = 15;
 
         let mut ppu = make_ppu_mode1();
         ppu.write(0x2100, 0x0F); // full brightness so the colour survives compositing
@@ -267,9 +266,10 @@ mod tests {
         ppu.write(0x2107, 0x04);
         ppu.vram.memory[0x0400] = 0x0000; // tile 0, palette 0, no flip
 
-        // Tile 0: plane 0 row 0 all set -> every pixel = color index 1
-        ppu.vram.memory[0] = 0x00FF;
-
+        // Tile 0: plane 0 all rows set -> every pixel = color index 1
+        for row in 0..8 {
+            ppu.vram.memory[row] = 0x00FF;
+        }
         // CGRAM palette 0 entry 1 = pure red (BGR555)
         ppu.cgram.memory[0x01] = 0x001F;
 
