@@ -20,16 +20,16 @@ pub type RawARAM = [u8; 64 * 1024];
 /// $FD–$FF    TnOUT     — timer 0/1/2 counter output (read-only, clears on read)
 /// ```
 ///
-/// The direct-mapped range `$F200–$F27F` used by test code is kept alongside
-/// the real port protocol so both can coexist during development.
+/// Everything else, including `$F200–$F27F`, is plain RAM. (An earlier
+/// test-only shortcut mapped the DSP registers there; games upload sample
+/// data into that range, so it sent their samples into the DSP.)
 pub struct Memory {
     /// 64 KB APU RAM.  All addresses that are not intercepted as I/O
     /// read/write from/to this array.
     pub ram: Box<RawARAM>, // 64KB APU RAM,
 
     /// The DSP register file.  Accessed by the CPU exclusively through
-    /// the $F2/$F3 address-latch protocol (real hardware) or the direct
-    /// $F200–$F27F mapping used by test code.
+    /// the $F2/$F3 address-latch protocol, as on real hardware.
     pub dsp: Dsp,
 
     /// $F2 — DSP address latch.
@@ -56,8 +56,6 @@ pub struct Memory {
     ///
     /// `port_in[n]`  — value written by the SNES CPU, read by SPC700 at $F4+n
     /// `port_out[n]` — value written by SPC700 at $F4+n, read by SNES CPU
-    ///
-    /// This field holds the SNES CPU → SPC700 direction.
     pub port_in: [u8; 4],
 
     /// $F4–$F7 — SPC700 → SNES CPU direction of the communication ports.
@@ -140,11 +138,6 @@ impl Memory {
             0x00FD => self.timer_out[0],
             0x00FE => self.timer_out[1],
             0x00FF => self.timer_out[2],
-
-            // ---- Direct-mapped DSP register window ($F200–$F27F) ----
-            // Kept for test code that constructs Memory directly and writes
-            // DSP registers without going through the $F2/$F3 protocol.
-            0xF200..=0xF27F => self.dsp.read_reg((addr - 0xF200) as u8),
 
             // ---- IPL boot ROM overlay ($FFC0–$FFFF) ----
             // Real hardware maps this 64-byte mask ROM in for *reads* only
@@ -245,10 +238,6 @@ impl Memory {
 
             // $FD–$FF — read-only timer counters; writes are ignored.
             0x00FD..=0x00FF => {}
-
-            // ---- Direct-mapped DSP register window ($F200–$F27F) ----
-            // Kept for test code; real SPC700 programs use $F2/$F3 above.
-            0xF200..=0xF27F => self.dsp.write_reg((addr - 0xF200) as u8, val),
 
             // ---- Normal RAM ----
             _ => self.ram[addr as usize] = val,
