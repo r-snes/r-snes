@@ -106,6 +106,7 @@ fn setup_voice_silent_sample(apu: &mut Apu) {
     dsp_w(apu, 0x06, 0xE0); // ADSR2: hold sustain
     dsp_w(apu, 0x0C, 127u8); // MVOLL
     dsp_w(apu, 0x1C, 127u8); // MVOLR
+    dsp_w(apu, 0x6C, 0x00); // FLG: leave power-on reset/mute, as a driver does
     dsp_w(apu, 0x4C, 0x01); // KON voice 0
 }
 
@@ -149,6 +150,7 @@ fn setup_voice_nonzero_sample(apu: &mut Apu) {
     dsp_w(apu, 0x06, 0xE0); // ADSR2: hold at sustain
     dsp_w(apu, 0x0C, 127u8); // MVOLL
     dsp_w(apu, 0x1C, 127u8); // MVOLR
+    dsp_w(apu, 0x6C, 0x00); // FLG: leave power-on reset/mute, as a driver does
     dsp_w(apu, 0x4C, 0x01); // KON voice 0
 }
 

@@ -431,6 +431,34 @@ fn push_history_shifts_oldest_to_newest() {
 // ============================================================
 
 #[test]
+fn flg_powers_on_with_reset_mute_and_echo_write_disable() {
+    let dsp = Dsp::new();
+    assert_eq!(
+        dsp.read_reg(0x6C),
+        0xE0,
+        "FLG must power on as $E0 until the driver writes $6C"
+    );
+}
+
+#[test]
+fn kon_blocked_at_power_on_until_driver_clears_reset() {
+    let mut dsp = Dsp::new();
+
+    dsp.write_reg(0x4C, 0x01);
+    assert!(
+        !dsp.voices[0].key_on,
+        "KON must be ignored while FLG's power-on reset bit is set"
+    );
+
+    dsp.write_reg(0x6C, 0x00);
+    dsp.write_reg(0x4C, 0x01);
+    assert!(
+        dsp.voices[0].key_on,
+        "KON must work once the driver has cleared FLG"
+    );
+}
+
+#[test]
 fn reset_silences_voices_clears_endx_and_blocks_kon() {
     let mut dsp = Dsp::new();
     dsp.voices[0] = make_audible_voice();
@@ -467,6 +495,7 @@ fn reset_silences_voices_clears_endx_and_blocks_kon() {
 #[test]
 fn mute_silences_output_without_touching_voice_state() {
     let mut dsp = Dsp::new();
+    dsp.write_reg(0x6C, 0x00); // leave the power-on reset/mute first
     dsp.voices[0] = make_audible_voice();
     dsp.write_reg(0x0C, 100); // MVOLL
     dsp.write_reg(0x1C, 100); // MVOLR
