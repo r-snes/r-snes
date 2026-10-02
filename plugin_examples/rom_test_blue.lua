@@ -24,7 +24,7 @@ colors = {
 return {
     permissions = {
         internal = {
-            ppu = { "display" },
+            ppu = { "cgram" },
         },
     },
 
