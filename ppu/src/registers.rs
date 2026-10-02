@@ -347,12 +347,14 @@ impl PPURegisters {
     // Per-BG helpers
     // ============================================================
 
-    /// Returns the tilemap word address of BG `bg` (BGnSC bits 2-7, 0x400-word steps).
+    /// Returns the tilemap word address of BG `bg` (BGnSC bits 2-6, 0x400-word steps).
+    /// Bit 7 is ignored: VRAM only has 32K words.
     pub fn bg_tilemap_addr(&self, bg: usize) -> u16 {
-        (self.bgsc[bg] as u16 >> 2) * 0x400
+        (((self.bgsc[bg] >> 2) & 0x1F) as u16) << 10
     }
 
-    /// Returns the CHR word address of BG `bg` (BG12NBA/BG34NBA nibble, 0x1000-word steps).
+    /// Returns the CHR word address of BG `bg` (BG12NBA/BG34NBA nibble bits 0-2, 0x1000-word steps).
+    /// Bit 3 of the nibble is ignored: VRAM only has 32K words.
     pub fn bg_tiledata_addr(&self, bg: usize) -> u16 {
         let nib = match bg {
             0 => self.bg12nba & 0x0F,
@@ -360,7 +362,7 @@ impl PPURegisters {
             2 => self.bg34nba & 0x0F,
             _ => self.bg34nba >> 4,
         };
-        (nib as u16) << 12
+        ((nib & 0x07) as u16) << 12
     }
 
     /// Returns the tilemap size of BG `bg` as (64 tiles wide, 64 tiles tall) (BGnSC bits 0-1).

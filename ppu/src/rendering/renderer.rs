@@ -298,10 +298,11 @@ impl Renderer {
 
             // Pick the 0x400-word sub-screen for maps larger than 32x32.
             let screen = (tile_row >> 5) * screens_wide + (tile_col >> 5);
-            let map_word_addr = p.tilemap_base as usize
+            let map_word_addr = (p.tilemap_base as usize
                 + screen * 0x400
                 + (tile_row & 0x1F) * 32
-                + (tile_col & 0x1F);
+                + (tile_col & 0x1F))
+                & 0x7FFF;
 
             let entry = ppu.vram.memory[map_word_addr];
             let tile_index = entry & 0x03FF; // bits 9:0
@@ -1161,6 +1162,32 @@ mod tests {
         set_color(&mut ppu, 0x01, 0x001F);
 
         // Scroll x=256, y=256 -> screen (0,0) maps to tile (row 32, col 32) = SC3.
+        ppu.write(0x210D, 0x00);
+        ppu.write(0x210D, 0x01);
+        ppu.write(0x210E, 0x00);
+        ppu.write(0x210E, 0x01);
+
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 0), Renderer::apply_brightness(0x001F, 15));
+    }
+
+    #[test]
+    fn test_tilemap_address_wraps_within_vram() {
+        let mut r = make_renderer();
+        let mut ppu = make_ppu();
+        ppu.write(0x2107, 0x7F); // BG1SC: tilemap 0x7C00, w64 + h64
+        let nba = (ppu.regs.bg12nba & 0xF0) | 0x01;
+        ppu.write(0x210B, nba); // BG1 CHR at 0x1000
+        ppu.write(0x212C, 0x01);
+
+        // SC3 sits at 0x7C00 + 0xC00 = 0x8800, which wraps to 0x0800.
+        ppu.vram.memory[0x0800] = 0x0001;
+        for row in 0..8 {
+            ppu.vram.memory[0x1000 + 16 + row] = 0x00FF;
+        }
+        set_color(&mut ppu, 0x01, 0x001F);
+
+        // Scroll x=256, y=256 -> screen (0,0) maps to SC3.
         ppu.write(0x210D, 0x00);
         ppu.write(0x210D, 0x01);
         ppu.write(0x210E, 0x00);
