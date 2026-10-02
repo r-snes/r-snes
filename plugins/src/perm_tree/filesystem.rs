@@ -59,9 +59,16 @@ pub enum OverwriteMode {
 
     /// All write modes other than AppendOnly are allowed to
     /// seek. Read/Write modes are also under this variant.
-    CanSeek { read: bool, mode: SeekingWrite },
+    CanSeek {
+        /// Whether this seeking write can also read
+        read: bool,
+        /// Which seeking write mode
+        mode: SeekingWrite,
+    },
 }
 
+/// Seeking write variants, which can all completely overwrite
+/// files.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum SeekingWrite {
     /// Open in append mode, allow seeking
