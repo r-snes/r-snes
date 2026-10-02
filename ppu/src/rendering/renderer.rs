@@ -190,14 +190,10 @@ pub struct Renderer {
     pub framebuffer: Box<RawFramebuffer>,
     /// Front buffer, the GUI reads here.
     pub presented: Box<RawFramebuffer>,
-    /// Brightness currently applied to the output (0-15).
-    pub current_brightness: u8,
 
     // Per-column top pixel of each screen for the scanline being rendered.
     main_line: Box<[LinePixel; SCREEN_WIDTH]>,
     sub_line: Box<[LinePixel; SCREEN_WIDTH]>,
-
-    brightness_delay: u8,
 }
 
 impl Default for Renderer {
@@ -207,15 +203,13 @@ impl Default for Renderer {
 }
 
 impl Renderer {
-    /// Creates a renderer with black buffers at full brightness.
+    /// Creates a renderer with black buffers.
     pub fn new() -> Self {
         Self {
             framebuffer: Box::new([0; SCREEN_WIDTH * SCREEN_HEIGHT * 3]),
-            current_brightness: 15, // full brightness
+            presented: Box::new([0; SCREEN_WIDTH * SCREEN_HEIGHT * 3]),
             main_line: Box::new([LinePixel::BACKDROP; SCREEN_WIDTH]),
             sub_line: Box::new([LinePixel::BACKDROP; SCREEN_WIDTH]),
-            brightness_delay: 0,
-            presented: Box::new([0; SCREEN_WIDTH * SCREEN_HEIGHT * 3]),
         }
     }
 
@@ -236,9 +230,6 @@ impl Renderer {
             self.render_full_black(y);
             return;
         }
-
-        // Update brightness
-        self.update_brightness(ppu.brightness());
 
         // Main backdrop = CGRAM[0]; sub backdrop = fixed colour (COLDATA).
         let main_bd = LinePixel {
@@ -406,7 +397,7 @@ impl Renderer {
         let half = cgadsub & 0x40 != 0;
         let use_subscreen = cgwsel & 0x02 != 0; // CGWSEL bit1 (A)
         let fixed = ppu.regs.coldata;
-        let brightness = self.current_brightness as u16;
+        let brightness = ppu.brightness() as u16;
 
         let clip_mode = (cgwsel >> 6) & 0x03; // 0=never 1=out 2=in 3=always
         let math_region = (cgwsel >> 4) & 0x03; // 0=always 1=in 2=out 3=never
@@ -466,27 +457,13 @@ impl Renderer {
         r | (g << 5) | (b << 10)
     }
 
-    fn update_brightness(&mut self, target: u8) {
-        if self.current_brightness == target {
-            return;
-        }
-
-        if self.brightness_delay == 0 {
-            self.brightness_delay = 72;
-            return;
-        }
-
-        self.brightness_delay -= 1;
-
-        if self.current_brightness < target {
-            self.current_brightness += 1;
-        } else {
-            self.current_brightness -= 1;
-        }
-    }
-
     /// Converts a BGR555 color to RGB888, scaled by `brightness` (0-15).
+    /// Brightness 0 outputs black; otherwise each channel is scaled by (brightness + 1) / 16.
     pub fn apply_brightness(color: u16, brightness: u16) -> (u8, u8, u8) {
+        if brightness == 0 {
+            return (0, 0, 0);
+        }
+
         let mut r = color & 0x1F;
         let mut g = (color >> 5) & 0x1F;
         let mut b = (color >> 10) & 0x1F;
@@ -540,9 +517,7 @@ mod tests {
     }
 
     fn make_renderer() -> Renderer {
-        let mut r = Renderer::new();
-        r.current_brightness = 15;
-        r
+        Renderer::new()
     }
 
     // Mode 1 PPU, full brightness, no force blank.
@@ -609,12 +584,11 @@ mod tests {
     // Renderer::new
     // ============================================================
 
-    /// A freshly created Renderer must have a zeroed framebuffer and full brightness.
+    /// A freshly created Renderer must have a zeroed framebuffer.
     #[test]
     fn test_new_initial_state() {
         let renderer = Renderer::new();
         assert!(renderer.framebuffer.iter().all(|&b| b == 0));
-        assert_eq!(renderer.current_brightness, 15);
     }
 
     // ============================================================
@@ -668,16 +642,11 @@ mod tests {
     // apply_brightness
     // ============================================================
 
-    /// At brightness 0, all colour channels must be scaled to near-zero.
+    /// At brightness 0, every colour must map to black.
     #[test]
-    fn test_apply_brightness_zero_dims_all_channels() {
-        // White in BGR555: 0x7FFF (r=31, g=31, b=31)
-        let (r, g, b) = Renderer::apply_brightness(0x7FFF, 0);
-        // brightness+1 = 1, >> 4 -> each channel = 31*1>>4 = 1
-        // expanded: (1<<3)|(1>>2) = 8|0 = 8 - just verify they're all equal and small
-        assert_eq!(r, g);
-        assert_eq!(g, b);
-        assert!(r < 16);
+    fn test_apply_brightness_zero_is_black() {
+        assert_eq!(Renderer::apply_brightness(0x7FFF, 0), (0, 0, 0));
+        assert_eq!(Renderer::apply_brightness(0x001F, 0), (0, 0, 0));
     }
 
     /// At full brightness (15), white must map to (255, 255, 255).
@@ -774,44 +743,27 @@ mod tests {
     }
 
     // ============================================================
-    // update_brightness (tested via render_scanline)
+    // INIDISP brightness
     // ============================================================
 
-    /// When target brightness equals current, current_brightness must not change.
+    /// INIDISP brightness must apply on the very first scanline, with no fade.
     #[test]
-    fn test_brightness_no_change_when_already_at_target() {
-        let mut renderer = Renderer::new();
-        renderer.current_brightness = 15;
-        let ppu = make_ppu_with_mode(1, false, 15);
-        renderer.render_scanline(&ppu, 0);
-        assert_eq!(renderer.current_brightness, 15);
+    fn test_brightness_applies_immediately() {
+        let mut r = Renderer::new();
+        let mut ppu = make_ppu_with_mode(1, false, 7);
+        set_color(&mut ppu, 0, 0x7FFF); // white backdrop
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 0), Renderer::apply_brightness(0x7FFF, 7));
     }
 
-    /// When target differs, the first call must set the delay without changing brightness.
+    /// INIDISP brightness 0 (without force blank) must render black.
     #[test]
-    fn test_brightness_first_change_sets_delay() {
-        let mut renderer = Renderer::new();
-        renderer.current_brightness = 15;
-        let ppu = make_ppu_with_mode(1, false, 0); // target = 0
-        renderer.render_scanline(&ppu, 0);
-        // First call: delay was 0 -> set to 72, brightness unchanged
-        assert_eq!(renderer.current_brightness, 15);
-    }
-
-    /// After the delay counts down, brightness must step by 1 toward the target each call.
-    #[test]
-    fn test_brightness_steps_toward_target_after_delay() {
-        let mut renderer = Renderer::new();
-        renderer.current_brightness = 15;
-        let ppu = make_ppu_with_mode(1, false, 0);
-
-        // Call 1: delay was 0 -> set to 72, no brightness change yet
-        renderer.render_scanline(&ppu, 0);
-        assert_eq!(renderer.current_brightness, 15);
-
-        // Call 2: delay 72 -> 71, brightness steps 15 -> 14
-        renderer.render_scanline(&ppu, 0);
-        assert_eq!(renderer.current_brightness, 14);
+    fn test_brightness_zero_renders_black() {
+        let mut r = Renderer::new();
+        let mut ppu = make_ppu_with_mode(1, false, 0);
+        set_color(&mut ppu, 0, 0x7FFF); // white backdrop
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 0), (0, 0, 0));
     }
 
     // ============================================================

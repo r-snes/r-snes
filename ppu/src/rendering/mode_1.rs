@@ -232,7 +232,6 @@ mod tests {
     #[test]
     fn test_render_mode1_transparent_tile_leaves_framebuffer() {
         let mut renderer = Renderer::new();
-        renderer.current_brightness = 15;
 
         let mut ppu = make_ppu_mode1();
         // Tilemap entry at (0,0): tile 0, all-zero CHR -> transparent
@@ -258,7 +257,6 @@ mod tests {
     #[test]
     fn test_render_mode1_opaque_pixel_written() {
         let mut renderer = Renderer::new();
-        renderer.current_brightness = 15;
 
         let mut ppu = make_ppu_mode1();
         ppu.write(0x2100, 0x0F); // full brightness so the colour survives compositing

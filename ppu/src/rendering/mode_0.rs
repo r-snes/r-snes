@@ -103,9 +103,7 @@ mod tests {
     }
 
     fn make_renderer() -> Renderer {
-        let mut r = Renderer::new();
-        r.current_brightness = 15;
-        r
+        Renderer::new()
     }
 
     fn pixel(renderer: &Renderer, x: usize, y: usize) -> (u8, u8, u8) {
