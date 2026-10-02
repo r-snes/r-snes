@@ -17,8 +17,6 @@ pub struct CGRAM {
     pub memory: [u16; CGRAM_SIZE / 2],
     /// Internal 8-bit word address (0-255).
     word_addr: u8,
-    /// Last value on the PPU open bus, bit 7 used during high-byte reads.
-    pub ppu_open_bus: u8,
 }
 
 impl Default for CGRAM {
@@ -33,7 +31,6 @@ impl CGRAM {
         Self {
             memory: [0; CGRAM_SIZE / 2],
             word_addr: 0,
-            ppu_open_bus: 0,
         }
     }
 
@@ -59,27 +56,25 @@ impl CGRAM {
             *word.hi_mut() = hi & 0x7F;
             self.word_addr = self.word_addr.wrapping_add(1);
         }
-        self.ppu_open_bus = value;
     }
 
     // ============================================================
     // $213B - CGDATAREAD
     // ============================================================
 
-    /// Reads RDCGRAM ($213B): low byte first, then high byte with bit 7 from open bus.
-    pub fn read_data(&mut self, PPURegisters { cgram_latch, .. }: &mut PPURegisters) -> u8 {
+    /// Reads RDCGRAM ($213B): returns (value, driven bits mask); bit 7 of the high byte is left to the PPU2 open bus.
+    pub fn read_data(&mut self, PPURegisters { cgram_latch, .. }: &mut PPURegisters) -> (u8, u8) {
         let word = self.memory[self.word_addr as usize];
-        let value = match cgram_latch.phase {
-            BytePhase::Low => *word.lo(),
-            BytePhase::High => *word.hi() | (self.ppu_open_bus & 0x80),
+        let (value, mask) = match cgram_latch.phase {
+            BytePhase::Low => (*word.lo(), 0xFF),
+            BytePhase::High => (*word.hi(), 0x7F),
         };
 
         if cgram_latch.phase.is_high() {
             self.word_addr = self.word_addr.wrapping_add(1);
         }
         cgram_latch.phase.flip();
-        self.ppu_open_bus = value;
-        value
+        (value, mask)
     }
 
     // ============================================================
@@ -109,12 +104,11 @@ mod tests {
     // CGRAM::new
     // ============================================================
 
-    /// A freshly created CGRAM must have all memory zeroed and open bus at 0.
+    /// A freshly created CGRAM must have all memory zeroed.
     #[test]
     fn test_new_zeroed() {
         let cgram = CGRAM::new();
         assert!(cgram.memory.iter().all(|&w| w == 0));
-        assert_eq!(cgram.ppu_open_bus, 0);
     }
 
     // ============================================================
@@ -147,7 +141,7 @@ mod tests {
 
     /// write_data latches on the first write (Low phase) without touching memory,
     /// then commits lo+hi on the second write (High phase), masking bit 7 of hi.
-    /// After commit, word_addr increments. ppu_open_bus is updated on every write.
+    /// After commit, word_addr increments.
     #[test]
     fn test_write_data() {
         let mut cgram = CGRAM::new();
@@ -156,12 +150,10 @@ mod tests {
         // Low phase: no commit
         cgram.write_data(&mut regs, 0xAB);
         assert_eq!(cgram.memory[0x00], 0x0000);
-        assert_eq!(cgram.ppu_open_bus, 0xAB);
 
         // High phase: commit with bit 7 of hi masked
         cgram.write_data(&mut regs, 0xFF);
         assert_eq!(cgram.memory[0x00], 0x7FAB);
-        assert_eq!(cgram.ppu_open_bus, 0xFF);
 
         // addr incremented: next pair goes to word 0x01
         cgram.write_data(&mut regs, 0x33);
@@ -204,9 +196,9 @@ mod tests {
     // read_data ($213B)
     // ============================================================
 
-    /// Low phase returns the lo byte; High phase returns hi OR'd with open-bus bit 7.
+    /// Low phase returns (lo, 0xFF); High phase returns (hi, 0x7F) since bit 7
+    /// is not driven by CGRAM (it is PPU2 open bus, filled by the caller).
     /// word_addr increments only after the High phase read.
-    /// ppu_open_bus is updated with the returned value on every read.
     #[test]
     fn test_read_data() {
         let mut cgram = CGRAM::new();
@@ -214,33 +206,35 @@ mod tests {
         cgram.memory[0x00] = 0x1234;
         cgram.memory[0x01] = 0x2222;
 
-        // Low phase: returns lo byte, open bus updated, addr stays
-        let lo = cgram.read_data(&mut regs);
+        // Low phase: returns lo byte fully driven, addr stays
+        let (lo, mask) = cgram.read_data(&mut regs);
         assert_eq!(lo, 0x34);
-        assert_eq!(cgram.ppu_open_bus, 0x34);
+        assert_eq!(mask, 0xFF);
 
-        // Force open bus bit 7 before high read
-        cgram.ppu_open_bus = 0x80;
-        let hi = cgram.read_data(&mut regs);
-        // hi byte of 0x1234 = 0x12; open bus bit7 = 0x80 -> 0x12 | 0x80 = 0x92
-        assert_eq!(hi, 0x92);
+        // High phase: returns hi byte, bit 7 not driven
+        let (hi, mask) = cgram.read_data(&mut regs);
+        assert_eq!(hi, 0x12); // hi of 0x1234
+        assert_eq!(mask, 0x7F);
 
         // addr incremented to 0x01 after High phase
-        let lo1 = cgram.read_data(&mut regs);
+        let (lo1, _) = cgram.read_data(&mut regs);
         assert_eq!(lo1, 0x22);
     }
 
-    /// Bit 7 of the high-byte read must come from open bus, not from CGRAM data.
+    /// The high-byte read must report bit 7 as undriven (mask bit 7 = 0),
+    /// leaving open-bus injection to the caller.
     #[test]
-    fn test_read_data_open_bus_bit7() {
+    fn test_read_data_high_byte_masks_bit7() {
         let mut cgram = CGRAM::new();
         let mut regs = make_regs();
-        cgram.memory[0x00] = 0x7F00; // hi = 0x7F (bit 7 clear in CGRAM)
+        cgram.memory[0x00] = 0xFF00; // hi = 0xFF, but bit 7 must not be driven out
 
-        let _lo = cgram.read_data(&mut regs); // Low phase - ppu_open_bus = 0x00
-        cgram.ppu_open_bus = 0x80; // force open bus bit 7
-        let hi = cgram.read_data(&mut regs);
-        assert_eq!(hi & 0x80, 0x80);
+        let (_lo, _) = cgram.read_data(&mut regs); // Low phase
+        let (hi, mask) = cgram.read_data(&mut regs);
+        // CGRAM only stores 7 bits of hi (write masks bit 7), and the read
+        // reports bit 7 as open bus via the mask.
+        assert_eq!(mask & 0x80, 0x00);
+        assert_eq!(hi & mask, hi & 0x7F);
     }
 
     /// word_addr must wrap from 0xFF to 0x00 after a complete read at address 0xFF.
@@ -252,9 +246,9 @@ mod tests {
         cgram.memory[0xFF] = 0x1234;
         cgram.memory[0x00] = 0x5678;
 
-        let _lo = cgram.read_data(&mut regs);
-        let _hi = cgram.read_data(&mut regs); // addr wraps to 0x00
-        let lo_next = cgram.read_data(&mut regs);
+        let _ = cgram.read_data(&mut regs);
+        let _ = cgram.read_data(&mut regs); // addr wraps to 0x00
+        let (lo_next, _) = cgram.read_data(&mut regs);
         assert_eq!(lo_next, 0x78);
     }
 
@@ -263,7 +257,7 @@ mod tests {
     // ============================================================
 
     /// read() returns the raw 16-bit word at the given index with no side effects
-    /// on word_addr, byte_phase, or open_bus.
+    /// on word_addr or byte_phase.
     #[test]
     fn test_read_helper() {
         let mut cgram = CGRAM::new();
@@ -294,9 +288,9 @@ mod tests {
         cgram.write_data(&mut regs, 0x3A); // bit 7 clear
 
         cgram.write_addr(&mut regs, 0x20);
-        let lo = cgram.read_data(&mut regs);
-        let hi = cgram.read_data(&mut regs);
+        let (lo, _) = cgram.read_data(&mut regs);
+        let (hi, mask) = cgram.read_data(&mut regs);
         assert_eq!(lo, 0x56);
-        assert_eq!(hi & 0x7F, 0x3A);
+        assert_eq!(hi & mask, 0x3A);
     }
 }

@@ -6,68 +6,58 @@
 //! BG1 uses entries 0-31, BG2 32-63, BG3 64-95 and BG4 96-127.
 //! Color 0 is transparent.
 
-use crate::constants::*;
 use crate::ppu::PPU;
-use crate::rendering::renderer::{Renderer, Z_BG1_HIGH, Z_BG1_LOW};
+use crate::rendering::renderer::{BgParams, BitDepth, Layer, Priority, Renderer};
 use crate::vram::RawVRAM;
 
 impl Renderer {
     /// Renders BG1 in Mode 0 on framebuffer row `y`.
     pub fn render_scanline_mode0(&mut self, ppu: &PPU, y: usize) {
-        // VRAM word addresses
-        let tilemap_base = ppu.regs.bg1_tilemap_addr(); // tilemap
-        let tiledata_base = ppu.regs.bg1_tiledata_addr(); // CHR data
+        // Mode 0: BG1-BG4, all 2bpp. Each BG owns a separate 32-colour region:
+        // BG1 -> 0, BG2 -> 32, BG3 -> 64, BG4 -> 96.
+        const PALETTE_BASE: [u8; 4] = [0, 32, 64, 96];
+        const Z_LOW: [Priority; 4] = [
+            Priority::Bg1Low,
+            Priority::Bg2Low,
+            Priority::Bg3Low,
+            Priority::Bg4Low,
+        ];
+        const Z_HIGH: [Priority; 4] = [
+            Priority::Bg1High,
+            Priority::Bg2High,
+            Priority::Bg3High,
+            Priority::Bg4High,
+        ];
 
-        // BG1 scroll registers
-        let scroll_x = ppu.regs.bg1hofs as usize;
-        let scroll_y = ppu.regs.bg1vofs as usize;
-
-        for x in 0..SCREEN_WIDTH {
-            // ============================================================
-            // Screen pixel -> tile coordinates
-            // ============================================================
-            let px = (x + scroll_x) & 0xFF;
-            let py = (y + scroll_y) & 0xFF;
-
-            let tile_col = px >> 3;
-            let tile_row = py >> 3;
-            let fine_x = px & 7;
-            let fine_y = py & 7;
-
-            // ==========================================================================
-            // Read tilemap entry: tilemap_base is a word address => byte address = * 2
-            // ==========================================================================
-            let map_word_addr = tilemap_base as usize + tile_row * 32 + tile_col;
-            let entry = ppu.vram.memory[map_word_addr];
-
-            let tile_index = entry & 0x03FF; // bits 9:0
-            let palette_num = (entry >> 10) & 0x07; // bits 12:10
-            let priority = (entry & 0x2000) != 0; // bit 13
-            let flip_x = (entry & 0x4000) != 0; // bit 14
-            let flip_y = (entry & 0x8000) != 0; // bit 15
-
-            // Apply flip
-            let fx = if flip_x { 7 - fine_x } else { fine_x };
-            let fy = if flip_y { 7 - fine_y } else { fine_y };
-
-            // ============================================================
-            // Decode 2bpp pixel from CHR data
-            // ============================================================
-            let tile_word_base = tiledata_base as usize + tile_index as usize * 8;
-            let color_index =
-                Self::decode_2bpp_tile_pixel_from(&ppu.vram.memory, tile_word_base, fx, fy);
-
-            // Transparent pixel -> do nothing
-            if color_index == 0 {
+        for bg in 0..4 {
+            let to_main = ppu.regs.tm & (1 << bg) != 0;
+            let to_sub = ppu.regs.ts & (1 << bg) != 0;
+            if !to_main && !to_sub {
                 continue;
             }
 
-            let palette_entry = ((palette_num as u8) << 2) + color_index;
-            let color = ppu.cgram.read(palette_entry);
+            let (w64, h64) = ppu.regs.bg_tilemap_size(bg);
+            let (scroll_x, scroll_y) = ppu.regs.bg_scroll(bg);
 
-            let (r, g, b) = Self::apply_brightness(color, self.current_brightness as u16);
-            let z = if priority { Z_BG1_HIGH } else { Z_BG1_LOW };
-            self.set_pixel_z(x, y, r, g, b, z);
+            self.render_bg_scanline(
+                ppu,
+                y,
+                &BgParams {
+                    tilemap_base: ppu.regs.bg_tilemap_addr(bg),
+                    tiledata_base: ppu.regs.bg_tiledata_addr(bg),
+                    scroll_x,
+                    scroll_y,
+                    bpp: BitDepth::Two,
+                    palette_base: PALETTE_BASE[bg],
+                    w64,
+                    h64,
+                    z_low: Z_LOW[bg],
+                    z_high: Z_HIGH[bg],
+                    layer: Layer::from_bg(bg),
+                    to_main,
+                    to_sub,
+                },
+            );
         }
     }
 
@@ -79,7 +69,7 @@ impl Renderer {
         y: usize,
     ) -> u8 {
         // Planes 0+1: words 0-7
-        let w = vram[tile_word_base + y];
+        let w = vram[(tile_word_base + y) & 0x7FFF];
         let p0 = (w & 0xFF) as u8;
         let p1 = (w >> 8) as u8;
 
@@ -131,6 +121,12 @@ mod tests {
         ppu.write(0x2121, entry);
         ppu.write(0x2122, 0xFF);
         ppu.write(0x2122, 0x7F);
+    }
+
+    fn set_color(ppu: &mut PPU, entry: u8, color: u16) {
+        ppu.write(0x2121, entry);
+        ppu.write(0x2122, (color & 0xFF) as u8);
+        ppu.write(0x2122, (color >> 8) as u8);
     }
 
     // ============================================================
@@ -259,7 +255,7 @@ mod tests {
         for row in 0..8 {
             ppu.vram.memory[CHR_BASE + 8 + row] = 0x00FF; // tile 1 CHR: all pixels color index 1
         }
-        renderer.render_scanline_mode0(&ppu, 0);
+        renderer.render_scanline(&ppu, 0);
         let expected = Renderer::apply_brightness(ppu.cgram.read(1), 15);
         for x in 0..SCREEN_WIDTH {
             assert_eq!(pixel(&renderer, x, 0), expected, "x={}", x);
@@ -277,7 +273,7 @@ mod tests {
         for row in 0..8 {
             ppu2.vram.memory[CHR_BASE + 8 + row] = 0x00FF;
         }
-        renderer.render_scanline_mode0(&ppu2, 0);
+        renderer.render_scanline(&ppu2, 0);
         let expected = Renderer::apply_brightness(ppu2.cgram.read(5), 15);
         for x in 0..SCREEN_WIDTH {
             assert_eq!(pixel(&renderer, x, 0), expected, "x={}", x);
@@ -311,8 +307,8 @@ mod tests {
 
             white = Renderer::apply_brightness(ppu_n.cgram.read(1), 15);
 
-            r_normal.render_scanline_mode0(&ppu_n, 0);
-            r_flipped.render_scanline_mode0(&ppu_f, 0);
+            r_normal.render_scanline(&ppu_n, 0);
+            r_flipped.render_scanline(&ppu_f, 0);
 
             assert_eq!(pixel(&r_normal, 0, 0), white, "normal x=0");
             assert_eq!(pixel(&r_normal, 7, 0), black, "normal x=7");
@@ -336,14 +332,14 @@ mod tests {
             ppu_f.vram.memory[0] = 0x8001; // flip_y (bit 15)
 
             // Scanline 0: normal sees row 0 (full), flipped sees row 7 (empty)
-            r_normal.render_scanline_mode0(&ppu_n, 0);
-            r_flipped.render_scanline_mode0(&ppu_f, 0);
+            r_normal.render_scanline(&ppu_n, 0);
+            r_flipped.render_scanline(&ppu_f, 0);
             assert_eq!(pixel(&r_normal, 0, 0), white, "normal scanline 0");
             assert_eq!(pixel(&r_flipped, 0, 0), black, "flipped scanline 0");
 
             // Scanline 7: normal sees row 7 (empty), flipped sees row 0 (full)
-            r_normal.render_scanline_mode0(&ppu_n, 7);
-            r_flipped.render_scanline_mode0(&ppu_f, 7);
+            r_normal.render_scanline(&ppu_n, 7);
+            r_flipped.render_scanline(&ppu_f, 7);
             assert_eq!(pixel(&r_normal, 0, 7), black, "normal scanline 7");
             assert_eq!(pixel(&r_flipped, 0, 7), white, "flipped scanline 7");
         }
@@ -372,9 +368,64 @@ mod tests {
         ppu.write(0x210D, 0x08);
         ppu.write(0x210D, 0x00);
 
-        renderer.render_scanline_mode0(&ppu, 0);
+        renderer.render_scanline(&ppu, 0);
 
         let white = Renderer::apply_brightness(ppu.cgram.read(1), 15);
         assert_eq!(pixel(&renderer, 0, 0), white);
+    }
+
+    // ============================================================
+    // Backgrounds
+    // ============================================================
+
+    // Each mode-0 BG owns a 32-colour CGRAM region: BG1->0, BG2->32, BG3->64,
+    // BG4->96. These verify palette 0 entry 1 of BG2/BG3/BG4 lands at 33/65/97.
+
+    #[test]
+    fn test_mode0_palette_offset_bg2() {
+        let mut r = make_renderer();
+        let mut ppu = make_ppu_mode0();
+        ppu.write(0x2108, 0x08); // BG2SC tilemap 0x0800
+        ppu.write(0x210B, 0x20); // BG2 CHR nibble 2 -> 0x2000
+        ppu.write(0x212C, 0x02); // BG2 on main
+        ppu.vram.memory[0x0800] = 0x0000; // explicit: tile 0, palette 0
+        for row in 0..8 {
+            ppu.vram.memory[0x2000 + row] = 0x00FF;
+        }
+        set_color(&mut ppu, 33, 0x001F);
+        r.render_scanline(&ppu, 0);
+        assert_eq!(pixel(&r, 0, 0), Renderer::apply_brightness(0x001F, 15));
+    }
+
+    #[test]
+    fn test_mode0_palette_offset_bg3() {
+        let mut r = make_renderer();
+        let mut ppu = make_ppu_mode0();
+        ppu.write(0x2109, 0x0C); // BG3SC tilemap 0x0C00
+        ppu.write(0x210C, 0x03); // BG3 CHR nibble 3 -> 0x3000
+        ppu.write(0x212C, 0x04); // BG3 on main
+        ppu.vram.memory[0x0C00] = 0x0000; // explicit: tile 0, palette 0
+        for row in 0..8 {
+            ppu.vram.memory[0x3000 + row] = 0x00FF;
+        }
+        set_color(&mut ppu, 65, 0x001F);
+        r.render_scanline(&ppu, 0);
+        assert_eq!(pixel(&r, 0, 0), Renderer::apply_brightness(0x001F, 15));
+    }
+
+    #[test]
+    fn test_mode0_palette_offset_bg4() {
+        let mut r = make_renderer();
+        let mut ppu = make_ppu_mode0();
+        ppu.write(0x210A, 0x08); // BG4SC tilemap 0x0800
+        ppu.write(0x210C, 0x40); // BG4 CHR nibble 4 -> 0x4000
+        ppu.write(0x212C, 0x08); // BG4 on main
+        ppu.vram.memory[0x0800] = 0x0000; // explicit: tile 0, palette 0
+        for row in 0..8 {
+            ppu.vram.memory[0x4000 + row] = 0x00FF;
+        }
+        set_color(&mut ppu, 97, 0x001F);
+        r.render_scanline(&ppu, 0);
+        assert_eq!(pixel(&r, 0, 0), Renderer::apply_brightness(0x001F, 15));
     }
 }

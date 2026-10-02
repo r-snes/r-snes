@@ -304,18 +304,18 @@ impl PermTreeNode for FileReadWriteOptions {
 fn picc_string_to_path<'gc>(string: piccolo::String<'gc>) -> Result<PathBuf, FromUtf8Error> {
     let byte_vec = Vec::from(string.as_bytes());
     cfg_select! {
-        unix => {{
+        unix => {
             use std::ffi::OsString;
             use std::os::unix::ffi::OsStringExt;
 
             Ok(PathBuf::from(OsString::from_vec(byte_vec)))
-        }},
-        target_os = "wasi" => {{
+        }
+        target_os = "wasi" => {
             use std::ffi::OsString;
             use std::os::wasi::ffi::OsStringExt;
 
             Ok(PathBuf::from(OsString::from_vec(byte_vec)))
-        }},
+        }
         _ => String::from_utf8(byte_vec).map(PathBuf::from),
     }
 }

@@ -1,4 +1,5 @@
-#[cfg(test)]
+//! Integration tests for product_order's `PartialOrd` derive
+
 use std::cmp::Ordering;
 use std::cmp::Ordering::*;
 
