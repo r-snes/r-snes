@@ -29,46 +29,38 @@ pub type RawFramebuffer = [u8; SCREEN_WIDTH * SCREEN_HEIGHT * 3];
 // Mode 1, BGMODE bit3 = 1: BG3.1 is lifted above everything (Bg3Prio).
 // ============================================================
 
-/// Z-order of a pixel on the priority scale. The discriminant is the actual
-/// z value; `value()` exposes it for the `>=` comparison in `deposit`.
-#[derive(Clone, Copy, PartialEq, Eq)]
-#[repr(u8)]
+/// Z-order of a pixel on the priority scale, from back to front.
+/// Declaration order is the priority order: the derived `Ord` compares variants by it.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Priority {
     /// Backdrop, always behind everything.
-    Backdrop = 0,
+    Backdrop,
     /// Low priority BG4 tiles.
-    Bg4Low = 1,
+    Bg4Low,
     /// Low priority BG3 tiles.
-    Bg3Low = 2,
+    Bg3Low,
     /// Priority 0 sprites.
-    Obj0 = 3,
+    Obj0,
     /// High priority BG4 tiles.
-    Bg4High = 4,
+    Bg4High,
     /// High priority BG3 tiles.
-    Bg3High = 5,
+    Bg3High,
     /// Priority 1 sprites.
-    Obj1 = 6,
+    Obj1,
     /// Low priority BG2 tiles.
-    Bg2Low = 7,
+    Bg2Low,
     /// Low priority BG1 tiles.
-    Bg1Low = 8,
+    Bg1Low,
     /// Priority 2 sprites.
-    Obj2 = 9,
+    Obj2,
     /// High priority BG2 tiles.
-    Bg2High = 10,
+    Bg2High,
     /// High priority BG1 tiles.
-    Bg1High = 11,
+    Bg1High,
     /// Priority 3 sprites.
-    Obj3 = 12,
+    Obj3,
     /// High priority BG3 tiles in mode 1 with BGMODE bit 3 set, above everything.
-    Bg3Prio = 13,
-}
-
-impl Priority {
-    /// Returns the raw z value.
-    pub fn value(self) -> u8 {
-        self as u8
-    }
+    Bg3Prio,
 }
 
 /// Bit depth of a BG layer's tiles. Drives tile size in VRAM and palette shift.
@@ -145,8 +137,8 @@ impl Layer {
 pub struct LinePixel {
     /// BGR555 color.
     pub color: u16,
-    /// Z-order value (see `Priority`).
-    pub z: u8,
+    /// Z-order of the pixel.
+    pub z: Priority,
     /// Layer that produced the pixel.
     pub layer: Layer,
     /// True if color math applies to this OBJ pixel (sprite palettes 4-7 only).
@@ -156,7 +148,7 @@ pub struct LinePixel {
 impl LinePixel {
     const BACKDROP: LinePixel = LinePixel {
         color: 0,
-        z: Priority::Backdrop as u8,
+        z: Priority::Backdrop,
         layer: Layer::Backdrop,
         obj_math: false,
     };
@@ -342,7 +334,7 @@ impl Renderer {
 
             let pixel = LinePixel {
                 color,
-                z: prio.value(),
+                z: prio,
                 layer: p.layer,
                 obj_math: false,
             };
@@ -370,7 +362,7 @@ impl Renderer {
             x,
             LinePixel {
                 color,
-                z: prio.value(),
+                z: prio,
                 layer,
                 obj_math,
             },
@@ -391,7 +383,7 @@ impl Renderer {
             x,
             LinePixel {
                 color,
-                z: prio.value(),
+                z: prio,
                 layer,
                 obj_math,
             },
