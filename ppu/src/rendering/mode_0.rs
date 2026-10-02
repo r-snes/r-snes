@@ -278,7 +278,7 @@ mod tests {
         }
     }
 
-    // ============================================================
+        // ============================================================
     // render_scanline_mode0 - flip
     // ============================================================
 
@@ -297,6 +297,9 @@ mod tests {
 
             for ppu in [&mut ppu_n, &mut ppu_f] {
                 set_cgram_white(ppu, 1);
+                // VOFS = -1 so framebuffer row 0 shows BG row 0
+                ppu.write(0x210E, 0xFF);
+                ppu.write(0x210E, 0x03);
             }
             ppu_n.vram.memory[CHR_BASE + 8] = 0x0080; // tile 1 CHR row 0: only x=0 set (bit 7 of plane 0)
             ppu_f.vram.memory[CHR_BASE + 8] = 0x0080;
@@ -323,23 +326,26 @@ mod tests {
 
             for ppu in [&mut ppu_n, &mut ppu_f] {
                 set_cgram_white(ppu, 1);
+                // VOFS = -1 so framebuffer row 0 shows BG row 0
+                ppu.write(0x210E, 0xFF);
+                ppu.write(0x210E, 0x03);
             }
             ppu_n.vram.memory[CHR_BASE + 8] = 0x00FF; // tile 1 CHR row 0: all pixels set
             ppu_f.vram.memory[CHR_BASE + 8] = 0x00FF;
             ppu_n.vram.memory[0] = 0x0001; // no flip
             ppu_f.vram.memory[0] = 0x8001; // flip_y (bit 15)
 
-            // Scanline 0: normal sees row 0 (full), flipped sees row 7 (empty)
+            // Framebuffer row 0: normal sees tile row 0 (full), flipped sees row 7 (empty)
             r_normal.render_scanline(&ppu_n, 0);
             r_flipped.render_scanline(&ppu_f, 0);
-            assert_eq!(pixel(&r_normal, 0, 0), white, "normal scanline 0");
-            assert_eq!(pixel(&r_flipped, 0, 0), black, "flipped scanline 0");
+            assert_eq!(pixel(&r_normal, 0, 0), white, "normal row 0");
+            assert_eq!(pixel(&r_flipped, 0, 0), black, "flipped row 0");
 
-            // Scanline 7: normal sees row 7 (empty), flipped sees row 0 (full)
+            // Framebuffer row 7: normal sees tile row 7 (empty), flipped sees row 0 (full)
             r_normal.render_scanline(&ppu_n, 7);
             r_flipped.render_scanline(&ppu_f, 7);
-            assert_eq!(pixel(&r_normal, 0, 7), black, "normal scanline 7");
-            assert_eq!(pixel(&r_flipped, 0, 7), white, "flipped scanline 7");
+            assert_eq!(pixel(&r_normal, 0, 7), black, "normal row 7");
+            assert_eq!(pixel(&r_flipped, 0, 7), white, "flipped row 7");
         }
     }
 

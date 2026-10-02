@@ -265,9 +265,10 @@ mod tests {
         ppu.write(0x2107, 0x04);
         ppu.vram.memory[0x0400] = 0x0000; // tile 0, palette 0, no flip
 
-        // Tile 0: plane 0 row 0 all set -> every pixel = color index 1
-        ppu.vram.memory[0] = 0x00FF;
-
+        // Tile 0: plane 0 all rows set -> every pixel = color index 1
+        for row in 0..8 {
+            ppu.vram.memory[row] = 0x00FF;
+        }
         // CGRAM palette 0 entry 1 = pure red (BGR555)
         ppu.cgram.memory[0x01] = 0x001F;
 

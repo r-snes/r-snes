@@ -280,7 +280,7 @@ impl Renderer {
 
         for x in 0..SCREEN_WIDTH {
             let px = (x + p.scroll_x) & (map_w - 1);
-            let py = (y + p.scroll_y) & (map_h - 1);
+            let py = (y + 1 + p.scroll_y) & (map_h - 1);
 
             let tile_col = px >> 3;
             let tile_row = py >> 3;
@@ -1147,5 +1147,33 @@ mod tests {
 
         r.render_scanline(&ppu, 0);
         assert_eq!(fb_pixel(&r, 0), Renderer::apply_brightness(0x001F, 15));
+    }
+
+    // ============================================================
+    // BG vertical positioning
+    // ============================================================
+
+    /// The first visible scanline is scanline 1, so with VOFS = 0 framebuffer
+    /// row 0 shows BG row 1 (games use VOFS = -1 to show row 0).
+    #[test]
+    fn test_bg_first_row_is_scanline_1() {
+        let mut ppu = make_ppu();
+        ppu.write(0x2107, 0x00);
+        let nba = (ppu.regs.bg12nba & 0xF0) | 0x01;
+        ppu.write(0x210B, nba);
+        ppu.write(0x212C, 0x01);
+        ppu.vram.memory[0x1000 + 1] = 0x00FF; // tile 0, row 1 only
+        set_color(&mut ppu, 0x01, 0x001F);
+
+        let mut r = make_renderer();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 0), Renderer::apply_brightness(0x001F, 15));
+
+        // VOFS = -1 -> row 0 (empty) is shown instead: backdrop.
+        ppu.write(0x210E, 0xFF);
+        ppu.write(0x210E, 0x03);
+        let mut r = make_renderer();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 0), (0, 0, 0));
     }
 }
