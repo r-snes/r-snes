@@ -98,8 +98,10 @@ pub struct Dsp {
 
     /// $7D EDL — echo delay length, 0-15 (only the low nibble is
     /// meaningful; upper bits are ignored, matching hardware). Buffer
-    /// size = edl * 512 stereo sample pairs (2 KB per unit). EDL=0 means
-    /// no delay buffer at all — echo is effectively bypassed.
+    /// size = edl * 512 stereo sample pairs (2 KB per unit). EDL=0 is
+    /// not "no buffer": the pointer never advances, so the DSP reads and
+    /// writes one 4-byte stereo pair at ESA every sample. A new value
+    /// only takes effect when the pointer next wraps (see `echo_len`).
     edl: u8,
 
     /// $0F/$1F/.../$7F — the 8-tap FIR filter coefficients, signed. Real
@@ -113,10 +115,16 @@ pub struct Dsp {
     /// Stage 2: byte offset of the echo buffer's read/write pointer,
     /// relative to the buffer's base (ESA*0x100). Advances by 4 (one
     /// stereo sample pair) each call to `tick_echo_buffer`, wrapping at
-    /// the buffer length (`echo_buffer_len_bytes`, i.e. EDL*2048 bytes).
-    /// Not reset on ESA/EDL writes — real hardware doesn't clamp it
-    /// until it naturally reaches the wraparound check either.
+    /// `echo_len`. Not reset on ESA/EDL writes — real hardware doesn't
+    /// clamp it until it naturally reaches the wraparound check either.
     echo_ptr: u16,
+
+    /// Echo buffer length in bytes as actually in use: EDL*2048, latched
+    /// from `edl` each time the pointer is at offset 0. Hardware only
+    /// picks up a new EDL at that point, so a mid-pass $7D write lets the
+    /// current pass finish at the old length. 0 (EDL=0) makes the pointer
+    /// wrap straight back to 0 after every sample — a 4-byte buffer.
+    echo_len: u16,
 
     /// Stage 4: this tick's FIR-filtered echo output, computed by `step`
     /// (which has the mutable RAM access `tick_echo` needs) and read by
@@ -140,18 +148,22 @@ impl Dsp {
     /// Master volume starts at 0, so nothing is audible until the driver
     /// writes MVOLL/MVOLR ($0C/$1C).
     pub fn new() -> Self {
+        // Hardware power-on state: FLG = $E0 — soft reset (bit 7: key-ons
+        // blocked), mute (bit 6) and echo writes disabled (bit 5). The IPL
+        // boot ROM never touches the DSP, so this holds until the sound
+        // driver writes $6C itself. Mirrored into `registers` so a
+        // read-back of $6C matches the state the DSP is really in.
+        let mut registers = [0u8; 128];
+        registers[0x6C] = 0xE0;
+
         Self {
-            registers: [0u8; 128],
+            registers,
             voices: [Voice::default(); 8],
             dir_base: 0,
             // Hardware resets master volume to 0; game code sets it during boot.
             master_vol_left: 0,
             master_vol_right: 0,
-            // Real hardware powers up with RESET set; our HLE boot skips
-            // the IPL's own register init, so start "already booted"
-            // (not reset/muted) like the rest of the zero-initialized
-            // register file — the driver writes $6C itself during setup.
-            flg: 0,
+            flg: 0xE0,
             non: 0,
             pmon: 0,
             noise_lfsr: 0x4000,
@@ -162,6 +174,7 @@ impl Dsp {
             edl: 0,
             fir_coeff: [0i8; 8],
             echo_ptr: 0,
+            echo_len: 0,
             echo_out_l: 0,
             echo_out_r: 0,
         }
@@ -324,11 +337,10 @@ impl Dsp {
                 0x7D => self.edl = value & 0x0F,
 
                 // $6C: FLG — noise clock / echo-write-disable / mute / reset.
-                // Noise clock changes take effect on the next `advance_noise`
-                // call. Echo-write-disable (bit 5) is stored but has no
-                // effect yet — the echo buffer itself isn't implemented
-                // until a later stage. RESET and MUTE are handled here
-                // and in render_audio_single/$4C respectively.
+                // Powers on as $E0 (see `new`). Noise clock changes take
+                // effect on the next `advance_noise` call; echo-write-disable
+                // (bit 5) is checked in `tick_echo_buffer`. RESET is handled
+                // here and in $4C, MUTE in `render_audio_single`.
                 0x6C => {
                     self.flg = value;
                     if value & 0x80 != 0 {
@@ -504,12 +516,6 @@ impl Dsp {
         self.noise_lfsr = feedback | (self.noise_lfsr >> 1);
     }
 
-    /// Echo buffer length in bytes: EDL * 2048 (2 KB per unit, EDL 0-15
-    /// after $7D's masking). EDL=0 means no delay buffer at all.
-    fn echo_buffer_len_bytes(&self) -> u16 {
-        self.edl as u16 * 2048
-    }
-
     /// Absolute APU RAM address of a byte offset within the echo buffer.
     /// Wraps at 64 KB like every other APU RAM address does on real
     /// hardware — ESA near the top of the address space plus a large
@@ -526,18 +532,17 @@ impl Dsp {
     /// one stereo pair (4 bytes), wrapping at the buffer length.
     ///
     /// Returns the pair that was read *before* the write, i.e. the
-    /// sample the buffer held from one full trip around ago — this is
-    /// what Stage 3's FIR filter will read several of in sequence to
-    /// build its 8 taps.
+    /// sample the buffer held from one full trip around ago.
     ///
-    /// EDL=0 (zero-length buffer) returns `(0, 0)` and touches RAM not
-    /// at all — there's nowhere to read from or write to, so this avoids
-    /// a division/modulo by zero rather than picking an arbitrary
-    /// fallback address.
+    /// The length is latched from EDL whenever the pointer is at offset 0,
+    /// as on hardware. EDL=0 latches a length of 0, so the pointer wraps
+    /// straight back to 0 every tick: the DSP keeps reading and writing
+    /// the single pair at ESA. Echo-write-disable (FLG bit 5, set at
+    /// power-on) is what keeps that from touching RAM before a driver
+    /// has chosen where its buffer goes.
     pub fn tick_echo_buffer(&mut self, ram: &mut RawARAM, new_l: i16, new_r: i16) -> (i16, i16) {
-        let len = self.echo_buffer_len_bytes();
-        if len == 0 {
-            return (0, 0);
+        if self.echo_ptr == 0 {
+            self.echo_len = self.edl as u16 * 2048;
         }
 
         let addr = self.echo_addr(self.echo_ptr);
@@ -551,7 +556,7 @@ impl Dsp {
         }
 
         self.echo_ptr += 4;
-        if self.echo_ptr >= len {
+        if self.echo_ptr >= self.echo_len {
             self.echo_ptr = 0;
         }
 
@@ -559,19 +564,15 @@ impl Dsp {
     }
 
     fn read_fir_taps(&self, ram: &RawARAM) -> [(i16, i16); 8] {
-        let len = self.echo_buffer_len_bytes();
+        // A latched length of 0 (EDL=0) is the single 4-byte pair at ESA,
+        // so every tap reads that pair. Modular arithmetic keeps the tap
+        // offsets in range for any length, including that 4-byte case.
+        let len = self.echo_len.max(4) as u32;
         let mut taps = [(0i16, 0i16); 8];
-        if len == 0 {
-            return taps;
-        }
 
-        for k in 0..8u16 {
-            let back = k * 4; // 0, 4, ..., 28 — always < len (len is 0 or >= 2048)
-            let offset = if self.echo_ptr >= back {
-                self.echo_ptr - back
-            } else {
-                len - (back - self.echo_ptr)
-            };
+        for k in 0..8u32 {
+            let back = k * 4; // 0, 4, ..., 28
+            let offset = ((self.echo_ptr as u32 + len * 8 - back) % len) as u16;
             let addr = self.echo_addr(offset);
             taps[k as usize] = (
                 read_echo_sample(ram, addr),
