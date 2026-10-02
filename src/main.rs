@@ -1,3 +1,4 @@
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 //! This is the main entry point for the R-SNES emulator.
 //! It contains the main loop, which handles GUI events,
 //! emulation updates, and audio output.
@@ -252,7 +253,7 @@ fn gui_loop(
 ) -> Result<(), String> {
     let mut gui = gui::Gui::new()?;
     const DEFAULT_FRAMEBUFFER: &ppu::rendering::RawFramebuffer =
-        include_bytes!("../logo_framebuffer.raw");
+        include_bytes!("../assets/logo_framebuffer.raw");
 
     loop {
         // move out of the `Option` in case it's `Some`
