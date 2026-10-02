@@ -50,6 +50,7 @@ impl Renderer {
                     palette_base: 0,
                     w64,
                     h64,
+                    tile16: ppu.regs.bg_tile16(bg),
                     z_low,
                     z_high,
                     layer: Layer::from_bg(bg),

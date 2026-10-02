@@ -385,6 +385,11 @@ impl PPURegisters {
         (h as usize, v as usize)
     }
 
+    /// Returns true if BG `bg` uses 16x16 tiles (BGMODE bits 4-7).
+    pub fn bg_tile16(&self, bg: usize) -> bool {
+        self.bgmode & (0x10 << bg) != 0
+    }
+
     /// STAT78 ($213F) read side effects: clears the counter latch and resets the OPHCT/OPVCT toggles.
     pub fn read_stat78_side_effects(&mut self) {
         self.counter_latch = false;
