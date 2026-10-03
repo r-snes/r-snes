@@ -656,7 +656,7 @@ mod tests {
     // ============================================================
 
     /// Writing $210B/$210C must update bg12nba/bg34nba.
-    /// Tiledata address helpers must derive correctly from the nibbles,
+    /// Tiledata address helpers must derive correctly from the nibbles.
     #[test]
     fn test_bgnba_and_tiledata_addrs() {
         let mut ppu = PPU::new();
