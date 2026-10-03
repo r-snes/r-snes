@@ -134,6 +134,12 @@ fn gui_emu_loop(
             match state_event {
                 RSnesEvent::Quit => break 'emu_loop Some(RSnesEvent::Quit),
                 RSnesEvent::Close => break 'emu_loop None,
+                RSnesEvent::Reset => {
+                    emu.core_mut().reset();
+                    gui.audio_stop();
+                    gui.audio_play();
+                    audio_failed = false;
+                }
                 RSnesEvent::ButtonDown(button) => {
                     set_button(&mut emu, button, true);
                 }
