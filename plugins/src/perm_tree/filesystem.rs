@@ -185,9 +185,10 @@ impl PartialEq for FileReadWriteOptions {
 ///          |/  |
 ///         AO   CO
 /// ```
-/// (elements which aren't linked "don't compare": neither is greater than
-/// the other, but they aren't equal either; for elements which are linked:
-/// the one higher than the other is "greater" than the other)
+/// (elements which are only linked by going both up and down connections
+/// "don't compare": neither is greater than the other, but they aren't equal either;
+/// for elements which are linked by going only up or only down:
+/// the one higher than the other is strictly "greater" than the other)
 ///
 /// In this diagram, the eight elements are the equivalence classes
 /// described in the [top-level doc for the type](Self#comparisonsequalities):
