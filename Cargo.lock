@@ -1012,12 +1012,9 @@ checksum = "fa238d6ab5fe66a7ae603e7bc0826952a3ea3d71742a6afabb7b16a76177eac5"
 dependencies = [
  "bytemuck",
  "egui",
- "egui_glow",
- "glow",
  "log",
  "sdl2",
  "sdl2-sys",
- "webbrowser",
 ]
 
 [[package]]
