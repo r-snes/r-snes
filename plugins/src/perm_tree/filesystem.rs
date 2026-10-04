@@ -15,7 +15,7 @@ use super::{FilePermissions, PermTreeFromAllOr, PermTreeNode};
 /// the requested permissions allow to do.
 ///
 /// As such, we end with eight equivalence classes:
-/// - NewOnly (can only create new files, can't touch existing files)
+/// - CreateOnly (can only create new files, can't touch existing files)
 /// - ReadOnly (reads existing file, no writing, no creating)
 /// - AppendOnly + !create (can't create files, can only append to existing)
 /// - AppendOnly + create (may create new files but can only append in
@@ -36,7 +36,7 @@ use super::{FilePermissions, PermTreeFromAllOr, PermTreeNode};
 pub enum FileReadWriteOptions {
     /// Only create a new file, don't overwrite
     /// (or even append) an existing file
-    NewOnly,
+    CreateOnly,
 
     /// Open an existing file only for reading
     ReadOnly,
@@ -102,7 +102,7 @@ impl FileReadWriteOptions {
     pub fn can_create_new(self) -> bool {
         matches!(
             self,
-            Self::NewOnly | Self::CanOverwrite { create: true, .. },
+            Self::CreateOnly | Self::CanOverwrite { create: true, .. },
         )
     }
 
@@ -126,7 +126,7 @@ impl FileReadWriteOptions {
 
     /// Whether these file read/write options can read data in a file
     pub fn can_read(self) -> bool {
-        matches!(self, Self::NewOnly) || self.can_read_existing()
+        matches!(self, Self::CreateOnly) || self.can_read_existing()
     }
 
     /// Whether these file read/write options may read data
@@ -183,7 +183,7 @@ impl PartialEq for FileReadWriteOptions {
 ///          |  /|
 ///          | / |
 ///          |/  |
-///         AO   NO
+///         AO   CO
 /// ```
 /// (elements which aren't linked "don't compare": neither is greater than
 /// the other, but they aren't equal either; for elements which are linked:
@@ -191,7 +191,7 @@ impl PartialEq for FileReadWriteOptions {
 ///
 /// In this diagram, the eight elements are the equivalence classes
 /// described in the [top-level doc for the type](Self#comparisonsequalities):
-/// `AO` is append-only, `NO` is new-only, `W` is "write", `AOC` is
+/// `AO` is append-only, `CO` is new-only, `W` is "write", `AOC` is
 /// append-only + create, `WC` is write + create, `RO` is read-only `RW`
 /// is write + read, `RWC` is write + read + create.
 impl PartialOrd for FileReadWriteOptions {
@@ -283,7 +283,7 @@ impl PermTreeNode for FileReadWriteOptions {
     fn from_lua<'gc>(ctx: Context<'gc>, value: Value<'gc>) -> Option<Self> {
         match value {
             Value::String(s) if s.as_bytes() == b"all" => Some(Default::default()),
-            Value::String(s) if s.as_bytes() == b"create_only" => Some(Self::NewOnly),
+            Value::String(s) if s.as_bytes() == b"create_only" => Some(Self::CreateOnly),
             Value::String(s) if s.as_bytes() == b"read_only" => Some(Self::ReadOnly),
             Value::Table(tab) => {
                 let create = match tab.get_value(ctx, "create") {
@@ -373,7 +373,7 @@ impl From<FileReadWriteOptions> for std::fs::OpenOptions {
         ret.write(options.can_write());
         ret.create(options.can_create_new());
         match options {
-            FileReadWriteOptions::NewOnly => {
+            FileReadWriteOptions::CreateOnly => {
                 ret.create_new(true);
             }
             FileReadWriteOptions::ReadOnly => {}
@@ -497,7 +497,7 @@ mod test {
         use FileReadWriteOptions::*;
         use OverwriteMode::*;
 
-        let new_only = NewOnly;
+        let create_only = CreateOnly;
         let read_only = ReadOnly;
         let append_only = CanOverwrite {
             create: false,
@@ -623,7 +623,7 @@ mod test {
                 append_create,
                 append_only,
                 append_only_create,
-                new_only,
+                create_only,
                 read_only,
             ] {
                 assert!(max > non_max, "MAX {max:?} should be > non-max {non_max:?}")
@@ -631,15 +631,15 @@ mod test {
         }
 
         // we have 10 "pairs" of equivalence classes which don't compare:
-        // (AO, NO), (NO, W), and (AOC, W), (AOC, RW), (RO, AO),
-        // (RO, AOC), (RO, NO), (RO, W), (RO, WC), (RW, WC)
+        // (AO, CO), (CO, W), and (AOC, W), (AOC, RW), (RO, AO),
+        // (RO, AOC), (RO, CO), (RO, W), (RO, WC), (RW, WC)
         for noncomparable in [
-            // AO,NO
-            (append_only, new_only),
-            // NO, W
-            (new_only, append),
-            (new_only, trunc),
-            (new_only, start),
+            // AO,CO
+            (append_only, create_only),
+            // CO, W
+            (create_only, append),
+            (create_only, trunc),
+            (create_only, start),
             // AOC, W
             (append_only_create, append),
             (append_only_create, trunc),
@@ -652,8 +652,8 @@ mod test {
             (read_only, append_only),
             // RO, AOC
             (read_only, append_only_create),
-            // RO, NO
-            (read_only, new_only),
+            // RO, CO
+            (read_only, create_only),
             // RO, W
             (read_only, append),
             (read_only, trunc),
@@ -683,10 +683,10 @@ mod test {
             assert_eq!(noncomparable.1.partial_cmp(&noncomparable.0), None);
         }
 
-        // WC values have 4 eq classes below them: AO, NO, W, AOC
+        // WC values have 4 eq classes below them: AO, CO, W, AOC
         for wc in [start_create, trunc_create, append_create] {
             for non_max in [
-                new_only,
+                create_only,
                 append_only,
                 append_only_create,
                 append,
@@ -710,14 +710,14 @@ mod test {
             assert!(append_only < greater);
         }
 
-        // only AOC and WC are greater than NO
+        // only AOC and WC are greater than CO
         for greater in [
             append_only_create,
             trunc_create,
             append_create,
             start_create,
         ] {
-            assert!(new_only < greater);
+            assert!(create_only < greater);
         }
     }
 
@@ -774,7 +774,7 @@ mod test {
                         },
                     },
                 ),
-                ("new_file.txt".into(), FileReadWriteOptions::NewOnly),
+                ("new_file.txt".into(), FileReadWriteOptions::CreateOnly),
                 (
                     "append_only".into(),
                     FileReadWriteOptions::CanOverwrite {
