@@ -572,13 +572,11 @@ impl Gui {
 
     /// Draws every currently-open overlay. Adding a new window means adding
     /// one line here plus one field in `GuiState` — nothing in `main.rs`.
-    fn draw_overlays(state: &mut GuiState, data: &GuiFrameData, ctx: &egui::Context) -> bool {
-        let reset_requested = widgets::emulator_controls(ctx, data.rom_info.is_some());
+    fn draw_overlays(state: &mut GuiState, data: &GuiFrameData, ctx: &egui::Context) {
         widgets::rom_info(ctx, &mut state.show_rom_info, data.rom_info);
         widgets::error_box(ctx, &mut state.error_popup);
         #[cfg(feature = "plugins")]
         widgets::plugin_perm_request(ctx, &mut state.pending_plugin, &mut state.granted_plugin);
-        reset_requested
     }
 
     /// One frame: poll input, blit the framebuffer, draw overlays, present.
@@ -587,7 +585,7 @@ impl Gui {
         framebuffer: &ppu::rendering::RawFramebuffer,
         data: GuiFrameData,
     ) -> Vec<RSnesEvent> {
-        let mut events = self.handle_events();
+        let events = self.handle_events();
 
         self.egui_canvas.clear([30, 30, 35, 255]);
         let _ = self.draw_framebuffer(framebuffer);
@@ -595,14 +593,7 @@ impl Gui {
         // Split the borrow: `run` takes `&mut self.egui_canvas`, so `state`
         // must be borrowed separately rather than through `self`.
         let state = &mut self.state;
-        let mut reset_requested = false;
-        self.egui_canvas.run(|ctx| {
-            reset_requested = Self::draw_overlays(state, &data, ctx);
-        });
-
-        if reset_requested {
-            events.push(RSnesEvent::Reset);
-        }
+        self.egui_canvas.run(|ctx| Self::draw_overlays(state, &data, ctx));
 
         self.egui_canvas.paint();
         self.egui_canvas.present();

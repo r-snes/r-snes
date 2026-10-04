@@ -3,27 +3,6 @@ use std::error::Error;
 use bus::cartridge::header::RomHeader;
 use egui_sdl2::egui::{self, RichText};
 
-/// Draw controls that act on the currently loaded game.
-///
-/// Returns whether the user requested an emulator reset. The controls stay
-/// hidden while no ROM is loaded because there is nothing to reset.
-pub fn emulator_controls(ctx: &egui::Context, rom_loaded: bool) -> bool {
-    if !rom_loaded {
-        return false;
-    }
-
-    let mut reset_requested = false;
-    egui::Area::new("emulator_controls".into()).show(ctx, |ui| {
-        ui.horizontal(|ui| {
-            reset_requested = ui
-                .button("Reset")
-                .on_hover_text("Reset the current game (Ctrl+R)")
-                .clicked();
-        });
-    });
-    reset_requested
-}
-
 use crate::rsnes::RomInfo;
 
 #[cfg(feature = "plugins")]

@@ -232,6 +232,11 @@ impl Apu {
         });
     }
 
+    /// Reset the APU by restarting its cold IPL boot sequence.
+    pub fn reset(&mut self) {
+        self.ipl_boot();
+    }
+
     /// Reproduce the externally visible side effects of a *warm* IPL
     /// re-entry (entry at $FFC9), and arm the HLE state machine.
     fn ipl_warm_boot(&mut self) {
