@@ -668,8 +668,14 @@ mod tests {
         ppu.write(0x210B, 0x00);
         assert_eq!(ppu.regs.bg_tiledata_addr(0), 0x0000);
 
+        ppu.write(0x210B, 0x07);
+        assert_eq!(ppu.regs.bg_tiledata_addr(0), 0x7000);
+
+        // Bit 3 ignored: 0x0F -> 0x7000, 0x08 -> 0x0000
         ppu.write(0x210B, 0x0F);
-        assert_eq!(ppu.regs.bg_tiledata_addr(0), 0xF000);
+        assert_eq!(ppu.regs.bg_tiledata_addr(0), 0x7000);
+        ppu.write(0x210B, 0x08);
+        assert_eq!(ppu.regs.bg_tiledata_addr(0), 0x0000);
 
         ppu.write(0x210C, 0x23);
         assert_eq!(ppu.regs.bg34nba, 0x23);
@@ -1041,7 +1047,11 @@ mod tests {
         assert_eq!(ppu.regs.bg_tilemap_addr(0), 0x0000);
 
         ppu.write(0x2107, 0xFF);
-        assert_eq!(ppu.regs.bg_tilemap_addr(0), 0x3F * 0x400);
+        assert_eq!(ppu.regs.bg_tilemap_addr(0), 0x7C00);
+
+        // Bit 7 ignored: 0x80 -> 0x0000
+        ppu.write(0x2107, 0x80);
+        assert_eq!(ppu.regs.bg_tilemap_addr(0), 0x0000);
     }
 
     // ============================================================
