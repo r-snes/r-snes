@@ -1584,42 +1584,66 @@ fn test_echo_buffer_address_wraps_past_64kb_without_panicking() {
 // ============================================================
 
 #[test]
-fn test_fir_taps_read_correct_positions_for_all_8_taps() {
-    // For each tap k, verify it surfaces a single known write from
-    // exactly the right number of ticks in the past. Tap 0 is the
-    // "oldest, about to be overwritten" position, so it only shows a
-    // write after one *full* trip around the buffer (512 ticks here);
-    // taps 1-7 are progressively closer to "now" and surface after
-    // just k+1 ticks. Verified against an independent simulation of
-    // the addressing/wraparound math before writing this test.
-    let wait_ticks: [u32; 8] = [513, 2, 3, 4, 5, 6, 7, 8];
+fn test_fir_taps_weight_history_oldest_first() {
+    // The FIR filters the last 8 pairs read out of the buffer: tap 7 is
+    // the pair read this tick, tap 0 the one read 7 ticks ago. EDL=0
+    // makes the timing simple — the single pair at ESA is read one tick
+    // after it was written — so a marker written on tick 1 is read on
+    // tick 2 (tap 7) and then ages one tap per tick, reaching tap 0 on
+    // tick 9.
+    let marker_l: i32 = 9998;
+    let marker_r: i32 = -1112;
+    // History stores samples halved; taps scale by coefficient >> 6, and
+    // the filtered result has its lowest bit cleared.
+    let expected_l = ((((marker_l >> 1) * 127) >> 6) & !1) as i16;
+    let expected_r = ((((marker_r >> 1) * 127) >> 6) & !1) as i16;
 
-    for (k, &wait) in wait_ticks.iter().enumerate() {
+    for k in 0..8u32 {
+        let verify_tick = 9 - k; // tap 7 -> tick 2, ..., tap 0 -> tick 9
+
         let mut mem = booted_memory();
-        dsp_gw(&mut mem, 0x6D, 0x20); // ESA = page 0x20
-        dsp_gw(&mut mem, 0x7D, 0x01); // EDL = 1 -> 2048-byte buffer
+        dsp_gw(&mut mem, 0x6D, 0x20); // ESA = page 0x20; EDL stays 0
 
-        // Tick 1: write a distinctive value with FIR still all-zero.
-        // EFB=0 throughout, so FIR settings never affect what actually
-        // lands in the buffer — only the returned fir_out.
-        mem.dsp.tick_echo(&mut mem.ram, 9999, -1111);
-
-        // Advance up to (but not including) the verification tick.
-        for _ in 1..wait - 1 {
+        // Tick 1 writes the marker (FIR and EFB still zero, so it lands
+        // in the buffer unmodified).
+        mem.dsp.tick_echo(&mut mem.ram, marker_l as i16, marker_r as i16);
+        for _ in 2..verify_tick {
             mem.dsp.tick_echo(&mut mem.ram, 0, 0);
         }
 
         // Isolate tap k just before the verification tick.
         dsp_vw(&mut mem, k as u8, 0xF, 127);
 
-        let (out_l, out_r) = mem.dsp.tick_echo(&mut mem.ram, 0, 0);
+        let out = mem.dsp.tick_echo(&mut mem.ram, 0, 0);
         assert_eq!(
-            out_l,
-            ((127i32 * 9999) >> 7) as i16,
-            "tap {k} must read the value written {wait} ticks ago"
+            out,
+            (expected_l, expected_r),
+            "tap {k} must hold the pair read {} ticks ago",
+            7 - k
         );
-        assert_eq!(out_r, ((127i32 * -1111) >> 7) as i16);
     }
+}
+
+#[test]
+fn test_fir_echo_is_delayed_by_the_full_buffer_length() {
+    // Every tap sees samples that went all the way around the buffer:
+    // with EDL=1 (512 stereo pairs), a write on tick 1 reaches the FIR
+    // on tick 513 and not a moment sooner — even on the newest tap.
+    let mut mem = booted_memory();
+    dsp_gw(&mut mem, 0x6D, 0x20); // ESA = page 0x20
+    dsp_gw(&mut mem, 0x7D, 0x01); // EDL = 1
+    dsp_vw(&mut mem, 7, 0xF, 127); // newest tap only
+
+    mem.dsp.tick_echo(&mut mem.ram, 8000, -8000);
+    for tick in 2..=512 {
+        let out = mem.dsp.tick_echo(&mut mem.ram, 0, 0);
+        assert_eq!(out, (0, 0), "echo surfaced early, on tick {tick}");
+    }
+    let (l, r) = mem.dsp.tick_echo(&mut mem.ram, 0, 0);
+    assert!(
+        l > 0 && r < 0,
+        "the write must come back after exactly one trip around the buffer"
+    );
 }
 
 #[test]
@@ -1642,11 +1666,12 @@ fn test_tick_echo_zero_fir_is_always_silent_regardless_of_buffer_content() {
 
 #[test]
 fn test_tick_echo_edl_zero_filters_the_single_pair() {
-    // With EDL=0 the FIR reads the one pair at ESA, which each tick
-    // overwrites — so the echo output is the previous tick's input.
+    // With EDL=0 each tick reads the one pair at ESA, which the previous
+    // tick wrote — so through the newest tap, the echo output is the
+    // previous tick's input.
     let mut mem = booted_memory();
     dsp_gw(&mut mem, 0x6D, 0x50); // ESA set; EDL left at its default 0
-    dsp_vw(&mut mem, 0, 0xF, 127); // FIR tap 0 at ~1.0x
+    dsp_vw(&mut mem, 7, 0xF, 127); // FIR tap 7 (newest) at ~1.0x
 
     let (l, r) = mem.dsp.tick_echo(&mut mem.ram, 12344, -12344);
     assert_eq!((l, r), (0, 0), "the pair at ESA starts out zeroed");
@@ -1660,19 +1685,16 @@ fn test_tick_echo_edl_zero_filters_the_single_pair() {
 
 #[test]
 fn test_efb_feeds_filtered_output_back_into_the_buffer() {
-    // FIR isolates tap 0 at coefficient 64 (~0.5x); EFB=64 (~0.5x
-    // feedback). A single write of 1000 should come back roughly
-    // halved on each full trip around the buffer — echoing, decaying,
-    // and being re-filtered each cycle: 1000 -> 500 -> 125 (not 250 —
-    // the write that goes back into the buffer is *already* scaled by
-    // the feedback path, then gets scaled by the FIR tap *again* on
-    // the next read, so two ~0.5x factors compound between readings,
-    // not one). Verified against an independent simulation before
-    // writing this test, specifically to catch that double-scaling.
+    // FIR isolates the newest tap at coefficient 64 (~0.5x); EFB=64
+    // (~0.5x feedback). A single write of 1000 comes back on each full
+    // trip around the buffer, halved by the FIR and halved again by the
+    // feedback before it's written back — two ~0.5x factors compound
+    // between readings, not one: 1000 -> 500 -> 124 (125 with its lowest
+    // bit cleared, as the hardware does to every filtered value).
     let mut mem = booted_memory();
     dsp_gw(&mut mem, 0x6D, 0x30); // ESA = page 0x30
     dsp_gw(&mut mem, 0x7D, 0x01); // EDL = 1 -> 512 stereo pairs
-    dsp_vw(&mut mem, 0, 0xF, 64); // FIR tap 0 = 64
+    dsp_vw(&mut mem, 7, 0xF, 64); // FIR tap 7 = 64
     dsp_gw(&mut mem, 0x0D, 64); // EFB = 64
 
     mem.dsp.tick_echo(&mut mem.ram, 1000, 0); // tick 1: buffer empty, writes 1000 unmodified
@@ -1686,7 +1708,7 @@ fn test_efb_feeds_filtered_output_back_into_the_buffer() {
         mem.dsp.tick_echo(&mut mem.ram, 0, 0);
     }
     let (out2, _) = mem.dsp.tick_echo(&mut mem.ram, 0, 0); // tick 1025: reads tick 513's write
-    assert_eq!(out2, 125);
+    assert_eq!(out2, 124);
 }
 
 // ============================================================
@@ -1779,9 +1801,8 @@ fn test_echo_output_reaches_final_mix_even_with_mvol_zeroed() {
     // the final mix rather than just landing correctly in RAM.
     let mut mem = booted_memory();
     setup_tone_looping_voice(&mut mem);
-    dsp_gw(&mut mem, 0x6D, 0x50); // ESA = page 0x50
-    dsp_gw(&mut mem, 0x7D, 0x01); // EDL = 1
-    dsp_vw(&mut mem, 1, 0xF, 127); // isolate FIR tap 1 (surfaces after 2 ticks)
+    dsp_gw(&mut mem, 0x6D, 0x50); // ESA = page 0x50; EDL = 0
+    dsp_vw(&mut mem, 7, 0xF, 127); // newest FIR tap: with EDL = 0, surfaces a tick later
     dsp_gw(&mut mem, 0x4D, 0x01); // EON voice 0
     dsp_gw(&mut mem, 0x0C, 0); // MVOLL = 0
     dsp_gw(&mut mem, 0x1C, 0); // MVOLR = 0
@@ -1804,9 +1825,8 @@ fn test_echo_output_reaches_final_mix_even_with_mvol_zeroed() {
 fn echo_only_mix(evol: i8) -> (i16, i16) {
     let mut mem = booted_memory();
     setup_tone_looping_voice(&mut mem);
-    dsp_gw(&mut mem, 0x6D, 0x50); // ESA = page 0x50
-    dsp_gw(&mut mem, 0x7D, 0x01); // EDL = 1
-    dsp_vw(&mut mem, 1, 0xF, 127); // isolate FIR tap 1
+    dsp_gw(&mut mem, 0x6D, 0x50); // ESA = page 0x50; EDL = 0
+    dsp_vw(&mut mem, 7, 0xF, 127); // newest FIR tap: with EDL = 0, surfaces a tick later
     dsp_gw(&mut mem, 0x4D, 0x01); // EON voice 0
     dsp_gw(&mut mem, 0x0C, 0); // MVOLL = 0
     dsp_gw(&mut mem, 0x1C, 0); // MVOLR = 0
