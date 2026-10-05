@@ -400,7 +400,10 @@ fn test_keyed_on_voice_waits_five_samples_before_starting() {
             mem.dsp.voices[0].adsr.envelope_level, 0,
             "envelope must stay at 0 during the key-on delay (step {step})"
         );
-        assert_eq!(mem.dsp.voices[0].pitch_counter, 0, "pitch must not advance (step {step})");
+        assert_eq!(
+            mem.dsp.voices[0].pitch_counter, 0,
+            "pitch must not advance (step {step})"
+        );
     }
     mem.dsp.step(&mut mem.ram);
     assert!(
@@ -439,7 +442,10 @@ fn test_kon_during_reset_is_consumed_not_deferred() {
     dsp_gw(&mut mem, 0x6C, 0x80); // FLG: RESET
     dsp_gw(&mut mem, 0x4C, 0x01);
     poll_key_regs(&mut mem);
-    assert!(!mem.dsp.voices[0].key_on, "KON must be ignored during RESET");
+    assert!(
+        !mem.dsp.voices[0].key_on,
+        "KON must be ignored during RESET"
+    );
 
     dsp_gw(&mut mem, 0x6C, 0x00); // leave RESET
     poll_key_regs(&mut mem);
@@ -1719,7 +1725,11 @@ fn test_tick_echo_buffer_edl_change_takes_effect_only_at_wrap() {
         );
     }
     let next_wrap = mem.dsp.tick_echo_buffer(&mut mem.ram, 0, 0);
-    assert_eq!(next_wrap, (200, -200), "the new length must apply after the wrap");
+    assert_eq!(
+        next_wrap,
+        (200, -200),
+        "the new length must apply after the wrap"
+    );
 }
 
 #[test]
@@ -2054,7 +2064,10 @@ fn test_negative_evol_inverts_echo_in_final_mix() {
     let (pos_l, pos_r) = echo_only_mix(127);
     let (neg_l, neg_r) = echo_only_mix(-127);
 
-    assert!(pos_l != 0 || pos_r != 0, "sanity check: echo must be audible");
+    assert!(
+        pos_l != 0 || pos_r != 0,
+        "sanity check: echo must be audible"
+    );
     assert!(
         (pos_l as i32 + neg_l as i32).abs() <= 1 && (pos_r as i32 + neg_r as i32).abs() <= 1,
         "EVOL = -127 must mirror EVOL = 127 (got {pos_l},{pos_r} vs {neg_l},{neg_r})"

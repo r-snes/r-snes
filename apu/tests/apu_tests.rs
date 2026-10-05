@@ -524,8 +524,7 @@ fn test_f200_range_is_plain_ram_not_dsp() {
         "a write to $F21C must not reach the DSP"
     );
     assert_eq!(
-        apu.memory.ram[0xF21C],
-        0x66,
+        apu.memory.ram[0xF21C], 0x66,
         "a write to $F21C must land in RAM"
     );
     assert_eq!(

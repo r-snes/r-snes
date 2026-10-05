@@ -703,7 +703,10 @@ impl Dsp {
         let echo_l = ((self.echo_out_l as i32 * self.echo_vol_left as i32) >> 7) as i16 as i32;
         let echo_r = ((self.echo_out_r as i32 * self.echo_vol_right as i32) >> 7) as i16 as i32;
 
-        (clamp16(main_l + echo_l) as i16, clamp16(main_r + echo_r) as i16)
+        (
+            clamp16(main_l + echo_l) as i16,
+            clamp16(main_r + echo_r) as i16,
+        )
     }
 }
 
