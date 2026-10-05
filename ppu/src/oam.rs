@@ -184,12 +184,13 @@ impl OAM {
         // CHR base address from OBJSEL, plus name-table selection.
         // OBJSEL bits 2:0 = name base address (in 0x2000-word steps),
         // bits 4:3 = secondary name select (offset for name_table == 1).
+        // The result wraps within VRAM (32K words): name base bit 2 is ignored.
         let name_base = (objsel & 0x07) as u16;
         let name_select = ((objsel >> 3) & 0x03) as u16;
         let chr_base = if name_table == 0 {
-            name_base << 13
+            (name_base << 13) & 0x7FFF
         } else {
-            (name_base << 13).wrapping_add((name_select + 1) << 12)
+            (name_base << 13).wrapping_add((name_select + 1) << 12) & 0x7FFF
         };
 
         Sprite {
@@ -494,6 +495,26 @@ mod tests {
                 "objsel={objsel:#04X} large"
             );
         }
+    }
+
+    // chr_base wraps within VRAM (32K words), for both name tables.
+    #[test]
+    fn test_get_sprite_chr_base_wraps() {
+        let mut oam = make_oam();
+
+        // First table: name base 1 -> 0x2000; 4 -> 0x8000 wraps to 0x0000; 7 -> 0xE000 wraps to 0x6000.
+        assert_eq!(oam.get_sprite(0, 0x01).chr_base, 0x2000);
+        assert_eq!(oam.get_sprite(0, 0x04).chr_base, 0x0000);
+        assert_eq!(oam.get_sprite(0, 0x07).chr_base, 0x6000);
+
+        // Second table (attr bit 0 set).
+        make_sprite_entry(&mut oam, 0, 0, 0, 0, 0x01, 0);
+        // Base 1, select 0 -> 0x2000 + 0x1000 = 0x3000.
+        assert_eq!(oam.get_sprite(0, 0x01).chr_base, 0x3000);
+        // Base 3, select 3 -> 0x6000 + 0x4000 = 0xA000, wraps to 0x2000.
+        assert_eq!(oam.get_sprite(0, 0x03 | (3 << 3)).chr_base, 0x2000);
+        // Base 7, select 3 -> 0xE000 + 0x4000 = 0x12000, wraps to 0x2000.
+        assert_eq!(oam.get_sprite(0, 0x07 | (3 << 3)).chr_base, 0x2000);
     }
 
     // ============================================================
