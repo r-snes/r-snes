@@ -54,6 +54,20 @@ pub struct Dsp {
     ///             (ENVELOPE_RATE_TABLE; 0 = stopped). See `advance_noise`.
     flg: u8,
 
+    /// KON ($4C) writes waiting to be picked up. The DSP only polls KON
+    /// and KOFF every other sample (see `every_other_sample`); a polled
+    /// KON is consumed, so each write keys a voice on once.
+    new_kon: u8,
+
+    /// Toggles every sample; KON/KOFF are polled on the samples where it
+    /// flips to true, i.e. at 16 kHz.
+    every_other_sample: bool,
+
+    /// Samples left before each keyed-on voice starts. On key-on the
+    /// hardware holds a voice silent for 5 samples — envelope at 0, pitch
+    /// not advancing — before its attack begins.
+    kon_delay: [u8; 8],
+
     /// $3D NON — one bit per voice; when set, that voice's mixed output
     /// is the shared noise generator instead of its BRR-decoded sample.
     /// BRR decoding keeps running underneath regardless (see `step`), so
@@ -177,6 +191,9 @@ impl Dsp {
             master_vol_left: 0,
             master_vol_right: 0,
             flg: 0xE0,
+            new_kon: 0,
+            every_other_sample: false,
+            kon_delay: [0; 8],
             non: 0,
             pmon: 0,
             noise_lfsr: 0x4000,
@@ -301,26 +318,15 @@ impl Dsp {
             // ---- Global registers ----
             _ => match idx {
                 // $4C: KON — key on, one bit per voice (bit 0 = voice 0).
-                // Ignored while FLG's RESET bit is set — real hardware
-                // blocks new key-ons for as long as the DSP is held in
-                // reset.
-                0x4C if self.flg & 0x80 == 0 => {
-                    for v in 0..8usize {
-                        if value & (1 << v) != 0 {
-                            self.key_on_voice(v);
-                        }
-                    }
-                }
+                // Latched here, acted on at the next KON/KOFF poll in
+                // `step` (every other sample). As on hardware, a second
+                // write before that poll replaces the first.
+                0x4C => self.new_kon = value,
 
-                // $5C: KOFF — key off, enter release phase
-                0x5C => {
-                    for v in 0..8usize {
-                        if value & (1 << v) != 0 {
-                            self.voices[v].key_on = false;
-                            self.voices[v].adsr.envelope_phase = EnvelopePhase::Release;
-                        }
-                    }
-                }
+                // $5C: KOFF — read straight from `registers` at each poll:
+                // a voice whose bit stays set is pushed into release every
+                // time, so there's nothing to do on the write itself.
+                0x5C => {}
 
                 // $0C: MVOLL — master left  volume (signed)
                 0x0C => self.master_vol_left = value as i8,
@@ -383,9 +389,34 @@ impl Dsp {
         }
     }
 
+    /// Poll KON and KOFF, as the hardware does every other sample.
+    ///
+    /// KOFF is a level: every voice whose bit is set in $5C enters
+    /// release. KON is an event: the latched writes are consumed and each
+    /// voice is keyed on, starting its 5-sample delay. KON is handled
+    /// second, so a voice in both wins the key-on. While FLG's RESET bit
+    /// is set, latched key-ons are consumed without effect.
+    fn poll_key_on_off(&mut self) {
+        let koff = self.registers[0x5C];
+        let kon = std::mem::take(&mut self.new_kon);
+        let reset = self.flg & 0x80 != 0;
+
+        for v in 0..8usize {
+            let bit = 1u8 << v;
+            if koff & bit != 0 && self.voices[v].adsr.envelope_phase != EnvelopePhase::Off {
+                self.voices[v].key_on = false;
+                self.voices[v].adsr.envelope_phase = EnvelopePhase::Release;
+            }
+            if kon & bit != 0 && !reset {
+                self.key_on_voice(v);
+            }
+        }
+    }
+
     /// Handle key-on for voice `v`.
     ///
-    /// Marks the voice active and resets all playback state.
+    /// Marks the voice active, resets all playback state, and starts the
+    /// 5-sample key-on delay (see `kon_delay`).
     /// The actual BRR start/loop addresses are read from the DIR table
     /// on the first call to `step()` after key-on, when we have access
     /// to APU RAM.
@@ -410,7 +441,9 @@ impl Dsp {
         // Reset pitch counter
         voice.pitch_counter = 0;
 
-        // Reset envelope to start of attack
+        // Reset envelope to start of attack. It stays at 0 through the
+        // key-on delay; `step` doesn't run the voice until that ends.
+        self.kon_delay[v] = 5;
         voice.adsr.envelope_phase = EnvelopePhase::Attack;
         voice.adsr.envelope_level = 0;
         voice.adsr.tick_counter = 0;
@@ -434,6 +467,11 @@ impl Dsp {
     /// pass `&mut memory.ram` without conflicting with the `&mut
     /// memory.dsp` borrow (disjoint fields of the same struct).
     pub fn step(&mut self, ram: &mut RawARAM) {
+        self.every_other_sample = !self.every_other_sample;
+        if self.every_other_sample {
+            self.poll_key_on_off();
+        }
+
         self.advance_noise();
         // Real hardware scales the 15-bit LFSR into a signed sample the
         // same way a decoded BRR sample would be: shift left 1 and treat
@@ -446,7 +484,8 @@ impl Dsp {
         // Split borrows so we can pass &mut voice and &mut self.registers
         // into Voice::step() simultaneously — the borrow checker allows
         // borrowing separate struct fields at the same time.
-        let (voices, registers) = (&mut self.voices, &mut self.registers);
+        let (voices, registers, kon_delay) =
+            (&mut self.voices, &mut self.registers, &mut self.kon_delay);
 
         let mut echo_in_l: i32 = 0;
         let mut echo_in_r: i32 = 0;
@@ -462,9 +501,17 @@ impl Dsp {
                 None
             };
 
-            // Voice::step only reads RAM; reborrow the mutable reference
-            // as shared for the duration of this call.
-            voice.step(i, ram, registers, pmon_source);
+            if kon_delay[i] > 0 {
+                // Key-on delay: the voice doesn't run at all — no BRR
+                // decoding, no pitch, no envelope — and its envelope (so
+                // its output, ENVX and OUTX below) stays at 0.
+                kon_delay[i] -= 1;
+                registers[(i << 4) | 0x8] = 0;
+            } else {
+                // Voice::step only reads RAM; reborrow the mutable
+                // reference as shared for the duration of this call.
+                voice.step(i, ram, registers, pmon_source);
+            }
 
             if non & (1 << i) != 0 {
                 // NON substitutes the noise generator for this voice's
