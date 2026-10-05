@@ -172,6 +172,8 @@ pub struct BgParams {
     pub w64: bool,
     /// Tilemap is 64 tiles tall.
     pub h64: bool,
+    /// Tiles are 16x16 (2x2 CHR tiles) instead of 8x8.
+    pub tile16: bool,
     /// Z-order of low priority tiles.
     pub z_low: Priority,
     /// Z-order of high priority tiles.
@@ -190,14 +192,10 @@ pub struct Renderer {
     pub framebuffer: Box<RawFramebuffer>,
     /// Front buffer, the GUI reads here.
     pub presented: Box<RawFramebuffer>,
-    /// Brightness currently applied to the output (0-15).
-    pub current_brightness: u8,
 
     // Per-column top pixel of each screen for the scanline being rendered.
     main_line: Box<[LinePixel; SCREEN_WIDTH]>,
     sub_line: Box<[LinePixel; SCREEN_WIDTH]>,
-
-    brightness_delay: u8,
 }
 
 impl Default for Renderer {
@@ -207,15 +205,13 @@ impl Default for Renderer {
 }
 
 impl Renderer {
-    /// Creates a renderer with black buffers at full brightness.
+    /// Creates a renderer with black buffers.
     pub fn new() -> Self {
         Self {
             framebuffer: Box::new([0; SCREEN_WIDTH * SCREEN_HEIGHT * 3]),
-            current_brightness: 15, // full brightness
+            presented: Box::new([0; SCREEN_WIDTH * SCREEN_HEIGHT * 3]),
             main_line: Box::new([LinePixel::BACKDROP; SCREEN_WIDTH]),
             sub_line: Box::new([LinePixel::BACKDROP; SCREEN_WIDTH]),
-            brightness_delay: 0,
-            presented: Box::new([0; SCREEN_WIDTH * SCREEN_HEIGHT * 3]),
         }
     }
 
@@ -236,9 +232,6 @@ impl Renderer {
             self.render_full_black(y);
             return;
         }
-
-        // Update brightness
-        self.update_brightness(ppu.brightness());
 
         // Main backdrop = CGRAM[0]; sub backdrop = fixed colour (COLDATA).
         let main_bd = LinePixel {
@@ -273,35 +266,33 @@ impl Renderer {
 
     /// Render one BG layer for one scanline into the main and/or sub screen.
     pub fn render_bg_scanline(&mut self, ppu: &PPU, y: usize, p: &BgParams) {
-        // if y == 0 {
-        //     println!(
-        //         "frame {} mode {} tm {:02X} ts {:02X} forceblank {} bright {}",
-        //         ppu.frame, ppu.regs.bg_mode(), ppu.regs.tm, ppu.regs.ts,
-        //         ppu.force_blank(), ppu.brightness()
-        //     );
-        // }
-        let map_w = if p.w64 { 512 } else { 256 };
-        let map_h = if p.h64 { 512 } else { 256 };
+        // Tile size and map size in pixels.
+        let tile_px = if p.tile16 { 16 } else { 8 };
+        let map_w = (if p.w64 { 64 } else { 32 }) * tile_px;
+        let map_h = (if p.h64 { 64 } else { 32 }) * tile_px;
         let screens_wide = if p.w64 { 2 } else { 1 };
 
         let tile_words = p.bpp.tile_words();
         let pal_shift = p.bpp.pal_shift();
 
+        // y is the framebuffer row (scanline - 1); BG rows are fetched with the scanline number.
+        let py = (y + 1 + p.scroll_y) & (map_h - 1);
+        let tile_row = py / tile_px;
+        let fine_y = py % tile_px;
+
         for x in 0..SCREEN_WIDTH {
             let px = (x + p.scroll_x) & (map_w - 1);
-            let py = (y + p.scroll_y) & (map_h - 1);
-
-            let tile_col = px >> 3;
-            let tile_row = py >> 3;
-            let fine_x = px & 7;
-            let fine_y = py & 7;
+            let tile_col = px / tile_px;
+            let fine_x = px % tile_px;
 
             // Pick the 0x400-word sub-screen for maps larger than 32x32.
+            // The sum wraps within VRAM (32K words).
             let screen = (tile_row >> 5) * screens_wide + (tile_col >> 5);
-            let map_word_addr = p.tilemap_base as usize
+            let map_word_addr = (p.tilemap_base as usize
                 + screen * 0x400
                 + (tile_row & 0x1F) * 32
-                + (tile_col & 0x1F);
+                + (tile_col & 0x1F))
+                & 0x7FFF;
 
             let entry = ppu.vram.memory[map_word_addr];
             let tile_index = entry & 0x03FF; // bits 9:0
@@ -310,17 +301,26 @@ impl Renderer {
             let flip_x = (entry & 0x4000) != 0; // bit 14
             let flip_y = (entry & 0x8000) != 0; // bit 15
 
-            let fx = if flip_x { 7 - fine_x } else { fine_x };
-            let fy = if flip_y { 7 - fine_y } else { fine_y };
+            // Flips mirror the whole tile (8x8 or 16x16).
+            let fx = if flip_x { tile_px - 1 - fine_x } else { fine_x };
+            let fy = if flip_y { tile_px - 1 - fine_y } else { fine_y };
 
-            let tile_word_base = p.tiledata_base as usize + tile_index as usize * tile_words;
+            // 16x16 tiles are 2x2 CHR tiles: +1 for the right half, +16 for the bottom half.
+            let chr_tile = (tile_index as usize + (fx >> 3) + ((fy >> 3) << 4)) & 0x03FF;
+            let tile_word_base = p.tiledata_base as usize + chr_tile * tile_words;
             let color_index = match p.bpp {
-                BitDepth::Two => {
-                    Self::decode_2bpp_tile_pixel_from(&ppu.vram.memory, tile_word_base, fx, fy)
-                }
-                BitDepth::Four => {
-                    Self::decode_4bpp_tile_pixel_from(&ppu.vram.memory, tile_word_base, fx, fy)
-                }
+                BitDepth::Two => Self::decode_2bpp_tile_pixel_from(
+                    &ppu.vram.memory,
+                    tile_word_base,
+                    fx & 7,
+                    fy & 7,
+                ),
+                BitDepth::Four => Self::decode_4bpp_tile_pixel_from(
+                    &ppu.vram.memory,
+                    tile_word_base,
+                    fx & 7,
+                    fy & 7,
+                ),
             };
 
             // Transparent pixel -> do nothing
@@ -405,7 +405,7 @@ impl Renderer {
         let half = cgadsub & 0x40 != 0;
         let use_subscreen = cgwsel & 0x02 != 0; // CGWSEL bit1 (A)
         let fixed = ppu.regs.coldata;
-        let brightness = self.current_brightness as u16;
+        let brightness = ppu.brightness() as u16;
 
         let clip_mode = (cgwsel >> 6) & 0x03; // 0=never 1=out 2=in 3=always
         let math_region = (cgwsel >> 4) & 0x03; // 0=always 1=in 2=out 3=never
@@ -465,27 +465,13 @@ impl Renderer {
         r | (g << 5) | (b << 10)
     }
 
-    fn update_brightness(&mut self, target: u8) {
-        if self.current_brightness == target {
-            return;
-        }
-
-        if self.brightness_delay == 0 {
-            self.brightness_delay = 72;
-            return;
-        }
-
-        self.brightness_delay -= 1;
-
-        if self.current_brightness < target {
-            self.current_brightness += 1;
-        } else {
-            self.current_brightness -= 1;
-        }
-    }
-
     /// Converts a BGR555 color to RGB888, scaled by `brightness` (0-15).
+    /// Brightness 0 outputs black; otherwise each channel is scaled by (brightness + 1) / 16.
     pub fn apply_brightness(color: u16, brightness: u16) -> (u8, u8, u8) {
+        if brightness == 0 {
+            return (0, 0, 0);
+        }
+
         let mut r = color & 0x1F;
         let mut g = (color >> 5) & 0x1F;
         let mut b = (color >> 10) & 0x1F;
@@ -539,9 +525,7 @@ mod tests {
     }
 
     fn make_renderer() -> Renderer {
-        let mut r = Renderer::new();
-        r.current_brightness = 15;
-        r
+        Renderer::new()
     }
 
     // Mode 1 PPU, full brightness, no force blank.
@@ -558,8 +542,9 @@ mod tests {
         ppu.write(0x2122, (color >> 8) as u8);
     }
 
-    fn fb_pixel(r: &Renderer, x: usize) -> (u8, u8, u8) {
-        let i = x * 3;
+    // RGB of the framebuffer pixel at (x, y).
+    fn fb_pixel(r: &Renderer, x: usize, y: usize) -> (u8, u8, u8) {
+        let i = (y * SCREEN_WIDTH + x) * 3;
         (r.framebuffer[i], r.framebuffer[i + 1], r.framebuffer[i + 2])
     }
 
@@ -608,12 +593,11 @@ mod tests {
     // Renderer::new
     // ============================================================
 
-    /// A freshly created Renderer must have a zeroed framebuffer and full brightness.
+    /// A freshly created Renderer must have a zeroed framebuffer.
     #[test]
     fn test_new_initial_state() {
         let renderer = Renderer::new();
         assert!(renderer.framebuffer.iter().all(|&b| b == 0));
-        assert_eq!(renderer.current_brightness, 15);
     }
 
     // ============================================================
@@ -667,16 +651,11 @@ mod tests {
     // apply_brightness
     // ============================================================
 
-    /// At brightness 0, all colour channels must be scaled to near-zero.
+    /// At brightness 0, every colour must map to black.
     #[test]
-    fn test_apply_brightness_zero_dims_all_channels() {
-        // White in BGR555: 0x7FFF (r=31, g=31, b=31)
-        let (r, g, b) = Renderer::apply_brightness(0x7FFF, 0);
-        // brightness+1 = 1, >> 4 -> each channel = 31*1>>4 = 1
-        // expanded: (1<<3)|(1>>2) = 8|0 = 8 - just verify they're all equal and small
-        assert_eq!(r, g);
-        assert_eq!(g, b);
-        assert!(r < 16);
+    fn test_apply_brightness_zero_is_black() {
+        assert_eq!(Renderer::apply_brightness(0x7FFF, 0), (0, 0, 0));
+        assert_eq!(Renderer::apply_brightness(0x001F, 0), (0, 0, 0));
     }
 
     /// At full brightness (15), white must map to (255, 255, 255).
@@ -773,44 +752,27 @@ mod tests {
     }
 
     // ============================================================
-    // update_brightness (tested via render_scanline)
+    // INIDISP brightness
     // ============================================================
 
-    /// When target brightness equals current, current_brightness must not change.
+    /// INIDISP brightness must apply on the very first scanline, with no fade.
     #[test]
-    fn test_brightness_no_change_when_already_at_target() {
-        let mut renderer = Renderer::new();
-        renderer.current_brightness = 15;
-        let ppu = make_ppu_with_mode(1, false, 15);
-        renderer.render_scanline(&ppu, 0);
-        assert_eq!(renderer.current_brightness, 15);
+    fn test_brightness_applies_immediately() {
+        let mut r = Renderer::new();
+        let mut ppu = make_ppu_with_mode(1, false, 7);
+        set_color(&mut ppu, 0, 0x7FFF); // white backdrop
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 0, 0), Renderer::apply_brightness(0x7FFF, 7));
     }
 
-    /// When target differs, the first call must set the delay without changing brightness.
+    /// INIDISP brightness 0 (without force blank) must render black.
     #[test]
-    fn test_brightness_first_change_sets_delay() {
-        let mut renderer = Renderer::new();
-        renderer.current_brightness = 15;
-        let ppu = make_ppu_with_mode(1, false, 0); // target = 0
-        renderer.render_scanline(&ppu, 0);
-        // First call: delay was 0 -> set to 72, brightness unchanged
-        assert_eq!(renderer.current_brightness, 15);
-    }
-
-    /// After the delay counts down, brightness must step by 1 toward the target each call.
-    #[test]
-    fn test_brightness_steps_toward_target_after_delay() {
-        let mut renderer = Renderer::new();
-        renderer.current_brightness = 15;
-        let ppu = make_ppu_with_mode(1, false, 0);
-
-        // Call 1: delay was 0 -> set to 72, no brightness change yet
-        renderer.render_scanline(&ppu, 0);
-        assert_eq!(renderer.current_brightness, 15);
-
-        // Call 2: delay 72 -> 71, brightness steps 15 -> 14
-        renderer.render_scanline(&ppu, 0);
-        assert_eq!(renderer.current_brightness, 14);
+    fn test_brightness_zero_renders_black() {
+        let mut r = Renderer::new();
+        let mut ppu = make_ppu_with_mode(1, false, 0);
+        set_color(&mut ppu, 0, 0x7FFF); // white backdrop
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 0, 0), (0, 0, 0));
     }
 
     // ============================================================
@@ -894,7 +856,7 @@ mod tests {
         ppu.write(0x2131, cgadsub);
         r.deposit_main(0, main, Priority::Bg1Low, Layer::Bg1, false);
         r.composite_line(&ppu, 0);
-        fb_pixel(&r, 0)
+        fb_pixel(&r, 0, 0)
     }
 
     #[test]
@@ -942,7 +904,7 @@ mod tests {
         ppu.write(0x2131, 0x00); // no math
         r.deposit_main(0, 0x7FFF, Priority::Bg1Low, Layer::Bg1, false);
         r.composite_line(&ppu, 0);
-        assert_eq!(fb_pixel(&r, 0), (0, 0, 0));
+        assert_eq!(fb_pixel(&r, 0, 0), (0, 0, 0));
     }
 
     #[test]
@@ -956,13 +918,13 @@ mod tests {
         let mut r = make_renderer();
         r.deposit_main(0, 0x0008, Priority::Obj2, Layer::Obj, false);
         r.composite_line(&ppu, 0);
-        assert_eq!(fb_pixel(&r, 0), Renderer::apply_brightness(0x0008, 15));
+        assert_eq!(fb_pixel(&r, 0, 0), Renderer::apply_brightness(0x0008, 15));
 
         // Palette 4-7 sprite (obj_math=true): math applies -> R=12.
         let mut r = make_renderer();
         r.deposit_main(0, 0x0008, Priority::Obj2, Layer::Obj, true);
         r.composite_line(&ppu, 0);
-        assert_eq!(fb_pixel(&r, 0), Renderer::apply_brightness(0x000C, 15));
+        assert_eq!(fb_pixel(&r, 0, 0), Renderer::apply_brightness(0x000C, 15));
     }
 
     #[test]
@@ -977,7 +939,7 @@ mod tests {
         r.deposit_main(0, 0x0008, Priority::Bg1Low, Layer::Bg1, false);
         r.deposit_sub(0, 0x0002, Priority::Bg2Low, Layer::Bg2, false);
         r.composite_line(&ppu, 0);
-        assert_eq!(fb_pixel(&r, 0), Renderer::apply_brightness(0x000A, 15));
+        assert_eq!(fb_pixel(&r, 0, 0), Renderer::apply_brightness(0x000A, 15));
 
         // CGWSEL bit1=0 -> operand is fixed colour (R=4) -> R=12.
         let mut r = make_renderer();
@@ -985,7 +947,7 @@ mod tests {
         r.deposit_main(0, 0x0008, Priority::Bg1Low, Layer::Bg1, false);
         r.deposit_sub(0, 0x0002, Priority::Bg2Low, Layer::Bg2, false);
         r.composite_line(&ppu, 0);
-        assert_eq!(fb_pixel(&r, 0), Renderer::apply_brightness(0x000C, 15));
+        assert_eq!(fb_pixel(&r, 0, 0), Renderer::apply_brightness(0x000C, 15));
     }
 
     #[test]
@@ -1001,7 +963,7 @@ mod tests {
         ppu.write(0x212C, 0x00);
         ppu.write(0x212D, 0x00);
         r.render_scanline(&ppu, 0);
-        assert_eq!(fb_pixel(&r, 0), Renderer::apply_brightness(0x000C, 15));
+        assert_eq!(fb_pixel(&r, 0, 0), Renderer::apply_brightness(0x000C, 15));
     }
 
     // ============================================================
@@ -1070,7 +1032,7 @@ mod tests {
         ppu.write(0x212C, 0x03); // BG1 + BG2 on main
         r.render_scanline(&ppu, 0);
         // BG1 (Z=8) beats BG2 (Z=7)
-        assert_eq!(fb_pixel(&r, 0), Renderer::apply_brightness(0x001F, 15));
+        assert_eq!(fb_pixel(&r, 0, 0), Renderer::apply_brightness(0x001F, 15));
     }
 
     #[test]
@@ -1083,13 +1045,13 @@ mod tests {
 
         // Without BGMODE bit3: BG1 (Z=8) beats BG3 high (Z=5).
         r.render_scanline(&ppu, 0);
-        assert_eq!(fb_pixel(&r, 0), Renderer::apply_brightness(0x001F, 15));
+        assert_eq!(fb_pixel(&r, 0, 0), Renderer::apply_brightness(0x001F, 15));
 
         // With BGMODE bit3: BG3 high (Z=13) beats everything.
         let mut r = make_renderer();
         ppu.write(0x2105, 0x01 | 0x08);
         r.render_scanline(&ppu, 0);
-        assert_eq!(fb_pixel(&r, 0), Renderer::apply_brightness(0x7C00, 15));
+        assert_eq!(fb_pixel(&r, 0, 0), Renderer::apply_brightness(0x7C00, 15));
     }
 
     // ============================================================
@@ -1117,7 +1079,7 @@ mod tests {
         ppu.write(0x210D, 0x01);
 
         r.render_scanline(&ppu, 0);
-        assert_eq!(fb_pixel(&r, 0), Renderer::apply_brightness(0x001F, 15));
+        assert_eq!(fb_pixel(&r, 0, 0), Renderer::apply_brightness(0x001F, 15));
     }
 
     #[test]
@@ -1141,7 +1103,7 @@ mod tests {
         ppu.write(0x210E, 0x01);
 
         r.render_scanline(&ppu, 0);
-        assert_eq!(fb_pixel(&r, 0), Renderer::apply_brightness(0x001F, 15));
+        assert_eq!(fb_pixel(&r, 0, 0), Renderer::apply_brightness(0x001F, 15));
     }
 
     #[test]
@@ -1167,6 +1129,105 @@ mod tests {
         ppu.write(0x210E, 0x01);
 
         r.render_scanline(&ppu, 0);
-        assert_eq!(fb_pixel(&r, 0), Renderer::apply_brightness(0x001F, 15));
+        assert_eq!(fb_pixel(&r, 0, 0), Renderer::apply_brightness(0x001F, 15));
+    }
+
+    #[test]
+    fn test_tilemap_address_wraps_within_vram() {
+        let mut r = make_renderer();
+        let mut ppu = make_ppu();
+        ppu.write(0x2107, 0x7F); // BG1SC: tilemap 0x7C00, w64 + h64
+        let nba = (ppu.regs.bg12nba & 0xF0) | 0x01;
+        ppu.write(0x210B, nba); // BG1 CHR at 0x1000
+        ppu.write(0x212C, 0x01);
+
+        // SC3 sits at 0x7C00 + 0xC00 = 0x8800, which wraps to 0x0800.
+        ppu.vram.memory[0x0800] = 0x0001;
+        for row in 0..8 {
+            ppu.vram.memory[0x1000 + 16 + row] = 0x00FF;
+        }
+        set_color(&mut ppu, 0x01, 0x001F);
+
+        // Scroll x=256, y=256 -> screen (0,0) maps to SC3.
+        ppu.write(0x210D, 0x00);
+        ppu.write(0x210D, 0x01);
+        ppu.write(0x210E, 0x00);
+        ppu.write(0x210E, 0x01);
+
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 0, 0), Renderer::apply_brightness(0x001F, 15));
+    }
+
+    // ============================================================
+    // BG vertical positioning
+    // ============================================================
+
+    /// The first visible scanline is scanline 1, so with VOFS = 0 framebuffer
+    /// row 0 shows BG row 1 (games use VOFS = -1 to show row 0).
+    #[test]
+    fn test_bg_first_row_is_scanline_1() {
+        let mut ppu = make_ppu();
+        ppu.write(0x2107, 0x00);
+        let nba = (ppu.regs.bg12nba & 0xF0) | 0x01;
+        ppu.write(0x210B, nba);
+        ppu.write(0x212C, 0x01);
+        ppu.vram.memory[0x1000 + 1] = 0x00FF; // tile 0, row 1 only
+        set_color(&mut ppu, 0x01, 0x001F);
+
+        let mut r = make_renderer();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 0, 0), Renderer::apply_brightness(0x001F, 15));
+
+        // VOFS = -1 -> row 0 (empty) is shown instead: backdrop.
+        ppu.write(0x210E, 0xFF);
+        ppu.write(0x210E, 0x03);
+        let mut r = make_renderer();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 0, 0), (0, 0, 0));
+    }
+
+    // ============================================================
+    // 16x16 tiles
+    // ============================================================
+
+    /// 16x16 tiles (BGMODE bit 4 for BG1) are 2x2 CHR tiles: +1 right, +16 below,
+    /// and flips mirror the whole 16x16 tile.
+    #[test]
+    fn test_bg_16x16_tiles() {
+        let mut ppu = make_ppu();
+        ppu.write(0x2105, 0x01 | 0x10); // mode 1, BG1 16x16
+        ppu.write(0x2107, 0x00);
+        let nba = (ppu.regs.bg12nba & 0xF0) | 0x01;
+        ppu.write(0x210B, nba);
+        ppu.write(0x212C, 0x01);
+        // VOFS = -1 so framebuffer row 0 shows BG row 0.
+        ppu.write(0x210E, 0xFF);
+        ppu.write(0x210E, 0x03);
+
+        // Only CHR tiles 1 (top-right) and 17 (bottom-right) are opaque.
+        for row in 0..8 {
+            ppu.vram.memory[0x1000 + 16 + row] = 0x00FF;
+            ppu.vram.memory[0x1000 + 17 * 16 + row] = 0x00FF;
+        }
+        set_color(&mut ppu, 0x01, 0x001F);
+        let red = Renderer::apply_brightness(0x001F, 15);
+        let black = (0, 0, 0);
+
+        // No flip: left half transparent, right half opaque, on both rows of CHR tiles.
+        let mut r = make_renderer();
+        r.render_scanline(&ppu, 0);
+        r.render_scanline(&ppu, 8);
+        assert_eq!(fb_pixel(&r, 0, 0), black);
+        assert_eq!(fb_pixel(&r, 8, 0), red);
+        assert_eq!(fb_pixel(&r, 15, 0), red);
+        assert_eq!(fb_pixel(&r, 0, 8), black);
+        assert_eq!(fb_pixel(&r, 8, 8), red);
+
+        // Horizontal flip mirrors the whole 16x16 tile.
+        ppu.vram.memory[0x0000] = 0x4000; // tile 0, flip_x
+        let mut r = make_renderer();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 0, 0), red);
+        assert_eq!(fb_pixel(&r, 8, 0), black);
     }
 }
