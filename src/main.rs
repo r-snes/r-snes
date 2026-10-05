@@ -163,9 +163,7 @@ fn gui_emu_loop(
         } else if !audio_playing {
             Duration::ZERO // still building the cushion: run flat out
         } else {
-            let excess = gui
-                .audio_buffered_frames()
-                .saturating_sub(TARGET_QUEUED_FRAMES);
+            let excess = gui.audio_buffered_frames().saturating_sub(TARGET_QUEUED_FRAMES);
             Duration::from_secs_f64(excess as f64 / AUDIO_RATE_HZ).min(MAX_PACING_SLEEP)
         };
         if !sleep.is_zero() {
