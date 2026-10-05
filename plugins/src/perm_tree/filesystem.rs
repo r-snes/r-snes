@@ -7,25 +7,27 @@ use product_order::combine_ordering;
 
 use super::{FilePermissions, PermTreeFromAllOr, PermTreeNode};
 
-/// All different options to open 1 file for writing.
+/// All different options to open 1 file for reading/writing.
 ///
 /// # Comparisons/Equalities
 /// `PartialOrd` and `PartialEq` impls don't necessarily reflect
-/// exactly the write mode that was requested, but only "how much"
+/// exactly the read/write mode that was requested, but only "how much"
 /// the requested permissions allow to do.
 ///
-/// As such, we end with five equivalence classes:
-/// - NewOnly (can only create new files, can't touch existing files)
+/// As such, we end with eight equivalence classes:
+/// - CreateOnly (can only create new files, can't touch existing files)
 /// - ReadOnly (reads existing file, no writing, no creating)
 /// - AppendOnly + !create (can't create files, can only append to existing)
-/// - Write + !create (can't create, but can fully overwrite existing files)
 /// - AppendOnly + create (may create new files but can only append in
 ///   existing files, not overwrite them fully)
-/// - Write + create (can do anything: create new files, and fully
-///   overwrite existing)
+/// - Write + !create + !read (can't create nor read, but can fully overwrite existing files)
+/// - Write + !create + read (can't create, but can fully overwrite and read existing files)
+/// - Write + create + !read (can create new files, fully overwrite existing, but can't read files)
+/// - Write + create + read (can do anything: create new files, fully
+///   overwrite existing and read)
 ///
-/// In this list, "Write" corresponds to either [`Append`](OverwriteMode::Append),
-/// [`Truncate`](OverwriteMode::Truncate) or [`Start`](OverwriteMode::Start),
+/// In this list, "Write" corresponds to either [`Append`](SeekingWrite::Append),
+/// [`Truncate`](SeekingWrite::Truncate) or [`Start`](SeekingWrite::Start),
 /// since they all allow overwriting existing data in opened files
 ///
 /// The ordering of these equivalence classes is described in [the
@@ -34,7 +36,7 @@ use super::{FilePermissions, PermTreeFromAllOr, PermTreeNode};
 pub enum FileReadWriteOptions {
     /// Only create a new file, don't overwrite
     /// (or even append) an existing file
-    NewOnly,
+    CreateOnly,
 
     /// Open an existing file only for reading
     ReadOnly,
@@ -55,6 +57,20 @@ pub enum OverwriteMode {
     /// to prevent modification of existing data in the file
     AppendOnly,
 
+    /// All write modes other than AppendOnly are allowed to
+    /// seek. Read/Write modes are also under this variant.
+    CanSeek {
+        /// Whether this seeking write can also read
+        read: bool,
+        /// Which seeking write mode
+        mode: SeekingWrite,
+    },
+}
+
+/// Seeking write variants, which can all completely overwrite
+/// files.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum SeekingWrite {
     /// Open in append mode, allow seeking
     Append,
 
@@ -86,39 +102,44 @@ impl FileReadWriteOptions {
     pub fn can_create_new(self) -> bool {
         matches!(
             self,
-            Self::NewOnly | Self::CanOverwrite { create: true, .. },
+            Self::CreateOnly | Self::CanOverwrite { create: true, .. },
         )
     }
 
     /// Whether these file write options may touch
     /// existing files at all
     pub fn can_touch_existing(self) -> bool {
-        !matches!(self, Self::NewOnly | Self::ReadOnly)
+        matches!(self, Self::CanOverwrite { .. })
     }
 
     /// Whether these file write options may overwrite
     /// existing data in files (just appending counts as false)
     pub fn can_overwrite_existing(self) -> bool {
-        use OverwriteMode::*;
-
-        #[expect(
-            clippy::match_like_matches_macro,
-            reason = "matches! formats pooly here"
-        )]
-        match self {
-            Self::NewOnly => false,
-            Self::ReadOnly => false,
+        matches!(
+            self,
             Self::CanOverwrite {
-                mode: AppendOnly, ..
-            } => false,
-            _ => true,
-        }
+                mode: OverwriteMode::CanSeek { .. },
+                ..
+            }
+        )
+    }
+
+    /// Whether these file read/write options can read data in a file
+    pub fn can_read(self) -> bool {
+        matches!(self, Self::CreateOnly) || self.can_read_existing()
     }
 
     /// Whether these file read/write options may read data
-    /// in a file
-    pub fn can_read(self) -> bool {
-        matches!(self, Self::ReadOnly)
+    /// in an existing file
+    pub fn can_read_existing(self) -> bool {
+        matches!(
+            self,
+            Self::ReadOnly
+                | Self::CanOverwrite {
+                    mode: OverwriteMode::CanSeek { read: true, .. },
+                    ..
+                }
+        )
     }
 
     /// Whether these file read/write options may write
@@ -134,7 +155,10 @@ impl Default for FileReadWriteOptions {
     fn default() -> Self {
         Self::CanOverwrite {
             create: true,
-            mode: OverwriteMode::Truncate,
+            mode: OverwriteMode::CanSeek {
+                read: true,
+                mode: SeekingWrite::Truncate,
+            },
         }
     }
 }
@@ -151,26 +175,26 @@ impl PartialEq for FileReadWriteOptions {
 /// Cases should be ordered as per this
 /// [Hasse diagram](https://en.wikipedia.org/wiki/Hasse_diagram)
 /// ```txt
-///       WC
-///      / \
-///     W  AOC   RO
-///     |  /|
-///     | / |
-///     |/  |
-///    AO   NO
+///         RWC
+///        /   \
+///       RW   WC
+///      /  \ /  \
+///     RO   W  AOC
+///          |  /|
+///          | / |
+///          |/  |
+///         AO   CO
 /// ```
-/// (elements which aren't linked "don't compare": neither is greater than
-/// the other, but they aren't equal either; for elements which are linked:
-/// the one higher than the other is "greater" than the other)
+/// (elements which are only linked by going both up and down connections
+/// "don't compare": neither is greater than the other, but they aren't equal either;
+/// for elements which are linked by going only up or only down:
+/// the one higher than the other is strictly "greater" than the other)
 ///
-/// In this diagram, the five elements are the equivalence classes
+/// In this diagram, the eight elements are the equivalence classes
 /// described in the [top-level doc for the type](Self#comparisonsequalities):
-/// `AO` is append-only, `NO` is new-only, `W` is "write", `AOC` is
-/// append-only + create, `WC` is write + create.
-///
-/// Read-Only is disconnected from all others, because it's (currently) the
-/// only equivalence group which reads and it doesn't write, whereas all
-/// others write, but can't read
+/// `AO` is append-only, `CO` is new-only, `W` is "write", `AOC` is
+/// append-only + create, `WC` is write + create, `RO` is read-only `RW`
+/// is write + read, `RWC` is write + read + create.
 impl PartialOrd for FileReadWriteOptions {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         product_order::combine_option_orderings(
@@ -178,7 +202,7 @@ impl PartialOrd for FileReadWriteOptions {
                 Self::can_create_new,
                 Self::can_touch_existing,
                 Self::can_overwrite_existing,
-                Self::can_read,
+                Self::can_read_existing,
             ]
             .map(|cmp| cmp(*self).partial_cmp(&cmp(*other))),
         )
@@ -197,7 +221,7 @@ impl PartialOrd for FilePermissions {
         for (filepath, write_options) in &self.files {
             if let Some(other_options) = other.files.get(filepath) {
                 // both have the same file, combine with the comparison of
-                // write options
+                // read/write options
                 acc = combine_ordering(acc, write_options.partial_cmp(other_options)?)?;
             } else {
                 // self has a file which other doesn't, so combine with greater
@@ -220,7 +244,7 @@ impl PartialOrd for FilePermissions {
 impl PermTreeFromAllOr for FilePermissions {
     fn from_lua_inner<'gc>(ctx: Context<'gc>, value: Value<'gc>) -> Option<Self> {
         let Value::Table(tab) = value else {
-            eprintln!("write permissions should be a table");
+            eprintln!("read/write permissions should be a table");
             return None;
         };
 
@@ -249,7 +273,7 @@ impl PermTreeFromAllOr for FilePermissions {
 
                     ret.files.insert(pathbuf, FileReadWriteOptions::from_lua(ctx, v)?);
                 }
-                _ => eprintln!("unexpected key val combo in file write permissions"),
+                _ => eprintln!("unexpected key val combo in file read/write permissions"),
             }
         }
         Some(ret)
@@ -258,11 +282,9 @@ impl PermTreeFromAllOr for FilePermissions {
 
 impl PermTreeNode for FileReadWriteOptions {
     fn from_lua<'gc>(ctx: Context<'gc>, value: Value<'gc>) -> Option<Self> {
-        use OverwriteMode::*;
-
         match value {
             Value::String(s) if s.as_bytes() == b"all" => Some(Default::default()),
-            Value::String(s) if s.as_bytes() == b"create_only" => Some(Self::NewOnly),
+            Value::String(s) if s.as_bytes() == b"create_only" => Some(Self::CreateOnly),
             Value::String(s) if s.as_bytes() == b"read_only" => Some(Self::ReadOnly),
             Value::Table(tab) => {
                 let create = match tab.get_value(ctx, "create") {
@@ -276,11 +298,35 @@ impl PermTreeNode for FileReadWriteOptions {
                     }
                 };
 
-                let mode: OverwriteMode = match tab.get_value(ctx, "overwrite_mode") {
-                    Value::String(s) if s.as_bytes() == b"append_only" => AppendOnly,
-                    Value::String(s) if s.as_bytes() == b"append" => Append,
-                    Value::String(s) if s.as_bytes() == b"truncate" => Truncate,
-                    Value::String(s) if s.as_bytes() == b"start" => Start,
+                let read = match tab.get_value(ctx, "read") {
+                    Value::Boolean(b) => Some(b),
+                    Value::Nil => None,
+                    _ => {
+                        eprintln!("invalid value for 'read' in overwrite options, assuming false");
+                        None
+                    }
+                };
+
+                let mode: OverwriteMode = match tab.get_value(ctx, "mode") {
+                    Value::String(s) if s.as_bytes() == b"append_only" => {
+                        if read.is_some() {
+                            eprintln!("invalid \"read\" node on append_only");
+                            return None;
+                        }
+                        OverwriteMode::AppendOnly
+                    }
+                    Value::String(s) if s.as_bytes() == b"append" => OverwriteMode::CanSeek {
+                        read: read.unwrap_or_default(),
+                        mode: SeekingWrite::Append,
+                    },
+                    Value::String(s) if s.as_bytes() == b"truncate" => OverwriteMode::CanSeek {
+                        read: read.unwrap_or_default(),
+                        mode: SeekingWrite::Truncate,
+                    },
+                    Value::String(s) if s.as_bytes() == b"start" => OverwriteMode::CanSeek {
+                        read: read.unwrap_or_default(),
+                        mode: SeekingWrite::Start,
+                    },
                     Value::Nil => {
                         eprintln!("missing value for 'mode' in overwrite options");
                         return None;
@@ -294,7 +340,7 @@ impl PermTreeNode for FileReadWriteOptions {
                 Some(Self::CanOverwrite { create, mode })
             }
             _ => {
-                eprintln!("invalid value to construct file write opts");
+                eprintln!("invalid value to construct file read/write opts");
                 None
             }
         }
@@ -328,7 +374,7 @@ impl From<FileReadWriteOptions> for std::fs::OpenOptions {
         ret.write(options.can_write());
         ret.create(options.can_create_new());
         match options {
-            FileReadWriteOptions::NewOnly => {
+            FileReadWriteOptions::CreateOnly => {
                 ret.create_new(true);
             }
             FileReadWriteOptions::ReadOnly => {}
@@ -336,15 +382,25 @@ impl From<FileReadWriteOptions> for std::fs::OpenOptions {
                 ret.create_new(false);
 
                 match mode {
-                    OverwriteMode::AppendOnly | OverwriteMode::Append => {
+                    OverwriteMode::AppendOnly
+                    | OverwriteMode::CanSeek {
+                        mode: SeekingWrite::Append,
+                        ..
+                    } => {
                         ret.truncate(false);
                         ret.append(true);
                     }
-                    OverwriteMode::Truncate => {
+                    OverwriteMode::CanSeek {
+                        mode: SeekingWrite::Truncate,
+                        ..
+                    } => {
                         ret.truncate(true);
                         ret.append(false);
                     }
-                    OverwriteMode::Start => {
+                    OverwriteMode::CanSeek {
+                        mode: SeekingWrite::Start,
+                        ..
+                    } => {
                         ret.truncate(false);
                         ret.append(false);
                     }
@@ -362,7 +418,11 @@ mod test {
 
     use super::*;
     use crate::{
-        perm_tree::{FilePermissions, test::build_from_lua},
+        perm_tree::{
+            FilePermissions,
+            filesystem::SeekingWrite::{Append, Start, Truncate},
+            test::build_from_lua,
+        },
         permission::helpers::AllOr,
     };
 
@@ -419,12 +479,16 @@ mod test {
         assert!(opts.can_create_new());
         assert!(opts.can_overwrite_existing());
         assert!(opts.can_seek());
+        assert!(opts.can_read());
 
         assert_eq!(
             opts,
             FileReadWriteOptions::CanOverwrite {
                 create: true,
-                mode: OverwriteMode::Truncate
+                mode: OverwriteMode::CanSeek {
+                    read: true,
+                    mode: SeekingWrite::Truncate
+                },
             }
         );
     }
@@ -434,7 +498,8 @@ mod test {
         use FileReadWriteOptions::*;
         use OverwriteMode::*;
 
-        let new_only = NewOnly;
+        let create_only = CreateOnly;
+        let read_only = ReadOnly;
         let append_only = CanOverwrite {
             create: false,
             mode: AppendOnly,
@@ -445,27 +510,87 @@ mod test {
         };
         let append = CanOverwrite {
             create: false,
-            mode: Append,
+            mode: CanSeek {
+                read: false,
+                mode: Append,
+            },
         };
         let append_create = CanOverwrite {
             create: true,
-            mode: Append,
+            mode: CanSeek {
+                read: false,
+                mode: Append,
+            },
+        };
+        let append_read = CanOverwrite {
+            create: false,
+            mode: CanSeek {
+                read: true,
+                mode: Append,
+            },
+        };
+        let append_read_create = CanOverwrite {
+            create: true,
+            mode: CanSeek {
+                read: true,
+                mode: Append,
+            },
         };
         let trunc = CanOverwrite {
             create: false,
-            mode: Append,
+            mode: CanSeek {
+                read: false,
+                mode: Truncate,
+            },
         };
         let trunc_create = CanOverwrite {
             create: true,
-            mode: Append,
+            mode: CanSeek {
+                read: false,
+                mode: Truncate,
+            },
+        };
+        let trunc_read = CanOverwrite {
+            create: false,
+            mode: CanSeek {
+                read: true,
+                mode: Truncate,
+            },
+        };
+        let trunc_read_create = CanOverwrite {
+            create: true,
+            mode: CanSeek {
+                read: true,
+                mode: Truncate,
+            },
         };
         let start = CanOverwrite {
             create: false,
-            mode: Append,
+            mode: CanSeek {
+                read: false,
+                mode: Start,
+            },
         };
         let start_create = CanOverwrite {
             create: true,
-            mode: Append,
+            mode: CanSeek {
+                read: false,
+                mode: Start,
+            },
+        };
+        let start_read = CanOverwrite {
+            create: false,
+            mode: CanSeek {
+                read: true,
+                mode: Start,
+            },
+        };
+        let start_read_create = CanOverwrite {
+            create: true,
+            mode: CanSeek {
+                read: true,
+                mode: Start,
+            },
         };
 
         // test equivalence classes
@@ -477,30 +602,77 @@ mod test {
         assert_eq!(append_create, start_create);
         assert_eq!(trunc_create, start_create);
 
+        assert_eq!(append_read, trunc_read);
+        assert_eq!(append_read, start_read);
+        assert_eq!(trunc_read, start_read);
+
+        assert_eq!(append_read_create, trunc_read_create);
+        assert_eq!(append_read_create, start_read_create);
+        assert_eq!(trunc_read_create, start_read_create);
+
         // the three "max" values should be greater than all others
-        for max in [start_create, trunc_create, append_create] {
+        for max in [start_read_create, trunc_read_create, append_read_create] {
             for non_max in [
-                new_only,
+                start,
+                start_read,
+                start_create,
+                trunc,
+                trunc_read,
+                trunc_create,
+                append,
+                append_read,
+                append_create,
                 append_only,
                 append_only_create,
-                append,
-                trunc,
-                start,
+                create_only,
+                read_only,
             ] {
-                assert!(max > non_max);
+                assert!(max > non_max, "MAX {max:?} should be > non-max {non_max:?}")
             }
         }
 
-        // we have three "pairs" of equivalence classes which don't
-        // compare: (AO, NO), (NO, W), and (AOC, W)
+        // we have 10 "pairs" of equivalence classes which don't compare:
+        // (AO, CO), (CO, W), and (AOC, W), (AOC, RW), (RO, AO),
+        // (RO, AOC), (RO, CO), (RO, W), (RO, WC), (RW, WC)
         for noncomparable in [
-            (append_only, new_only),
-            (new_only, append),
-            (new_only, trunc),
-            (new_only, start),
+            // AO,CO
+            (append_only, create_only),
+            // CO, W
+            (create_only, append),
+            (create_only, trunc),
+            (create_only, start),
+            // AOC, W
             (append_only_create, append),
             (append_only_create, trunc),
             (append_only_create, start),
+            // AOC, RW
+            (append_only_create, append_read),
+            (append_only_create, trunc_read),
+            (append_only_create, start_read),
+            // RO, AO
+            (read_only, append_only),
+            // RO, AOC
+            (read_only, append_only_create),
+            // RO, CO
+            (read_only, create_only),
+            // RO, W
+            (read_only, append),
+            (read_only, trunc),
+            (read_only, start),
+            // RO, WC
+            (read_only, append_create),
+            (read_only, trunc_create),
+            (read_only, start_create),
+            // RW, WC
+            (append_read, append_create),
+            (append_read, start_create),
+            (append_read, trunc_create),
+            (start_read, append_create),
+            (start_read, start_create),
+            (start_read, trunc_create),
+            (trunc_read, append_create),
+            (trunc_read, start_create),
+            (trunc_read, trunc_create),
         ] {
             assert_eq!(
                 noncomparable.0.partial_cmp(&noncomparable.1),
@@ -510,6 +682,20 @@ mod test {
                 noncomparable.1
             );
             assert_eq!(noncomparable.1.partial_cmp(&noncomparable.0), None);
+        }
+
+        // WC values have 4 eq classes below them: AO, CO, W, AOC
+        for wc in [start_create, trunc_create, append_create] {
+            for non_max in [
+                create_only,
+                append_only,
+                append_only_create,
+                append,
+                trunc,
+                start,
+            ] {
+                assert!(wc > non_max, "{wc:?} should be greater than {non_max:?}");
+            }
         }
 
         // AOC, W and WC should be greater than AO
@@ -525,29 +711,14 @@ mod test {
             assert!(append_only < greater);
         }
 
-        // only AOC and WC are greater than NO
+        // only AOC and WC are greater than CO
         for greater in [
             append_only_create,
             trunc_create,
             append_create,
             start_create,
         ] {
-            assert!(new_only < greater);
-        }
-
-        for opt in [
-            new_only,
-            append_only,
-            append_only_create,
-            append,
-            append_create,
-            trunc,
-            trunc_create,
-            start,
-            start_create,
-        ] {
-            assert_eq!(FileReadWriteOptions::ReadOnly.partial_cmp(&opt), None);
-            assert_eq!(opt.partial_cmp(&FileReadWriteOptions::ReadOnly), None);
+            assert!(create_only < greater);
         }
     }
 
@@ -572,18 +743,19 @@ mod test {
                 ["new_file.txt"] = "create_only",
 
                 append_only = {
-                    overwrite_mode = "append_only",
+                    mode = "append_only",
                     -- create = false, -- defaults to false
                 },
 
                 truncate_or_create = {
-                    overwrite_mode = "truncate",
+                    mode = "truncate",
                     create = true,
                 },
 
                 -- this starts by appending but can seek anywhere to edit the whole file
                 append = {
-                    overwrite_mode = "append"
+                    mode = "append",
+                    read = true,
                 },
 
                 rdonly = "read_only",
@@ -597,10 +769,13 @@ mod test {
                     "other_file".into(),
                     FileReadWriteOptions::CanOverwrite {
                         create: true,
-                        mode: OverwriteMode::Truncate,
+                        mode: OverwriteMode::CanSeek {
+                            read: true,
+                            mode: SeekingWrite::Truncate,
+                        },
                     },
                 ),
-                ("new_file.txt".into(), FileReadWriteOptions::NewOnly),
+                ("new_file.txt".into(), FileReadWriteOptions::CreateOnly),
                 (
                     "append_only".into(),
                     FileReadWriteOptions::CanOverwrite {
@@ -612,14 +787,20 @@ mod test {
                     "truncate_or_create".into(),
                     FileReadWriteOptions::CanOverwrite {
                         create: true,
-                        mode: OverwriteMode::Truncate,
+                        mode: OverwriteMode::CanSeek {
+                            read: false,
+                            mode: SeekingWrite::Truncate,
+                        },
                     },
                 ),
                 (
                     "append".into(),
                     FileReadWriteOptions::CanOverwrite {
                         create: false,
-                        mode: OverwriteMode::Append,
+                        mode: OverwriteMode::CanSeek {
+                            read: true,
+                            mode: SeekingWrite::Append,
+                        },
                     },
                 ),
                 ("rdonly".into(), FileReadWriteOptions::ReadOnly),
