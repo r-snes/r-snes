@@ -114,8 +114,16 @@ pub struct Dsp {
     /// GAIN+8" register for each voice 0-7 (reg offset 0xF), but they
     /// aren't per-voice data — together the 8 values form one global
     /// filter applied to the echo buffer. `fir_coeff[N]` is tap N,
-    /// stored at register `N*0x10 + 0x0F`.
+    /// stored at register `N*0x10 + 0x0F`. Tap 0 weights the *oldest*
+    /// entry of `fir_history`, tap 7 the newest.
     fir_coeff: [i8; 8],
+
+    /// The last 8 stereo pairs read out of the echo buffer, oldest first
+    /// (index 7 = the pair read this tick). The FIR filters this history,
+    /// not the buffer itself, so every tap sees fully delayed samples.
+    /// Stored halved (`>> 1`), as the hardware keeps them; the taps'
+    /// `>> 6` makes up for it.
+    fir_history: [(i16, i16); 8],
 
     /// Stage 2: byte offset of the echo buffer's read/write pointer,
     /// relative to the buffer's base (ESA*0x100). Advances by 4 (one
@@ -180,6 +188,7 @@ impl Dsp {
             esa: 0,
             edl: 0,
             fir_coeff: [0i8; 8],
+            fir_history: [(0, 0); 8],
             echo_ptr: 0,
             echo_len: 0,
             echo_out_l: 0,
@@ -573,58 +582,43 @@ impl Dsp {
         (old_l, old_r)
     }
 
-    fn read_fir_taps(&self, ram: &RawARAM) -> [(i16, i16); 8] {
-        // A latched length of 0 (EDL=0) is the single 4-byte pair at ESA,
-        // so every tap reads that pair. Modular arithmetic keeps the tap
-        // offsets in range for any length, including that 4-byte case.
-        let len = self.echo_len.max(4) as u32;
-        let mut taps = [(0i16, 0i16); 8];
-
-        for k in 0..8u32 {
-            let back = k * 4; // 0, 4, ..., 28
-            let offset = ((self.echo_ptr as u32 + len * 8 - back) % len) as u16;
-            let addr = self.echo_addr(offset);
-            taps[k as usize] = (
-                read_echo_sample(ram, addr),
-                read_echo_sample(ram, addr.wrapping_add(2)),
-            );
-        }
-        taps
+    /// Filter the FIR history with the 8 coefficients, as the hardware
+    /// does: taps 0-6 are summed and truncated to 16 bits (wrapping, not
+    /// clamping), tap 7 is added, then the result is clamped and its
+    /// lowest bit cleared.
+    fn fir_filter(&self) -> (i16, i16) {
+        let channel = |pick: fn(&(i16, i16)) -> i16| -> i16 {
+            let tap =
+                |i: usize| (pick(&self.fir_history[i]) as i32 * self.fir_coeff[i] as i32) >> 6;
+            let mut sum: i32 = (0..7).map(tap).sum();
+            sum = sum as i16 as i32;
+            sum += tap(7) as i16 as i32;
+            (sum.clamp(i16::MIN as i32, i16::MAX as i32) as i16) & !1
+        };
+        (channel(|p| p.0), channel(|p| p.1))
     }
 
-    /// Combine the 8 taps with the FIR coefficients
-    fn fir_filter(&self, taps: &[(i16, i16); 8]) -> (i16, i16) {
-        let mut sum_l: i32 = 0;
-        let mut sum_r: i32 = 0;
-        for (&coeff, tap) in self.fir_coeff.iter().zip(taps.iter()).take(7) {
-            let c = coeff as i32;
-            sum_l += (c * tap.0 as i32) >> 7;
-            sum_r += (c * tap.1 as i32) >> 7;
-        }
-        sum_l = sum_l as i16 as i32;
-        sum_r = sum_r as i16 as i32;
-
-        let c7 = self.fir_coeff[7] as i32;
-        sum_l += (c7 * taps[7].0 as i32) >> 7;
-        sum_r += (c7 * taps[7].1 as i32) >> 7;
-
-        (
-            sum_l.clamp(i16::MIN as i32, i16::MAX as i32) as i16,
-            sum_r.clamp(i16::MIN as i32, i16::MAX as i32) as i16,
-        )
-    }
-
-    /// Advance the echo processor by one tick.
+    /// Advance the echo processor by one tick and return the filtered
+    /// echo output (before EVOL):
+    ///
+    /// 1. read the pair at the echo pointer into the FIR history,
+    /// 2. filter the history,
+    /// 3. write `echo_in + filtered * EFB` back at the same position and
+    ///    advance the pointer (`tick_echo_buffer`).
+    ///
+    /// Because the FIR only ever sees samples read out of the buffer,
+    /// every tap is delayed by the full buffer length (EDL * 512 samples).
     pub fn tick_echo(&mut self, ram: &mut RawARAM, echo_in_l: i16, echo_in_r: i16) -> (i16, i16) {
-        let taps = self.read_fir_taps(ram);
-        let (fir_l, fir_r) = self.fir_filter(&taps);
+        let addr = self.echo_addr(self.echo_ptr);
+        let read_l = read_echo_sample(ram, addr);
+        let read_r = read_echo_sample(ram, addr.wrapping_add(2));
+        self.fir_history.rotate_left(1);
+        self.fir_history[7] = (read_l >> 1, read_r >> 1);
 
-        let fb_l = (self.efb as i32 * fir_l as i32) >> 7;
-        let fb_r = (self.efb as i32 * fir_r as i32) >> 7;
+        let (fir_l, fir_r) = self.fir_filter();
 
-        let write_l = (echo_in_l as i32 + fb_l).clamp(i16::MIN as i32, i16::MAX as i32) as i16;
-        let write_r = (echo_in_r as i32 + fb_r).clamp(i16::MIN as i32, i16::MAX as i32) as i16;
-
+        let write_l = echo_feedback(echo_in_l, fir_l, self.efb);
+        let write_r = echo_feedback(echo_in_r, fir_r, self.efb);
         self.tick_echo_buffer(ram, write_l, write_r);
 
         (fir_l, fir_r)
@@ -683,6 +677,14 @@ fn voice_dry_output(voice: &Voice) -> (i32, i32) {
     let left = (scaled * voice.left_vol as i32) >> 7;
     let right = (scaled * voice.right_vol as i32) >> 7;
     (left, right)
+}
+
+/// The value written back into the echo buffer: the echo input plus the
+/// filtered echo scaled by EFB (truncated to 16 bits, as on hardware),
+/// clamped, with the lowest bit cleared.
+fn echo_feedback(echo_in: i16, fir: i16, efb: i8) -> i16 {
+    let feedback = ((fir as i32 * efb as i32) >> 7) as i16 as i32;
+    ((echo_in as i32 + feedback).clamp(i16::MIN as i32, i16::MAX as i32) as i16) & !1
 }
 
 /// Read a little-endian 16-bit signed sample from APU RAM, matching the
