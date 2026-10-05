@@ -35,8 +35,8 @@ impl Renderer {
             ppu.oam.eval_sprites_for_scanline(y, objsel, oamadd);
 
         // Tile fetch: from the last evaluated sprite to the first, only tiles with
-        // X in -7..255, at most 34 per line. Past the limit, the remaining tiles
-        // (those of the first-evaluated sprites) are dropped.
+        // X in -7..255 (all tiles at X = -256, quirk), at most 34 per line. Past the
+        // limit, the remaining tiles (those of the first-evaluated sprites) are dropped.
         let mut fetched = 0;
         'fetch: for &(_idx, sprite) in sprites.iter().rev() {
             let (w, h) = OAM::sprite_size(objsel, sprite.large);
@@ -67,7 +67,9 @@ impl Renderer {
             for tx in 0..tiles_wide {
                 // Screen X of this tile (9-bit, wraps around).
                 let tile_x = (x9 + tx * 8) & 0x01FF;
-                if tile_x >= 256 && tile_x + 7 < 512 {
+                // Off-screen tiles are skipped, except at X = -256 where they are still
+                // fetched (and use up the 34 slots) but nothing is drawn.
+                if x9 != 256 && tile_x >= 256 && tile_x + 7 < 512 {
                     continue;
                 }
                 if fetched == MAX_TILES_PER_LINE {
@@ -90,7 +92,8 @@ impl Renderer {
 
                 let tile_word_base = (sprite.chr_base as usize + tile_num * 16) & VRAM_WORD_MASK;
 
-                // Left edge of the tile on screen: 505-511 are the partially visible -7..-1.
+                // Left edge of the tile on screen: 505-511 are the partially visible -7..-1,
+                // 256-504 (only reachable at X = -256) stay fully off-screen.
                 let screen_base = if tile_x >= 256 {
                     tile_x as isize - 512
                 } else {

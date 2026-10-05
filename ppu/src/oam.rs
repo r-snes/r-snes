@@ -268,7 +268,7 @@ impl OAM {
     // Per-scanline evaluation
     // ============================================================
 
-        /// Evaluate which sprites are visible on scanline `y`.
+    /// Evaluate which sprites are visible on scanline `y`.
     ///
     /// - Sprites are evaluated in order, starting from the priority-rotation
     ///   index (OAMADDH bit 7 enables it, OAMADDL >> 1 gives the start sprite),
@@ -276,8 +276,8 @@ impl OAM {
     /// - A sprite is in range if it covers line `y` and is not entirely left of
     ///   the screen (hardware quirk: X = -256 still counts as in range).
     /// - At most 32 sprites per scanline are kept; a 33rd sets `range_over`.
-    /// - Only tiles (8-pixel slices) with X in -7..255 are fetched; more than 34
-    ///   sets `time_over`.
+    /// - Only tiles (8-pixel slices) with X in -7..255 are fetched, except at
+    ///   X = -256 where every tile is fetched (quirk); more than 34 sets `time_over`.
     /// - Returns (visible sprites, time_over, range_over). The flags are not
     ///   stored here (this borrows &self); call `latch_flags` to latch them.
     pub fn eval_sprites_for_scanline(
@@ -323,10 +323,11 @@ impl OAM {
                 break;
             }
 
-            // Time Over: more than 34 tiles to fetch. Only tiles with X in -7..255 are fetched.
+            // Time Over: more than 34 tiles to fetch. Only tiles with X in -7..255 are
+            // fetched, except at X = -256 where every tile counts (treated as X = 0).
             for t in 0..(w / 8) {
                 let tile_x = (x9 + t * 8) & 0x01FF;
-                if tile_x < 256 || tile_x >= 512 - 7 {
+                if x9 == 256 || tile_x < 256 || tile_x >= 512 - 7 {
                     tile_count += 1;
                 }
             }
@@ -706,6 +707,18 @@ mod tests {
         assert_eq!(visible.len(), 32);
         assert!(range_over);
         assert!(!time_over);
+    }
+
+    // Hardware quirk: at X = -256 every tile counts toward the 34-tile limit.
+    #[test]
+    fn test_eval_x_minus_256_counts_all_tiles() {
+        const OBJSEL_8_64: u8 = 2 << 5; // small 8x8, large 64x64
+        let mut oam = make_oam();
+        for i in 0..5u8 {
+            make_sprite_entry(&mut oam, i, 0, 0, 0, 0, 0b11); // x = -256, large
+        }
+        let (_, time_over, _) = oam.eval_sprites_for_scanline(0, OBJSEL_8_64, 0);
+        assert!(time_over); // 5 * 8 = 40 > 34
     }
 
     // Only tiles with X in -7..255 count toward the 34-tile limit.
