@@ -58,11 +58,11 @@ pub struct OAM {
     write_latch: u8,
 
     /// STAT77 bit 7 (Time Over): set when more than 34 sprite tiles were found on a scanline.
-    /// Latched via set_flags; read through $213E.
+    /// Stays set until `clear_flags`; set by `latch_flags`, read through $213E.
     pub time_over: bool,
 
     /// STAT77 bit 6 (Range Over): set when more than 32 sprites were found on a scanline.
-    /// Latched via set_flags; read through $213E.
+    /// Stays set until `clear_flags`; set by `latch_flags`, read through $213E.
     pub range_over: bool,
 }
 
@@ -324,10 +324,16 @@ impl OAM {
         (visible, time_over, range_over)
     }
 
-    /// Latch the time_over / range_over flags for STAT77 ($213E).
-    pub fn set_flags(&mut self, time_over: bool, range_over: bool) {
-        self.time_over = time_over;
-        self.range_over = range_over;
+    /// ORs one line's overflow flags into STAT77; they stay set until `clear_flags`.
+    pub fn latch_flags(&mut self, time_over: bool, range_over: bool) {
+        self.time_over |= time_over;
+        self.range_over |= range_over;
+    }
+
+    /// Clears the STAT77 overflow flags (end of V-Blank, outside force blank).
+    pub fn clear_flags(&mut self) {
+        self.time_over = false;
+        self.range_over = false;
     }
 }
 
@@ -606,16 +612,24 @@ mod tests {
         assert!(!range_over);
     }
 
-    // set_flags latches the STAT77 flags.
+    // latch_flags ORs into the STAT77 flags, which stay set; clear_flags resets them.
     #[test]
-    fn test_set_flags() {
+    fn test_latch_and_clear_flags() {
         let mut oam = make_oam();
         assert!(!oam.time_over);
         assert!(!oam.range_over);
-        oam.set_flags(true, true);
+
+        oam.latch_flags(true, false);
+        oam.latch_flags(false, true);
         assert!(oam.time_over);
         assert!(oam.range_over);
-        oam.set_flags(false, false);
+
+        // A clean line does not reset them.
+        oam.latch_flags(false, false);
+        assert!(oam.time_over);
+        assert!(oam.range_over);
+
+        oam.clear_flags();
         assert!(!oam.time_over);
         assert!(!oam.range_over);
     }
