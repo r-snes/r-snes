@@ -496,15 +496,16 @@ impl Dsp {
                 // the echo buffer too, not the BRR audio underneath —
                 // both stages see the same "this voice's output this
                 // tick" value) into the echo input, same per-voice
-                // scaling as the main dry mix.
+                // scaling as the main dry mix. Clamped after each voice,
+                // like the dry mix (see `render_audio_single`).
                 let (l, r) = voice_dry_output(voice);
-                echo_in_l += l;
-                echo_in_r += r;
+                echo_in_l = clamp16(echo_in_l + l);
+                echo_in_r = clamp16(echo_in_r + r);
             }
         }
 
-        let echo_in_l = echo_in_l.clamp(i16::MIN as i32, i16::MAX as i32) as i16;
-        let echo_in_r = echo_in_r.clamp(i16::MIN as i32, i16::MAX as i32) as i16;
+        let echo_in_l = echo_in_l as i16;
+        let echo_in_r = echo_in_r as i16;
 
         let (echo_out_l, echo_out_r) = self.tick_echo(ram, echo_in_l, echo_in_r);
         self.echo_out_l = echo_out_l;
@@ -635,32 +636,33 @@ impl Dsp {
             return (0, 0);
         }
 
-        let mut left: i32 = 0;
-        let mut right: i32 = 0;
-
+        // The dry mix is a 16-bit accumulator on hardware: it saturates
+        // after *each* voice is added, so the order of loud voices matters
+        // (+, +, - can end far lower than the plain sum would).
+        let mut dry_l: i32 = 0;
+        let mut dry_r: i32 = 0;
         for voice in self.voices.iter() {
             let (l, r) = voice_dry_output(voice);
-            left += l;
-            right += r;
+            dry_l = clamp16(dry_l + l);
+            dry_r = clamp16(dry_r + r);
         }
 
-        // Apply master volume ($0C/$1C) as a final output stage scaler.
-        // Same signed i8 × i32 → >> 7 pattern as per-voice volume.
-        left = (left * self.master_vol_left as i32) >> 7;
-        right = (right * self.master_vol_right as i32) >> 7;
+        // Master volume ($0C/$1C) scales the dry mix and echo volume
+        // ($2C/$3C) the echo output, each with the signed i8 × i32 → >> 7
+        // pattern. Each product is truncated to 16 bits (wrapping, as on
+        // hardware) before the two are summed and clamped.
+        let main_l = ((dry_l * self.master_vol_left as i32) >> 7) as i16 as i32;
+        let main_r = ((dry_r * self.master_vol_right as i32) >> 7) as i16 as i32;
+        let echo_l = ((self.echo_out_l as i32 * self.echo_vol_left as i32) >> 7) as i16 as i32;
+        let echo_r = ((self.echo_out_r as i32 * self.echo_vol_right as i32) >> 7) as i16 as i32;
 
-        // Echo joins the mix scaled by its own volume, EVOL ($2C/$3C),
-        // the same signed i8 × i32 → >> 7 pattern as MVOL.
-        left += (self.echo_out_l as i32 * self.echo_vol_left as i32) >> 7;
-        right += (self.echo_out_r as i32 * self.echo_vol_right as i32) >> 7;
-
-        // A second clamp is required: master vol can amplify the
-        // already-summed dry mix past i16 range.
-        (
-            left.clamp(i16::MIN as i32, i16::MAX as i32) as i16,
-            right.clamp(i16::MIN as i32, i16::MAX as i32) as i16,
-        )
+        (clamp16(main_l + echo_l) as i16, clamp16(main_r + echo_r) as i16)
     }
+}
+
+/// Saturate to the signed 16-bit range, kept as i32 for further math.
+fn clamp16(x: i32) -> i32 {
+    x.clamp(i16::MIN as i32, i16::MAX as i32)
 }
 
 fn voice_dry_output(voice: &Voice) -> (i32, i32) {
