@@ -620,6 +620,8 @@ fn test_render_all_8_voices_contribute_to_mix() {
 #[test]
 fn test_render_output_clamped_to_i16_range() {
     // Drive 8 voices at max to provoke overflow; must clamp, not wrap.
+    // The dry mix saturates at i16::MAX *before* master volume, so with
+    // MVOL = 127 (~0.99x) the output is (32767 * 127) >> 7 = 32511.
     let mut dsp = booted_dsp();
     dsp.write_reg(0x0C, 127u8); // MVOLL
     dsp.write_reg(0x1C, 127u8); // MVOLR
@@ -631,8 +633,46 @@ fn test_render_output_clamped_to_i16_range() {
         dsp.voices[v].right_vol = 127;
     }
     let (l, r) = dsp.render_audio_single();
-    assert_eq!(l, i16::MAX, "left must clamp to i16::MAX");
-    assert_eq!(r, i16::MAX, "right must clamp to i16::MAX");
+    assert_eq!(l, 32511, "left must saturate, then be scaled by MVOL");
+    assert_eq!(r, 32511, "right must saturate, then be scaled by MVOL");
+}
+
+/// A voice at full envelope and volume 127 playing `sample`.
+fn loud_voice(dsp: &mut Dsp, v: usize, sample: i16) {
+    dsp.voices[v].adsr.envelope_phase = EnvelopePhase::Sustain;
+    dsp.voices[v].adsr.envelope_level = 0x7FF;
+    dsp.voices[v].current_sample = sample;
+    dsp.voices[v].left_vol = 127;
+    dsp.voices[v].right_vol = 127;
+}
+
+#[test]
+fn test_render_dry_mix_saturates_before_master_volume() {
+    // Two full-scale voices (32495 each) overflow the 16-bit dry mix,
+    // which saturates at 32767 *before* MVOL halves it: 16383, not the
+    // 32495 that halving the unclamped sum would give.
+    let mut dsp = booted_dsp();
+    dsp.write_reg(0x0C, 64u8); // MVOLL ~0.5x
+    loud_voice(&mut dsp, 0, i16::MAX);
+    loud_voice(&mut dsp, 1, i16::MAX);
+
+    let (l, _) = dsp.render_audio_single();
+    assert_eq!(l, 16383);
+}
+
+#[test]
+fn test_render_dry_mix_saturates_after_each_voice() {
+    // +, +, - : voices 0 and 1 overflow and saturate at 32767 before
+    // voice 2 (-32497) is added, leaving 270 — the plain sum would leave
+    // 32493. Then MVOL = 127: (270 * 127) >> 7 = 267.
+    let mut dsp = booted_dsp();
+    dsp.write_reg(0x0C, 127u8); // MVOLL
+    loud_voice(&mut dsp, 0, i16::MAX);
+    loud_voice(&mut dsp, 1, i16::MAX);
+    loud_voice(&mut dsp, 2, -i16::MAX);
+
+    let (l, _) = dsp.render_audio_single();
+    assert_eq!(l, 267);
 }
 
 #[test]
