@@ -57,11 +57,11 @@ pub struct OAM {
     /// Low-byte latch for the table-1 write-twice mechanism.
     write_latch: u8,
 
-    /// STAT77 bit 7: set when more than 32 sprites were found on a scanline.
+    /// STAT77 bit 7 (Time Over): set when more than 34 sprite tiles were found on a scanline.
     /// Latched via set_flags; read through $213E.
     pub time_over: bool,
 
-    /// STAT77 bit 6: set when more than 34 sprite tiles were found on a scanline.
+    /// STAT77 bit 6 (Range Over): set when more than 32 sprites were found on a scanline.
     /// Latched via set_flags; read through $213E.
     pub range_over: bool,
 }
@@ -272,9 +272,9 @@ impl OAM {
     /// - Sprites are evaluated in order, starting from the priority-rotation
     ///   index (OAMADDH bit 7 enables it, OAMADDL >> 1 gives the start sprite),
     ///   wrapping around all 128 sprites.
-    /// - At most 32 sprites per scanline are kept; a 33rd sets `time_over`.
+    /// - At most 32 sprites per scanline are kept; a 33rd sets `range_over`.
     /// - At most 34 sprite tiles (8-pixel slices) fit on a scanline; beyond
-    ///   that, `range_over` is set.
+    ///   that, `time_over` is set.
     /// - Returns (visible sprites, time_over, range_over). The flags are not
     ///   stored here (this borrows &self); call `set_flags` to latch them.
     pub fn eval_sprites_for_scanline(
@@ -306,15 +306,16 @@ impl OAM {
                 continue;
             }
 
+            // Range Over: a 33rd sprite on the line.
             if visible.len() >= 32 {
-                time_over = true;
+                range_over = true;
                 break;
             }
 
-            // Each visible sprite contributes width/8 tiles on this scanline.
+            // Time Over: more than 34 tiles (8-pixel slices) to fetch.
             tile_count += (width as u16) / 8;
             if tile_count > 34 {
-                range_over = true;
+                time_over = true;
             }
 
             visible.push((idx as u8, sprite));
@@ -509,24 +510,29 @@ mod tests {
         assert_eq!(oam.eval_sprites_for_scanline(9, OBJSEL_8_16, 0).0.len(), 0);
     }
 
-    // 33 sprites on one scanline: only 32 kept, time_over set; exactly 32 is fine.
+    // time_over is set when more than 34 tiles (8px slices) fall on a line.
+    // Small 8x8 sprites can't trigger it (the 32-sprite range_over limit hits
+    // first), so use large 64px-wide sprites: 5 * 8 = 40 tiles > 34, with only
+    // 5 sprites. OBJSEL mode 2 gives large = 64x64.
     #[test]
     fn test_eval_time_over() {
-        let mut oam = make_oam();
-        for i in 0..33u8 {
-            make_sprite_entry(&mut oam, i, 0, 0, 0, 0, 0);
-        }
-        let (visible, over, _) = oam.eval_sprites_for_scanline(0, OBJSEL_8_16, 0);
-        assert_eq!(visible.len(), 32);
-        assert!(over);
+        const OBJSEL_8_64: u8 = 2 << 5; // small 8x8, large 64x64
 
         let mut oam = make_oam();
-        for i in 0..32u8 {
-            make_sprite_entry(&mut oam, i, 0, 0, 0, 0, 0);
+        for i in 0..5u8 {
+            make_sprite_entry(&mut oam, i, 0, 0, 0, 0, 0b10); // large bit set
         }
-        let (visible, over, _) = oam.eval_sprites_for_scanline(0, OBJSEL_8_16, 0);
-        assert_eq!(visible.len(), 32);
-        assert!(!over);
+        let (_, time_over, range_over) = oam.eval_sprites_for_scanline(0, OBJSEL_8_64, 0);
+        assert!(time_over);
+        assert!(!range_over);
+
+        // 4 large sprites = 32 tiles, not over.
+        let mut oam = make_oam();
+        for i in 0..4u8 {
+            make_sprite_entry(&mut oam, i, 0, 0, 0, 0, 0b10);
+        }
+        let (_, time_over, _) = oam.eval_sprites_for_scanline(0, OBJSEL_8_64, 0);
+        assert!(!time_over);
     }
 
     // Priority rotation starts evaluation at the sprite given by OAMADDL >> 1.
@@ -579,28 +585,24 @@ mod tests {
         assert_eq!(visible[2].0, 5);
     }
 
-    // range_over is set when more than 34 tiles (8px slices) fall on a line.
-    // Small 8x8 sprites can't trigger it (the 32-sprite time_over limit hits
-    // first), so use large 64px-wide sprites: 5 * 8 = 40 tiles > 34, with only
-    // 5 sprites. OBJSEL mode 2 gives large = 64x64.
+    // 33 sprites on one scanline: only 32 kept, range_over set; exactly 32 is fine.
     #[test]
     fn test_eval_range_over() {
-        const OBJSEL_8_64: u8 = 2 << 5; // small 8x8, large 64x64
-
         let mut oam = make_oam();
-        for i in 0..5u8 {
-            make_sprite_entry(&mut oam, i, 0, 0, 0, 0, 0b10); // large bit set
+        for i in 0..33u8 {
+            make_sprite_entry(&mut oam, i, 0, 0, 0, 0, 0);
         }
-        let (_, time_over, range_over) = oam.eval_sprites_for_scanline(0, OBJSEL_8_64, 0);
-        assert!(!time_over);
+        let (visible, time_over, range_over) = oam.eval_sprites_for_scanline(0, OBJSEL_8_16, 0);
+        assert_eq!(visible.len(), 32);
         assert!(range_over);
+        assert!(!time_over);
 
-        // 4 large sprites = 32 tiles, not over.
         let mut oam = make_oam();
-        for i in 0..4u8 {
-            make_sprite_entry(&mut oam, i, 0, 0, 0, 0, 0b10);
+        for i in 0..32u8 {
+            make_sprite_entry(&mut oam, i, 0, 0, 0, 0, 0);
         }
-        let (_, _, range_over) = oam.eval_sprites_for_scanline(0, OBJSEL_8_64, 0);
+        let (visible, _, range_over) = oam.eval_sprites_for_scanline(0, OBJSEL_8_16, 0);
+        assert_eq!(visible.len(), 32);
         assert!(!range_over);
     }
 
