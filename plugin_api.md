@@ -364,14 +364,16 @@ The PPU has 3 memory units which plugins can (**will** in the near future, a lot
 For now, filesystem requests are of the form
 ```lua
 return {
-    external = {
-        filesystem = {
-            files = {
-                "filename1" = <open_options>,
-                "filename2" = "all",
-                "filename3", -- defaults to "all" like regular perm nodes
-            }
-        }
+    permissions = {
+        external = {
+            filesystem = {
+                files = {
+                    ["filename1"] = <open_options>,
+                    ["filename2"] = "all",
+                    ["filename3"], -- defaults to "all" like regular perm nodes
+                },
+            },
+        },
     }
 }
 ```
