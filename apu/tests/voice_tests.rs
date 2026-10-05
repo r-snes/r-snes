@@ -430,6 +430,15 @@ fn push_history_shifts_oldest_to_newest() {
 // FLG register: RESET and MUTE
 // ============================================================
 
+/// Run a bare Dsp through its next KON/KOFF poll (every other sample, so
+/// two steps always include one), on empty RAM.
+fn poll_key_regs(dsp: &mut Dsp) {
+    let mut ram: Box<RawARAM> = Box::new([0u8; 64 * 1024]);
+    for _ in 0..2 {
+        dsp.step(&mut ram);
+    }
+}
+
 #[test]
 fn flg_powers_on_with_reset_mute_and_echo_write_disable() {
     let dsp = Dsp::new();
@@ -445,6 +454,7 @@ fn kon_blocked_at_power_on_until_driver_clears_reset() {
     let mut dsp = Dsp::new();
 
     dsp.write_reg(0x4C, 0x01);
+    poll_key_regs(&mut dsp);
     assert!(
         !dsp.voices[0].key_on,
         "KON must be ignored while FLG's power-on reset bit is set"
@@ -452,6 +462,7 @@ fn kon_blocked_at_power_on_until_driver_clears_reset() {
 
     dsp.write_reg(0x6C, 0x00);
     dsp.write_reg(0x4C, 0x01);
+    poll_key_regs(&mut dsp);
     assert!(
         dsp.voices[0].key_on,
         "KON must work once the driver has cleared FLG"
@@ -478,6 +489,7 @@ fn reset_silences_voices_clears_endx_and_blocks_kon() {
 
     // KON while still in reset must be ignored.
     dsp.write_reg(0x4C, 0x01);
+    poll_key_regs(&mut dsp);
     assert!(
         !dsp.voices[0].key_on,
         "KON must be ignored while RESET is set"
@@ -486,6 +498,7 @@ fn reset_silences_voices_clears_endx_and_blocks_kon() {
     // Clearing RESET lets KON work again.
     dsp.write_reg(0x6C, 0x00);
     dsp.write_reg(0x4C, 0x01);
+    poll_key_regs(&mut dsp);
     assert!(
         dsp.voices[0].key_on,
         "KON must work again once RESET clears"

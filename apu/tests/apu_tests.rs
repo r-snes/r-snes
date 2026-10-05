@@ -59,6 +59,17 @@ fn setup_cpu(apu: &mut Apu, start_addr: u16, nop_count: usize) {
     apu.skip_ipl_boot();
 }
 
+/// Run the DSP on its own — no CPU cycles, so `apu.cycles` is untouched
+/// — until a just-keyed-on voice is playing. The DSP polls KON every
+/// other sample and the voice then waits 5 samples, so 7 DSP steps always
+/// get it running.
+fn start_keyed_on_voices(apu: &mut Apu) {
+    let mem = &mut apu.memory;
+    for _ in 0..7 {
+        mem.dsp.step(&mut mem.ram);
+    }
+}
+
 /// Set up a silent looping BRR voice on voice 0 via the $F2/$F3 protocol.
 ///
 /// Memory layout chosen to avoid colliding with the CPU NOP sled:
@@ -108,6 +119,13 @@ fn setup_voice_silent_sample(apu: &mut Apu) {
     dsp_w(apu, 0x1C, 127u8); // MVOLR
     dsp_w(apu, 0x6C, 0x00); // FLG: leave power-on reset/mute, as a driver does
     dsp_w(apu, 0x4C, 0x01); // KON voice 0
+    start_keyed_on_voices(apu);
+
+    // The DSP-timing tests count DSP ticks through this voice's envelope,
+    // so restart it from 0 in Attack: from here every DSP tick adds 1024
+    // (attack rate 15) until it clamps at 0x7FF.
+    apu.memory.dsp.voices[0].adsr.envelope_level = 0;
+    apu.memory.dsp.voices[0].adsr.envelope_phase = EnvelopePhase::Attack;
 }
 
 /// Set up a looping BRR voice on voice 0 that produces non-zero output.
@@ -152,6 +170,7 @@ fn setup_voice_nonzero_sample(apu: &mut Apu) {
     dsp_w(apu, 0x1C, 127u8); // MVOLR
     dsp_w(apu, 0x6C, 0x00); // FLG: leave power-on reset/mute, as a driver does
     dsp_w(apu, 0x4C, 0x01); // KON voice 0
+    start_keyed_on_voices(apu);
 }
 
 // ============================================================

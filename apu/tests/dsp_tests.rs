@@ -49,6 +49,26 @@ fn booted_dsp() -> Dsp {
     dsp
 }
 
+/// Run the DSP through its next KON/KOFF poll. The DSP polls them every
+/// other sample, so two steps always include one. A voice keyed on by
+/// that poll is still inside its 5-sample start delay afterwards, so its
+/// freshly reset playback state hasn't been touched yet.
+fn poll_key_regs(mem: &mut Memory) {
+    for _ in 0..2 {
+        mem.dsp.step(&mut mem.ram);
+    }
+}
+
+/// Key the voices in `mask` on and run the DSP until they are playing:
+/// up to 2 samples for the KON poll, then the 5-sample start delay, so 7
+/// steps always get every voice in `mask` running.
+fn key_on(mem: &mut Memory, mask: u8) {
+    dsp_gw(mem, 0x4C, mask);
+    for _ in 0..7 {
+        mem.dsp.step(&mut mem.ram);
+    }
+}
+
 /// Build a minimal valid 9-byte BRR block in APU RAM.
 /// shift=4, filter=0, end=end_flag, loop=loop_flag, all nibbles=0.
 fn write_silent_brr_block(mem: &mut Memory, addr: u16, end: bool, do_loop: bool) {
@@ -168,6 +188,7 @@ fn test_kon_register_keys_on_specified_voices() {
     }
 
     dsp_gw(&mut mem, 0x4C, 0b00000101); // KON: voices 0 and 2
+    poll_key_regs(&mut mem);
 
     assert!(mem.dsp.voices[0].key_on, "voice 0 should be keyed on");
     assert!(mem.dsp.voices[2].key_on, "voice 2 should be keyed on");
@@ -183,6 +204,7 @@ fn test_koff_register_enters_release_phase() {
     mem.dsp.voices[1].adsr.envelope_level = 0x400;
 
     dsp_gw(&mut mem, 0x5C, 0b00000010); // KOFF voice 1
+    poll_key_regs(&mut mem);
 
     assert_eq!(
         mem.dsp.voices[1].adsr.envelope_phase,
@@ -203,6 +225,7 @@ fn test_kon_resets_brr_state() {
     mem.dsp.voices[0].pitch_counter = 0x0FFF;
 
     dsp_gw(&mut mem, 0x4C, 0x01);
+    poll_key_regs(&mut mem);
 
     assert_eq!(mem.dsp.voices[0].brr.nibble_idx, 0, "nibble_idx must reset");
     assert_eq!(mem.dsp.voices[0].brr.prev1, 0, "prev1 must reset");
@@ -223,6 +246,7 @@ fn test_kon_resets_current_sample() {
     let mut mem = booted_memory();
     mem.dsp.voices[0].current_sample = 0x7FFF;
     dsp_gw(&mut mem, 0x4C, 0x01);
+    poll_key_regs(&mut mem);
     assert_eq!(
         mem.dsp.voices[0].current_sample, 0,
         "current_sample must reset on KON"
@@ -233,6 +257,7 @@ fn test_kon_resets_current_sample() {
 fn test_kon_zero_value_keys_on_no_voices() {
     let mut mem = booted_memory();
     dsp_gw(&mut mem, 0x4C, 0x00);
+    poll_key_regs(&mut mem);
     for v in 0..8 {
         assert!(
             !mem.dsp.voices[v].key_on,
@@ -253,6 +278,7 @@ fn test_kon_all_8_voices_simultaneously() {
     }
     dsp_gw(&mut mem, 0x5D, dir_page);
     dsp_gw(&mut mem, 0x4C, 0xFF);
+    poll_key_regs(&mut mem);
 
     for v in 0..8 {
         assert!(
@@ -274,6 +300,7 @@ fn test_koff_zero_value_releases_no_voices() {
         mem.dsp.voices[v].adsr.envelope_phase = EnvelopePhase::Sustain;
     }
     dsp_gw(&mut mem, 0x5C, 0x00);
+    poll_key_regs(&mut mem);
     for v in 0..8 {
         assert_eq!(
             mem.dsp.voices[v].adsr.envelope_phase,
@@ -289,7 +316,137 @@ fn test_koff_when_voice_already_off_does_not_panic() {
     let mut mem = booted_memory();
     mem.dsp.voices[2].adsr.envelope_phase = EnvelopePhase::Off;
     dsp_gw(&mut mem, 0x5C, 0b00000100);
+    poll_key_regs(&mut mem);
     assert_eq!(mem.dsp.voices[2].adsr.envelope_level, 0);
+}
+
+#[test]
+fn test_kon_acts_at_the_next_poll_not_on_write() {
+    let mut mem = booted_memory();
+    dsp_gw(&mut mem, 0x4C, 0x01);
+    assert!(
+        !mem.dsp.voices[0].key_on,
+        "KON must be latched by the write, not applied immediately"
+    );
+    poll_key_regs(&mut mem);
+    assert!(mem.dsp.voices[0].key_on, "KON must apply at the next poll");
+}
+
+#[test]
+fn test_kon_is_polled_every_other_sample() {
+    // A fresh DSP polls on its first step, so the second step is not a
+    // poll: a KON written between them waits for the third.
+    let mut mem = booted_memory();
+    mem.dsp.step(&mut mem.ram); // poll
+
+    dsp_gw(&mut mem, 0x4C, 0x01);
+    mem.dsp.step(&mut mem.ram); // no poll
+    assert!(!mem.dsp.voices[0].key_on, "KON must wait for the next poll");
+    mem.dsp.step(&mut mem.ram); // poll
+    assert!(mem.dsp.voices[0].key_on);
+}
+
+#[test]
+fn test_second_kon_write_before_poll_replaces_the_first() {
+    let mut mem = booted_memory();
+    dsp_gw(&mut mem, 0x4C, 0x01);
+    dsp_gw(&mut mem, 0x4C, 0x02);
+    poll_key_regs(&mut mem);
+    assert!(
+        !mem.dsp.voices[0].key_on,
+        "an overwritten KON bit must be lost, as on hardware"
+    );
+    assert!(mem.dsp.voices[1].key_on);
+}
+
+#[test]
+fn test_kon_acts_once_per_write() {
+    // KON is consumed by the poll that applies it: later polls must not
+    // key the voice on again (which would keep restarting it).
+    let mut mem = booted_memory();
+    dsp_vw(&mut mem, 0, 0x5, 0x8F); // fast attack
+    dsp_vw(&mut mem, 0, 0x6, 0xE0); // hold sustain
+    key_on(&mut mem, 0x01);
+    let level = mem.dsp.voices[0].adsr.envelope_level;
+    assert!(level > 0, "sanity check: the voice must be playing");
+
+    for _ in 0..4 {
+        mem.dsp.step(&mut mem.ram);
+    }
+    assert!(
+        mem.dsp.voices[0].adsr.envelope_level >= level,
+        "a stale KON must not restart the voice's envelope"
+    );
+}
+
+#[test]
+fn test_keyed_on_voice_waits_five_samples_before_starting() {
+    // A fresh DSP polls on its first step. The voice is then held for 5
+    // samples (that step and the next 4) with its envelope at 0, and
+    // starts its attack on the 6th.
+    let mut mem = booted_memory();
+    let dir_page: u8 = 0x01;
+    let brr_addr: u16 = 0x0200;
+    write_silent_brr_block(&mut mem, brr_addr, true, true);
+    write_dir_entry(&mut mem, dir_page, 0, brr_addr, brr_addr);
+    dsp_gw(&mut mem, 0x5D, dir_page);
+    dsp_vw(&mut mem, 0, 0x5, 0x8F); // fast attack: +1024 per sample
+    dsp_vw(&mut mem, 0, 0x6, 0xE0);
+    dsp_gw(&mut mem, 0x4C, 0x01);
+
+    for step in 1..=5 {
+        mem.dsp.step(&mut mem.ram);
+        assert_eq!(
+            mem.dsp.voices[0].adsr.envelope_level, 0,
+            "envelope must stay at 0 during the key-on delay (step {step})"
+        );
+        assert_eq!(mem.dsp.voices[0].pitch_counter, 0, "pitch must not advance (step {step})");
+    }
+    mem.dsp.step(&mut mem.ram);
+    assert!(
+        mem.dsp.voices[0].adsr.envelope_level > 0,
+        "the attack must start on the 6th sample"
+    );
+}
+
+#[test]
+fn test_koff_is_a_level_and_kon_wins_the_same_poll() {
+    // KOFF and KON both set for voice 0: at the first poll KON is handled
+    // second and wins. KOFF stays set in its register, so the next poll
+    // pushes the voice into release.
+    let mut mem = booted_memory();
+    dsp_gw(&mut mem, 0x5C, 0x01);
+    dsp_gw(&mut mem, 0x4C, 0x01);
+
+    mem.dsp.step(&mut mem.ram); // poll
+    assert_eq!(
+        mem.dsp.voices[0].adsr.envelope_phase,
+        EnvelopePhase::Attack,
+        "KON must win over KOFF at the same poll"
+    );
+    mem.dsp.step(&mut mem.ram); // no poll
+    mem.dsp.step(&mut mem.ram); // poll
+    assert_eq!(
+        mem.dsp.voices[0].adsr.envelope_phase,
+        EnvelopePhase::Release,
+        "a KOFF bit left set must release the voice at the next poll"
+    );
+}
+
+#[test]
+fn test_kon_during_reset_is_consumed_not_deferred() {
+    let mut mem = booted_memory();
+    dsp_gw(&mut mem, 0x6C, 0x80); // FLG: RESET
+    dsp_gw(&mut mem, 0x4C, 0x01);
+    poll_key_regs(&mut mem);
+    assert!(!mem.dsp.voices[0].key_on, "KON must be ignored during RESET");
+
+    dsp_gw(&mut mem, 0x6C, 0x00); // leave RESET
+    poll_key_regs(&mut mem);
+    assert!(
+        !mem.dsp.voices[0].key_on,
+        "a KON written during RESET must not fire once RESET clears"
+    );
 }
 
 // ============================================================
@@ -315,7 +472,7 @@ fn setup_single_voice_end_block(mem: &mut Memory) {
     dsp_vw(mem, 0, 0x5, 0x8F);
     dsp_vw(mem, 0, 0x6, 0xE0);
 
-    dsp_gw(mem, 0x4C, 0x01); // KON voice 0
+    key_on(mem, 0x01); // KON voice 0, run until it's playing
 }
 
 /// Set up voice 0 with a silent, looping (end+loop back to itself) BRR
@@ -342,7 +499,7 @@ fn setup_single_voice_looping_block(mem: &mut Memory) {
     dsp_vw(mem, 0, 0x5, 0x8F);
     dsp_vw(mem, 0, 0x6, 0xE0);
 
-    dsp_gw(mem, 0x4C, 0x01); // KON voice 0
+    key_on(mem, 0x01); // KON voice 0, run until it's playing
 }
 
 #[test]
@@ -424,7 +581,7 @@ fn test_step_advances_envelope_over_multiple_ticks() {
     dsp_gw(&mut mem, 0x5D, dir_page);
     dsp_vw(&mut mem, 0, 0x5, 0x8F); // fast attack
     dsp_vw(&mut mem, 0, 0x6, 0xE0); // hold sustain
-    dsp_gw(&mut mem, 0x4C, 0x01);
+    key_on(&mut mem, 0x01);
 
     for _ in 0..10 {
         mem.dsp.step(&mut mem.ram);
@@ -1000,8 +1157,9 @@ fn test_endx_cleared_on_kon() {
         "precondition: ENDX bit 0 must be set"
     );
 
-    // Key on voice 0 again — this should clear bit 0.
+    // Key on voice 0 again — this should clear bit 0 at the KON poll.
     dsp_gw(&mut mem, 0x4C, 0x01);
+    poll_key_regs(&mut mem);
     assert_eq!(
         mem.dsp.read_reg(0x7C) & 0x01,
         0,
@@ -1256,7 +1414,7 @@ fn setup_silent_looping_voice(mem: &mut Memory) {
     dsp_vw(mem, 0, 0x3, 0x10); // PITCH hi (native rate)
     dsp_vw(mem, 0, 0x5, 0x8F); // ADSR1: fast attack
     dsp_vw(mem, 0, 0x6, 0xE0); // ADSR2: hold sustain
-    dsp_gw(mem, 0x4C, 0x01); // KON voice 0
+    key_on(mem, 0x01); // KON voice 0, run until it's playing
 }
 
 #[test]
@@ -1791,7 +1949,7 @@ fn setup_tone_looping_voice(mem: &mut Memory) {
     dsp_vw(mem, 0, 0x3, 0x10); // PITCH hi (native rate)
     dsp_vw(mem, 0, 0x5, 0x8F); // ADSR1: fast attack
     dsp_vw(mem, 0, 0x6, 0xE0); // ADSR2: hold sustain
-    dsp_gw(mem, 0x4C, 0x01); // KON voice 0
+    key_on(mem, 0x01); // KON voice 0, run until it's playing
 }
 
 #[test]
@@ -1967,7 +2125,7 @@ fn pmon_counter_trace(pmon: u8, voice0_vol: u8) -> Vec<(u16, u16)> {
     dsp_vw(&mut mem, 1, 0x3, 0x08); // PITCH hi: 0x0800, half rate
     dsp_vw(&mut mem, 1, 0x5, 0x8F); // ADSR1: fast attack
     dsp_vw(&mut mem, 1, 0x6, 0xE0); // ADSR2: hold sustain
-    dsp_gw(&mut mem, 0x4C, 0x02); // KON voice 1 (voice 0 already on)
+    key_on(&mut mem, 0x02); // KON voice 1 (voice 0 already on)
 
     dsp_gw(&mut mem, 0x2D, pmon);
 
