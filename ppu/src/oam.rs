@@ -268,16 +268,18 @@ impl OAM {
     // Per-scanline evaluation
     // ============================================================
 
-    /// Evaluate which sprites are visible on scanline `y`.
+        /// Evaluate which sprites are visible on scanline `y`.
     ///
     /// - Sprites are evaluated in order, starting from the priority-rotation
     ///   index (OAMADDH bit 7 enables it, OAMADDL >> 1 gives the start sprite),
     ///   wrapping around all 128 sprites.
+    /// - A sprite is in range if it covers line `y` and is not entirely left of
+    ///   the screen (hardware quirk: X = -256 still counts as in range).
     /// - At most 32 sprites per scanline are kept; a 33rd sets `range_over`.
-    /// - At most 34 sprite tiles (8-pixel slices) fit on a scanline; beyond
-    ///   that, `time_over` is set.
+    /// - Only tiles (8-pixel slices) with X in -7..255 are fetched; more than 34
+    ///   sets `time_over`.
     /// - Returns (visible sprites, time_over, range_over). The flags are not
-    ///   stored here (this borrows &self); call `set_flags` to latch them.
+    ///   stored here (this borrows &self); call `latch_flags` to latch them.
     pub fn eval_sprites_for_scanline(
         &self,
         y: usize,
@@ -307,14 +309,27 @@ impl OAM {
                 continue;
             }
 
+            // X range check on the 9-bit X (matches hardware): out of range only if
+            // entirely left of the screen. X = 256 (-256) slips through this test.
+            let x9 = (sprite.x as u16) & 0x01FF;
+            let w = width as u16;
+            if x9 > 256 && x9 + w - 1 < 512 {
+                continue;
+            }
+
             // Range Over: a 33rd sprite on the line.
             if visible.len() >= 32 {
                 range_over = true;
                 break;
             }
 
-            // Time Over: more than 34 tiles (8-pixel slices) to fetch.
-            tile_count += (width as u16) / 8;
+            // Time Over: more than 34 tiles to fetch. Only tiles with X in -7..255 are fetched.
+            for t in 0..(w / 8) {
+                let tile_x = (x9 + t * 8) & 0x01FF;
+                if tile_x < 256 || tile_x >= 512 - 7 {
+                    tile_count += 1;
+                }
+            }
             if tile_count > 34 {
                 time_over = true;
             }
@@ -653,5 +668,65 @@ mod tests {
         oam.clear_flags();
         assert!(!oam.time_over);
         assert!(!oam.range_over);
+    }
+
+    // Sprites entirely left of the screen are out of range, one visible pixel is enough.
+    #[test]
+    fn test_eval_x_range() {
+        let mut oam = make_oam();
+        make_sprite_entry(&mut oam, 0, 248, 0, 0, 0, 0b01); // x = -8: fully off-screen
+        make_sprite_entry(&mut oam, 1, 249, 0, 0, 0, 0b01); // x = -7: rightmost pixel visible
+        make_sprite_entry(&mut oam, 2, 255, 0, 0, 0, 0b00); // x = 255: leftmost pixel visible
+        let (visible, _, _) = oam.eval_sprites_for_scanline(0, OBJSEL_8_16, 0);
+        let indices: Vec<u8> = visible.iter().map(|&(i, _)| i).collect();
+        assert_eq!(indices, vec![1, 2]);
+    }
+
+    // 33 sprites entirely left of the screen do not set range_over.
+    #[test]
+    fn test_eval_off_screen_sprites_dont_count() {
+        let mut oam = make_oam();
+        for i in 0..33u8 {
+            make_sprite_entry(&mut oam, i, 192, 0, 0, 0, 0b01); // x = -64
+        }
+        let (visible, _, range_over) = oam.eval_sprites_for_scanline(0, OBJSEL_8_16, 0);
+        assert!(visible.is_empty());
+        assert!(!range_over);
+    }
+
+    // Hardware quirk: X = -256 is still in range, so these sprites count toward
+    // the 32-sprite limit even though none of their tiles is fetched.
+    #[test]
+    fn test_eval_x_minus_256_quirk() {
+        let mut oam = make_oam();
+        for i in 0..33u8 {
+            make_sprite_entry(&mut oam, i, 0, 0, 0, 0, 0b01); // x = -256
+        }
+        let (visible, time_over, range_over) = oam.eval_sprites_for_scanline(0, OBJSEL_8_16, 0);
+        assert_eq!(visible.len(), 32);
+        assert!(range_over);
+        assert!(!time_over);
+    }
+
+    // Only tiles with X in -7..255 count toward the 34-tile limit.
+    #[test]
+    fn test_eval_time_over_counts_visible_tiles_only() {
+        const OBJSEL_8_64: u8 = 2 << 5; // small 8x8, large 64x64
+
+        // 64px wide at x = 224: only 4 tiles on screen. 9 sprites -> 36 tiles.
+        let mut oam = make_oam();
+        for i in 0..9u8 {
+            make_sprite_entry(&mut oam, i, 224, 0, 0, 0, 0b10);
+        }
+        let (_, time_over, _) = oam.eval_sprites_for_scanline(0, OBJSEL_8_64, 0);
+        assert!(time_over);
+
+        // 8 sprites -> 32 tiles.
+        let mut oam = make_oam();
+        for i in 0..8u8 {
+            make_sprite_entry(&mut oam, i, 224, 0, 0, 0, 0b10);
+        }
+        let (_, time_over, _) = oam.eval_sprites_for_scanline(0, OBJSEL_8_64, 0);
+        assert!(!time_over);
     }
 }
