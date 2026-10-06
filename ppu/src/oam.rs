@@ -286,7 +286,8 @@ impl OAM {
             // fetched, except at X = -256 where every tile counts (treated as X = 0).
             for t in 0..(w / 8) {
                 let tile_x = (x9 + t * 8) & 0x01FF;
-                if x9 == 256 || tile_x < 256 || tile_x >= 512 - 7 {
+                let off_screen = (256..512 - 7).contains(&tile_x);
+                if x9 == 256 || !off_screen {
                     tile_count += 1;
                 }
             }

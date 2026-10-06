@@ -84,7 +84,8 @@ impl Renderer {
                 let tile_x = (x9 + tx * 8) & 0x01FF;
                 // Off-screen tiles are skipped, except at X = -256 where they are still
                 // fetched (and use up the 34 slots) but nothing is drawn.
-                if x9 != 256 && tile_x >= 256 && tile_x + 7 < 512 {
+                let off_screen = (256..512 - 7).contains(&tile_x);
+                if x9 != 256 && off_screen {
                     continue;
                 }
                 if fetched == MAX_TILES_PER_LINE {
