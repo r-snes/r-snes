@@ -2,10 +2,11 @@
 //!
 //! Uses the OAM evaluation to get the sprites on the line, then fetches their
 //! tiles from the last evaluated sprite to the first, at most 34 tiles per line.
-//! Sprites are 4bpp, use the CGRAM entries 128-255 and are placed in the
-//! z-buffer according to their priority (0-3).
-//! Multi-tile sprites wrap the tile number per nibble (X in the low nibble,
-//! Y in the high nibble).
+//! The tiles are first combined into a single OBJ line, where the first-evaluated
+//! sprite wins over the others regardless of priority, then that line is compared
+//! with the backgrounds. Sprites are 4bpp, use the CGRAM entries 128-255 and have
+//! a priority (0-3). Multi-tile sprites wrap the tile number per nibble
+//! (X in the low nibble, Y in the high nibble).
 
 use crate::constants::*;
 use crate::oam::OAM;
@@ -17,6 +18,9 @@ const VRAM_WORD_MASK: usize = (VRAM_SIZE / 2) - 1;
 
 // Maximum number of sprite tiles (8-pixel slices) fetched per scanline.
 const MAX_TILES_PER_LINE: usize = 34;
+
+// One pixel of the OBJ line: color, priority, color math enabled.
+type ObjPixel = (u16, Priority, bool);
 
 impl Renderer {
     /// Render all visible sprites on scanline `y`
@@ -34,9 +38,13 @@ impl Renderer {
         let (sprites, _time_over, _range_over) =
             ppu.oam.eval_sprites_for_scanline(y, objsel, oamadd);
 
+        // OBJ line: one pixel per column, before comparison with the backgrounds.
+        let mut obj_line: [Option<ObjPixel>; SCREEN_WIDTH] = [None; SCREEN_WIDTH];
+
         // Tile fetch: from the last evaluated sprite to the first, only tiles with
         // X in -7..255 (all tiles at X = -256, quirk), at most 34 per line. Past the
         // limit, the remaining tiles (those of the first-evaluated sprites) are dropped.
+        // Each opaque pixel overwrites the OBJ line, so the first-evaluated sprite wins.
         let mut fetched = 0;
         'fetch: for &(_idx, sprite) in sprites.iter().rev() {
             let (w, h) = OAM::sprite_size(objsel, sprite.large);
@@ -120,14 +128,19 @@ impl Renderer {
 
                     let palette_entry = 128 + sprite.palette * 16 + color_index;
                     let color = ppu.cgram.read(palette_entry);
+                    obj_line[screen_x as usize] = Some((color, prio, obj_math));
+                }
+            }
+        }
 
-                    let sx = screen_x as usize;
-                    if to_main {
-                        self.deposit_main(sx, color, prio, Layer::Obj, obj_math);
-                    }
-                    if to_sub {
-                        self.deposit_sub(sx, color, prio, Layer::Obj, obj_math);
-                    }
+        // Compare the OBJ line with the backgrounds.
+        for (x, pixel) in obj_line.iter().enumerate() {
+            if let Some((color, prio, obj_math)) = *pixel {
+                if to_main {
+                    self.deposit_main(x, color, prio, Layer::Obj, obj_math);
+                }
+                if to_sub {
+                    self.deposit_sub(x, color, prio, Layer::Obj, obj_math);
                 }
             }
         }
@@ -164,6 +177,12 @@ mod tests {
         }
     }
 
+    fn set_color(ppu: &mut PPU, entry: u8, color: u16) {
+        ppu.write(0x2121, entry);
+        ppu.write(0x2122, (color & 0xFF) as u8);
+        ppu.write(0x2122, (color >> 8) as u8);
+    }
+
     // Mode 1, OBJ only on main, full brightness, all sprites below the screen,
     // 8x8 / 64x64 sizes, CHR at 0x0000 with tiles 0-7 fully opaque (color 1),
     // sprite palette 0 color 1 = red.
@@ -181,9 +200,7 @@ mod tests {
                 ppu.vram.memory[tile * 16 + row] = 0x00FF; // plane 0 -> color index 1
             }
         }
-        ppu.write(0x2121, 129); // CGRAM 128 + palette 0 * 16 + 1
-        ppu.write(0x2122, 0x1F);
-        ppu.write(0x2122, 0x00);
+        set_color(&mut ppu, 129, 0x001F); // CGRAM 128 + palette 0 * 16 + 1
         ppu
     }
 
@@ -240,5 +257,53 @@ mod tests {
         assert_eq!(fb_pixel(&r, 0, 0), red);
         assert_eq!(fb_pixel(&r, 3, 0), red);
         assert_eq!(fb_pixel(&r, 4, 0), (0, 0, 0));
+    }
+
+    // ============================================================
+    // Sprite vs sprite
+    // ============================================================
+
+    /// Where sprites overlap, the first-evaluated one wins even with a lower priority.
+    #[test]
+    fn test_first_sprite_wins_over_higher_priority() {
+        let red = Renderer::apply_brightness(0x001F, 15);
+        let mut ppu = make_ppu_sprites();
+        set_color(&mut ppu, 145, 0x03E0); // palette 1 color 1 = green
+        write_sprite(&mut ppu, 0, 0, 0, 0, 0x00); // priority 0, palette 0 (red)
+        write_sprite(&mut ppu, 1, 0, 0, 0, 0x32); // priority 3, palette 1 (green)
+        let mut r = Renderer::new();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 0, 0), red);
+    }
+
+    /// The winning sprite keeps its own priority against the backgrounds: a
+    /// priority-0 sprite in front hides a priority-3 sprite behind BG1.
+    #[test]
+    fn test_first_sprite_priority_used_against_bg() {
+        let blue = Renderer::apply_brightness(0x7C00, 15);
+        let mut ppu = make_ppu_sprites();
+        // BG1: tilemap at 0x0400 (all tile 0), CHR at 0x0000 (tile 0 opaque), color 1 = blue.
+        ppu.write(0x2107, 0x04);
+        ppu.write(0x212C, 0x11); // BG1 + OBJ on main
+        set_color(&mut ppu, 1, 0x7C00);
+        set_color(&mut ppu, 145, 0x03E0); // palette 1 color 1 = green
+        write_sprite(&mut ppu, 0, 0, 0, 0, 0x00); // priority 0: below BG1 low
+        write_sprite(&mut ppu, 1, 0, 0, 0, 0x32); // priority 3: above everything
+        let mut r = Renderer::new();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 0, 0), blue);
+    }
+
+    /// Transparent pixels of the first sprite let the sprites behind show through.
+    #[test]
+    fn test_transparent_pixels_dont_hide_sprites() {
+        let green = Renderer::apply_brightness(0x03E0, 15);
+        let mut ppu = make_ppu_sprites();
+        set_color(&mut ppu, 145, 0x03E0); // palette 1 color 1 = green
+        write_sprite(&mut ppu, 0, 0, 0, 8, 0x00); // tile 8: fully transparent
+        write_sprite(&mut ppu, 1, 0, 0, 0, 0x02); // palette 1 (green)
+        let mut r = Renderer::new();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 0, 0), green);
     }
 }
