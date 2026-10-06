@@ -51,10 +51,17 @@ impl Renderer {
             let w = w as usize;
             let h = h as usize;
 
-            // Row within the sprite for this scanline (0..h), with V flip.
+            // Row within the sprite for this scanline (0..h), with V flip. Rectangular
+            // sprites (taller than wide) flip each square half in place, without swapping them.
             let mut sy = (y as u8).wrapping_sub(sprite.y) as usize;
             if sprite.flip_y {
-                sy = h - 1 - sy;
+                sy = if w == h {
+                    h - 1 - sy
+                } else if sy < w {
+                    w - 1 - sy
+                } else {
+                    w + (w - 1) - (sy - w)
+                };
             }
             let tile_row = sy / 8;
             let fine_y = sy % 8;
@@ -305,5 +312,45 @@ mod tests {
         let mut r = Renderer::new();
         r.render_scanline(&ppu, 0);
         assert_eq!(fb_pixel(&r, 0, 0), green);
+    }
+
+    // ============================================================
+    // Rectangular sprites (OBJSEL modes 6 and 7)
+    // ============================================================
+
+    /// V flip on a 16x32 sprite flips each 16x16 half in place: tile row 0 of the
+    /// top half shows on row 15, not on row 31 as a full flip would do.
+    #[test]
+    fn test_rectangular_sprite_vflip_per_half() {
+        let red = Renderer::apply_brightness(0x001F, 15);
+        let black = (0, 0, 0);
+
+        let mut ppu = make_ppu_sprites();
+        ppu.write(0x2101, 6 << 5); // OBJSEL mode 6: small 16x32, CHR base 0
+        // Only row 0 of CHR tile 0 is opaque.
+        for word in 0..(0x40 * 16) {
+            ppu.vram.memory[word] = 0;
+        }
+        ppu.vram.memory[0] = 0x00FF;
+
+        // No flip: row 0 shows tile 0 row 0.
+        write_sprite(&mut ppu, 0, 0, 0, 0, 0x00);
+        let mut r = Renderer::new();
+        r.render_scanline(&ppu, 0);
+        r.render_scanline(&ppu, 15);
+        r.render_scanline(&ppu, 31);
+        assert_eq!(fb_pixel(&r, 0, 0), red);
+        assert_eq!(fb_pixel(&r, 0, 15), black);
+        assert_eq!(fb_pixel(&r, 0, 31), black);
+
+        // V flip: the top half is flipped in place, so tile 0 row 0 moves to row 15.
+        write_sprite(&mut ppu, 0, 0, 0, 0, 0x80);
+        let mut r = Renderer::new();
+        r.render_scanline(&ppu, 0);
+        r.render_scanline(&ppu, 15);
+        r.render_scanline(&ppu, 31);
+        assert_eq!(fb_pixel(&r, 0, 0), black);
+        assert_eq!(fb_pixel(&r, 0, 15), red);
+        assert_eq!(fb_pixel(&r, 0, 31), black);
     }
 }

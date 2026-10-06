@@ -210,58 +210,17 @@ impl OAM {
     /// Return the sprite size (width, height) in pixels for a given sprite,
     /// according to the size mode encoded in OBJSEL bits 7:5.
     pub fn sprite_size(objsel: u8, large: bool) -> (u8, u8) {
-        match (objsel >> 5) & 0x07 {
-            0 => {
-                if large {
-                    (16, 16)
-                } else {
-                    (8, 8)
-                }
-            }
-            1 => {
-                if large {
-                    (32, 32)
-                } else {
-                    (8, 8)
-                }
-            }
-            2 => {
-                if large {
-                    (64, 64)
-                } else {
-                    (8, 8)
-                }
-            }
-            3 => {
-                if large {
-                    (32, 32)
-                } else {
-                    (16, 16)
-                }
-            }
-            4 => {
-                if large {
-                    (64, 64)
-                } else {
-                    (16, 16)
-                }
-            }
-            5 => {
-                if large {
-                    (64, 64)
-                } else {
-                    (32, 32)
-                }
-            }
-            // can't find documentation for 6 and 7, treating them as 8x8 / 16x16 for now
-            _ => {
-                if large {
-                    (16, 16)
-                } else {
-                    (8, 8)
-                }
-            }
-        }
+        let (small_size, large_size) = match (objsel >> 5) & 0x07 {
+            0 => ((8, 8), (16, 16)),
+            1 => ((8, 8), (32, 32)),
+            2 => ((8, 8), (64, 64)),
+            3 => ((16, 16), (32, 32)),
+            4 => ((16, 16), (64, 64)),
+            5 => ((32, 32), (64, 64)),
+            6 => ((16, 32), (32, 64)),
+            _ => ((16, 32), (32, 32)),
+        };
+        if large { large_size } else { small_size }
     }
 
     // ============================================================
@@ -488,7 +447,7 @@ mod tests {
         assert_eq!(s.x, 100);
     }
 
-    // sprite_size returns correct dimensions for all 6 documented size modes.
+    // sprite_size returns correct dimensions for all 8 size modes (6 and 7 are rectangular).
     #[test]
     fn test_sprite_size() {
         let cases: &[SizeCase] = &[
@@ -498,6 +457,8 @@ mod tests {
             (3 << 5, (16, 16), (32, 32)),
             (4 << 5, (16, 16), (64, 64)),
             (5 << 5, (32, 32), (64, 64)),
+            (6 << 5, (16, 32), (32, 64)),
+            (7 << 5, (16, 32), (32, 32)),
         ];
         for &(objsel, small, large) in cases {
             assert_eq!(
