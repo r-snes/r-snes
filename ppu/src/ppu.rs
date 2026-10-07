@@ -442,9 +442,21 @@ impl PPU {
         self.regs.mpy = ((a * b) as u32) & 0x00FF_FFFF;
     }
 
-    /// Current dot (0..339).
+    /// Current dot (0..339). Dots 323 and 327 last 6 master cycles instead of 4,
+    /// except on the short scanline where every dot lasts 4.
     pub fn dot(&self) -> u16 {
-        (self.h_cycles / 4) as u16
+        let h = self.h_cycles;
+        if self.scanline_length() == MASTER_CYCLES_SHORT_SCANLINE {
+            return (h / 4) as u16;
+        }
+        let dot = match h {
+            0..1292 => h / 4,
+            1292..1298 => 323,
+            1298..1310 => 324 + (h - 1298) / 4,
+            1310..1316 => 327,
+            _ => 328 + (h - 1316) / 4,
+        };
+        dot as u16
     }
 
     /// Non-interlace odd frames shorten scanline 240 to 1360 cycles instead of 1364
@@ -1110,6 +1122,18 @@ mod tests {
         }
     }
 
+    /// Ticks through the current scanline and returns how many master cycles
+    /// each dot lasted. Panics if a dot above 339 shows up.
+    fn dot_lengths(ppu: &mut PPU) -> Vec<u32> {
+        let line_length = ppu.scanline_length();
+        let mut lengths = vec![0; 340];
+        for _ in 0..line_length {
+            lengths[ppu.dot() as usize] += 1;
+            ppu.tick();
+        }
+        lengths
+    }
+
     // ============================================================
     // tick() - dot progression
     // ============================================================
@@ -1159,10 +1183,40 @@ mod tests {
             }
         }
 
+        // 339 dot changes: 338 DotStart + 1 HBlankStart (dot 274)
         assert_eq!(scanlines, 1);
         assert_eq!(hblanks, 1);
-        assert_eq!(dots, 339);
-        assert_eq!(none, MASTER_CYCLES_PER_SCANLINE - 341);
+        assert_eq!(dots, 338);
+        assert_eq!(none, MASTER_CYCLES_PER_SCANLINE - 340);
+    }
+
+    /// Dots 323 and 327 last 6 master cycles, every other dot lasts 4.
+    #[test]
+    fn test_dots_323_and_327_are_long() {
+        let mut ppu = PPU::new();
+        let lengths = dot_lengths(&mut ppu);
+        for (dot, &len) in lengths.iter().enumerate() {
+            let expected = if dot == 323 || dot == 327 { 6 } else { 4 };
+            assert_eq!(len, expected, "dot {dot}");
+        }
+    }
+
+    /// The short scanline (1360 cycles) has no long dots: 340 dots of 4 cycles.
+    #[test]
+    fn test_short_scanline_has_no_long_dots() {
+        let mut ppu = PPU::new();
+        ppu.frame = 1;
+        ppu.scanline = SHORT_SCANLINE;
+        assert!(dot_lengths(&mut ppu).iter().all(|&len| len == 4));
+    }
+
+    /// A latch on the last master cycle of a scanline gives dot 339.
+    #[test]
+    fn test_latch_at_end_of_scanline() {
+        let mut ppu = PPU::new();
+        ppu.h_cycles = MASTER_CYCLES_PER_SCANLINE - 1;
+        ppu.latch_hv_counters();
+        assert_eq!(ppu.regs.ophct, 339);
     }
 
     // ============================================================
