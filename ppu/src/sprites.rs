@@ -37,8 +37,7 @@ impl Renderer {
         let obj_interlace = ppu.obj_interlace();
 
         let (sprites, _time_over, _range_over) =
-            ppu.oam
-                .eval_sprites_for_scanline(y, objsel, oamadd, obj_interlace);
+            ppu.oam.eval_sprites_for_scanline(y, objsel, oamadd, obj_interlace);
 
         // OBJ line: one pixel per column, before comparison with the backgrounds.
         let mut obj_line: [Option<ObjPixel>; SCREEN_WIDTH] = [None; SCREEN_WIDTH];

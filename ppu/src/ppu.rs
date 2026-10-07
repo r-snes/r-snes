@@ -559,12 +559,8 @@ impl PPU {
                     let objsel = self.regs.objsel;
                     let oamadd = self.regs.oamadd;
                     let obj_interlace = self.obj_interlace();
-                    let (_, time_over, range_over) = self.oam.eval_sprites_for_scanline(
-                        row,
-                        objsel,
-                        oamadd,
-                        obj_interlace,
-                    );
+                    let (_, time_over, range_over) =
+                        self.oam.eval_sprites_for_scanline(row, objsel, oamadd, obj_interlace);
                     self.oam.latch_flags(time_over, range_over);
                 }
             }
