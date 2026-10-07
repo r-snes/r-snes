@@ -499,6 +499,15 @@ impl PPU {
             .then(|| self.scanline as usize - 1)
     }
 
+    /// Row the PPU evaluates sprites for, if this scanline is active.
+    /// Lines 1..=224 are active, or 1..=239 with overscan (SETINI bit 2).
+    /// Unlike `visible_line`, not limited to the 224 framebuffer rows.
+    pub fn active_line(&self) -> Option<usize> {
+        (1..self.vblank_start_line())
+            .contains(&self.scanline)
+            .then(|| self.scanline as usize - 1)
+    }
+
     /// Advance one master cycle.
     pub fn tick(&mut self) -> Option<PpuEvent> {
         let prev_dot = self.dot();
@@ -525,7 +534,7 @@ impl PPU {
                     self.oam.clear_flags();
                 }
                 // Same row numbering as the renderer (framebuffer row = scanline - 1).
-                if let Some(row) = self.visible_line() {
+                if let Some(row) = self.active_line() {
                     let objsel = self.regs.objsel;
                     let oamadd = self.regs.oamadd;
                     let (_, time_over, range_over) =
@@ -1118,10 +1127,11 @@ mod tests {
         ppu.write(0x2104, y);
     }
 
-    /// Moves all 128 sprites below the visible area (Y = 0xE0) so they are not drawn.
+    /// Moves all 128 sprites below the active area (Y = 0xF0) so they are not drawn,
+    /// even with overscan.
     fn hide_all_sprites(ppu: &mut PPU) {
         for i in 0..128 {
-            set_sprite_xy(ppu, i, 0, 0xE0);
+            set_sprite_xy(ppu, i, 0, 0xF0);
         }
     }
 
@@ -1400,6 +1410,47 @@ mod tests {
 
         advance_to_scanline_start(&mut ppu, VBLANK_START_LINE);
         assert_eq!(ppu.visible_line(), None);
+    }
+
+    // ============================================================
+    // active_line
+    // ============================================================
+
+    /// Active lines are 1..=224, or 1..=239 with overscan.
+    #[test]
+    fn test_active_line() {
+        let mut ppu = PPU::new();
+        assert_eq!(ppu.active_line(), None);
+
+        ppu.scanline = 224;
+        assert_eq!(ppu.active_line(), Some(223));
+        ppu.scanline = 225;
+        assert_eq!(ppu.active_line(), None);
+
+        ppu.write(0x2133, 0x04);
+        ppu.scanline = 239;
+        assert_eq!(ppu.active_line(), Some(238));
+        ppu.scanline = 240;
+        assert_eq!(ppu.active_line(), None);
+    }
+
+    /// With overscan, sprites on lines 225-239 are evaluated and set STAT77.
+    #[test]
+    fn test_overscan_sprites_set_stat77() {
+        let mut ppu = PPU::new();
+        hide_all_sprites(&mut ppu);
+        for i in 0..33 {
+            set_sprite_xy(&mut ppu, i, 0, 228); // rows 228-235
+        }
+
+        // Without overscan these rows are not evaluated.
+        advance_to_scanline_start(&mut ppu, VBLANK_START_LINE);
+        assert!(!ppu.oam.range_over);
+
+        // With overscan they are.
+        ppu.write(0x2133, 0x04);
+        advance_to_scanline_start(&mut ppu, VBLANK_START_LINE_OVERSCAN);
+        assert!(ppu.oam.range_over);
     }
 
     // ============================================================
