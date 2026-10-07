@@ -59,6 +59,17 @@ fn setup_cpu(apu: &mut Apu, start_addr: u16, nop_count: usize) {
     apu.skip_ipl_boot();
 }
 
+/// Run the DSP on its own — no CPU cycles, so `apu.cycles` is untouched
+/// — until a just-keyed-on voice is playing. The DSP polls KON every
+/// other sample and the voice then waits 5 samples, so 7 DSP steps always
+/// get it running.
+fn start_keyed_on_voices(apu: &mut Apu) {
+    let mem = &mut apu.memory;
+    for _ in 0..7 {
+        mem.dsp.step(&mut mem.ram);
+    }
+}
+
 /// Set up a silent looping BRR voice on voice 0 via the $F2/$F3 protocol.
 ///
 /// Memory layout chosen to avoid colliding with the CPU NOP sled:
@@ -106,7 +117,15 @@ fn setup_voice_silent_sample(apu: &mut Apu) {
     dsp_w(apu, 0x06, 0xE0); // ADSR2: hold sustain
     dsp_w(apu, 0x0C, 127u8); // MVOLL
     dsp_w(apu, 0x1C, 127u8); // MVOLR
+    dsp_w(apu, 0x6C, 0x00); // FLG: leave power-on reset/mute, as a driver does
     dsp_w(apu, 0x4C, 0x01); // KON voice 0
+    start_keyed_on_voices(apu);
+
+    // The DSP-timing tests count DSP ticks through this voice's envelope,
+    // so restart it from 0 in Attack: from here every DSP tick adds 1024
+    // (attack rate 15) until it clamps at 0x7FF.
+    apu.memory.dsp.voices[0].adsr.envelope_level = 0;
+    apu.memory.dsp.voices[0].adsr.envelope_phase = EnvelopePhase::Attack;
 }
 
 /// Set up a looping BRR voice on voice 0 that produces non-zero output.
@@ -149,7 +168,9 @@ fn setup_voice_nonzero_sample(apu: &mut Apu) {
     dsp_w(apu, 0x06, 0xE0); // ADSR2: hold at sustain
     dsp_w(apu, 0x0C, 127u8); // MVOLL
     dsp_w(apu, 0x1C, 127u8); // MVOLR
+    dsp_w(apu, 0x6C, 0x00); // FLG: leave power-on reset/mute, as a driver does
     dsp_w(apu, 0x4C, 0x01); // KON voice 0
+    start_keyed_on_voices(apu);
 }
 
 // ============================================================
@@ -489,11 +510,28 @@ fn test_dsp_register_write_via_f2_f3_reaches_dsp() {
 }
 
 #[test]
-fn test_dsp_register_write_via_direct_window_reaches_dsp() {
+fn test_f200_range_is_plain_ram_not_dsp() {
+    // $F200–$F27F is ordinary RAM on hardware. Games upload sample data
+    // there (Super Metroid's driver does), so routing it to the DSP sent
+    // sample bytes into DIR/ESA/EDL/FIR and corrupted playback.
     let mut apu = Apu::new();
 
-    apu.memory.write8(0xF200 + 0x1C, 0x66); // MVOLR via direct window
-    assert_eq!(apu.memory.dsp.read_reg(0x1C), 0x66);
+    apu.memory.write8(0xF200 + 0x1C, 0x66); // would be MVOLR in the old window
+
+    assert_eq!(
+        apu.memory.dsp.read_reg(0x1C),
+        0x00,
+        "a write to $F21C must not reach the DSP"
+    );
+    assert_eq!(
+        apu.memory.ram[0xF21C], 0x66,
+        "a write to $F21C must land in RAM"
+    );
+    assert_eq!(
+        apu.memory.read8(0xF21C),
+        0x66,
+        "a read of $F21C must return RAM, not a DSP register"
+    );
 }
 
 #[test]

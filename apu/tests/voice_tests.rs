@@ -13,10 +13,12 @@ use apu::memory::RawARAM;
 // Helpers
 // ============================================================
 
-const DSP_BASE: u16 = 0xF200;
-
+/// Write a per-voice DSP register through the Memory bus, the way SPC700
+/// code does: register index to $F2 (DSPADDR), then the value to $F3
+/// (DSPDATA). Voice N's registers live at $N0–$N9.
 fn dsp_vw(mem: &mut Memory, voice: u8, reg: u8, val: u8) {
-    mem.write8(DSP_BASE + ((voice as u16) << 4) + reg as u16, val);
+    mem.write8(0x00F2, (voice << 4) | reg);
+    mem.write8(0x00F3, val);
 }
 
 /// A single BRR block, shift=12 filter=0 (each nibble decodes
@@ -428,6 +430,45 @@ fn push_history_shifts_oldest_to_newest() {
 // FLG register: RESET and MUTE
 // ============================================================
 
+/// Run a bare Dsp through its next KON/KOFF poll (every other sample, so
+/// two steps always include one), on empty RAM.
+fn poll_key_regs(dsp: &mut Dsp) {
+    let mut ram: Box<RawARAM> = Box::new([0u8; 64 * 1024]);
+    for _ in 0..2 {
+        dsp.step(&mut ram);
+    }
+}
+
+#[test]
+fn flg_powers_on_with_reset_mute_and_echo_write_disable() {
+    let dsp = Dsp::new();
+    assert_eq!(
+        dsp.read_reg(0x6C),
+        0xE0,
+        "FLG must power on as $E0 until the driver writes $6C"
+    );
+}
+
+#[test]
+fn kon_blocked_at_power_on_until_driver_clears_reset() {
+    let mut dsp = Dsp::new();
+
+    dsp.write_reg(0x4C, 0x01);
+    poll_key_regs(&mut dsp);
+    assert!(
+        !dsp.voices[0].key_on,
+        "KON must be ignored while FLG's power-on reset bit is set"
+    );
+
+    dsp.write_reg(0x6C, 0x00);
+    dsp.write_reg(0x4C, 0x01);
+    poll_key_regs(&mut dsp);
+    assert!(
+        dsp.voices[0].key_on,
+        "KON must work once the driver has cleared FLG"
+    );
+}
+
 #[test]
 fn reset_silences_voices_clears_endx_and_blocks_kon() {
     let mut dsp = Dsp::new();
@@ -448,6 +489,7 @@ fn reset_silences_voices_clears_endx_and_blocks_kon() {
 
     // KON while still in reset must be ignored.
     dsp.write_reg(0x4C, 0x01);
+    poll_key_regs(&mut dsp);
     assert!(
         !dsp.voices[0].key_on,
         "KON must be ignored while RESET is set"
@@ -456,6 +498,7 @@ fn reset_silences_voices_clears_endx_and_blocks_kon() {
     // Clearing RESET lets KON work again.
     dsp.write_reg(0x6C, 0x00);
     dsp.write_reg(0x4C, 0x01);
+    poll_key_regs(&mut dsp);
     assert!(
         dsp.voices[0].key_on,
         "KON must work again once RESET clears"
@@ -465,6 +508,7 @@ fn reset_silences_voices_clears_endx_and_blocks_kon() {
 #[test]
 fn mute_silences_output_without_touching_voice_state() {
     let mut dsp = Dsp::new();
+    dsp.write_reg(0x6C, 0x00); // leave the power-on reset/mute first
     dsp.voices[0] = make_audible_voice();
     dsp.write_reg(0x0C, 100); // MVOLL
     dsp.write_reg(0x1C, 100); // MVOLR

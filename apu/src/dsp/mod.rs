@@ -54,6 +54,20 @@ pub struct Dsp {
     ///             (ENVELOPE_RATE_TABLE; 0 = stopped). See `advance_noise`.
     flg: u8,
 
+    /// KON ($4C) writes waiting to be picked up. The DSP only polls KON
+    /// and KOFF every other sample (see `every_other_sample`); a polled
+    /// KON is consumed, so each write keys a voice on once.
+    new_kon: u8,
+
+    /// Toggles every sample; KON/KOFF are polled on the samples where it
+    /// flips to true, i.e. at 16 kHz.
+    every_other_sample: bool,
+
+    /// Samples left before each keyed-on voice starts. On key-on the
+    /// hardware holds a voice silent for 5 samples — envelope at 0, pitch
+    /// not advancing — before its attack begins.
+    kon_delay: [u8; 8],
+
     /// $3D NON — one bit per voice; when set, that voice's mixed output
     /// is the shared noise generator instead of its BRR-decoded sample.
     /// BRR decoding keeps running underneath regardless (see `step`), so
@@ -79,9 +93,14 @@ pub struct Dsp {
     /// `Adsr::tick_due`).
     noise_tick_counter: u16,
 
-    // ---- Echo registers (Stage 1: storage/roundtrip only — the actual
-    // echo buffer, FIR filtering, and voice routing land in later stages;
-    // none of these affect audio output yet). ----
+    // ---- Echo registers ----
+    /// $2C EVOLL / $3C EVOLR — echo output volume, signed (-128..+127).
+    /// Scales the FIR-filtered echo before it joins the final mix, the
+    /// same way MVOL scales the dry mix. 0 = echo processed (and written
+    /// to the buffer) but not heard.
+    echo_vol_left: i8,
+    echo_vol_right: i8,
+
     /// $0D EFB — echo feedback, signed (-128..+127). Scales the echo
     /// buffer's own most recent output before it's written back into the
     /// buffer, so echoes decay (or grow, or invert) over repetitions.
@@ -98,8 +117,10 @@ pub struct Dsp {
 
     /// $7D EDL — echo delay length, 0-15 (only the low nibble is
     /// meaningful; upper bits are ignored, matching hardware). Buffer
-    /// size = edl * 512 stereo sample pairs (2 KB per unit). EDL=0 means
-    /// no delay buffer at all — echo is effectively bypassed.
+    /// size = edl * 512 stereo sample pairs (2 KB per unit). EDL=0 is
+    /// not "no buffer": the pointer never advances, so the DSP reads and
+    /// writes one 4-byte stereo pair at ESA every sample. A new value
+    /// only takes effect when the pointer next wraps (see `echo_len`).
     edl: u8,
 
     /// $0F/$1F/.../$7F — the 8-tap FIR filter coefficients, signed. Real
@@ -107,16 +128,30 @@ pub struct Dsp {
     /// GAIN+8" register for each voice 0-7 (reg offset 0xF), but they
     /// aren't per-voice data — together the 8 values form one global
     /// filter applied to the echo buffer. `fir_coeff[N]` is tap N,
-    /// stored at register `N*0x10 + 0x0F`.
+    /// stored at register `N*0x10 + 0x0F`. Tap 0 weights the *oldest*
+    /// entry of `fir_history`, tap 7 the newest.
     fir_coeff: [i8; 8],
+
+    /// The last 8 stereo pairs read out of the echo buffer, oldest first
+    /// (index 7 = the pair read this tick). The FIR filters this history,
+    /// not the buffer itself, so every tap sees fully delayed samples.
+    /// Stored halved (`>> 1`), as the hardware keeps them; the taps'
+    /// `>> 6` makes up for it.
+    fir_history: [(i16, i16); 8],
 
     /// Stage 2: byte offset of the echo buffer's read/write pointer,
     /// relative to the buffer's base (ESA*0x100). Advances by 4 (one
     /// stereo sample pair) each call to `tick_echo_buffer`, wrapping at
-    /// the buffer length (`echo_buffer_len_bytes`, i.e. EDL*2048 bytes).
-    /// Not reset on ESA/EDL writes — real hardware doesn't clamp it
-    /// until it naturally reaches the wraparound check either.
+    /// `echo_len`. Not reset on ESA/EDL writes — real hardware doesn't
+    /// clamp it until it naturally reaches the wraparound check either.
     echo_ptr: u16,
+
+    /// Echo buffer length in bytes as actually in use: EDL*2048, latched
+    /// from `edl` each time the pointer is at offset 0. Hardware only
+    /// picks up a new EDL at that point, so a mid-pass $7D write lets the
+    /// current pass finish at the old length. 0 (EDL=0) makes the pointer
+    /// wrap straight back to 0 after every sample — a 4-byte buffer.
+    echo_len: u16,
 
     /// Stage 4: this tick's FIR-filtered echo output, computed by `step`
     /// (which has the mutable RAM access `tick_echo` needs) and read by
@@ -140,28 +175,39 @@ impl Dsp {
     /// Master volume starts at 0, so nothing is audible until the driver
     /// writes MVOLL/MVOLR ($0C/$1C).
     pub fn new() -> Self {
+        // Hardware power-on state: FLG = $E0 — soft reset (bit 7: key-ons
+        // blocked), mute (bit 6) and echo writes disabled (bit 5). The IPL
+        // boot ROM never touches the DSP, so this holds until the sound
+        // driver writes $6C itself. Mirrored into `registers` so a
+        // read-back of $6C matches the state the DSP is really in.
+        let mut registers = [0u8; 128];
+        registers[0x6C] = 0xE0;
+
         Self {
-            registers: [0u8; 128],
+            registers,
             voices: [Voice::default(); 8],
             dir_base: 0,
             // Hardware resets master volume to 0; game code sets it during boot.
             master_vol_left: 0,
             master_vol_right: 0,
-            // Real hardware powers up with RESET set; our HLE boot skips
-            // the IPL's own register init, so start "already booted"
-            // (not reset/muted) like the rest of the zero-initialized
-            // register file — the driver writes $6C itself during setup.
-            flg: 0,
+            flg: 0xE0,
+            new_kon: 0,
+            every_other_sample: false,
+            kon_delay: [0; 8],
             non: 0,
             pmon: 0,
             noise_lfsr: 0x4000,
             noise_tick_counter: 0,
+            echo_vol_left: 0,
+            echo_vol_right: 0,
             efb: 0,
             eon: 0,
             esa: 0,
             edl: 0,
             fir_coeff: [0i8; 8],
+            fir_history: [(0, 0); 8],
             echo_ptr: 0,
+            echo_len: 0,
             echo_out_l: 0,
             echo_out_r: 0,
         }
@@ -272,26 +318,15 @@ impl Dsp {
             // ---- Global registers ----
             _ => match idx {
                 // $4C: KON — key on, one bit per voice (bit 0 = voice 0).
-                // Ignored while FLG's RESET bit is set — real hardware
-                // blocks new key-ons for as long as the DSP is held in
-                // reset.
-                0x4C if self.flg & 0x80 == 0 => {
-                    for v in 0..8usize {
-                        if value & (1 << v) != 0 {
-                            self.key_on_voice(v);
-                        }
-                    }
-                }
+                // Latched here, acted on at the next KON/KOFF poll in
+                // `step` (every other sample). As on hardware, a second
+                // write before that poll replaces the first.
+                0x4C => self.new_kon = value,
 
-                // $5C: KOFF — key off, enter release phase
-                0x5C => {
-                    for v in 0..8usize {
-                        if value & (1 << v) != 0 {
-                            self.voices[v].key_on = false;
-                            self.voices[v].adsr.envelope_phase = EnvelopePhase::Release;
-                        }
-                    }
-                }
+                // $5C: KOFF — read straight from `registers` at each poll:
+                // a voice whose bit stays set is pushed into release every
+                // time, so there's nothing to do on the write itself.
+                0x5C => {}
 
                 // $0C: MVOLL — master left  volume (signed)
                 0x0C => self.master_vol_left = value as i8,
@@ -311,8 +346,11 @@ impl Dsp {
                 // above, so a read-back of $2D returns what was written.
                 0x2D => self.pmon = value & 0xFE,
 
-                // ---- Echo registers (Stage 1: stored, no audio effect
-                // yet — the buffer/FIR/routing land in later stages) ----
+                // $2C/$3C: EVOLL/EVOLR — echo output volume (signed).
+                0x2C => self.echo_vol_left = value as i8,
+                0x3C => self.echo_vol_right = value as i8,
+
+                // ---- Echo registers ----
                 // $0D: EFB — echo feedback, signed.
                 0x0D => self.efb = value as i8,
                 // $4D: EON — one bit per voice; see the `eon` field doc.
@@ -324,11 +362,10 @@ impl Dsp {
                 0x7D => self.edl = value & 0x0F,
 
                 // $6C: FLG — noise clock / echo-write-disable / mute / reset.
-                // Noise clock changes take effect on the next `advance_noise`
-                // call. Echo-write-disable (bit 5) is stored but has no
-                // effect yet — the echo buffer itself isn't implemented
-                // until a later stage. RESET and MUTE are handled here
-                // and in render_audio_single/$4C respectively.
+                // Powers on as $E0 (see `new`). Noise clock changes take
+                // effect on the next `advance_noise` call; echo-write-disable
+                // (bit 5) is checked in `tick_echo_buffer`. RESET is handled
+                // here and in $4C, MUTE in `render_audio_single`.
                 0x6C => {
                     self.flg = value;
                     if value & 0x80 != 0 {
@@ -352,9 +389,34 @@ impl Dsp {
         }
     }
 
+    /// Poll KON and KOFF, as the hardware does every other sample.
+    ///
+    /// KOFF is a level: every voice whose bit is set in $5C enters
+    /// release. KON is an event: the latched writes are consumed and each
+    /// voice is keyed on, starting its 5-sample delay. KON is handled
+    /// second, so a voice in both wins the key-on. While FLG's RESET bit
+    /// is set, latched key-ons are consumed without effect.
+    fn poll_key_on_off(&mut self) {
+        let koff = self.registers[0x5C];
+        let kon = std::mem::take(&mut self.new_kon);
+        let reset = self.flg & 0x80 != 0;
+
+        for v in 0..8usize {
+            let bit = 1u8 << v;
+            if koff & bit != 0 && self.voices[v].adsr.envelope_phase != EnvelopePhase::Off {
+                self.voices[v].key_on = false;
+                self.voices[v].adsr.envelope_phase = EnvelopePhase::Release;
+            }
+            if kon & bit != 0 && !reset {
+                self.key_on_voice(v);
+            }
+        }
+    }
+
     /// Handle key-on for voice `v`.
     ///
-    /// Marks the voice active and resets all playback state.
+    /// Marks the voice active, resets all playback state, and starts the
+    /// 5-sample key-on delay (see `kon_delay`).
     /// The actual BRR start/loop addresses are read from the DIR table
     /// on the first call to `step()` after key-on, when we have access
     /// to APU RAM.
@@ -379,7 +441,9 @@ impl Dsp {
         // Reset pitch counter
         voice.pitch_counter = 0;
 
-        // Reset envelope to start of attack
+        // Reset envelope to start of attack. It stays at 0 through the
+        // key-on delay; `step` doesn't run the voice until that ends.
+        self.kon_delay[v] = 5;
         voice.adsr.envelope_phase = EnvelopePhase::Attack;
         voice.adsr.envelope_level = 0;
         voice.adsr.tick_counter = 0;
@@ -403,6 +467,11 @@ impl Dsp {
     /// pass `&mut memory.ram` without conflicting with the `&mut
     /// memory.dsp` borrow (disjoint fields of the same struct).
     pub fn step(&mut self, ram: &mut RawARAM) {
+        self.every_other_sample = !self.every_other_sample;
+        if self.every_other_sample {
+            self.poll_key_on_off();
+        }
+
         self.advance_noise();
         // Real hardware scales the 15-bit LFSR into a signed sample the
         // same way a decoded BRR sample would be: shift left 1 and treat
@@ -415,7 +484,8 @@ impl Dsp {
         // Split borrows so we can pass &mut voice and &mut self.registers
         // into Voice::step() simultaneously — the borrow checker allows
         // borrowing separate struct fields at the same time.
-        let (voices, registers) = (&mut self.voices, &mut self.registers);
+        let (voices, registers, kon_delay) =
+            (&mut self.voices, &mut self.registers, &mut self.kon_delay);
 
         let mut echo_in_l: i32 = 0;
         let mut echo_in_r: i32 = 0;
@@ -431,9 +501,17 @@ impl Dsp {
                 None
             };
 
-            // Voice::step only reads RAM; reborrow the mutable reference
-            // as shared for the duration of this call.
-            voice.step(i, ram, registers, pmon_source);
+            if kon_delay[i] > 0 {
+                // Key-on delay: the voice doesn't run at all — no BRR
+                // decoding, no pitch, no envelope — and its envelope (so
+                // its output, ENVX and OUTX below) stays at 0.
+                kon_delay[i] -= 1;
+                registers[(i << 4) | 0x8] = 0;
+            } else {
+                // Voice::step only reads RAM; reborrow the mutable
+                // reference as shared for the duration of this call.
+                voice.step(i, ram, registers, pmon_source);
+            }
 
             if non & (1 << i) != 0 {
                 // NON substitutes the noise generator for this voice's
@@ -465,15 +543,16 @@ impl Dsp {
                 // the echo buffer too, not the BRR audio underneath —
                 // both stages see the same "this voice's output this
                 // tick" value) into the echo input, same per-voice
-                // scaling as the main dry mix.
+                // scaling as the main dry mix. Clamped after each voice,
+                // like the dry mix (see `render_audio_single`).
                 let (l, r) = voice_dry_output(voice);
-                echo_in_l += l;
-                echo_in_r += r;
+                echo_in_l = clamp16(echo_in_l + l);
+                echo_in_r = clamp16(echo_in_r + r);
             }
         }
 
-        let echo_in_l = echo_in_l.clamp(i16::MIN as i32, i16::MAX as i32) as i16;
-        let echo_in_r = echo_in_r.clamp(i16::MIN as i32, i16::MAX as i32) as i16;
+        let echo_in_l = echo_in_l as i16;
+        let echo_in_r = echo_in_r as i16;
 
         let (echo_out_l, echo_out_r) = self.tick_echo(ram, echo_in_l, echo_in_r);
         self.echo_out_l = echo_out_l;
@@ -504,12 +583,6 @@ impl Dsp {
         self.noise_lfsr = feedback | (self.noise_lfsr >> 1);
     }
 
-    /// Echo buffer length in bytes: EDL * 2048 (2 KB per unit, EDL 0-15
-    /// after $7D's masking). EDL=0 means no delay buffer at all.
-    fn echo_buffer_len_bytes(&self) -> u16 {
-        self.edl as u16 * 2048
-    }
-
     /// Absolute APU RAM address of a byte offset within the echo buffer.
     /// Wraps at 64 KB like every other APU RAM address does on real
     /// hardware — ESA near the top of the address space plus a large
@@ -526,18 +599,17 @@ impl Dsp {
     /// one stereo pair (4 bytes), wrapping at the buffer length.
     ///
     /// Returns the pair that was read *before* the write, i.e. the
-    /// sample the buffer held from one full trip around ago — this is
-    /// what Stage 3's FIR filter will read several of in sequence to
-    /// build its 8 taps.
+    /// sample the buffer held from one full trip around ago.
     ///
-    /// EDL=0 (zero-length buffer) returns `(0, 0)` and touches RAM not
-    /// at all — there's nowhere to read from or write to, so this avoids
-    /// a division/modulo by zero rather than picking an arbitrary
-    /// fallback address.
+    /// The length is latched from EDL whenever the pointer is at offset 0,
+    /// as on hardware. EDL=0 latches a length of 0, so the pointer wraps
+    /// straight back to 0 every tick: the DSP keeps reading and writing
+    /// the single pair at ESA. Echo-write-disable (FLG bit 5, set at
+    /// power-on) is what keeps that from touching RAM before a driver
+    /// has chosen where its buffer goes.
     pub fn tick_echo_buffer(&mut self, ram: &mut RawARAM, new_l: i16, new_r: i16) -> (i16, i16) {
-        let len = self.echo_buffer_len_bytes();
-        if len == 0 {
-            return (0, 0);
+        if self.echo_ptr == 0 {
+            self.echo_len = self.edl as u16 * 2048;
         }
 
         let addr = self.echo_addr(self.echo_ptr);
@@ -551,69 +623,50 @@ impl Dsp {
         }
 
         self.echo_ptr += 4;
-        if self.echo_ptr >= len {
+        if self.echo_ptr >= self.echo_len {
             self.echo_ptr = 0;
         }
 
         (old_l, old_r)
     }
 
-    fn read_fir_taps(&self, ram: &RawARAM) -> [(i16, i16); 8] {
-        let len = self.echo_buffer_len_bytes();
-        let mut taps = [(0i16, 0i16); 8];
-        if len == 0 {
-            return taps;
-        }
-
-        for k in 0..8u16 {
-            let back = k * 4; // 0, 4, ..., 28 — always < len (len is 0 or >= 2048)
-            let offset = if self.echo_ptr >= back {
-                self.echo_ptr - back
-            } else {
-                len - (back - self.echo_ptr)
-            };
-            let addr = self.echo_addr(offset);
-            taps[k as usize] = (
-                read_echo_sample(ram, addr),
-                read_echo_sample(ram, addr.wrapping_add(2)),
-            );
-        }
-        taps
+    /// Filter the FIR history with the 8 coefficients, as the hardware
+    /// does: taps 0-6 are summed and truncated to 16 bits (wrapping, not
+    /// clamping), tap 7 is added, then the result is clamped and its
+    /// lowest bit cleared.
+    fn fir_filter(&self) -> (i16, i16) {
+        let channel = |pick: fn(&(i16, i16)) -> i16| -> i16 {
+            let tap =
+                |i: usize| (pick(&self.fir_history[i]) as i32 * self.fir_coeff[i] as i32) >> 6;
+            let mut sum: i32 = (0..7).map(tap).sum();
+            sum = sum as i16 as i32;
+            sum += tap(7) as i16 as i32;
+            (sum.clamp(i16::MIN as i32, i16::MAX as i32) as i16) & !1
+        };
+        (channel(|p| p.0), channel(|p| p.1))
     }
 
-    /// Combine the 8 taps with the FIR coefficients
-    fn fir_filter(&self, taps: &[(i16, i16); 8]) -> (i16, i16) {
-        let mut sum_l: i32 = 0;
-        let mut sum_r: i32 = 0;
-        for (&coeff, tap) in self.fir_coeff.iter().zip(taps.iter()).take(7) {
-            let c = coeff as i32;
-            sum_l += (c * tap.0 as i32) >> 7;
-            sum_r += (c * tap.1 as i32) >> 7;
-        }
-        sum_l = sum_l as i16 as i32;
-        sum_r = sum_r as i16 as i32;
-
-        let c7 = self.fir_coeff[7] as i32;
-        sum_l += (c7 * taps[7].0 as i32) >> 7;
-        sum_r += (c7 * taps[7].1 as i32) >> 7;
-
-        (
-            sum_l.clamp(i16::MIN as i32, i16::MAX as i32) as i16,
-            sum_r.clamp(i16::MIN as i32, i16::MAX as i32) as i16,
-        )
-    }
-
-    /// Advance the echo processor by one tick.
+    /// Advance the echo processor by one tick and return the filtered
+    /// echo output (before EVOL):
+    ///
+    /// 1. read the pair at the echo pointer into the FIR history,
+    /// 2. filter the history,
+    /// 3. write `echo_in + filtered * EFB` back at the same position and
+    ///    advance the pointer (`tick_echo_buffer`).
+    ///
+    /// Because the FIR only ever sees samples read out of the buffer,
+    /// every tap is delayed by the full buffer length (EDL * 512 samples).
     pub fn tick_echo(&mut self, ram: &mut RawARAM, echo_in_l: i16, echo_in_r: i16) -> (i16, i16) {
-        let taps = self.read_fir_taps(ram);
-        let (fir_l, fir_r) = self.fir_filter(&taps);
+        let addr = self.echo_addr(self.echo_ptr);
+        let read_l = read_echo_sample(ram, addr);
+        let read_r = read_echo_sample(ram, addr.wrapping_add(2));
+        self.fir_history.rotate_left(1);
+        self.fir_history[7] = (read_l >> 1, read_r >> 1);
 
-        let fb_l = (self.efb as i32 * fir_l as i32) >> 7;
-        let fb_r = (self.efb as i32 * fir_r as i32) >> 7;
+        let (fir_l, fir_r) = self.fir_filter();
 
-        let write_l = (echo_in_l as i32 + fb_l).clamp(i16::MIN as i32, i16::MAX as i32) as i16;
-        let write_r = (echo_in_r as i32 + fb_r).clamp(i16::MIN as i32, i16::MAX as i32) as i16;
-
+        let write_l = echo_feedback(echo_in_l, fir_l, self.efb);
+        let write_r = echo_feedback(echo_in_r, fir_r, self.efb);
         self.tick_echo_buffer(ram, write_l, write_r);
 
         (fir_l, fir_r)
@@ -630,30 +683,36 @@ impl Dsp {
             return (0, 0);
         }
 
-        let mut left: i32 = 0;
-        let mut right: i32 = 0;
-
+        // The dry mix is a 16-bit accumulator on hardware: it saturates
+        // after *each* voice is added, so the order of loud voices matters
+        // (+, +, - can end far lower than the plain sum would).
+        let mut dry_l: i32 = 0;
+        let mut dry_r: i32 = 0;
         for voice in self.voices.iter() {
             let (l, r) = voice_dry_output(voice);
-            left += l;
-            right += r;
+            dry_l = clamp16(dry_l + l);
+            dry_r = clamp16(dry_r + r);
         }
 
-        // Apply master volume ($0C/$1C) as a final output stage scaler.
-        // Same signed i8 × i32 → >> 7 pattern as per-voice volume.
-        left = (left * self.master_vol_left as i32) >> 7;
-        right = (right * self.master_vol_right as i32) >> 7;
+        // Master volume ($0C/$1C) scales the dry mix and echo volume
+        // ($2C/$3C) the echo output, each with the signed i8 × i32 → >> 7
+        // pattern. Each product is truncated to 16 bits (wrapping, as on
+        // hardware) before the two are summed and clamped.
+        let main_l = ((dry_l * self.master_vol_left as i32) >> 7) as i16 as i32;
+        let main_r = ((dry_r * self.master_vol_right as i32) >> 7) as i16 as i32;
+        let echo_l = ((self.echo_out_l as i32 * self.echo_vol_left as i32) >> 7) as i16 as i32;
+        let echo_r = ((self.echo_out_r as i32 * self.echo_vol_right as i32) >> 7) as i16 as i32;
 
-        left += self.echo_out_l as i32;
-        right += self.echo_out_r as i32;
-
-        // A second clamp is required: master vol can amplify the
-        // already-summed dry mix past i16 range.
         (
-            left.clamp(i16::MIN as i32, i16::MAX as i32) as i16,
-            right.clamp(i16::MIN as i32, i16::MAX as i32) as i16,
+            clamp16(main_l + echo_l) as i16,
+            clamp16(main_r + echo_r) as i16,
         )
     }
+}
+
+/// Saturate to the signed 16-bit range, kept as i32 for further math.
+fn clamp16(x: i32) -> i32 {
+    x.clamp(i16::MIN as i32, i16::MAX as i32)
 }
 
 fn voice_dry_output(voice: &Voice) -> (i32, i32) {
@@ -670,6 +729,14 @@ fn voice_dry_output(voice: &Voice) -> (i32, i32) {
     let left = (scaled * voice.left_vol as i32) >> 7;
     let right = (scaled * voice.right_vol as i32) >> 7;
     (left, right)
+}
+
+/// The value written back into the echo buffer: the echo input plus the
+/// filtered echo scaled by EFB (truncated to 16 bits, as on hardware),
+/// clamped, with the lowest bit cleared.
+fn echo_feedback(echo_in: i16, fir: i16, efb: i8) -> i16 {
+    let feedback = ((fir as i32 * efb as i32) >> 7) as i16 as i32;
+    ((echo_in as i32 + feedback).clamp(i16::MIN as i32, i16::MAX as i32) as i16) & !1
 }
 
 /// Read a little-endian 16-bit signed sample from APU RAM, matching the
