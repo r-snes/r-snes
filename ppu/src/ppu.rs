@@ -459,9 +459,14 @@ impl PPU {
         dot as u16
     }
 
-    /// Field 1 shortens scanline 240 to 1360 cycles instead of 1364
+    /// Returns true if screen interlace is on (SETINI bit 0).
+    pub fn interlace(&self) -> bool {
+        self.regs.setini & 0x01 != 0
+    }
+
+    /// Field 1 shortens scanline 240 to 1360 cycles instead of 1364, only without interlace.
     fn scanline_length(&self) -> u32 {
-        if self.field() && self.scanline == SHORT_SCANLINE {
+        if !self.interlace() && self.field() && self.scanline == SHORT_SCANLINE {
             MASTER_CYCLES_SHORT_SCANLINE
         } else {
             MASTER_CYCLES_PER_SCANLINE
@@ -1289,7 +1294,7 @@ mod tests {
         );
     }
 
-    /// Field 1 shortens scanline 240 by one dot.
+    /// Without interlace, field 1 shortens scanline 240 by one dot.
     #[test]
     fn test_short_scanline_on_field_1() {
         let mut ppu = PPU::new();
@@ -1302,6 +1307,20 @@ mod tests {
         assert!(!ppu.field());
 
         assert_eq!(count_frame_cycles(&mut ppu), full);
+    }
+
+    /// With interlace (SETINI bit 0), scanline 240 keeps 1364 cycles in field 1.
+    #[test]
+    fn test_no_short_scanline_in_interlace() {
+        let mut ppu = PPU::new();
+        ppu.write(0x2133, 0x01);
+        ppu.frame = 1;
+        ppu.scanline = SHORT_SCANLINE;
+        assert_eq!(ppu.scanline_length(), MASTER_CYCLES_PER_SCANLINE);
+
+        let lengths = dot_lengths(&mut ppu);
+        assert_eq!(lengths[323], 6);
+        assert_eq!(lengths[327], 6);
     }
 
     // ============================================================
