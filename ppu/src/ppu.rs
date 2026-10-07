@@ -480,6 +480,11 @@ impl PPU {
         self.regs.setini & 0x01 != 0
     }
 
+    /// Returns true if OBJ interlace is on (SETINI bit 1).
+    pub fn obj_interlace(&self) -> bool {
+        self.regs.setini & 0x02 != 0
+    }
+
     /// Field 1 shortens scanline 240 to 1360 cycles instead of 1364, only without interlace.
     fn scanline_length(&self) -> u32 {
         if !self.interlace() && self.field() && self.scanline == SHORT_SCANLINE {
@@ -553,8 +558,13 @@ impl PPU {
                 if let Some(row) = self.active_line() {
                     let objsel = self.regs.objsel;
                     let oamadd = self.regs.oamadd;
-                    let (_, time_over, range_over) =
-                        self.oam.eval_sprites_for_scanline(row, objsel, oamadd);
+                    let obj_interlace = self.obj_interlace();
+                    let (_, time_over, range_over) = self.oam.eval_sprites_for_scanline(
+                        row,
+                        objsel,
+                        oamadd,
+                        obj_interlace,
+                    );
                     self.oam.latch_flags(time_over, range_over);
                 }
             }

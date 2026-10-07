@@ -234,6 +234,7 @@ impl OAM {
     ///   wrapping around all 128 sprites.
     /// - A sprite is in range if it covers line `y` and is not entirely left of
     ///   the screen (hardware quirk: X = -256 still counts as in range).
+    /// - With OBJ interlace (SETINI bit 1), sprites cover half as many lines.
     /// - At most 32 sprites per scanline are kept; a 33rd sets `range_over`.
     /// - Only tiles (8-pixel slices) with X in -7..255 are fetched, except at
     ///   X = -256 where every tile is fetched (quirk); more than 34 sets `time_over`.
@@ -244,6 +245,7 @@ impl OAM {
         y: usize,
         objsel: u8,
         oamadd: u16,
+        obj_interlace: bool,
     ) -> (Vec<(u8, Sprite)>, bool, bool) {
         let priority_rotation = (oamadd >> 15) & 0x01 != 0;
         let start = if priority_rotation {
@@ -261,6 +263,9 @@ impl OAM {
             let idx = (start + i) & 0x7F;
             let sprite = self.get_sprite(idx as u8, objsel);
             let (width, height) = Self::sprite_size(objsel, sprite.large);
+
+            // OBJ interlace: the sprite covers half as many lines.
+            let height = if obj_interlace { height / 2 } else { height };
 
             // Y range check in wrapping u8 arithmetic (matches hardware).
             let dy = (y as u8).wrapping_sub(sprite.y);
@@ -505,14 +510,23 @@ mod tests {
         let mut oam = make_oam();
         make_sprite_entry(&mut oam, 0, 0, 10, 0, 0, 0); // y=10, 8x8 -> rows 10-17
 
-        let (visible, over, _) = oam.eval_sprites_for_scanline(10, OBJSEL_8_16, 0);
+        let (visible, over, _) = oam.eval_sprites_for_scanline(10, OBJSEL_8_16, 0, false);
         assert_eq!(visible.len(), 1);
         assert_eq!(visible[0].0, 0);
         assert!(!over);
 
-        assert_eq!(oam.eval_sprites_for_scanline(17, OBJSEL_8_16, 0).0.len(), 1);
-        assert_eq!(oam.eval_sprites_for_scanline(18, OBJSEL_8_16, 0).0.len(), 0);
-        assert_eq!(oam.eval_sprites_for_scanline(9, OBJSEL_8_16, 0).0.len(), 0);
+        assert_eq!(
+            oam.eval_sprites_for_scanline(17, OBJSEL_8_16, 0, false).0.len(),
+            1
+        );
+        assert_eq!(
+            oam.eval_sprites_for_scanline(18, OBJSEL_8_16, 0, false).0.len(),
+            0
+        );
+        assert_eq!(
+            oam.eval_sprites_for_scanline(9, OBJSEL_8_16, 0, false).0.len(),
+            0
+        );
     }
 
     // time_over is set when more than 34 tiles (8px slices) fall on a line.
@@ -527,7 +541,7 @@ mod tests {
         for i in 0..5u8 {
             make_sprite_entry(&mut oam, i, 0, 0, 0, 0, 0b10); // large bit set
         }
-        let (_, time_over, range_over) = oam.eval_sprites_for_scanline(0, OBJSEL_8_64, 0);
+        let (_, time_over, range_over) = oam.eval_sprites_for_scanline(0, OBJSEL_8_64, 0, false);
         assert!(time_over);
         assert!(!range_over);
 
@@ -536,7 +550,7 @@ mod tests {
         for i in 0..4u8 {
             make_sprite_entry(&mut oam, i, 0, 0, 0, 0, 0b10);
         }
-        let (_, time_over, _) = oam.eval_sprites_for_scanline(0, OBJSEL_8_64, 0);
+        let (_, time_over, _) = oam.eval_sprites_for_scanline(0, OBJSEL_8_64, 0, false);
         assert!(!time_over);
     }
 
@@ -548,14 +562,14 @@ mod tests {
         make_sprite_entry(&mut oam, 10, 0, 0, 0, 0, 0);
 
         let oamadd: u16 = 20; // disable priority rotation + start sprite 10 (20 >> 1)
-        let (visible, _, _) = oam.eval_sprites_for_scanline(0, OBJSEL_8_16, oamadd);
+        let (visible, _, _) = oam.eval_sprites_for_scanline(0, OBJSEL_8_16, oamadd, false);
         // we expect 0 to come before 10, because we start from 0
         assert_eq!(visible.len(), 2);
         assert_eq!(visible[0].0, 0);
         assert_eq!(visible[1].0, 10);
 
         let oamadd: u16 = (1 << 15) | 20; // enable priority rotation + start sprite 10 (20 >> 1)
-        let (visible, _, _) = oam.eval_sprites_for_scanline(0, OBJSEL_8_16, oamadd);
+        let (visible, _, _) = oam.eval_sprites_for_scanline(0, OBJSEL_8_16, oamadd, false);
         // we expect 10 to come before 0, because we start at 10 and only reach 0 after wrap around
         assert_eq!(visible.len(), 2);
         assert_eq!(visible[0].0, 10);
@@ -568,11 +582,11 @@ mod tests {
         let mut oam = make_oam();
         make_sprite_entry(&mut oam, 0, 0, 250, 0, 0, 0); // y=250, 8x8
         assert_eq!(
-            oam.eval_sprites_for_scanline(255, OBJSEL_8_16, 0).0.len(),
+            oam.eval_sprites_for_scanline(255, OBJSEL_8_16, 0, false).0.len(),
             1
         );
         assert_eq!(
-            oam.eval_sprites_for_scanline(249, OBJSEL_8_16, 0).0.len(),
+            oam.eval_sprites_for_scanline(249, OBJSEL_8_16, 0, false).0.len(),
             0
         )
     }
@@ -584,7 +598,7 @@ mod tests {
         make_sprite_entry(&mut oam, 0, 0, 0, 0, 0, 0);
         make_sprite_entry(&mut oam, 5, 0, 0, 0, 0, 0);
         make_sprite_entry(&mut oam, 2, 0, 0, 0, 0, 0);
-        let (visible, _, _) = oam.eval_sprites_for_scanline(0, OBJSEL_8_16, 0);
+        let (visible, _, _) = oam.eval_sprites_for_scanline(0, OBJSEL_8_16, 0, false);
         assert_eq!(visible[0].0, 0);
         assert_eq!(visible[1].0, 2);
         assert_eq!(visible[2].0, 5);
@@ -597,7 +611,8 @@ mod tests {
         for i in 0..33u8 {
             make_sprite_entry(&mut oam, i, 0, 0, 0, 0, 0);
         }
-        let (visible, time_over, range_over) = oam.eval_sprites_for_scanline(0, OBJSEL_8_16, 0);
+        let (visible, time_over, range_over) =
+            oam.eval_sprites_for_scanline(0, OBJSEL_8_16, 0, false);
         assert_eq!(visible.len(), 32);
         assert!(range_over);
         assert!(!time_over);
@@ -606,7 +621,7 @@ mod tests {
         for i in 0..32u8 {
             make_sprite_entry(&mut oam, i, 0, 0, 0, 0, 0);
         }
-        let (visible, _, range_over) = oam.eval_sprites_for_scanline(0, OBJSEL_8_16, 0);
+        let (visible, _, range_over) = oam.eval_sprites_for_scanline(0, OBJSEL_8_16, 0, false);
         assert_eq!(visible.len(), 32);
         assert!(!range_over);
     }
@@ -640,7 +655,7 @@ mod tests {
         make_sprite_entry(&mut oam, 0, 248, 0, 0, 0, 0b01); // x = -8: fully off-screen
         make_sprite_entry(&mut oam, 1, 249, 0, 0, 0, 0b01); // x = -7: rightmost pixel visible
         make_sprite_entry(&mut oam, 2, 255, 0, 0, 0, 0b00); // x = 255: leftmost pixel visible
-        let (visible, _, _) = oam.eval_sprites_for_scanline(0, OBJSEL_8_16, 0);
+        let (visible, _, _) = oam.eval_sprites_for_scanline(0, OBJSEL_8_16, 0, false);
         let indices: Vec<u8> = visible.iter().map(|&(i, _)| i).collect();
         assert_eq!(indices, vec![1, 2]);
     }
@@ -652,7 +667,7 @@ mod tests {
         for i in 0..33u8 {
             make_sprite_entry(&mut oam, i, 192, 0, 0, 0, 0b01); // x = -64
         }
-        let (visible, _, range_over) = oam.eval_sprites_for_scanline(0, OBJSEL_8_16, 0);
+        let (visible, _, range_over) = oam.eval_sprites_for_scanline(0, OBJSEL_8_16, 0, false);
         assert!(visible.is_empty());
         assert!(!range_over);
     }
@@ -665,7 +680,8 @@ mod tests {
         for i in 0..33u8 {
             make_sprite_entry(&mut oam, i, 0, 0, 0, 0, 0b01); // x = -256
         }
-        let (visible, time_over, range_over) = oam.eval_sprites_for_scanline(0, OBJSEL_8_16, 0);
+        let (visible, time_over, range_over) =
+            oam.eval_sprites_for_scanline(0, OBJSEL_8_16, 0, false);
         assert_eq!(visible.len(), 32);
         assert!(range_over);
         assert!(!time_over);
@@ -679,7 +695,7 @@ mod tests {
         for i in 0..5u8 {
             make_sprite_entry(&mut oam, i, 0, 0, 0, 0, 0b11); // x = -256, large
         }
-        let (_, time_over, _) = oam.eval_sprites_for_scanline(0, OBJSEL_8_64, 0);
+        let (_, time_over, _) = oam.eval_sprites_for_scanline(0, OBJSEL_8_64, 0, false);
         assert!(time_over); // 5 * 8 = 40 > 34
     }
 
@@ -693,7 +709,7 @@ mod tests {
         for i in 0..9u8 {
             make_sprite_entry(&mut oam, i, 224, 0, 0, 0, 0b10);
         }
-        let (_, time_over, _) = oam.eval_sprites_for_scanline(0, OBJSEL_8_64, 0);
+        let (_, time_over, _) = oam.eval_sprites_for_scanline(0, OBJSEL_8_64, 0, false);
         assert!(time_over);
 
         // 8 sprites -> 32 tiles.
@@ -701,7 +717,40 @@ mod tests {
         for i in 0..8u8 {
             make_sprite_entry(&mut oam, i, 224, 0, 0, 0, 0b10);
         }
-        let (_, time_over, _) = oam.eval_sprites_for_scanline(0, OBJSEL_8_64, 0);
+        let (_, time_over, _) = oam.eval_sprites_for_scanline(0, OBJSEL_8_64, 0, false);
         assert!(!time_over);
+    }
+
+    // With OBJ interlace an 8x8 sprite covers 4 lines instead of 8.
+    #[test]
+    fn test_eval_obj_interlace_halves_height() {
+        let mut oam = make_oam();
+        make_sprite_entry(&mut oam, 0, 0, 10, 0, 0, 0); // y=10, 8x8
+
+        assert_eq!(
+            oam.eval_sprites_for_scanline(13, OBJSEL_8_16, 0, true).0.len(),
+            1
+        );
+        assert_eq!(
+            oam.eval_sprites_for_scanline(14, OBJSEL_8_16, 0, true).0.len(),
+            0
+        );
+        assert_eq!(
+            oam.eval_sprites_for_scanline(14, OBJSEL_8_16, 0, false).0.len(),
+            1
+        );
+    }
+
+    // With OBJ interlace, sprites below their half height don't count toward range_over.
+    #[test]
+    fn test_eval_obj_interlace_range_over() {
+        let mut oam = make_oam();
+        for i in 0..33u8 {
+            make_sprite_entry(&mut oam, i, 0, 0, 0, 0, 0); // y=0, 8x8
+        }
+        let (_, _, range_over) = oam.eval_sprites_for_scanline(3, OBJSEL_8_16, 0, true);
+        assert!(range_over);
+        let (_, _, range_over) = oam.eval_sprites_for_scanline(4, OBJSEL_8_16, 0, true);
+        assert!(!range_over);
     }
 }
