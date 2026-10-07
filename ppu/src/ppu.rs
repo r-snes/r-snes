@@ -46,7 +46,7 @@ pub struct PPU {
     pub oam: OAM,
 
     // Timing
-    /// Current scanline (0..262).
+    /// Current scanline (0..262, or 0..263 in interlace on field 0).
     pub scanline: u16,
     /// Master cycles elapsed inside the current scanline (0..1364).
     pub h_cycles: u32,
@@ -473,6 +473,15 @@ impl PPU {
         }
     }
 
+    /// Lines in the current frame: 262, or 263 in interlace on field 0.
+    pub fn scanlines_per_frame(&self) -> u16 {
+        if self.interlace() && !self.field() {
+            SCANLINES_PER_FRAME + 1
+        } else {
+            SCANLINES_PER_FRAME
+        }
+    }
+
     /// Returns the first V-Blank line: 225, or 240 with overscan (SETINI bit 2).
     pub fn vblank_start_line(&self) -> u16 {
         if self.regs.setini & 0x04 != 0 {
@@ -499,7 +508,7 @@ impl PPU {
             self.h_cycles = 0;
             self.scanline += 1;
 
-            let kind = if self.scanline >= SCANLINES_PER_FRAME {
+            let kind = if self.scanline >= self.scanlines_per_frame() {
                 self.scanline = 0;
                 self.frame += 1;
                 ScanlineKind::FrameStart
@@ -1321,6 +1330,31 @@ mod tests {
         let lengths = dot_lengths(&mut ppu);
         assert_eq!(lengths[323], 6);
         assert_eq!(lengths[327], 6);
+    }
+
+    /// With interlace, field 0 frames have 263 lines and field 1 frames have 262.
+    #[test]
+    fn test_interlace_frame_lengths() {
+        let mut ppu = PPU::new();
+        ppu.write(0x2133, 0x01);
+        let line = MASTER_CYCLES_PER_SCANLINE;
+        let lines = SCANLINES_PER_FRAME as u32;
+
+        assert_eq!(count_frame_cycles(&mut ppu), (lines + 1) * line); // field 0
+        assert_eq!(count_frame_cycles(&mut ppu), lines * line); // field 1
+        assert_eq!(count_frame_cycles(&mut ppu), (lines + 1) * line); // field 0
+    }
+
+    /// With interlace on field 0, scanline 262 exists before the frame wraps.
+    #[test]
+    fn test_interlace_extra_scanline() {
+        let mut ppu = PPU::new();
+        ppu.write(0x2133, 0x01);
+        assert_eq!(
+            advance_to_scanline_start(&mut ppu, SCANLINES_PER_FRAME),
+            Some(PpuEvent::ScanlineStart(ScanlineKind::Normal))
+        );
+        assert_eq!(ppu.frame, 0);
     }
 
     // ============================================================
