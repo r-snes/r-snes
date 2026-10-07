@@ -223,7 +223,7 @@ pub struct PPURegisters {
     pub opvct: u16,
 
     /// $213E - STAT77 (R8, read-only)
-    pub stat77: u8, // Bits: TRMxVVVV | Time over/sprite overflow (T), range over/tile overflow (R), master/slave (M), PPU1 open bus (x), PPU1 version (V)
+    pub stat77: u8, // Bits: TRMxVVVV | Time over (T, >34 sprite tiles), range over (R, >32 sprites), master/slave (M), PPU1 open bus (x), PPU1 version (V)
 
     /// $213F - STAT78 (R8, read-only)
     /// On read: counter_latch = 0; ophct_byte = 0; opvct_byte = 0

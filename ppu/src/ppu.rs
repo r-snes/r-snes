@@ -480,14 +480,6 @@ impl PPU {
 
         if self.h_cycles >= self.scanline_length() {
             self.h_cycles = 0;
-            // Update STAT77 sprite flags for the current line.
-            let objsel = self.regs.objsel;
-            let oamadd = self.regs.oamadd;
-            let (_, time_over, range_over) =
-                self.oam
-                    .eval_sprites_for_scanline(self.scanline as usize, objsel, oamadd);
-            self.oam.set_flags(time_over, range_over);
-
             self.scanline += 1;
 
             let kind = if self.scanline >= SCANLINES_PER_FRAME {
@@ -499,6 +491,22 @@ impl PPU {
             } else {
                 ScanlineKind::Normal
             };
+
+            // STAT77 overflow flags: cleared at the end of V-Blank, then accumulated
+            // over the visible lines. Force blank disables sprite evaluation: no update, no clear.
+            if !self.force_blank() {
+                if kind == ScanlineKind::FrameStart {
+                    self.oam.clear_flags();
+                }
+                // Same row numbering as the renderer (framebuffer row = scanline - 1).
+                if let Some(row) = self.visible_line() {
+                    let objsel = self.regs.objsel;
+                    let oamadd = self.regs.oamadd;
+                    let (_, time_over, range_over) =
+                        self.oam.eval_sprites_for_scanline(row, objsel, oamadd);
+                    self.oam.latch_flags(time_over, range_over);
+                }
+            }
 
             Some(PpuEvent::ScanlineStart(kind))
         } else if self.dot() != prev_dot {
@@ -1075,6 +1083,22 @@ mod tests {
         panic!("never reached the start of scanline {target}");
     }
 
+    /// Writes sprite `i`'s X and Y through $2102-$2104 (tile and attributes untouched).
+    fn set_sprite_xy(ppu: &mut PPU, i: u16, x: u8, y: u8) {
+        let word = i * 2;
+        ppu.write(0x2102, (word & 0xFF) as u8);
+        ppu.write(0x2103, ((word >> 8) & 0x01) as u8);
+        ppu.write(0x2104, x);
+        ppu.write(0x2104, y);
+    }
+
+    /// Moves all 128 sprites below the visible area (Y = 0xE0) so they are not drawn.
+    fn hide_all_sprites(ppu: &mut PPU) {
+        for i in 0..128 {
+            set_sprite_xy(ppu, i, 0, 0xE0);
+        }
+    }
+
     /// Ticks through one whole frame and returns how many master cycles it took.
     fn count_frame_cycles(ppu: &mut PPU) -> u32 {
         let mut cycles = 0;
@@ -1283,5 +1307,66 @@ mod tests {
         ppu.write(0x211C, 0xAB); // becomes M7B low, irrelevant to the result
         ppu.write(0x211C, 0x02); // M7B high = 2 -> 5*2 = 10
         assert_eq!(ppu.read(0x2134, 0), 0x0A);
+    }
+
+    // ============================================================
+    // STAT77 overflow flags
+    // ============================================================
+
+    /// The overflow flags stay set after the overflowing lines.
+    #[test]
+    fn test_stat77_flags_stay_set() {
+        let mut ppu = PPU::new();
+        hide_all_sprites(&mut ppu);
+        for i in 0..33 {
+            set_sprite_xy(&mut ppu, i, 0, 10); // rows 10-17
+        }
+
+        advance_to_scanline_start(&mut ppu, 100);
+        assert!(ppu.oam.range_over);
+        assert_eq!(ppu.read(0x213E, 0) & 0x40, 0x40);
+    }
+
+    /// The overflow flags are cleared at the end of V-Blank (frame start).
+    #[test]
+    fn test_stat77_flags_cleared_at_frame_start() {
+        let mut ppu = PPU::new();
+        hide_all_sprites(&mut ppu);
+        for i in 0..33 {
+            set_sprite_xy(&mut ppu, i, 0, 10);
+        }
+
+        advance_to_scanline_start(&mut ppu, VBLANK_START_LINE);
+        assert!(ppu.oam.range_over);
+
+        hide_all_sprites(&mut ppu);
+        advance_to_scanline_start(&mut ppu, 0);
+        assert!(!ppu.oam.range_over);
+    }
+
+    /// Force blank freezes the flags: no evaluation, no clear at frame start.
+    #[test]
+    fn test_stat77_flags_frozen_in_force_blank() {
+        let mut ppu = PPU::new();
+        hide_all_sprites(&mut ppu);
+        for i in 0..33 {
+            set_sprite_xy(&mut ppu, i, 0, 10);
+        }
+
+        // Force blank over the visible lines: nothing is evaluated.
+        ppu.write(0x2100, 0x80);
+        advance_to_scanline_start(&mut ppu, VBLANK_START_LINE);
+        assert!(!ppu.oam.range_over);
+
+        // Display on: the flag gets set.
+        ppu.write(0x2100, 0x0F);
+        advance_to_scanline_start(&mut ppu, 100);
+        assert!(ppu.oam.range_over);
+
+        // Force blank across frame start: the flag is not cleared.
+        ppu.write(0x2100, 0x80);
+        hide_all_sprites(&mut ppu);
+        advance_to_scanline_start(&mut ppu, 0);
+        assert!(ppu.oam.range_over);
     }
 }
