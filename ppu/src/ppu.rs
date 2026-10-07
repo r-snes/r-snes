@@ -442,6 +442,22 @@ impl PPU {
         self.regs.mpy = ((a * b) as u32) & 0x00FF_FFFF;
     }
 
+    /// First master cycle of `dot` on the current scanline. Dots after 323 start
+    /// 2 cycles later, and dots after 327 start 4 cycles later, except on the short scanline.
+    pub fn dot_start_cycle(&self, dot: u16) -> u32 {
+        let mut cycle = dot as u32 * 4;
+        if self.scanline_length() == MASTER_CYCLES_SHORT_SCANLINE {
+            return cycle;
+        }
+        if dot > 323 {
+            cycle += 2;
+        }
+        if dot > 327 {
+            cycle += 2;
+        }
+        cycle
+    }
+
     /// Current dot (0..339). Dots 323 and 327 last 6 master cycles instead of 4,
     /// except on the short scanline where every dot lasts 4.
     pub fn dot(&self) -> u16 {
@@ -1241,6 +1257,26 @@ mod tests {
         ppu.h_cycles = MASTER_CYCLES_PER_SCANLINE - 1;
         ppu.latch_hv_counters();
         assert_eq!(ppu.regs.ophct, 339);
+    }
+
+    /// dot_start_cycle gives the first cycle of each dot, on a normal and on the short scanline.
+    #[test]
+    fn test_dot_start_cycle_matches_dot() {
+        let normal = PPU::new();
+        let mut short = PPU::new();
+        short.frame = 1;
+        short.scanline = SHORT_SCANLINE;
+
+        for mut ppu in [normal, short] {
+            for dot in 0..340 {
+                ppu.h_cycles = ppu.dot_start_cycle(dot);
+                assert_eq!(ppu.dot(), dot);
+                if dot > 0 {
+                    ppu.h_cycles -= 1;
+                    assert_eq!(ppu.dot(), dot - 1);
+                }
+            }
+        }
     }
 
     // ============================================================
