@@ -81,8 +81,8 @@ impl PPU {
         }
     }
 
-    /// Returns true if the current frame number is odd.
-    pub fn odd_frame(&self) -> bool {
+    /// Interlace field (STAT78 bit 7). Toggles at the start of every frame.
+    pub fn field(&self) -> bool {
         !self.frame.is_multiple_of(2)
     }
 
@@ -398,7 +398,7 @@ impl PPU {
                 if self.regs.counter_latch {
                     val |= 0x40; // bit 6: H/V counter latch flag
                 }
-                if self.odd_frame() {
+                if self.field() {
                     val |= 0x80; // bit 7: interlace field (toggles each frame)
                 }
                 let result = self.ppu2_read(val, 0xDF); // bit 5 undriven
@@ -459,9 +459,9 @@ impl PPU {
         dot as u16
     }
 
-    /// Non-interlace odd frames shorten scanline 240 to 1360 cycles instead of 1364
+    /// Field 1 shortens scanline 240 to 1360 cycles instead of 1364
     fn scanline_length(&self) -> u32 {
-        if self.odd_frame() && self.scanline == SHORT_SCANLINE {
+        if self.field() && self.scanline == SHORT_SCANLINE {
             MASTER_CYCLES_SHORT_SCANLINE
         } else {
             MASTER_CYCLES_PER_SCANLINE
@@ -562,7 +562,7 @@ mod tests {
         assert_eq!(ppu.h_cycles, 0);
         assert_eq!(ppu.dot(), 0);
         assert_eq!(ppu.frame, 0);
-        assert!(!ppu.odd_frame());
+        assert!(!ppu.field());
     }
 
     // ============================================================
@@ -1243,7 +1243,7 @@ mod tests {
     }
 
     /// Scanline 225 raises VBlankStart; line 0 raises FrameStart and flips
-    /// the odd/even field.
+    /// the field.
     #[test]
     fn test_tick_vblank_and_frame_events() {
         let mut ppu = PPU::new();
@@ -1259,11 +1259,24 @@ mod tests {
         );
         assert_eq!(ppu.scanline, 0);
         assert_eq!(ppu.frame, 1);
-        assert!(ppu.odd_frame());
+        assert!(ppu.field());
 
         advance_to_scanline_start(&mut ppu, 0);
         assert_eq!(ppu.frame, 2);
-        assert!(!ppu.odd_frame());
+        assert!(!ppu.field());
+    }
+
+    /// STAT78 bit 7 reports the field, which flips at every frame start.
+    #[test]
+    fn test_stat78_field_bit() {
+        let mut ppu = PPU::new();
+        assert_eq!(ppu.read(0x213F, 0) & 0x80, 0x00);
+
+        advance_to_scanline_start(&mut ppu, 0);
+        assert_eq!(ppu.read(0x213F, 0) & 0x80, 0x80);
+
+        advance_to_scanline_start(&mut ppu, 0);
+        assert_eq!(ppu.read(0x213F, 0) & 0x80, 0x00);
     }
 
     /// Ordinary scanlines raise ScanlineKind::Normal, not a boundary kind.
@@ -1276,17 +1289,17 @@ mod tests {
         );
     }
 
-    /// Non-interlace odd frames shorten scanline 240 by one dot.
+    /// Field 1 shortens scanline 240 by one dot.
     #[test]
-    fn test_short_scanline_on_odd_frames() {
+    fn test_short_scanline_on_field_1() {
         let mut ppu = PPU::new();
         let full = SCANLINES_PER_FRAME as u32 * MASTER_CYCLES_PER_SCANLINE;
 
         assert_eq!(count_frame_cycles(&mut ppu), full);
-        assert!(ppu.odd_frame());
+        assert!(ppu.field());
 
         assert_eq!(count_frame_cycles(&mut ppu), full - 4);
-        assert!(!ppu.odd_frame());
+        assert!(!ppu.field());
 
         assert_eq!(count_frame_cycles(&mut ppu), full);
     }
