@@ -6,6 +6,7 @@
 mod dma;
 mod gui;
 mod rsnes;
+mod config;
 
 #[cfg(test)]
 mod test_utils;
