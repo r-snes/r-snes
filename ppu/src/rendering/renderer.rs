@@ -250,11 +250,6 @@ impl Renderer {
             0 => self.render_scanline_mode0(ppu, y),
             1 => self.render_scanline_mode1(ppu, y),
             _ => self.render_scanline_mode1(ppu, y),
-            // _ => {
-            //     self.render_full_black(y);
-            //     println!("PPU mode {} not implemented", mode);
-            //     return;
-            // }
         }
 
         // Sprites deposit into main_line / sub_line too (gated on TM/TS bit 4).
