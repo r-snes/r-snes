@@ -7,8 +7,12 @@
 
 use crate::write_twice::WriteTwice;
 
-/// PPU Registers placeholder definitions
-/// Each field is a placeholder; actual behavior, latches, buffering, and timing to implement later.
+/// PPU register values and the internal latches used by write-twice registers.
+// Registers without a field here:
+// - $2104 OAMDATA, $2138 RDOAM: OAM ports, see oam.rs
+// - $2118/$2119 VMDATA, $2139/$213A RDVRAM: VRAM ports, see vram.rs
+// - $2121 CGADD, $2122 CGDATA, $213B RDCGRAM: CGRAM ports, see cgram.rs
+// - $2137 SLHV, $213E STAT77, $213F STAT78: computed in PPU::read
 pub struct PPURegisters {
     /// $2100 - INIDISP (W8)
     pub inidisp: u8, // Bits: F...BBBB | Forced blanking (F), screen brightness (B).
@@ -18,11 +22,8 @@ pub struct PPURegisters {
 
     /// $2102/$2103 - OAMADDL/OAMADDH (W16)
     /// OAMADDL ($2102): Bits: AAAAAAAA | OAM word address low
-    /// OAMADDH ($2103): Bits: P.......B | Priority rotation (P), address high bit (B)
+    /// OAMADDH ($2103): Bits: P......B | Priority rotation (P), address high bit (B)
     pub oamadd: u16,
-
-    /// $2104 - OAMDATA (W8x2)
-    pub oamdata: u8, // Bits: DDDDDDDD | OAM data write byte, increments OAMADD
 
     /// $2105 - BGMODE (W8)
     pub bgmode: u8, // Bits: 4321PMMM | Tilemap tile size (#), BG3 priority (P), BG mode (M)
@@ -82,12 +83,6 @@ pub struct PPURegisters {
     /// VMADDH ($2117): Bits: hHHHHHHH | VRAM word address high
     pub vmadd: u16,
 
-    /// $2118/$2119 - VMDATAL/VMDATAH (W16)
-    /// VMDATAL ($2118): Bits: LLLLLLLL | VRAM data write low
-    /// VMDATAH ($2119): Bits: HHHHHHHH | VRAM data write high
-    /// Increments VMADD after write according to VMAIN setting
-    pub vmdata: u16,
-
     /// $211A - M7SEL (W8)
     pub m7sel: u8, // Bits: RF....YX | Mode 7 tilemap repeat (R), fill (F), flip vertical (Y), flip horizontal (X)
 
@@ -120,16 +115,6 @@ pub struct PPURegisters {
     /// Bits: ...YYYYY YYYYYYYY | Mode 7 center Y (signed)
     /// On write: M7Y = (value << 8) | mode7_latch; mode7_latch = value
     pub m7y: u16,
-
-    /// $2121 - CGADD (W8)
-    pub cgadd: u8, // Bits: AAAAAAAA | CGRAM word address. On write: cgram_byte = 0
-
-    /// $2122 - CGDATA (W8x2)
-    /// Bits: .BBBBBGG GGGRRRRR | CGRAM data write, increments CGADD after each word write
-    /// On write: if cgram_byte == 0: cgram_latch = value
-    ///           if cgram_byte == 1: CGDATA = (value << 8) | cgram_latch
-    ///           cgram_byte = ~cgram_byte
-    pub cgdata: u16,
 
     /// $2123 - W12SEL (W8)
     pub w12sel: u8, // Bits: DdCcBbAa | Enable (ABCD) and invert (abcd) windows for BG1 (AB) and BG2 (CD)
@@ -189,25 +174,6 @@ pub struct PPURegisters {
     /// Signed 24-bit result of M7A (signed 16-bit) * M7B (signed 8-bit)
     pub mpy: u32,
 
-    /// $2137 - SLHV (R8, read-only)
-    pub slhv: u8, // Bits: xxxxxxxx | CPU open bus. On read: counter_latch = 1
-
-    /// $2138 - OAMDATAREAD (R8, read-only)
-    pub oamdataread: u8, // Bits: DDDDDDDD | Read OAM data byte, increments OAMADD
-
-    /// $2139/$213A - VMDATALREAD/VMDATAHREAD (R16, read-only)
-    /// VMDATALREAD ($2139): Bits: LLLLLLLL | VRAM data read low (from vram_latch)
-    /// VMDATAHREAD ($213A): Bits: HHHHHHHH | VRAM data read high (from vram_latch)
-    /// Increments VMADD after read according to VMAIN setting
-    pub vmdataread: u16,
-
-    /// $213B - CGDATAREAD (R8x2, read-only)
-    /// Bits: xBBBBBGG GGGRRRRR | CGRAM data read, increments CGADD after each word read
-    /// On read: if cgram_byte == 0: value = CGDATA.low
-    ///          if cgram_byte == 1: value = CGDATA.high
-    ///          cgram_byte = ~cgram_byte
-    pub cgdataread: u16,
-
     /// $213C - OPHCT (R8x2, read-only)
     /// Bits: xxxxxxxH HHHHHHHH | Output horizontal counter (9 bits)
     /// On read: if ophct_byte == 0: value = OPHCT.low
@@ -222,17 +188,9 @@ pub struct PPURegisters {
     ///          opvct_byte = ~opvct_byte
     pub opvct: u16,
 
-    /// $213E - STAT77 (R8, read-only)
-    pub stat77: u8, // Bits: TRMxVVVV | Time over (T, >34 sprite tiles), range over (R, >32 sprites), master/slave (M), PPU1 open bus (x), PPU1 version (V)
-
-    /// $213F - STAT78 (R8, read-only)
-    /// On read: counter_latch = 0; ophct_byte = 0; opvct_byte = 0
-    pub stat78: u8, // Bits: FLxMVVVV | Interlace field (F), counter latch (L), PPU2 open bus (x), NTSC/PAL (M), PPU2 version (V)
-
-    /// ============================================================
-    /// Latches (internal hardware state, not directly addressable)
-    /// ============================================================
-
+    // ============================================================
+    // Latches (internal hardware state, not directly addressable)
+    // ============================================================
     /// Shared latch for all BGnHOFS/BGnVOFS writes ($210D-$2114).
     /// Written on every BGnHOFS and BGnVOFS write.
     pub bgofs_latch: u8,
@@ -269,7 +227,6 @@ impl PPURegisters {
             inidisp: 0,
             objsel: 0,
             oamadd: 0,
-            oamdata: 0,
             bgmode: 0,
             mosaic: 0,
             bgsc: [0; 4],
@@ -283,7 +240,6 @@ impl PPURegisters {
             bgvofs: [0; 3],
             vmain: 0,
             vmadd: 0,
-            vmdata: 0,
             m7sel: 0,
             m7a: 0,
             m7b: 0,
@@ -291,8 +247,6 @@ impl PPURegisters {
             m7d: 0,
             m7x: 0,
             m7y: 0,
-            cgadd: 0,
-            cgdata: 0,
             w12sel: 0,
             w34sel: 0,
             wobjsel: 0,
@@ -311,14 +265,8 @@ impl PPURegisters {
             coldata: 0,
             setini: 0,
             mpy: 0,
-            slhv: 0,
-            oamdataread: 0,
-            vmdataread: 0,
-            cgdataread: 0,
             ophct: 0,
             opvct: 0,
-            stat77: 0,
-            stat78: 0,
             bgofs_latch: 0,
             bghofs_latch: 0,
             mode7_latch: 0,

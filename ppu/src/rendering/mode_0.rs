@@ -84,6 +84,7 @@ mod tests {
     use super::*;
     use crate::constants::{SCREEN_WIDTH, VRAM_SIZE};
     use crate::ppu::PPU;
+    use crate::test_utils::{fb_pixel, set_color, write_sprite};
 
     // ============================================================
     // Helpers
@@ -107,25 +108,10 @@ mod tests {
         Renderer::new()
     }
 
-    fn pixel(renderer: &Renderer, x: usize, y: usize) -> (u8, u8, u8) {
-        let idx = (y * SCREEN_WIDTH + x) * 3;
-        (
-            renderer.framebuffer[idx],
-            renderer.framebuffer[idx + 1],
-            renderer.framebuffer[idx + 2],
-        )
-    }
-
     fn set_cgram_white(ppu: &mut PPU, entry: u8) {
         ppu.write(0x2121, entry);
         ppu.write(0x2122, 0xFF);
         ppu.write(0x2122, 0x7F);
-    }
-
-    fn set_color(ppu: &mut PPU, entry: u8, color: u16) {
-        ppu.write(0x2121, entry);
-        ppu.write(0x2122, (color & 0xFF) as u8);
-        ppu.write(0x2122, (color >> 8) as u8);
     }
 
     // ============================================================
@@ -212,7 +198,7 @@ mod tests {
         // Default CGRAM[0] = 0x0000 -> black backdrop
         renderer.render_scanline(&ppu, 0);
         for x in 0..SCREEN_WIDTH {
-            assert_eq!(pixel(&renderer, x, 0), (0, 0, 0), "x={}", x);
+            assert_eq!(fb_pixel(&renderer, x, 0), (0, 0, 0), "x={}", x);
         }
 
         // Set backdrop to white, all tiles transparent -> full white scanline
@@ -222,7 +208,7 @@ mod tests {
         renderer.render_scanline(&ppu, 0);
         let (br, bg, bb) = Renderer::apply_brightness(ppu.cgram.read(0), 15);
         for x in 0..SCREEN_WIDTH {
-            assert_eq!(pixel(&renderer, x, 0), (br, bg, bb), "x={}", x);
+            assert_eq!(fb_pixel(&renderer, x, 0), (br, bg, bb), "x={}", x);
         }
 
         // Tile with CHR all zero (color index 0) -> still shows backdrop
@@ -232,7 +218,7 @@ mod tests {
         renderer.render_scanline(&ppu2, 0);
         let (br, bg, bb) = Renderer::apply_brightness(ppu2.cgram.read(0), 15);
         for x in 0..SCREEN_WIDTH {
-            assert_eq!(pixel(&renderer, x, 0), (br, bg, bb), "x={}", x);
+            assert_eq!(fb_pixel(&renderer, x, 0), (br, bg, bb), "x={}", x);
         }
     }
 
@@ -257,7 +243,7 @@ mod tests {
         renderer.render_scanline(&ppu, 0);
         let expected = Renderer::apply_brightness(ppu.cgram.read(1), 15);
         for x in 0..SCREEN_WIDTH {
-            assert_eq!(pixel(&renderer, x, 0), expected, "x={}", x);
+            assert_eq!(fb_pixel(&renderer, x, 0), expected, "x={}", x);
         }
 
         // Palette 1, color index 1 -> CGRAM[5] (1 * 4 + 1)
@@ -275,7 +261,7 @@ mod tests {
         renderer.render_scanline(&ppu2, 0);
         let expected = Renderer::apply_brightness(ppu2.cgram.read(5), 15);
         for x in 0..SCREEN_WIDTH {
-            assert_eq!(pixel(&renderer, x, 0), expected, "x={}", x);
+            assert_eq!(fb_pixel(&renderer, x, 0), expected, "x={}", x);
         }
     }
 
@@ -312,10 +298,10 @@ mod tests {
             r_normal.render_scanline(&ppu_n, 0);
             r_flipped.render_scanline(&ppu_f, 0);
 
-            assert_eq!(pixel(&r_normal, 0, 0), white, "normal x=0");
-            assert_eq!(pixel(&r_normal, 7, 0), black, "normal x=7");
-            assert_eq!(pixel(&r_flipped, 0, 0), black, "flipped x=0");
-            assert_eq!(pixel(&r_flipped, 7, 0), white, "flipped x=7");
+            assert_eq!(fb_pixel(&r_normal, 0, 0), white, "normal x=0");
+            assert_eq!(fb_pixel(&r_normal, 7, 0), black, "normal x=7");
+            assert_eq!(fb_pixel(&r_flipped, 0, 0), black, "flipped x=0");
+            assert_eq!(fb_pixel(&r_flipped, 7, 0), white, "flipped x=7");
         }
 
         // Vertical flip: row 0 becomes row 7
@@ -339,14 +325,14 @@ mod tests {
             // Framebuffer row 0: normal sees tile row 0 (full), flipped sees row 7 (empty)
             r_normal.render_scanline(&ppu_n, 0);
             r_flipped.render_scanline(&ppu_f, 0);
-            assert_eq!(pixel(&r_normal, 0, 0), white, "normal row 0");
-            assert_eq!(pixel(&r_flipped, 0, 0), black, "flipped row 0");
+            assert_eq!(fb_pixel(&r_normal, 0, 0), white, "normal row 0");
+            assert_eq!(fb_pixel(&r_flipped, 0, 0), black, "flipped row 0");
 
             // Framebuffer row 7: normal sees tile row 7 (empty), flipped sees row 0 (full)
             r_normal.render_scanline(&ppu_n, 7);
             r_flipped.render_scanline(&ppu_f, 7);
-            assert_eq!(pixel(&r_normal, 0, 7), black, "normal row 7");
-            assert_eq!(pixel(&r_flipped, 0, 7), white, "flipped row 7");
+            assert_eq!(fb_pixel(&r_normal, 0, 7), black, "normal row 7");
+            assert_eq!(fb_pixel(&r_flipped, 0, 7), white, "flipped row 7");
         }
     }
 
@@ -376,7 +362,7 @@ mod tests {
         renderer.render_scanline(&ppu, 0);
 
         let white = Renderer::apply_brightness(ppu.cgram.read(1), 15);
-        assert_eq!(pixel(&renderer, 0, 0), white);
+        assert_eq!(fb_pixel(&renderer, 0, 0), white);
     }
 
     // ============================================================
@@ -399,7 +385,7 @@ mod tests {
         }
         set_color(&mut ppu, 33, 0x001F);
         r.render_scanline(&ppu, 0);
-        assert_eq!(pixel(&r, 0, 0), Renderer::apply_brightness(0x001F, 15));
+        assert_eq!(fb_pixel(&r, 0, 0), Renderer::apply_brightness(0x001F, 15));
     }
 
     #[test]
@@ -415,7 +401,7 @@ mod tests {
         }
         set_color(&mut ppu, 65, 0x001F);
         r.render_scanline(&ppu, 0);
-        assert_eq!(pixel(&r, 0, 0), Renderer::apply_brightness(0x001F, 15));
+        assert_eq!(fb_pixel(&r, 0, 0), Renderer::apply_brightness(0x001F, 15));
     }
 
     #[test]
@@ -431,6 +417,79 @@ mod tests {
         }
         set_color(&mut ppu, 97, 0x001F);
         r.render_scanline(&ppu, 0);
-        assert_eq!(pixel(&r, 0, 0), Renderer::apply_brightness(0x001F, 15));
+        assert_eq!(fb_pixel(&r, 0, 0), Renderer::apply_brightness(0x001F, 15));
+    }
+
+    // ============================================================
+    // Layer order
+    // ============================================================
+
+    // Mode 0 order (front to back): OBJ.3 > BG1.1 > BG2.1 > OBJ.2 > BG1.0 > BG2.0
+    // > OBJ.1 > BG3.1 > BG4.1 > OBJ.0 > BG3.0 > BG4.0 > backdrop.
+
+    // A high priority BG3 tile is in front of a priority 0 sprite, behind a priority 1 one.
+    #[test]
+    fn test_mode0_bg3_high_vs_sprites() {
+        let red = Renderer::apply_brightness(0x001F, 15);
+        let green = Renderer::apply_brightness(0x03E0, 15);
+
+        // (sprite attributes, expected)
+        for (attr, expected) in [(0x00, red), (0x10, green)] {
+            let mut r = make_renderer();
+            let mut ppu = make_ppu_mode0();
+            ppu.write(0x212C, 0x14); // BG3 + OBJ on main
+
+            // BG3: tilemap 0x0C00, CHR 0x3000, tile 0 high priority, color 1 = red.
+            ppu.write(0x2109, 0x0C);
+            ppu.write(0x210C, 0x03);
+            ppu.vram.memory[0x0C00] = 0x2000;
+            for row in 0..8 {
+                ppu.vram.memory[0x3000 + row] = 0x00FF;
+            }
+            set_color(&mut ppu, 65, 0x001F);
+
+            // Sprite 0 at (0, 0): CHR base 0, tile 0, color 1 = green. Other sprites hidden.
+            ppu.write(0x2101, 0x00);
+            for i in 0..128 {
+                write_sprite(&mut ppu, i, 0, 0xF0, 0, 0);
+            }
+            write_sprite(&mut ppu, 0, 0, 0, 0, attr);
+            for row in 0..8 {
+                ppu.vram.memory[row] = 0x00FF;
+            }
+            set_color(&mut ppu, 129, 0x03E0);
+
+            r.render_scanline(&ppu, 0);
+            assert_eq!(fb_pixel(&r, 0, 0), expected, "sprite attr {attr:#04X}");
+        }
+    }
+
+    // A low priority BG4 tile is behind a low priority BG3 tile, a high priority one is in front.
+    #[test]
+    fn test_mode0_bg4_vs_bg3_low() {
+        let red = Renderer::apply_brightness(0x001F, 15);
+        let blue = Renderer::apply_brightness(0x7C00, 15);
+
+        // (BG4 tilemap entry, expected)
+        for (bg4_entry, expected) in [(0x0000, red), (0x2000, blue)] {
+            let mut r = make_renderer();
+            let mut ppu = make_ppu_mode0();
+            ppu.write(0x212C, 0x0C); // BG3 + BG4 on main
+            ppu.write(0x2109, 0x0C); // BG3 tilemap 0x0C00
+            ppu.write(0x210A, 0x08); // BG4 tilemap 0x0800
+            ppu.write(0x210C, 0x43); // BG3 CHR 0x3000, BG4 CHR 0x4000
+
+            ppu.vram.memory[0x0C00] = 0x0000; // BG3: tile 0, low priority
+            ppu.vram.memory[0x0800] = bg4_entry; // BG4: tile 0
+            for row in 0..8 {
+                ppu.vram.memory[0x3000 + row] = 0x00FF;
+                ppu.vram.memory[0x4000 + row] = 0x00FF;
+            }
+            set_color(&mut ppu, 65, 0x001F); // BG3 color 1 = red
+            set_color(&mut ppu, 97, 0x7C00); // BG4 color 1 = blue
+
+            r.render_scanline(&ppu, 0);
+            assert_eq!(fb_pixel(&r, 0, 0), expected, "BG4 entry {bg4_entry:#06X}");
+        }
     }
 }

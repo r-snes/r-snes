@@ -221,20 +221,18 @@ mod tests {
         assert_eq!(lo1, 0x22);
     }
 
-    /// The high-byte read must report bit 7 as undriven (mask bit 7 = 0),
-    /// leaving open-bus injection to the caller.
+    /// The high-byte read drives only bits 0-6: bit 7 is left to the PPU2 open bus.
     #[test]
     fn test_read_data_high_byte_masks_bit7() {
         let mut cgram = CGRAM::new();
         let mut regs = make_regs();
-        cgram.memory[0x00] = 0xFF00; // hi = 0xFF, but bit 7 must not be driven out
+        cgram.memory[0x00] = 0x7F00; // hi = 0x7F
 
-        let (_lo, _) = cgram.read_data(&mut regs); // Low phase
-        let (hi, mask) = cgram.read_data(&mut regs);
-        // CGRAM only stores 7 bits of hi (write masks bit 7), and the read
-        // reports bit 7 as open bus via the mask.
-        assert_eq!(mask & 0x80, 0x00);
-        assert_eq!(hi & mask, hi & 0x7F);
+        let (_lo, lo_mask) = cgram.read_data(&mut regs); // Low phase
+        let (hi, hi_mask) = cgram.read_data(&mut regs);
+        assert_eq!(lo_mask, 0xFF);
+        assert_eq!(hi_mask, 0x7F);
+        assert_eq!(hi & hi_mask, 0x7F);
     }
 
     /// word_addr must wrap from 0xFF to 0x00 after a complete read at address 0xFF.
