@@ -191,7 +191,6 @@ pub struct PPURegisters {
     // ============================================================
     // Latches (internal hardware state, not directly addressable)
     // ============================================================
-
     /// Shared latch for all BGnHOFS/BGnVOFS writes ($210D-$2114).
     /// Written on every BGnHOFS and BGnVOFS write.
     pub bgofs_latch: u8,
