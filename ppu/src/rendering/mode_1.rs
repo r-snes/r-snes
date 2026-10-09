@@ -337,4 +337,34 @@ mod tests {
             assert_eq!(fb_pixel(&r, 0, 7), row7, "entry {entry:#06X}, row 7");
         }
     }
+
+    // ============================================================
+    // render_scanline_mode1 - BG3 palette
+    // ============================================================
+
+    /// BG3 is 2bpp: palette p, color c reads CGRAM p * 4 + c (entries 0-31).
+    #[test]
+    fn test_render_mode1_bg3_palette() {
+        let red = Renderer::apply_brightness(0x001F, 15);
+
+        // (palette, tile row data, CGRAM entry)
+        // 0x00FF -> color 1, 0xFFFF -> color 3
+        for (palette, row_data, entry) in [(1u16, 0x00FFu16, 5usize), (7, 0xFFFF, 31)] {
+            let mut ppu = make_ppu_mode1();
+            ppu.write(0x2100, 0x0F);
+            ppu.write(0x212C, 0x04); // BG3 only on main
+            ppu.write(0x2109, 0x04); // BG3 tilemap at 0x0400, CHR at 0x0000
+            for word in 0x0400..0x0800 {
+                ppu.vram.memory[word] = palette << 10; // tile 0, palette `palette`
+            }
+            for row in 0..8 {
+                ppu.vram.memory[row] = row_data;
+            }
+            ppu.cgram.memory[entry] = 0x001F;
+
+            let mut r = Renderer::new();
+            r.render_scanline(&ppu, 0);
+            assert_eq!(fb_pixel(&r, 0, 0), red, "palette {palette}");
+        }
+    }
 }
