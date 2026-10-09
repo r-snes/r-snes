@@ -101,6 +101,25 @@ mod tests {
         ppu
     }
 
+    /// Mode 1 with BG1 at full brightness: tilemap at 0x0400 filled with `entry`,
+    /// CHR at 0x0000 (all zero), palette 0 color 1 = red.
+    fn make_ppu_bg1_filled(entry: u16) -> PPU {
+        let mut ppu = make_ppu_mode1();
+        ppu.write(0x2100, 0x0F);
+        ppu.write(0x2107, 0x04);
+        for word in 0x0400..0x0800 {
+            ppu.vram.memory[word] = entry;
+        }
+        ppu.cgram.memory[0x01] = 0x001F;
+        ppu
+    }
+
+    /// RGB of the framebuffer pixel at (x, y).
+    fn fb_pixel(r: &Renderer, x: usize, y: usize) -> (u8, u8, u8) {
+        let i = (y * SCREEN_WIDTH + x) * 3;
+        (r.framebuffer[i], r.framebuffer[i + 1], r.framebuffer[i + 2])
+    }
+
     // ============================================================
     // decode_4bpp_tile_pixel_from
     // ============================================================
@@ -283,44 +302,44 @@ mod tests {
     // render_scanline_mode1 - flip_x / flip_y
     // ============================================================
 
-    /// flip_x must mirror the pixel horizontally within the tile (fine_x = 7 - fine_x).
+    /// H flip (tilemap bit 14) mirrors the tile horizontally.
     #[test]
     fn test_render_mode1_flip_x_mirrors_pixel() {
-        let mut vram = Box::new([0; _]);
-        // Tile 0: only the rightmost pixel (x=7, bit 0) is set on row 0
-        vram[0] = 0x0001; // plane 0 row 0: bit 0 set -> only x=7 lit
+        let red = Renderer::apply_brightness(0x001F, 15);
+        let black = (0, 0, 0);
 
-        // Without flip_x: x=7 lit, x=0 transparent
-        let no_flip = Renderer::decode_4bpp_tile_pixel_from(&vram, 0, 7, 0);
-        let transparent = Renderer::decode_4bpp_tile_pixel_from(&vram, 0, 0, 0);
-        assert_eq!(no_flip, 1);
-        assert_eq!(transparent, 0);
-
-        // With flip_x: fine_x = 7 - x, so screen x=0 -> fine_x=7 -> lit
-        let flipped_x0 = Renderer::decode_4bpp_tile_pixel_from(&vram, 0, 7, 0);
-        let flipped_x7 = Renderer::decode_4bpp_tile_pixel_from(&vram, 0, 7 - 7, 0);
-        assert_eq!(flipped_x0, 1);
-        assert_eq!(flipped_x7, 0);
+        // (tilemap entry, expected at x=0, expected at x=7)
+        for (entry, x0, x7) in [(0x0000, black, red), (0x4000, red, black)] {
+            let mut ppu = make_ppu_bg1_filled(entry);
+            // Tile 0: only the rightmost pixel (x=7) is opaque, on every row.
+            for row in 0..8 {
+                ppu.vram.memory[row] = 0x0001;
+            }
+            let mut r = Renderer::new();
+            r.render_scanline(&ppu, 0);
+            assert_eq!(fb_pixel(&r, 0, 0), x0, "entry {entry:#06X}, x=0");
+            assert_eq!(fb_pixel(&r, 7, 0), x7, "entry {entry:#06X}, x=7");
+        }
     }
 
-    /// flip_y must mirror the pixel vertically within the tile (fine_y = 7 - fine_y).
+    /// V flip (tilemap bit 15) mirrors the tile vertically.
+    /// Framebuffer row y shows BG row y + 1, so rows 6 and 7 show tile rows 7 and 0.
     #[test]
     fn test_render_mode1_flip_y_mirrors_pixel() {
-        let mut vram = Box::new([0; _]);
-        // Only row 7 is set
-        vram[7] = 0xFFFF; // plane 0+1 row 7 all set
+        let red = Renderer::apply_brightness(0x001F, 15);
+        let black = (0, 0, 0);
 
-        // Without flip_y: row 0 transparent, row 7 lit
-        let row0 = Renderer::decode_4bpp_tile_pixel_from(&vram, 0, 0, 0);
-        let row7 = Renderer::decode_4bpp_tile_pixel_from(&vram, 0, 0, 7);
-        assert_eq!(row0, 0);
-        assert_ne!(row7, 0);
-
-        // With flip_y: screen y=0 -> fine_y=7 -> lit
-        let flipped_y0 = Renderer::decode_4bpp_tile_pixel_from(&vram, 0, 0, 7);
-        let flipped_y7 = Renderer::decode_4bpp_tile_pixel_from(&vram, 0, 0, 7 - 7);
-        assert_ne!(flipped_y0, 0);
-        assert_eq!(flipped_y7, 0);
+        // (tilemap entry, expected on row 6, expected on row 7)
+        for (entry, row6, row7) in [(0x0000, red, black), (0x8000, black, red)] {
+            let mut ppu = make_ppu_bg1_filled(entry);
+            // Tile 0: only tile row 7 is opaque.
+            ppu.vram.memory[7] = 0x00FF;
+            let mut r = Renderer::new();
+            r.render_scanline(&ppu, 6);
+            r.render_scanline(&ppu, 7);
+            assert_eq!(fb_pixel(&r, 0, 6), row6, "entry {entry:#06X}, row 6");
+            assert_eq!(fb_pixel(&r, 0, 7), row7, "entry {entry:#06X}, row 7");
+        }
     }
 
     // ============================================================
