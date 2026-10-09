@@ -87,6 +87,7 @@ mod tests {
     use crate::constants::SCREEN_WIDTH;
     use crate::ppu::PPU;
     use crate::rendering::renderer::Renderer;
+    use crate::test_utils::fb_pixel;
 
     // ============================================================
     // Helpers
@@ -112,12 +113,6 @@ mod tests {
         }
         ppu.cgram.memory[0x01] = 0x001F;
         ppu
-    }
-
-    /// RGB of the framebuffer pixel at (x, y).
-    fn fb_pixel(r: &Renderer, x: usize, y: usize) -> (u8, u8, u8) {
-        let i = (y * SCREEN_WIDTH + x) * 3;
-        (r.framebuffer[i], r.framebuffer[i + 1], r.framebuffer[i + 2])
     }
 
     // ============================================================

@@ -506,6 +506,7 @@ impl Renderer {
 mod tests {
     use super::*;
     use crate::ppu::PPU;
+    use crate::test_utils::{fb_pixel, set_color};
 
     // ============================================================
     // Helpers
@@ -534,18 +535,6 @@ mod tests {
         ppu.write(0x2100, 0x0F);
         ppu.write(0x2105, 0x01);
         ppu
-    }
-
-    fn set_color(ppu: &mut PPU, entry: u8, color: u16) {
-        ppu.write(0x2121, entry);
-        ppu.write(0x2122, (color & 0xFF) as u8);
-        ppu.write(0x2122, (color >> 8) as u8);
-    }
-
-    // RGB of the framebuffer pixel at (x, y).
-    fn fb_pixel(r: &Renderer, x: usize, y: usize) -> (u8, u8, u8) {
-        let i = (y * SCREEN_WIDTH + x) * 3;
-        (r.framebuffer[i], r.framebuffer[i + 1], r.framebuffer[i + 2])
     }
 
     // BG1 (mode 1, 4bpp): tilemap word 0x0000, CHR word 0x1000, palette 0
