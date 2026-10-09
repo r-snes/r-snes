@@ -341,34 +341,4 @@ mod tests {
             assert_eq!(fb_pixel(&r, 0, 7), row7, "entry {entry:#06X}, row 7");
         }
     }
-
-    // ============================================================
-    // render_scanline_mode1 - scroll wrapping
-    // ============================================================
-
-    /// Scroll coordinates must wrap at 256 pixels (8-bit tilemap).
-    #[test]
-    fn test_scroll_wraps_at_256() {
-        // px = (x + scroll_x) & 0xFF - verify the mask holds
-        let scroll_x: usize = 0xFF;
-        let x: usize = 1;
-        let px = (x + scroll_x) & 0xFF;
-        assert_eq!(px, 0); // 0xFF + 1 = 0x100, masked = 0x00
-    }
-
-    // ============================================================
-    // render_scanline_mode1 - palette entry composition
-    // ============================================================
-
-    /// palette_entry must combine palette_num (bits[7:4]) and color_index (bits[3:0]).
-    #[test]
-    fn test_palette_entry_composition() {
-        let palette_num: u8 = 3;
-        let color_index: u8 = 5;
-        let entry = (palette_num << 4) | color_index;
-        assert_eq!(entry, 0x35);
-        // Verify each nibble
-        assert_eq!(entry >> 4, palette_num);
-        assert_eq!(entry & 0x0F, color_index);
-    }
 }
