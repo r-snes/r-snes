@@ -248,24 +248,20 @@ mod tests {
     // render_scanline_mode1 - transparent pixels
     // ============================================================
 
-    /// A fully transparent tile must leave pixels showing the backdrop color.
+    /// A fully transparent tile shows the backdrop (CGRAM 0), not color 0 of its own palette.
     #[test]
-    fn test_render_mode1_transparent_tile_leaves_framebuffer() {
-        let mut renderer = Renderer::new();
+    fn test_render_mode1_transparent_tile_shows_backdrop() {
+        let green = Renderer::apply_brightness(0x03E0, 15);
 
-        let mut ppu = make_ppu_mode1();
-        // Tilemap entry at (0,0): tile 0, all-zero CHR -> transparent
-        ppu.vram.memory[0] = 0x0000;
+        // Every tile: tile 0 (all-zero CHR, so transparent), palette 1.
+        let mut ppu = make_ppu_bg1_filled(0x0400);
+        ppu.cgram.memory[0x00] = 0x03E0; // backdrop = green
+        ppu.cgram.memory[0x10] = 0x001F; // palette 1 color 0 = red, must not show
 
-        // Use the full render_scanline so the backdrop is drawn.
-        renderer.render_scanline(&ppu, 0);
-
-        let (br, bg, bb) = Renderer::apply_brightness(ppu.cgram.read(0), 15);
+        let mut r = Renderer::new();
+        r.render_scanline(&ppu, 0);
         for x in 0..SCREEN_WIDTH {
-            let idx = x * 3;
-            assert_eq!(renderer.framebuffer[idx], br, "R at x={}", x);
-            assert_eq!(renderer.framebuffer[idx + 1], bg, "G at x={}", x);
-            assert_eq!(renderer.framebuffer[idx + 2], bb, "B at x={}", x);
+            assert_eq!(fb_pixel(&r, x, 0), green, "x={x}");
         }
     }
 
