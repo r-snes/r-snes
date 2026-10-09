@@ -7,8 +7,7 @@
 
 use crate::write_twice::WriteTwice;
 
-/// PPU Registers placeholder definitions
-/// Each field is a placeholder; actual behavior, latches, buffering, and timing to implement later.
+/// PPU register values and the internal latches used by write-twice registers.
 // Registers without a field here:
 // - $2104 OAMDATA, $2138 RDOAM: OAM ports, see oam.rs
 // - $2118/$2119 VMDATA, $2139/$213A RDVRAM: VRAM ports, see vram.rs
@@ -23,7 +22,7 @@ pub struct PPURegisters {
 
     /// $2102/$2103 - OAMADDL/OAMADDH (W16)
     /// OAMADDL ($2102): Bits: AAAAAAAA | OAM word address low
-    /// OAMADDH ($2103): Bits: P.......B | Priority rotation (P), address high bit (B)
+    /// OAMADDH ($2103): Bits: P......B | Priority rotation (P), address high bit (B)
     pub oamadd: u16,
 
     /// $2105 - BGMODE (W8)
@@ -189,9 +188,9 @@ pub struct PPURegisters {
     ///          opvct_byte = ~opvct_byte
     pub opvct: u16,
 
-    /// ============================================================
-    /// Latches (internal hardware state, not directly addressable)
-    /// ============================================================
+    // ============================================================
+    // Latches (internal hardware state, not directly addressable)
+    // ============================================================
 
     /// Shared latch for all BGnHOFS/BGnVOFS writes ($210D-$2114).
     /// Written on every BGnHOFS and BGnVOFS write.
