@@ -125,6 +125,15 @@ impl RSnesCore {
         })
     }
 
+    /// Reset the emulated CPU and APU and start their boot sequences immediately.
+    pub fn reset(&mut self) {
+        self.cpu.reset();
+        self.cpu_master_cycles_to_wait = 0;
+
+        self.apu.reset();
+        self.apu_cycle_debt = 0;
+    }
+
     /// This function will be called every master cycle, it will update the
     /// CPU, PPU, APU and DMA state accordingly.
     pub fn update(&mut self) {
@@ -500,6 +509,22 @@ mod tests {
         rsnes.cpu_master_cycles_to_wait = 0;
 
         assert_eq!(rsnes.bus.wram.read(snes_addr!(0:0x1234)).0, 0x42);
+    }
+
+    #[test]
+    fn reset_starts_cpu_and_apu_boot_sequences_immediately() {
+        let mut rsnes = TestRsnesCore::new();
+        rsnes.cpu_master_cycles_to_wait = 42;
+        rsnes.apu.skip_ipl_boot();
+        rsnes.apu_cycle_debt = 42;
+
+        rsnes.reset();
+
+        assert_eq!(rsnes.cpu_master_cycles_to_wait, 0);
+        assert!(rsnes.apu.ipl_active());
+        assert_eq!(rsnes.apu_cycle_debt, 0);
+        rsnes.update();
+        assert_ne!(rsnes.cpu_master_cycles_to_wait, 42);
     }
 
     // ============================================================
