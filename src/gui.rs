@@ -113,6 +113,9 @@ pub enum RSnesEvent {
     /// Quit the emulator program altogether
     Quit,
 
+    /// Reset the currently loaded game
+    Reset,
+
     /// A key mapped to an emulated button has been pressed
     ButtonDown(SnesButton),
 
@@ -395,6 +398,15 @@ impl Gui {
             SdlEvent::KeyDown {
                 keycode: Some(Keycode::R),
                 keymod,
+                repeat: false,
+                ..
+            } if keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => {
+                return Some(RSnesEvent::Reset);
+            }
+
+            SdlEvent::KeyDown {
+                keycode: Some(Keycode::R),
+                keymod,
                 ..
             } if !keymod
                 .intersects(Mod::LCTRLMOD | Mod::RCTRLMOD | Mod::LALTMOD | Mod::RALTMOD) =>
@@ -601,5 +613,34 @@ impl Gui {
                 Default::default()
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sdl2::keyboard::Mod;
+
+    fn key_down(keycode: Keycode, keymod: Mod) -> SdlEvent {
+        SdlEvent::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(keycode),
+            scancode: None,
+            keymod,
+            repeat: false,
+        }
+    }
+
+    #[test]
+    fn ctrl_r_maps_to_reset_instead_of_plugin_action() {
+        let event = key_down(Keycode::R, Mod::LCTRLMOD);
+        assert_eq!(Gui::map_event(&event), Some(RSnesEvent::Reset));
+
+        let event = key_down(Keycode::R, Mod::RCTRLMOD);
+        assert_eq!(Gui::map_event(&event), Some(RSnesEvent::Reset));
+
+        let event = key_down(Keycode::R, Mod::NOMOD);
+        assert_eq!(Gui::map_event(&event), Some(RSnesEvent::RunPluginDefault));
     }
 }
