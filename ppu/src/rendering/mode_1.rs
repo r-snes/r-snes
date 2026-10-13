@@ -87,6 +87,7 @@ mod tests {
     use crate::constants::SCREEN_WIDTH;
     use crate::ppu::PPU;
     use crate::rendering::renderer::Renderer;
+    use crate::test_utils::fb_pixel;
 
     // ============================================================
     // Helpers
@@ -98,6 +99,19 @@ mod tests {
         ppu.write(0x2100, 0x00); // no force blank, brightness = 0
         ppu.write(0x2105, 0x01); // BG mode 1
         ppu.write(0x212C, 0x01); // BG1 enabled on main screen
+        ppu
+    }
+
+    /// Mode 1 with BG1 at full brightness: tilemap at 0x0400 filled with `entry`,
+    /// CHR at 0x0000 (all zero), palette 0 color 1 = red.
+    fn make_ppu_bg1_filled(entry: u16) -> PPU {
+        let mut ppu = make_ppu_mode1();
+        ppu.write(0x2100, 0x0F);
+        ppu.write(0x2107, 0x04);
+        for word in 0x0400..0x0800 {
+            ppu.vram.memory[word] = entry;
+        }
+        ppu.cgram.memory[0x01] = 0x001F;
         ppu
     }
 
@@ -229,24 +243,20 @@ mod tests {
     // render_scanline_mode1 - transparent pixels
     // ============================================================
 
-    /// A fully transparent tile must leave pixels showing the backdrop color.
+    /// A fully transparent tile shows the backdrop (CGRAM 0), not color 0 of its own palette.
     #[test]
-    fn test_render_mode1_transparent_tile_leaves_framebuffer() {
-        let mut renderer = Renderer::new();
+    fn test_render_mode1_transparent_tile_shows_backdrop() {
+        let green = Renderer::apply_brightness(0x03E0, 15);
 
-        let mut ppu = make_ppu_mode1();
-        // Tilemap entry at (0,0): tile 0, all-zero CHR -> transparent
-        ppu.vram.memory[0] = 0x0000;
+        // Every tile: tile 0 (all-zero CHR, so transparent), palette 1.
+        let mut ppu = make_ppu_bg1_filled(0x0400);
+        ppu.cgram.memory[0x00] = 0x03E0; // backdrop = green
+        ppu.cgram.memory[0x10] = 0x001F; // palette 1 color 0 = red, must not show
 
-        // Use the full render_scanline so the backdrop is drawn.
-        renderer.render_scanline(&ppu, 0);
-
-        let (br, bg, bb) = Renderer::apply_brightness(ppu.cgram.read(0), 15);
+        let mut r = Renderer::new();
+        r.render_scanline(&ppu, 0);
         for x in 0..SCREEN_WIDTH {
-            let idx = x * 3;
-            assert_eq!(renderer.framebuffer[idx], br, "R at x={}", x);
-            assert_eq!(renderer.framebuffer[idx + 1], bg, "G at x={}", x);
-            assert_eq!(renderer.framebuffer[idx + 2], bb, "B at x={}", x);
+            assert_eq!(fb_pixel(&r, x, 0), green, "x={x}");
         }
     }
 
@@ -283,73 +293,73 @@ mod tests {
     // render_scanline_mode1 - flip_x / flip_y
     // ============================================================
 
-    /// flip_x must mirror the pixel horizontally within the tile (fine_x = 7 - fine_x).
+    /// H flip (tilemap bit 14) mirrors the tile horizontally.
     #[test]
     fn test_render_mode1_flip_x_mirrors_pixel() {
-        let mut vram = Box::new([0; _]);
-        // Tile 0: only the rightmost pixel (x=7, bit 0) is set on row 0
-        vram[0] = 0x0001; // plane 0 row 0: bit 0 set -> only x=7 lit
+        let red = Renderer::apply_brightness(0x001F, 15);
+        let black = (0, 0, 0);
 
-        // Without flip_x: x=7 lit, x=0 transparent
-        let no_flip = Renderer::decode_4bpp_tile_pixel_from(&vram, 0, 7, 0);
-        let transparent = Renderer::decode_4bpp_tile_pixel_from(&vram, 0, 0, 0);
-        assert_eq!(no_flip, 1);
-        assert_eq!(transparent, 0);
-
-        // With flip_x: fine_x = 7 - x, so screen x=0 -> fine_x=7 -> lit
-        let flipped_x0 = Renderer::decode_4bpp_tile_pixel_from(&vram, 0, 7, 0);
-        let flipped_x7 = Renderer::decode_4bpp_tile_pixel_from(&vram, 0, 7 - 7, 0);
-        assert_eq!(flipped_x0, 1);
-        assert_eq!(flipped_x7, 0);
+        // (tilemap entry, expected at x=0, expected at x=7)
+        for (entry, x0, x7) in [(0x0000, black, red), (0x4000, red, black)] {
+            let mut ppu = make_ppu_bg1_filled(entry);
+            // Tile 0: only the rightmost pixel (x=7) is opaque, on every row.
+            for row in 0..8 {
+                ppu.vram.memory[row] = 0x0001;
+            }
+            let mut r = Renderer::new();
+            r.render_scanline(&ppu, 0);
+            assert_eq!(fb_pixel(&r, 0, 0), x0, "entry {entry:#06X}, x=0");
+            assert_eq!(fb_pixel(&r, 7, 0), x7, "entry {entry:#06X}, x=7");
+        }
     }
 
-    /// flip_y must mirror the pixel vertically within the tile (fine_y = 7 - fine_y).
+    /// V flip (tilemap bit 15) mirrors the tile vertically.
+    /// Framebuffer row y shows BG row y + 1, so rows 6 and 7 show tile rows 7 and 0.
     #[test]
     fn test_render_mode1_flip_y_mirrors_pixel() {
-        let mut vram = Box::new([0; _]);
-        // Only row 7 is set
-        vram[7] = 0xFFFF; // plane 0+1 row 7 all set
+        let red = Renderer::apply_brightness(0x001F, 15);
+        let black = (0, 0, 0);
 
-        // Without flip_y: row 0 transparent, row 7 lit
-        let row0 = Renderer::decode_4bpp_tile_pixel_from(&vram, 0, 0, 0);
-        let row7 = Renderer::decode_4bpp_tile_pixel_from(&vram, 0, 0, 7);
-        assert_eq!(row0, 0);
-        assert_ne!(row7, 0);
-
-        // With flip_y: screen y=0 -> fine_y=7 -> lit
-        let flipped_y0 = Renderer::decode_4bpp_tile_pixel_from(&vram, 0, 0, 7);
-        let flipped_y7 = Renderer::decode_4bpp_tile_pixel_from(&vram, 0, 0, 7 - 7);
-        assert_ne!(flipped_y0, 0);
-        assert_eq!(flipped_y7, 0);
+        // (tilemap entry, expected on row 6, expected on row 7)
+        for (entry, row6, row7) in [(0x0000, red, black), (0x8000, black, red)] {
+            let mut ppu = make_ppu_bg1_filled(entry);
+            // Tile 0: only tile row 7 is opaque.
+            ppu.vram.memory[7] = 0x00FF;
+            let mut r = Renderer::new();
+            r.render_scanline(&ppu, 6);
+            r.render_scanline(&ppu, 7);
+            assert_eq!(fb_pixel(&r, 0, 6), row6, "entry {entry:#06X}, row 6");
+            assert_eq!(fb_pixel(&r, 0, 7), row7, "entry {entry:#06X}, row 7");
+        }
     }
 
     // ============================================================
-    // render_scanline_mode1 - scroll wrapping
+    // render_scanline_mode1 - BG3 palette
     // ============================================================
 
-    /// Scroll coordinates must wrap at 256 pixels (8-bit tilemap).
+    /// BG3 is 2bpp: palette p, color c reads CGRAM p * 4 + c (entries 0-31).
     #[test]
-    fn test_scroll_wraps_at_256() {
-        // px = (x + scroll_x) & 0xFF - verify the mask holds
-        let scroll_x: usize = 0xFF;
-        let x: usize = 1;
-        let px = (x + scroll_x) & 0xFF;
-        assert_eq!(px, 0); // 0xFF + 1 = 0x100, masked = 0x00
-    }
+    fn test_render_mode1_bg3_palette() {
+        let red = Renderer::apply_brightness(0x001F, 15);
 
-    // ============================================================
-    // render_scanline_mode1 - palette entry composition
-    // ============================================================
+        // (palette, tile row data, CGRAM entry)
+        // 0x00FF -> color 1, 0xFFFF -> color 3
+        for (palette, row_data, entry) in [(1u16, 0x00FFu16, 5usize), (7, 0xFFFF, 31)] {
+            let mut ppu = make_ppu_mode1();
+            ppu.write(0x2100, 0x0F);
+            ppu.write(0x212C, 0x04); // BG3 only on main
+            ppu.write(0x2109, 0x04); // BG3 tilemap at 0x0400, CHR at 0x0000
+            for word in 0x0400..0x0800 {
+                ppu.vram.memory[word] = palette << 10; // tile 0, palette `palette`
+            }
+            for row in 0..8 {
+                ppu.vram.memory[row] = row_data;
+            }
+            ppu.cgram.memory[entry] = 0x001F;
 
-    /// palette_entry must combine palette_num (bits[7:4]) and color_index (bits[3:0]).
-    #[test]
-    fn test_palette_entry_composition() {
-        let palette_num: u8 = 3;
-        let color_index: u8 = 5;
-        let entry = (palette_num << 4) | color_index;
-        assert_eq!(entry, 0x35);
-        // Verify each nibble
-        assert_eq!(entry >> 4, palette_num);
-        assert_eq!(entry & 0x0F, color_index);
+            let mut r = Renderer::new();
+            r.render_scanline(&ppu, 0);
+            assert_eq!(fb_pixel(&r, 0, 0), red, "palette {palette}");
+        }
     }
 }
