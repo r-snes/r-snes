@@ -46,7 +46,7 @@ pub struct PPU {
     pub oam: OAM,
 
     // Timing
-    /// Current scanline (0..262).
+    /// Current scanline (0..262, or 0..263 in interlace on field 0).
     pub scanline: u16,
     /// Master cycles elapsed inside the current scanline (0..1364).
     pub h_cycles: u32,
@@ -81,8 +81,8 @@ impl PPU {
         }
     }
 
-    /// Returns true if the current frame number is odd.
-    pub fn odd_frame(&self) -> bool {
+    /// Interlace field (STAT78 bit 7). Toggles at the start of every frame.
+    pub fn field(&self) -> bool {
         !self.frame.is_multiple_of(2)
     }
 
@@ -398,7 +398,7 @@ impl PPU {
                 if self.regs.counter_latch {
                     val |= 0x40; // bit 6: H/V counter latch flag
                 }
-                if self.odd_frame() {
+                if self.field() {
                     val |= 0x80; // bit 7: interlace field (toggles each frame)
                 }
                 let result = self.ppu2_read(val, 0xDF); // bit 5 undriven
@@ -442,17 +442,64 @@ impl PPU {
         self.regs.mpy = ((a * b) as u32) & 0x00FF_FFFF;
     }
 
-    /// Current dot (0..339).
-    pub fn dot(&self) -> u16 {
-        (self.h_cycles / 4) as u16
+    /// First master cycle of `dot` on the current scanline. Dots after 323 start
+    /// 2 cycles later, and dots after 327 start 4 cycles later, except on the short scanline.
+    pub fn dot_start_cycle(&self, dot: u16) -> u32 {
+        let mut cycle = dot as u32 * 4;
+        if self.scanline_length() == MASTER_CYCLES_SHORT_SCANLINE {
+            return cycle;
+        }
+        if dot > 323 {
+            cycle += 2;
+        }
+        if dot > 327 {
+            cycle += 2;
+        }
+        cycle
     }
 
-    /// Non-interlace odd frames shorten scanline 240 to 1360 cycles instead of 1364
+    /// Current dot (0..339). Dots 323 and 327 last 6 master cycles instead of 4,
+    /// except on the short scanline where every dot lasts 4.
+    pub fn dot(&self) -> u16 {
+        let h = self.h_cycles;
+        if self.scanline_length() == MASTER_CYCLES_SHORT_SCANLINE {
+            return (h / 4) as u16;
+        }
+        let dot = match h {
+            0..1292 => h / 4,
+            1292..1298 => 323,
+            1298..1310 => 324 + (h - 1298) / 4,
+            1310..1316 => 327,
+            _ => 328 + (h - 1316) / 4,
+        };
+        dot as u16
+    }
+
+    /// Returns true if screen interlace is on (SETINI bit 0).
+    pub fn interlace(&self) -> bool {
+        self.regs.setini & 0x01 != 0
+    }
+
+    /// Returns true if OBJ interlace is on (SETINI bit 1).
+    pub fn obj_interlace(&self) -> bool {
+        self.regs.setini & 0x02 != 0
+    }
+
+    /// Field 1 shortens scanline 240 to 1360 cycles instead of 1364, only without interlace.
     fn scanline_length(&self) -> u32 {
-        if self.odd_frame() && self.scanline == SHORT_SCANLINE {
+        if !self.interlace() && self.field() && self.scanline == SHORT_SCANLINE {
             MASTER_CYCLES_SHORT_SCANLINE
         } else {
             MASTER_CYCLES_PER_SCANLINE
+        }
+    }
+
+    /// Lines in the current frame: 262, or 263 in interlace on field 0.
+    pub fn scanlines_per_frame(&self) -> u16 {
+        if self.interlace() && !self.field() {
+            SCANLINES_PER_FRAME + 1
+        } else {
+            SCANLINES_PER_FRAME
         }
     }
 
@@ -473,6 +520,15 @@ impl PPU {
             .then(|| self.scanline as usize - 1)
     }
 
+    /// Row the PPU evaluates sprites for, if this scanline is active.
+    /// Lines 1..=224 are active, or 1..=239 with overscan (SETINI bit 2).
+    /// Unlike `visible_line`, not limited to the 224 framebuffer rows.
+    pub fn active_line(&self) -> Option<usize> {
+        (1..self.vblank_start_line())
+            .contains(&self.scanline)
+            .then(|| self.scanline as usize - 1)
+    }
+
     /// Advance one master cycle.
     pub fn tick(&mut self) -> Option<PpuEvent> {
         let prev_dot = self.dot();
@@ -482,7 +538,7 @@ impl PPU {
             self.h_cycles = 0;
             self.scanline += 1;
 
-            let kind = if self.scanline >= SCANLINES_PER_FRAME {
+            let kind = if self.scanline >= self.scanlines_per_frame() {
                 self.scanline = 0;
                 self.frame += 1;
                 ScanlineKind::FrameStart
@@ -499,11 +555,12 @@ impl PPU {
                     self.oam.clear_flags();
                 }
                 // Same row numbering as the renderer (framebuffer row = scanline - 1).
-                if let Some(row) = self.visible_line() {
+                if let Some(row) = self.active_line() {
                     let objsel = self.regs.objsel;
                     let oamadd = self.regs.oamadd;
+                    let obj_interlace = self.obj_interlace();
                     let (_, time_over, range_over) =
-                        self.oam.eval_sprites_for_scanline(row, objsel, oamadd);
+                        self.oam.eval_sprites_for_scanline(row, objsel, oamadd, obj_interlace);
                     self.oam.latch_flags(time_over, range_over);
                 }
             }
@@ -550,7 +607,7 @@ mod tests {
         assert_eq!(ppu.h_cycles, 0);
         assert_eq!(ppu.dot(), 0);
         assert_eq!(ppu.frame, 0);
-        assert!(!ppu.odd_frame());
+        assert!(!ppu.field());
     }
 
     // ============================================================
@@ -1092,10 +1149,11 @@ mod tests {
         ppu.write(0x2104, y);
     }
 
-    /// Moves all 128 sprites below the visible area (Y = 0xE0) so they are not drawn.
+    /// Moves all 128 sprites below the active area (Y = 0xF0) so they are not drawn,
+    /// even with overscan.
     fn hide_all_sprites(ppu: &mut PPU) {
         for i in 0..128 {
-            set_sprite_xy(ppu, i, 0, 0xE0);
+            set_sprite_xy(ppu, i, 0, 0xF0);
         }
     }
 
@@ -1108,6 +1166,18 @@ mod tests {
                 return cycles;
             }
         }
+    }
+
+    /// Ticks through the current scanline and returns how many master cycles
+    /// each dot lasted. Panics if a dot above 339 shows up.
+    fn dot_lengths(ppu: &mut PPU) -> Vec<u32> {
+        let line_length = ppu.scanline_length();
+        let mut lengths = vec![0; 340];
+        for _ in 0..line_length {
+            lengths[ppu.dot() as usize] += 1;
+            ppu.tick();
+        }
+        lengths
     }
 
     // ============================================================
@@ -1159,10 +1229,60 @@ mod tests {
             }
         }
 
+        // 339 dot changes: 338 DotStart + 1 HBlankStart (dot 274)
         assert_eq!(scanlines, 1);
         assert_eq!(hblanks, 1);
-        assert_eq!(dots, 339);
-        assert_eq!(none, MASTER_CYCLES_PER_SCANLINE - 341);
+        assert_eq!(dots, 338);
+        assert_eq!(none, MASTER_CYCLES_PER_SCANLINE - 340);
+    }
+
+    /// Dots 323 and 327 last 6 master cycles, every other dot lasts 4.
+    #[test]
+    fn test_dots_323_and_327_are_long() {
+        let mut ppu = PPU::new();
+        let lengths = dot_lengths(&mut ppu);
+        for (dot, &len) in lengths.iter().enumerate() {
+            let expected = if dot == 323 || dot == 327 { 6 } else { 4 };
+            assert_eq!(len, expected, "dot {dot}");
+        }
+    }
+
+    /// The short scanline (1360 cycles) has no long dots: 340 dots of 4 cycles.
+    #[test]
+    fn test_short_scanline_has_no_long_dots() {
+        let mut ppu = PPU::new();
+        ppu.frame = 1;
+        ppu.scanline = SHORT_SCANLINE;
+        assert!(dot_lengths(&mut ppu).iter().all(|&len| len == 4));
+    }
+
+    /// A latch on the last master cycle of a scanline gives dot 339.
+    #[test]
+    fn test_latch_at_end_of_scanline() {
+        let mut ppu = PPU::new();
+        ppu.h_cycles = MASTER_CYCLES_PER_SCANLINE - 1;
+        ppu.latch_hv_counters();
+        assert_eq!(ppu.regs.ophct, 339);
+    }
+
+    /// dot_start_cycle gives the first cycle of each dot, on a normal and on the short scanline.
+    #[test]
+    fn test_dot_start_cycle_matches_dot() {
+        let normal = PPU::new();
+        let mut short = PPU::new();
+        short.frame = 1;
+        short.scanline = SHORT_SCANLINE;
+
+        for mut ppu in [normal, short] {
+            for dot in 0..340 {
+                ppu.h_cycles = ppu.dot_start_cycle(dot);
+                assert_eq!(ppu.dot(), dot);
+                if dot > 0 {
+                    ppu.h_cycles -= 1;
+                    assert_eq!(ppu.dot(), dot - 1);
+                }
+            }
+        }
     }
 
     // ============================================================
@@ -1189,7 +1309,7 @@ mod tests {
     }
 
     /// Scanline 225 raises VBlankStart; line 0 raises FrameStart and flips
-    /// the odd/even field.
+    /// the field.
     #[test]
     fn test_tick_vblank_and_frame_events() {
         let mut ppu = PPU::new();
@@ -1205,11 +1325,24 @@ mod tests {
         );
         assert_eq!(ppu.scanline, 0);
         assert_eq!(ppu.frame, 1);
-        assert!(ppu.odd_frame());
+        assert!(ppu.field());
 
         advance_to_scanline_start(&mut ppu, 0);
         assert_eq!(ppu.frame, 2);
-        assert!(!ppu.odd_frame());
+        assert!(!ppu.field());
+    }
+
+    /// STAT78 bit 7 reports the field, which flips at every frame start.
+    #[test]
+    fn test_stat78_field_bit() {
+        let mut ppu = PPU::new();
+        assert_eq!(ppu.read(0x213F, 0) & 0x80, 0x00);
+
+        advance_to_scanline_start(&mut ppu, 0);
+        assert_eq!(ppu.read(0x213F, 0) & 0x80, 0x80);
+
+        advance_to_scanline_start(&mut ppu, 0);
+        assert_eq!(ppu.read(0x213F, 0) & 0x80, 0x00);
     }
 
     /// Ordinary scanlines raise ScanlineKind::Normal, not a boundary kind.
@@ -1222,19 +1355,58 @@ mod tests {
         );
     }
 
-    /// Non-interlace odd frames shorten scanline 240 by one dot.
+    /// Without interlace, field 1 shortens scanline 240 by one dot.
     #[test]
-    fn test_short_scanline_on_odd_frames() {
+    fn test_short_scanline_on_field_1() {
         let mut ppu = PPU::new();
         let full = SCANLINES_PER_FRAME as u32 * MASTER_CYCLES_PER_SCANLINE;
 
         assert_eq!(count_frame_cycles(&mut ppu), full);
-        assert!(ppu.odd_frame());
+        assert!(ppu.field());
 
         assert_eq!(count_frame_cycles(&mut ppu), full - 4);
-        assert!(!ppu.odd_frame());
+        assert!(!ppu.field());
 
         assert_eq!(count_frame_cycles(&mut ppu), full);
+    }
+
+    /// With interlace (SETINI bit 0), scanline 240 keeps 1364 cycles in field 1.
+    #[test]
+    fn test_no_short_scanline_in_interlace() {
+        let mut ppu = PPU::new();
+        ppu.write(0x2133, 0x01);
+        ppu.frame = 1;
+        ppu.scanline = SHORT_SCANLINE;
+        assert_eq!(ppu.scanline_length(), MASTER_CYCLES_PER_SCANLINE);
+
+        let lengths = dot_lengths(&mut ppu);
+        assert_eq!(lengths[323], 6);
+        assert_eq!(lengths[327], 6);
+    }
+
+    /// With interlace, field 0 frames have 263 lines and field 1 frames have 262.
+    #[test]
+    fn test_interlace_frame_lengths() {
+        let mut ppu = PPU::new();
+        ppu.write(0x2133, 0x01);
+        let line = MASTER_CYCLES_PER_SCANLINE;
+        let lines = SCANLINES_PER_FRAME as u32;
+
+        assert_eq!(count_frame_cycles(&mut ppu), (lines + 1) * line); // field 0
+        assert_eq!(count_frame_cycles(&mut ppu), lines * line); // field 1
+        assert_eq!(count_frame_cycles(&mut ppu), (lines + 1) * line); // field 0
+    }
+
+    /// With interlace on field 0, scanline 262 exists before the frame wraps.
+    #[test]
+    fn test_interlace_extra_scanline() {
+        let mut ppu = PPU::new();
+        ppu.write(0x2133, 0x01);
+        assert_eq!(
+            advance_to_scanline_start(&mut ppu, SCANLINES_PER_FRAME),
+            Some(PpuEvent::ScanlineStart(ScanlineKind::Normal))
+        );
+        assert_eq!(ppu.frame, 0);
     }
 
     // ============================================================
@@ -1280,6 +1452,47 @@ mod tests {
 
         advance_to_scanline_start(&mut ppu, VBLANK_START_LINE);
         assert_eq!(ppu.visible_line(), None);
+    }
+
+    // ============================================================
+    // active_line
+    // ============================================================
+
+    /// Active lines are 1..=224, or 1..=239 with overscan.
+    #[test]
+    fn test_active_line() {
+        let mut ppu = PPU::new();
+        assert_eq!(ppu.active_line(), None);
+
+        ppu.scanline = 224;
+        assert_eq!(ppu.active_line(), Some(223));
+        ppu.scanline = 225;
+        assert_eq!(ppu.active_line(), None);
+
+        ppu.write(0x2133, 0x04);
+        ppu.scanline = 239;
+        assert_eq!(ppu.active_line(), Some(238));
+        ppu.scanline = 240;
+        assert_eq!(ppu.active_line(), None);
+    }
+
+    /// With overscan, sprites on lines 225-239 are evaluated and set STAT77.
+    #[test]
+    fn test_overscan_sprites_set_stat77() {
+        let mut ppu = PPU::new();
+        hide_all_sprites(&mut ppu);
+        for i in 0..33 {
+            set_sprite_xy(&mut ppu, i, 0, 228); // rows 228-235
+        }
+
+        // Without overscan these rows are not evaluated.
+        advance_to_scanline_start(&mut ppu, VBLANK_START_LINE);
+        assert!(!ppu.oam.range_over);
+
+        // With overscan they are.
+        ppu.write(0x2133, 0x04);
+        advance_to_scanline_start(&mut ppu, VBLANK_START_LINE_OVERSCAN);
+        assert!(ppu.oam.range_over);
     }
 
     // ============================================================
