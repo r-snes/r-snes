@@ -338,6 +338,25 @@ impl PPURegisters {
         self.bgmode & (0x10 << bg) != 0
     }
 
+    // ============================================================
+    // Mosaic
+    // ============================================================
+
+    /// Returns the mosaic block size in pixels (MOSAIC bits 4-7, 1-16).
+    pub fn mosaic_size(&self) -> u8 {
+        (self.mosaic >> 4) + 1
+    }
+
+    /// Returns true if mosaic is enabled for BG `bg` (MOSAIC bits 0-3).
+    pub fn bg_mosaic(&self, bg: usize) -> bool {
+        self.mosaic & (1 << bg) != 0
+    }
+
+    /// Returns true if mosaic is enabled for at least one BG.
+    pub fn any_mosaic(&self) -> bool {
+        self.mosaic & 0x0F != 0
+    }
+
     /// STAT78 ($213F) read side effects: clears the counter latch and resets the OPHCT/OPVCT toggles.
     pub fn read_stat78_side_effects(&mut self) {
         self.counter_latch = false;

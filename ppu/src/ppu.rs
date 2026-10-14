@@ -52,6 +52,8 @@ pub struct PPU {
     pub h_cycles: u32,
     /// Number of frames elapsed since power-on.
     pub frame: u64,
+    /// Vertical mosaic counter: lines left in the current mosaic block (0 = stopped).
+    pub mosaic_vcounter: u8,
 
     /// PPU1 (5C77) open bus (MDR): last value read from a PPU1 register.
     pub ppu1_open_bus: u8,
@@ -76,6 +78,7 @@ impl PPU {
             scanline: 0,
             h_cycles: 0,
             frame: 0,
+            mosaic_vcounter: 0,
             ppu1_open_bus: 0,
             ppu2_open_bus: 0,
         }
@@ -113,7 +116,7 @@ impl PPU {
             // BACKGROUNDS
             // ==========================
             0x2105 => self.regs.bgmode = value,
-            0x2106 => self.regs.mosaic = value, // TODO
+            0x2106 => self.regs.mosaic = value,
             0x2107 => self.regs.bgsc[0] = value,
             0x2108 => self.regs.bgsc[1] = value,
             0x2109 => self.regs.bgsc[2] = value,
@@ -529,6 +532,28 @@ impl PPU {
             .then(|| self.scanline as usize - 1)
     }
 
+    /// Lines since the top of the current vertical mosaic block (MOSAIC size - counter).
+    /// Negative if the size was lowered in the middle of a block.
+    pub fn mosaic_voffset(&self) -> i16 {
+        self.regs.mosaic_size() as i16 - self.mosaic_vcounter as i16
+    }
+
+    // Vertical mosaic counter, updated at the start of each scanline (bsnes mosaic.cpp).
+    // Reloaded at line 1 if a BG uses mosaic, then counts down and restarts at the end of each block.
+    fn update_mosaic_vcounter(&mut self) {
+        let size = self.regs.mosaic_size();
+        let reload = if self.regs.any_mosaic() { size } else { 0 };
+        if self.scanline == 1 {
+            self.mosaic_vcounter = if reload != 0 { size + 1 } else { 0 };
+        }
+        if self.mosaic_vcounter != 0 {
+            self.mosaic_vcounter -= 1;
+            if self.mosaic_vcounter == 0 {
+                self.mosaic_vcounter = reload;
+            }
+        }
+    }
+
     /// Advance one master cycle.
     pub fn tick(&mut self) -> Option<PpuEvent> {
         let prev_dot = self.dot();
@@ -547,6 +572,8 @@ impl PPU {
             } else {
                 ScanlineKind::Normal
             };
+
+            self.update_mosaic_vcounter();
 
             // STAT77 overflow flags: cleared at the end of V-Blank, then accumulated
             // over the visible lines. Force blank disables sprite evaluation: no update, no clear.
@@ -1581,5 +1608,47 @@ mod tests {
         hide_all_sprites(&mut ppu);
         advance_to_scanline_start(&mut ppu, 0);
         assert!(ppu.oam.range_over);
+    }
+
+    // ============================================================
+    // Vertical mosaic counter
+    // ============================================================
+
+    // Blocks start at line 1: with a size of 4, lines 1-4, 5-8, 9-12... are blocks,
+    // and the offset counts the lines since the top of the block.
+    #[test]
+    fn test_mosaic_voffset_blocks() {
+        let mut ppu = PPU::new();
+        ppu.write(0x2106, 0x31); // size 4, BG1
+
+        for (line, voffset) in [(1, 0), (2, 1), (4, 3), (5, 0), (8, 3), (9, 0)] {
+            advance_to_scanline_start(&mut ppu, line);
+            assert_eq!(ppu.mosaic_voffset(), voffset, "line {line}");
+        }
+    }
+
+    // Without any BG using mosaic, the counter stays stopped.
+    #[test]
+    fn test_mosaic_vcounter_stopped_without_bg() {
+        let mut ppu = PPU::new();
+        ppu.write(0x2106, 0x30); // size 4, no BG
+
+        advance_to_scanline_start(&mut ppu, 10);
+        assert_eq!(ppu.mosaic_vcounter, 0);
+    }
+
+    // The counter is only reloaded at line 1: enabling mosaic mid-frame keeps it
+    // stopped until the next frame.
+    #[test]
+    fn test_mosaic_enabled_mid_frame_waits_for_line_1() {
+        let mut ppu = PPU::new();
+        advance_to_scanline_start(&mut ppu, 50);
+        ppu.write(0x2106, 0x31);
+
+        advance_to_scanline_start(&mut ppu, 60);
+        assert_eq!(ppu.mosaic_vcounter, 0);
+
+        advance_to_scanline_start(&mut ppu, 1);
+        assert_eq!(ppu.mosaic_vcounter, 4);
     }
 }
