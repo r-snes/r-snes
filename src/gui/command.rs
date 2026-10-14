@@ -112,8 +112,10 @@ impl Command {
     pub fn is_enabled(self, data: &GuiFrameData) -> bool {
         let rom_loaded = data.rom_info.is_some();
         match self {
-            Command::OpenRom | Command::Quit | Command::ToggleRomInfo => true,
-            Command::CloseRom | Command::Reset | Command::TogglePause => rom_loaded,
+            Command::OpenRom | Command::Quit => true,
+            Command::CloseRom | Command::Reset | Command::TogglePause | Command::ToggleRomInfo => {
+                rom_loaded
+            }
             #[cfg(feature = "plugins")]
             Command::LoadPlugin => !rom_loaded,
             #[cfg(feature = "plugins")]
