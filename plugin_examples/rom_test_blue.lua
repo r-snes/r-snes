@@ -2,21 +2,21 @@
 -- bits, and blue in most signficant bits
 colors = {
     {
-        -- (B)01000 (G)00000 (B)00000 = 8192: dark blue
+        -- (B)01000 (G)00000 (R)00000 = 8192: dark blue
         bg = 8192,
-        -- (B)11111 (G)11000 (B)11000 = 32536: light blue
+        -- (B)11111 (G)11000 (R)11000 = 32536: light blue
         fg = 32536,
     },
     {
-        -- (B)00000 (G)01000 (B)00000 = 8192: dark green
+        -- (B)00000 (G)01000 (R)00000 = 8192: dark green
         bg = 512,
-        -- (B)11000 (G)11111 (B)11000 = 32536: light green
+        -- (B)11000 (G)11111 (R)11000 = 32536: light green
         fg = 25592,
     },
     {
-        -- (B)00000 (G)00000 (B)01000 = 8192: dark red
+        -- (B)00000 (G)00000 (R)01000 = 8192: dark red
         bg = 8,
-        -- (B)11000 (G)11000 (B)11111 = 32536: light red
+        -- (B)11000 (G)11000 (R)11111 = 32536: light red
         fg = 25375,
     },
 }
