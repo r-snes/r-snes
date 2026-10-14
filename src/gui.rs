@@ -1,3 +1,4 @@
+pub mod command;
 pub mod state;
 pub mod widgets;
 
@@ -10,11 +11,13 @@ use sdl2::audio::{AudioQueue, AudioSpecDesired};
 use sdl2::controller::{Button as ControllerButton, GameController};
 use sdl2::event::Event as SdlEvent;
 use sdl2::keyboard::Keycode;
+use sdl2::rect::Rect;
 use sdl2::render::Texture;
 
 use ppu::constants::{SCREEN_HEIGHT, SCREEN_WIDTH};
 
 use crate::rsnes::RomInfo;
+use command::Command;
 use state::GuiState;
 
 #[cfg(feature = "plugins")]
@@ -42,11 +45,9 @@ pub struct Gui {
     /// Which stick directions are currently held past the deadzone.
     stick_dirs: StickDirs,
 
-    /// Whether Ctrl+P is allowed to open the plugin picker. Only the idle
-    /// loop enables it, since injection needs a running emu (handled by the
-    /// emu loop, not here).
-    #[cfg(feature = "plugins")]
-    plugin_loading_enabled: bool,
+    /// Whether a menu (or any other egui popup) was open last frame.
+    /// Emulation pauses meanwhile, and Escape closes it rather than the game.
+    menu_open: bool,
 }
 
 /// Everything the GUI might need to display, handed in fresh each frame.
@@ -56,7 +57,15 @@ pub struct Gui {
 /// touches egui directly.
 #[derive(Default)]
 pub struct GuiFrameData<'a> {
+    /// The running ROM, or `None` on the idle screen.
     pub rom_info: Option<&'a RomInfo>,
+
+    /// Whether the user paused emulation.
+    pub paused: bool,
+
+    /// Whether a plugin is running alongside the ROM.
+    #[cfg(feature = "plugins")]
+    pub plugin_loaded: bool,
 }
 
 /// A button on a SNES controller.
@@ -116,6 +125,9 @@ pub enum RSnesEvent {
     /// Reset the currently loaded game
     Reset,
 
+    /// Pause or resume emulation
+    TogglePause,
+
     /// A key mapped to an emulated button has been pressed
     ButtonDown(SnesButton),
 
@@ -123,16 +135,29 @@ pub enum RSnesEvent {
     ButtonUp(SnesButton),
 
     /// Run the `default` action of a plugin (if a plugin is loaded, and if it defines one)
+    #[cfg(feature = "plugins")]
     RunPluginDefault,
 }
 
-/// Keyboard actions that only affect the GUI, never the emulator.
-/// Handled entirely inside `Gui`; `main.rs` never sees these.
-enum GuiAction {
-    ToggleRomInfo,
-    CloseOverlays,
-    #[cfg(feature = "plugins")]
-    LoadPlugin,
+/// Where to draw the game in a `width` x `height` drawable whose top
+/// `menu_bar` pixel rows belong to the menu bar
+///
+/// The result never overlaps the bar. `None` when no space is left
+/// (e.g. a minimised window).
+fn game_rect(width: u32, height: u32, menu_bar: u32) -> Option<Rect> {
+    let avail_height = height.checked_sub(menu_bar)?;
+    if width == 0 || avail_height == 0 {
+        return None;
+    }
+
+    let (snes_w, snes_h) = (SCREEN_WIDTH as f64, SCREEN_HEIGHT as f64);
+    let scale = f64::min(width as f64 / snes_w, avail_height as f64 / snes_h);
+    let w = ((snes_w * scale).round() as u32).clamp(1, width);
+    let h = ((snes_h * scale).round() as u32).clamp(1, avail_height);
+
+    let x = (width - w) / 2;
+    let y = menu_bar + (avail_height - h) / 2;
+    Some(Rect::new(x as i32, y as i32, w, h))
 }
 
 #[cfg(not(tarpaulin_include))]
@@ -140,15 +165,25 @@ impl Gui {
     pub const FRAME_RATE: u16 = 60;
     pub const FRAME_DURATION: f64 = 1.0 / Self::FRAME_RATE as f64;
     const STICK_DEADZONE: i16 = 13_000; // Deadzone for the analog stick, ~40% of the i16 range
+    const MENU_BAR_HEIGHT: u32 = 23; // Height of the menu bar with egui's default style (22), plus 1 for its anti-aliased bottom edge, in window coordinates.
 
     pub fn new() -> Result<Self, String> {
         let sdl_ctx = sdl2::init()?;
         let video_subsystem = sdl_ctx.video()?;
 
-        let window = video_subsystem
-            .window("R-SNES", SCREEN_WIDTH as u32 * 2, SCREEN_HEIGHT as u32 * 2)
+        // Sizes are in screen coordinates, not pixels (see `SDL_CreateWindow`).
+        let mut window = video_subsystem
+            .window(
+                "R-SNES",
+                SCREEN_WIDTH as u32 * 2,
+                SCREEN_HEIGHT as u32 * 2 + Self::MENU_BAR_HEIGHT,
+            )
             .position_centered()
+            .resizable()
             .build()
+            .map_err(|e| e.to_string())?;
+        window
+            .set_minimum_size(SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32)
             .map_err(|e| e.to_string())?;
 
         let egui_canvas = EguiCanvas::new(window);
@@ -187,9 +222,13 @@ impl Gui {
             _controller_subsystem: controller_subsystem,
             controller,
             stick_dirs: StickDirs::default(),
-            #[cfg(feature = "plugins")]
-            plugin_loading_enabled: false,
+            menu_open: false,
         })
+    }
+
+    /// Whether a menu is open.
+    pub fn menu_open(&self) -> bool {
+        self.menu_open
     }
 
     /// Sets the SDL2 window title. Pass `None` to reset to the default.
@@ -202,12 +241,6 @@ impl Gui {
         // Ignore the error: a failed title update is cosmetic, not worth
         // propagating up through the emu loop.
         let _ = self.egui_canvas.painter.canvas.window_mut().set_title(&window_title);
-    }
-
-    /// Enables/disables Ctrl+P plugin loading. Idle loop enables, emu loop disables.
-    #[cfg(feature = "plugins")]
-    pub fn set_plugin_loading(&mut self, enabled: bool) {
-        self.plugin_loading_enabled = enabled;
     }
 
     /// Takes the plugin the user granted this idle session, if any, and
@@ -233,34 +266,29 @@ impl Gui {
         }
     }
 
-    /// Maps an SDL event to a GUI-only action (toggling overlays).
-    fn map_gui_action(event: &SdlEvent) -> Option<GuiAction> {
-        match event {
-            SdlEvent::KeyDown {
-                keycode: Some(Keycode::F1),
-                repeat: false,
-                ..
-            } => Some(GuiAction::ToggleRomInfo),
+    /// Runs a command picked from the menu bar or triggered by its shortcut.
+    /// Called outside the egui pass, since some commands open blocking file
+    /// dialogs.
+    fn execute(&mut self, cmd: Command, data: &GuiFrameData, out: &mut Vec<RSnesEvent>) {
+        if !cmd.is_enabled(data) && cmd != Command::CloseRom {
+            return;
+        }
 
-            #[cfg(feature = "plugins")]
-            SdlEvent::KeyDown {
-                keycode: Some(Keycode::P),
-                keymod,
-                repeat: false,
-                ..
-            } if keymod
-                .intersects(sdl2::keyboard::Mod::LCTRLMOD | sdl2::keyboard::Mod::RCTRLMOD) =>
-            {
-                Some(GuiAction::LoadPlugin)
+        match cmd {
+            Command::OpenRom => {
+                if let Some(path) = rfd::FileDialog::new().pick_file() {
+                    out.push(RSnesEvent::LoadRom { path });
+                }
             }
-
-            SdlEvent::KeyDown {
-                keycode: Some(Keycode::Escape),
-                repeat: false,
-                ..
-            } => Some(GuiAction::CloseOverlays),
-
-            _ => None,
+            Command::CloseRom => out.push(RSnesEvent::Close),
+            Command::Quit => out.push(RSnesEvent::Quit),
+            Command::Reset => out.push(RSnesEvent::Reset),
+            Command::TogglePause => out.push(RSnesEvent::TogglePause),
+            Command::ToggleRomInfo => self.state.show_rom_info = !self.state.show_rom_info,
+            #[cfg(feature = "plugins")]
+            Command::LoadPlugin => self.load_plugin_dialog(),
+            #[cfg(feature = "plugins")]
+            Command::RunPluginDefault => out.push(RSnesEvent::RunPluginDefault),
         }
     }
 
@@ -367,52 +395,8 @@ impl Gui {
     fn map_event(event: &SdlEvent) -> Option<RSnesEvent> {
         use sdl2::keyboard::Mod;
 
-        // System / GUI shortcuts first - these take precedence over buttons.
         match event {
             SdlEvent::Quit { .. } => return Some(RSnesEvent::Quit),
-
-            SdlEvent::KeyDown {
-                keycode: Some(Keycode::Q),
-                keymod,
-                ..
-            } if keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => {
-                return Some(RSnesEvent::Quit);
-            }
-
-            SdlEvent::KeyDown {
-                keycode: Some(Keycode::Escape),
-                repeat: false,
-                ..
-            } => return Some(RSnesEvent::Close),
-
-            SdlEvent::KeyDown {
-                keycode: Some(Keycode::L),
-                keymod,
-                ..
-            } if keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => {
-                return rfd::FileDialog::new()
-                    .pick_file()
-                    .map(|path| RSnesEvent::LoadRom { path });
-            }
-
-            SdlEvent::KeyDown {
-                keycode: Some(Keycode::R),
-                keymod,
-                repeat: false,
-                ..
-            } if keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => {
-                return Some(RSnesEvent::Reset);
-            }
-
-            SdlEvent::KeyDown {
-                keycode: Some(Keycode::R),
-                keymod,
-                ..
-            } if !keymod
-                .intersects(Mod::LCTRLMOD | Mod::RCTRLMOD | Mod::LALTMOD | Mod::RALTMOD) =>
-            {
-                return Some(RSnesEvent::RunPluginDefault);
-            }
 
             SdlEvent::ControllerButtonDown { button, .. } => {
                 return Self::map_controller_button(*button).map(RSnesEvent::ButtonDown);
@@ -452,6 +436,12 @@ impl Gui {
         self.audio_queue.resume();
     }
 
+    /// Pause audio playback, keeping whatever is queued so `audio_play`
+    /// picks up exactly where it left off.
+    pub fn audio_pause(&self) {
+        self.audio_queue.pause();
+    }
+
     /// Stop audio playback and discard anything still queued, so the next
     /// `audio_play` starts silent instead of replaying stale sound.
     pub fn audio_stop(&self) {
@@ -474,7 +464,7 @@ impl Gui {
     /// Polls SDL, feeds everything to egui, then routes what egui didn't
     /// consume: first to GUI actions (handled here), then to emulator events
     /// (returned to the caller).
-    fn handle_events(&mut self) -> Vec<RSnesEvent> {
+    fn handle_events(&mut self, commands: &mut Vec<Command>) -> Vec<RSnesEvent> {
         let pending: Vec<SdlEvent> = self.event_pump.poll_iter().collect();
 
         let mut out = Vec::new();
@@ -508,31 +498,22 @@ impl Gui {
                 continue;
             }
 
-            // GUI actions take priority over emulator events. This is why
-            // Escape closes overlays first and only closes the ROM once
-            // nothing is open — `close_all` reports whether it did anything.
-            if let Some(action) = Self::map_gui_action(&event) {
-                match action {
-                    GuiAction::ToggleRomInfo => {
-                        self.state.show_rom_info = !self.state.show_rom_info;
-                        continue;
-                    }
-                    #[cfg(feature = "plugins")]
-                    GuiAction::LoadPlugin => {
-                        // Idle-loop only: injection needs a running emu.
-                        if self.plugin_loading_enabled {
-                            self.load_plugin_dialog();
-                        }
-                        continue;
-                    }
-                    GuiAction::CloseOverlays => {
-                        if self.state.close_all() {
-                            continue; // an overlay was open; Escape consumed by GUI
-                        }
-                        // nothing was open — fall through so Escape reaches
-                        // the emulator as RSnesEvent::Close
-                    }
+            // Shortcuts take priority over emulator buttons.
+            if let SdlEvent::KeyDown {
+                keycode: Some(key),
+                keymod,
+                repeat: false,
+                ..
+            } = &event
+                && let Some(cmd) = Command::from_key(*key, *keymod)
+            {
+                // Escape close opened overlays first before closing the ROM or quitting.
+                let closed_menu =
+                    cmd == Command::CloseRom && (self.menu_open || self.state.close_all());
+                if !closed_menu {
+                    commands.push(cmd);
                 }
+                continue;
             }
 
             if let Some(rsnes_event) = Self::map_event(&event) {
@@ -545,6 +526,7 @@ impl Gui {
     fn draw_framebuffer(
         &mut self,
         framebuffer: &ppu::rendering::RawFramebuffer,
+        menu_bar: u32,
     ) -> Result<(), String> {
         use sdl2::pixels::PixelFormatEnum;
 
@@ -565,38 +547,84 @@ impl Gui {
             .update(None, framebuffer, SCREEN_WIDTH * 3)
             .map_err(|e| e.to_string())?;
 
-        self.egui_canvas.painter.canvas.copy(texture, None, None)?;
+        let canvas = &mut self.egui_canvas.painter.canvas;
+        let (width, height) = canvas.output_size()?;
+        if let Some(dst) = game_rect(width, height, menu_bar) {
+            canvas.copy(texture, None, dst)?;
+        }
 
         Ok(())
     }
 
-    /// Draws every currently-open overlay. Adding a new window means adding
-    /// one line here plus one field in `GuiState` — nothing in `main.rs`.
-    fn draw_overlays(state: &mut GuiState, data: &GuiFrameData, ctx: &egui::Context) {
-        widgets::rom_info(ctx, &mut state.show_rom_info, data.rom_info);
-        widgets::error_box(ctx, &mut state.error_popup);
+    /// Draws every currently-open overlay, kept inside `area` (the space
+    /// below the menu bar). Adding a new window means adding one line here
+    /// plus one field in `GuiState` — nothing in `main.rs`.
+    fn draw_overlays(
+        state: &mut GuiState,
+        data: &GuiFrameData,
+        ctx: &egui::Context,
+        area: egui::Rect,
+    ) {
+        widgets::rom_info(ctx, area, &mut state.show_rom_info, data.rom_info);
+        widgets::error_box(ctx, area, &mut state.error_popup);
         #[cfg(feature = "plugins")]
-        widgets::plugin_perm_request(ctx, &mut state.pending_plugin, &mut state.granted_plugin);
+        widgets::plugin_perm_request(
+            ctx,
+            area,
+            &mut state.pending_plugin,
+            &mut state.granted_plugin,
+        );
     }
 
-    /// One frame: poll input, blit the framebuffer, draw overlays, present.
+    /// One frame: poll input, lay out the UI, blit the framebuffer below the
+    /// menu bar, paint the UI, present, then run the frame's commands.
     pub fn update(
         &mut self,
         framebuffer: &ppu::rendering::RawFramebuffer,
         data: GuiFrameData,
     ) -> Vec<RSnesEvent> {
-        let events = self.handle_events();
+        let mut commands = Vec::new();
+        let mut events = self.handle_events(&mut commands);
 
-        self.egui_canvas.clear([30, 30, 35, 255]);
-        let _ = self.draw_framebuffer(framebuffer);
-
+        // Lay out the UI before drawing the game: the game goes in the space
+        // the menu bar leaves, so the bar's height must be known first.
         // Split the borrow: `run` takes `&mut self.egui_canvas`, so `state`
         // must be borrowed separately rather than through `self`.
         let state = &mut self.state;
-        self.egui_canvas.run(|ctx| Self::draw_overlays(state, &data, ctx));
+        let mut menu_bar_bottom = 0.0;
+        self.egui_canvas.run(|ctx| {
+            menu_bar_bottom = widgets::menu_bar(ctx, state, &data, &mut commands);
+            // Windows may cover the game, but not the menu bar.
+            let mut area = ctx.content_rect();
+            area.min.y = area.min.y.max(menu_bar_bottom);
+            Self::draw_overlays(state, &data, ctx, area);
+        });
 
+        let ctx = &self.egui_canvas.ctx;
+        self.menu_open = egui::Popup::is_any_open(ctx);
+        // How far down the bar is actually painted, in pixels. egui
+        // anti-aliases shape edges by feathering half of `feathering_size`
+        // outside them, so the bar's fill bleeds that far past its rect.
+        // Rounded up so the game never shares a pixel row with the bar.
+        let ppp = ctx.pixels_per_point();
+        let feathering_size = ctx.tessellation_options(|o| {
+            if o.feathering {
+                o.feathering_size_in_pixels / 2.0
+            } else {
+                0.0
+            }
+        });
+        let menu_bar_px = (menu_bar_bottom * ppp + feathering_size).ceil() as u32;
+
+        self.egui_canvas.clear([30, 30, 35, 255]);
+        let _ = self.draw_framebuffer(framebuffer, menu_bar_px);
         self.egui_canvas.paint();
         self.egui_canvas.present();
+
+        // Run commands outside the egui pass: some open blocking file dialogs.
+        for cmd in commands {
+            self.execute(cmd, &data, &mut events);
+        }
 
         events
     }
@@ -613,34 +641,5 @@ impl Gui {
                 Default::default()
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use sdl2::keyboard::Mod;
-
-    fn key_down(keycode: Keycode, keymod: Mod) -> SdlEvent {
-        SdlEvent::KeyDown {
-            timestamp: 0,
-            window_id: 0,
-            keycode: Some(keycode),
-            scancode: None,
-            keymod,
-            repeat: false,
-        }
-    }
-
-    #[test]
-    fn ctrl_r_maps_to_reset_instead_of_plugin_action() {
-        let event = key_down(Keycode::R, Mod::LCTRLMOD);
-        assert_eq!(Gui::map_event(&event), Some(RSnesEvent::Reset));
-
-        let event = key_down(Keycode::R, Mod::RCTRLMOD);
-        assert_eq!(Gui::map_event(&event), Some(RSnesEvent::Reset));
-
-        let event = key_down(Keycode::R, Mod::NOMOD);
-        assert_eq!(Gui::map_event(&event), Some(RSnesEvent::RunPluginDefault));
     }
 }
