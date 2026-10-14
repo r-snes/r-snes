@@ -1,7 +1,11 @@
-use std::ops::IndexMut;
+use std::ops::{IndexMut, Not};
 
 use serde::{
-    Serializer, ser::{SerializeMap, SerializeSeq, SerializeStruct, SerializeStructVariant, SerializeTuple, SerializeTupleStruct, SerializeTupleVariant},
+    Serializer,
+    ser::{
+        SerializeMap, SerializeSeq, SerializeStruct, SerializeStructVariant, SerializeTuple,
+        SerializeTupleStruct, SerializeTupleVariant,
+    },
 };
 use toml_edit::{Decor, DocumentMut, Formatted, InlineTable, Item, Key, Table, TableLike, Value};
 
@@ -348,6 +352,7 @@ impl<'a> SerializeStruct for InTableSerializer<'a> {
                 self.serialized_keys
                     .iter()
                     .any(|ser_key| key == ser_key)
+                    .not()
                     .then_some(key.to_owned())
             })
             .collect::<Vec<_>>() // intermediate collect to release the borrow on self.table
@@ -386,7 +391,8 @@ impl SerializeSeq for InArraySerializer {
 
     fn serialize_element<T>(&mut self, value: &T) -> Result<(), Self::Error>
     where
-        T: ?Sized + serde::Serialize {
+        T: ?Sized + serde::Serialize,
+    {
         todo!()
     }
 
@@ -400,7 +406,8 @@ impl SerializeTuple for InArraySerializer {
 
     fn serialize_element<T>(&mut self, value: &T) -> Result<(), Self::Error>
     where
-        T: ?Sized + serde::Serialize {
+        T: ?Sized + serde::Serialize,
+    {
         todo!()
     }
 
@@ -414,7 +421,8 @@ impl SerializeTupleStruct for InArraySerializer {
 
     fn serialize_field<T>(&mut self, value: &T) -> Result<(), Self::Error>
     where
-        T: ?Sized + serde::Serialize {
+        T: ?Sized + serde::Serialize,
+    {
         todo!()
     }
 
@@ -432,7 +440,8 @@ impl<InnerSer: SerializeTuple> SerializeTupleVariant for InEnum<InnerSer> {
 
     fn serialize_field<T>(&mut self, value: &T) -> Result<(), Self::Error>
     where
-        T: ?Sized + serde::Serialize {
+        T: ?Sized + serde::Serialize,
+    {
         todo!()
     }
 
@@ -446,7 +455,8 @@ impl<InnerSer: SerializeStruct> SerializeStructVariant for InEnum<InnerSer> {
 
     fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<(), Self::Error>
     where
-        T: ?Sized + serde::Serialize {
+        T: ?Sized + serde::Serialize,
+    {
         todo!()
     }
 
@@ -458,10 +468,9 @@ impl<InnerSer: SerializeStruct> SerializeStructVariant for InEnum<InnerSer> {
 #[cfg(test)]
 mod test {
     use serde::{Deserialize, Serialize};
-    use toml_edit::{
-        DocumentMut, Item, Value,
-        de::{from_document, from_str},
-    };
+    use toml_edit::{DocumentMut, Item, de::from_str};
+
+    use crate::config::serialize_in_doc::InDocSerializer;
 
     #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
     struct SimpleStruct {
@@ -470,15 +479,18 @@ mod test {
         c: Option<String>,
     }
 
-    fn serialize_into_document(doc: &mut DocumentMut, ser: &impl Serialize) {
-        todo!("IMPL THE THING")
+    fn serialize_into_document(doc: &mut DocumentMut, value: &impl Serialize) {
+        value
+            .serialize(InDocSerializer {
+                item: doc.as_item_mut(),
+            })
+            .unwrap()
     }
 
     #[test]
     fn define_all_options() {
         let init_toml = "";
         let mut doc: DocumentMut = init_toml.parse().expect("valid TOML");
-        let mut doc_clone = doc.clone();
         let mut config = from_str::<SimpleStruct>(init_toml).unwrap();
 
         assert_eq!(
@@ -490,15 +502,11 @@ mod test {
             }
         );
 
-        doc_clone["a"] = 34.into();
-        doc_clone["b"] = 56.into();
-        doc_clone["c"] = "foo".into();
         config.a = Some(34);
         config.b = Some(56);
         config.c = Some("foo".to_owned());
 
         let expected = "a = 34\nb = 56\nc = \"foo\"\n";
-        assert_eq!(doc_clone.to_string(), expected);
         serialize_into_document(&mut doc, &config);
         assert_eq!(doc.to_string(), expected);
     }
@@ -510,12 +518,11 @@ mod test {
             b = 3
 
             # other comment
-            a = 0 # inline comment gets removed when value is edited
+            a = 0 # inline comment stays even when value is changed
             c = "foo"
             # trailing comment
         "#;
         let mut doc: DocumentMut = init_toml.parse().expect("valid TOML");
-        let mut doc_clone = doc.clone();
         let mut config = from_str::<SimpleStruct>(init_toml).unwrap();
 
         assert_eq!(
@@ -527,9 +534,6 @@ mod test {
             }
         );
 
-        doc_clone["a"] = 34.into();
-        doc_clone["b"] = 56.into();
-        doc_clone["c"] = "bar".into();
         config.a = Some(34);
         config.b = Some(56);
         config.c = Some("bar".to_owned());
@@ -539,11 +543,10 @@ mod test {
             b = 56
 
             # other comment
-            a = 34
+            a = 34 # inline comment stays even when value is changed
             c = "bar"
             # trailing comment
         "#;
-        assert_eq!(doc_clone.to_string(), expected);
         serialize_into_document(&mut doc, &config);
         assert_eq!(doc.to_string(), expected);
     }
@@ -554,11 +557,10 @@ mod test {
             # header comment
 
             # other comment
-            a = 0 # inline comment gets removed when value is edited
+            a = 0 # inline comment stays
             b = 3 # inline comment which should be preserved
         "#;
         let mut doc: DocumentMut = init_toml.parse().expect("valid TOML");
-        let mut doc_clone = doc.clone();
         let mut config = from_str::<SimpleStruct>(init_toml).unwrap();
 
         assert_eq!(
@@ -570,18 +572,15 @@ mod test {
             }
         );
 
-        doc_clone["a"] = 10.into();
-        doc_clone["b"] = 3.into();
         config.a = Some(10);
 
         let expected = r#"
             # header comment
 
             # other comment
-            a = 10
+            a = 10 # inline comment stays
             b = 3 # inline comment which should be preserved
         "#;
-        assert_eq!(doc_clone.to_string(), expected);
         serialize_into_document(&mut doc, &config);
         assert_eq!(doc.to_string(), expected);
     }
@@ -594,7 +593,6 @@ mod test {
             b = 3 # inline comment which should be preserved
         "#;
         let mut doc: DocumentMut = init_toml.parse().expect("valid TOML");
-        let mut doc_clone = doc.clone();
         let mut config = from_str::<SimpleStruct>(init_toml).unwrap();
 
         assert_eq!(
@@ -606,11 +604,9 @@ mod test {
             }
         );
 
-        doc_clone["a"] = Item::None;
         config.a = None;
 
         let expected = "            b = 3 # inline comment which should be preserved\n        ";
-        assert_eq!(doc_clone.to_string(), expected);
         serialize_into_document(&mut doc, &config);
         assert_eq!(doc.to_string(), expected);
     }
