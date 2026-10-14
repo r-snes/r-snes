@@ -5,11 +5,85 @@ use egui_sdl2::egui::{self, RichText};
 
 use crate::rsnes::RomInfo;
 
+use super::GuiFrameData;
+use super::command::Command;
+use super::state::GuiState;
+
 #[cfg(feature = "plugins")]
 use plugins::plugin::{Plugin, gui::PermOutcome};
 
 #[cfg(feature = "plugins")]
 use super::state::PendingPlugin;
+
+/// The menu bar along the top of the window.
+///
+/// Entries only push the [`Command`] they stand for into `commands`; the
+/// caller runs them after the egui pass, since some open blocking file dialogs.
+/// Each entry shows its keyboard shortcut and is greyed out when unavailable.
+///
+/// Returns the bar's bottom edge in points.
+pub fn menu_bar(
+    ctx: &egui::Context,
+    state: &GuiState,
+    data: &GuiFrameData,
+    commands: &mut Vec<Command>,
+) -> f32 {
+    let mut item = |ui: &mut egui::Ui, cmd: Command, text: &str, selected: bool| {
+        let button = egui::Button::new(text)
+            .selected(selected)
+            .shortcut_text(cmd.shortcut().label());
+        if ui.add_enabled(cmd.is_enabled(data), button).clicked() {
+            commands.push(cmd);
+        }
+    };
+
+    #[expect(
+        deprecated,
+        reason = "egui-sdl2 only hands out a Context, not the root Ui `show_inside` needs"
+    )]
+    let panel = egui::Panel::top("menu_bar")
+        .show_separator_line(false)
+        .show(ctx, |ui| {
+            egui::MenuBar::new().ui(ui, |ui| {
+                ui.menu_button("File", |ui| {
+                    item(ui, Command::OpenRom, "Open ROM…", false);
+                    item(ui, Command::CloseRom, "Close ROM", false);
+                    #[cfg(feature = "plugins")]
+                    {
+                        ui.separator();
+                        item(ui, Command::LoadPlugin, "Load plugin…", false);
+                    }
+                    ui.separator();
+                    item(ui, Command::Quit, "Quit", false);
+                });
+
+                ui.menu_button("Emulation", |ui| {
+                    let pause = if data.paused { "Resume" } else { "Pause" };
+                    item(ui, Command::TogglePause, pause, false);
+                    item(ui, Command::Reset, "Reset", false);
+                    #[cfg(feature = "plugins")]
+                    item(ui, Command::RunPluginDefault, "Run plugin action", false);
+                });
+
+                ui.menu_button("View", |ui| {
+                    item(
+                        ui,
+                        Command::ToggleRomInfo,
+                        "ROM information",
+                        state.show_rom_info,
+                    );
+                });
+
+                if data.paused {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.label(RichText::new("Paused").weak());
+                    });
+                }
+            });
+        });
+
+    panel.response.rect.bottom()
+}
 
 /// Decodes a SNES header size exponent into KB. `0` means "none".
 fn decode_size_kb(exponent: u8) -> Option<usize> {
@@ -21,14 +95,14 @@ fn decode_size_kb(exponent: u8) -> Option<usize> {
 }
 
 /// ROM information overlay. Toggled with F1.
-pub fn rom_info(ctx: &egui::Context, open: &mut bool, info: Option<&RomInfo>) {
+pub fn rom_info(ctx: &egui::Context, area: egui::Rect, open: &mut bool, info: Option<&RomInfo>) {
     egui::Window::new("ROM Information")
+        .constrain_to(area)
         .open(open)
-        .resizable(true)
+        .auto_sized()
         .collapsible(false)
-        .default_width(340.0)
-        .default_height(360.0)
         .vscroll(true)
+        .hscroll(true)
         .show(ctx, |ui| {
             let Some(info) = info else {
                 ui.centered_and_justified(|ui| {
@@ -170,9 +244,10 @@ pub fn rom_info(ctx: &egui::Context, open: &mut bool, info: Option<&RomInfo>) {
 }
 
 /// Renders a window showing any runtime error
-pub fn error_box(ctx: &egui::Context, error: &mut Option<Box<dyn Error>>) {
+pub fn error_box(ctx: &egui::Context, area: egui::Rect, error: &mut Option<Box<dyn Error>>) {
     let mut open = error.is_some();
     let window = egui::Window::new("Error")
+        .constrain_to(area)
         .open(&mut open)
         .resizable(true)
         .collapsible(false)
@@ -218,6 +293,7 @@ fn show_error(ui: &mut egui::Ui, err: &dyn Error) {
 #[cfg(feature = "plugins")]
 pub fn plugin_perm_request(
     ctx: &egui::Context,
+    area: egui::Rect,
     pending: &mut Option<PendingPlugin>,
     granted: &mut Option<Plugin>,
 ) {
@@ -235,6 +311,7 @@ pub fn plugin_perm_request(
         req.show_none = p.show_none;
 
         egui::Window::new("Plugin Permissions")
+            .constrain_to(area)
             .open(&mut window_open)
             .collapsible(false)
             .resizable(true)
