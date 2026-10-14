@@ -51,6 +51,7 @@ impl Renderer {
                     w64,
                     h64,
                     tile16: ppu.regs.bg_tile16(bg),
+                    mosaic: ppu.regs.bg_mosaic(bg),
                     z_low,
                     z_high,
                     layer: Layer::from_bg(bg),

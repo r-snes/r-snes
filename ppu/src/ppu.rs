@@ -116,7 +116,7 @@ impl PPU {
             // BACKGROUNDS
             // ==========================
             0x2105 => self.regs.bgmode = value,
-            0x2106 => self.regs.mosaic = value, // TODO
+            0x2106 => self.regs.mosaic = value,
             0x2107 => self.regs.bgsc[0] = value,
             0x2108 => self.regs.bgsc[1] = value,
             0x2109 => self.regs.bgsc[2] = value,
