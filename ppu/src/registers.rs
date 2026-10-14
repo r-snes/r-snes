@@ -7,6 +7,12 @@
 
 use crate::write_twice::WriteTwice;
 
+// Window layer indices: BG1-BG4 are 0-3.
+/// Window layer index of the sprites.
+pub const WINDOW_OBJ: usize = 4;
+/// Window layer index of the color window (used by CGWSEL).
+pub const WINDOW_COLOR: usize = 5;
+
 /// PPU register values and the internal latches used by write-twice registers.
 // Registers without a field here:
 // - $2104 OAMDATA, $2138 RDOAM: OAM ports, see oam.rs
@@ -337,6 +343,29 @@ impl PPURegisters {
     pub fn bg_tile16(&self, bg: usize) -> bool {
         self.bgmode & (0x10 << bg) != 0
     }
+
+    // ============================================================
+    // Windows
+    // ============================================================
+
+    /// Returns true if `x` is inside window 1 (WH0 <= x <= WH1). The window is empty if WH0 > WH1.
+    pub fn in_window1(&self, x: usize) -> bool {
+        (self.wh0 as usize..=self.wh1 as usize).contains(&x)
+    }
+
+    /// Returns true if pixel `x` of BG `bg` is hidden by its windows (W12SEL/W34SEL).
+    pub fn bg_window_masked(&self, bg: usize, x: usize) -> bool {
+        // 4 bits per BG: bit 0 = window 1 invert, bit 1 = window 1 enable.
+        let sel = (if bg < 2 { self.w12sel } else { self.w34sel }) >> ((bg & 1) * 4);
+        if sel & 0x02 == 0 {
+            return false;
+        }
+        self.in_window1(x) ^ (sel & 0x01 != 0)
+    }
+
+    // ============================================================
+    // STAT78
+    // ============================================================
 
     /// STAT78 ($213F) read side effects: clears the counter latch and resets the OPHCT/OPVCT toggles.
     pub fn read_stat78_side_effects(&mut self) {

@@ -119,6 +119,17 @@ impl Layer {
         }
     }
 
+    // BG index of a BG layer (BG1=0..BG4=3).
+    fn bg_index(self) -> usize {
+        match self {
+            Layer::Bg1 => 0,
+            Layer::Bg2 => 1,
+            Layer::Bg3 => 2,
+            Layer::Bg4 => 3,
+            Layer::Obj | Layer::Backdrop => unreachable!("not a BG layer"),
+        }
+    }
+
     // CGADSUB layer-enable bit index (BG1=0..BG4=3, OBJ=4, backdrop=5)
     fn math_bit(self) -> u8 {
         match self {
@@ -275,6 +286,11 @@ impl Renderer {
         let tile_row = py / tile_px;
         let fine_y = py % tile_px;
 
+        // Windows hide pixels on the screens selected by TMW (main) and TSW (sub).
+        let bg = p.layer.bg_index();
+        let win_main = ppu.regs.tmw & (1 << bg) != 0;
+        let win_sub = ppu.regs.tsw & (1 << bg) != 0;
+
         for x in 0..SCREEN_WIDTH {
             let px = (x + p.scroll_x) & (map_w - 1);
             let tile_col = px / tile_px;
@@ -333,10 +349,12 @@ impl Renderer {
                 layer: p.layer,
                 obj_math: false,
             };
-            if p.to_main {
+            // A masked pixel is hidden on the screens selected by TMW/TSW.
+            let masked = (win_main || win_sub) && ppu.regs.bg_window_masked(bg, x);
+            if p.to_main && !(win_main && masked) {
                 Self::deposit(&mut self.main_line, x, pixel);
             }
-            if p.to_sub {
+            if p.to_sub && !(win_sub && masked) {
                 Self::deposit(&mut self.sub_line, x, pixel);
             }
         }
@@ -1213,5 +1231,118 @@ mod tests {
         r.render_scanline(&ppu, 0);
         assert_eq!(fb_pixel(&r, 0, 0), red);
         assert_eq!(fb_pixel(&r, 8, 0), black);
+    }
+
+    // ============================================================
+    // Windows
+    // ============================================================
+
+    // BG1 red on the main screen, window 1 from x = 10 to 20, applied on main (TMW).
+    fn make_ppu_window1(w12sel: u8) -> PPU {
+        let mut ppu = make_ppu();
+        setup_bg1_uniform(&mut ppu, 0x001F);
+        ppu.write(0x212C, 0x01); // TM: BG1
+        ppu.write(0x2126, 10); // WH0
+        ppu.write(0x2127, 20); // WH1
+        ppu.write(0x2123, w12sel);
+        ppu.write(0x212E, 0x01); // TMW: BG1
+        ppu
+    }
+
+    // Window 1 enabled on BG1 hides x 10-20, edges included.
+    #[test]
+    fn test_window1_hides_inside() {
+        let red = Renderer::apply_brightness(0x001F, 15);
+        let black = (0, 0, 0);
+        let ppu = make_ppu_window1(0x02); // BG1: window 1 enable
+
+        let mut r = make_renderer();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 9, 0), red);
+        assert_eq!(fb_pixel(&r, 10, 0), black);
+        assert_eq!(fb_pixel(&r, 20, 0), black);
+        assert_eq!(fb_pixel(&r, 21, 0), red);
+    }
+
+    // Inverted, window 1 hides everything outside x 10-20.
+    #[test]
+    fn test_window1_inverted_hides_outside() {
+        let red = Renderer::apply_brightness(0x001F, 15);
+        let black = (0, 0, 0);
+        let ppu = make_ppu_window1(0x03); // BG1: window 1 enable + invert
+
+        let mut r = make_renderer();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 9, 0), black);
+        assert_eq!(fb_pixel(&r, 15, 0), red);
+        assert_eq!(fb_pixel(&r, 21, 0), black);
+    }
+
+    // Without TMW, or without the enable bit, nothing is hidden.
+    #[test]
+    fn test_window1_needs_tmw_and_enable() {
+        let red = Renderer::apply_brightness(0x001F, 15);
+
+        let mut ppu = make_ppu_window1(0x02);
+        ppu.write(0x212E, 0x00); // TMW off
+        let mut r = make_renderer();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 15, 0), red);
+
+        let ppu = make_ppu_window1(0x01); // invert only, window disabled
+        let mut r = make_renderer();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 15, 0), red);
+    }
+
+    // With left > right the window is empty: nothing inside, everything outside.
+    #[test]
+    fn test_window1_empty_when_left_after_right() {
+        let red = Renderer::apply_brightness(0x001F, 15);
+        let black = (0, 0, 0);
+
+        let mut ppu = make_ppu_window1(0x02);
+        ppu.write(0x2126, 20); // WH0
+        ppu.write(0x2127, 10); // WH1
+        let mut r = make_renderer();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 15, 0), red);
+
+        ppu.write(0x2123, 0x03); // inverted: everything hidden
+        let mut r = make_renderer();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 15, 0), black);
+    }
+
+    // TSW applies the window on the sub screen only; the main screen is untouched.
+    #[test]
+    fn test_window1_on_sub_screen() {
+        let mut ppu = make_ppu_window1(0x02);
+        ppu.write(0x212D, 0x01); // TS: BG1
+        ppu.write(0x212E, 0x00); // TMW off
+        ppu.write(0x212F, 0x01); // TSW: BG1
+
+        let mut r = make_renderer();
+        r.render_scanline_mode1(&ppu, 0);
+        assert!(r.main_line[15].layer == Layer::Bg1);
+        assert!(r.sub_line[15].layer == Layer::Backdrop);
+        assert!(r.sub_line[9].layer == Layer::Bg1);
+    }
+
+    // Each BG has its own nibble: W12SEL bits 4-7 are BG2, W34SEL holds BG3 and BG4.
+    #[test]
+    fn test_window_sel_per_bg() {
+        let mut ppu = make_ppu();
+        ppu.write(0x2126, 10);
+        ppu.write(0x2127, 20);
+
+        ppu.write(0x2123, 0x20); // BG2: window 1 enable
+        assert!(!ppu.regs.bg_window_masked(0, 15));
+        assert!(ppu.regs.bg_window_masked(1, 15));
+
+        ppu.write(0x2124, 0x32); // BG3: enable, BG4: enable + invert
+        assert!(ppu.regs.bg_window_masked(2, 15));
+        assert!(!ppu.regs.bg_window_masked(3, 15));
+        assert!(ppu.regs.bg_window_masked(3, 25));
     }
 }
