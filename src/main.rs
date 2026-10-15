@@ -193,7 +193,7 @@ fn gui_emu_loop(
         // time and absorbs the 60.0988 Hz (SNES) vs 60 Hz mismatch. Sleep
         // only for the audio queued beyond the target; at or below it, go
         // straight to the next frame. Without audio, or while paused, fall back to the fixed frame deadline.
-        let sleep = if audio_failed {
+        let sleep = if audio_failed || !running {
             deadline.saturating_duration_since(Instant::now())
         } else if !audio_playing {
             Duration::ZERO // still building the cushion: run flat out
