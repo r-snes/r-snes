@@ -5,7 +5,7 @@ use serde::ser::{
     SerializeMap, SerializeSeq, SerializeStruct, SerializeStructVariant, SerializeTuple,
     SerializeTupleStruct, SerializeTupleVariant,
 };
-use toml_edit::{Formatted, InlineTable, Value};
+use toml_edit::{Formatted, InlineEntry, InlineTable, Value};
 
 macro_rules! serialize_simple_value {
     ($value_mut:expr, $val:expr, $variant:ident) => {{
@@ -272,14 +272,29 @@ impl<'a> SerializeStruct for InInlineTableSerializer<'a> {
     where
         T: ?Sized + serde::Serialize,
     {
-        match value.serialize(InValueSerializer::new(self.table.index_mut(key))) {
-            Ok(()) => {
-                self.serialized_keys.push(key.to_owned());
-                Ok(())
+        match self.table.entry(key) {
+            InlineEntry::Occupied(mut e) => {
+                match value.serialize(InValueSerializer::new(e.get_mut())) {
+                    Ok(()) => {
+                        self.serialized_keys.push(key.to_owned());
+                        Ok(())
+                    }
+                    // handle the "None value removes entry" by catching the UnsupportedNone error
+                    Err(Self::Error::UnsupportedNone) => Ok(()),
+                    e @ Err(_) => e,
+                }
             }
-            // handle the "None value removes entry" by catching the UnsupportedNone error
-            Err(Self::Error::UnsupportedNone) => Ok(()),
-            e @ Err(_) => e,
+            InlineEntry::Vacant(e) => {
+                match value.serialize(toml_edit::ser::ValueSerializer::new()) {
+                    Ok(val) => {
+                        self.serialized_keys.push(key.to_owned());
+                        e.insert(val);
+                        Ok(())
+                    }
+                    Err(Self::Error::UnsupportedNone) => Ok(()),
+                    Err(e) => Err(e),
+                }
+            }
         }
     }
 

@@ -1,3 +1,5 @@
+use crate::config::serialize_in_doc::InValueSerializer;
+
 use super::{InItemSerializer, SerError};
 use std::ops::{IndexMut, Not};
 
@@ -5,7 +7,7 @@ use serde::ser::{
     SerializeMap, SerializeSeq, SerializeStruct, SerializeStructVariant, SerializeTuple,
     SerializeTupleStruct, SerializeTupleVariant,
 };
-use toml_edit::{Decor, Formatted, InlineTable, Item, Table, TableLike, Value};
+use toml_edit::{Decor, Formatted, InlineEntry, InlineTable, Item, Table, TableLike, Value};
 
 macro_rules! serialize_simple_value {
     ($item_mut:expr, $val:expr, $variant:ident) => {{
@@ -167,7 +169,7 @@ impl<'a> serde::ser::Serializer for InItemSerializer<'a> {
 
     fn serialize_seq(self, len: Option<usize>) -> Result<Self::SerializeSeq, Self::Error> {
         // Ok(SerializeValueArray::seq(len))
-        todo!()
+        Ok(InArraySerializer {})
     }
 
     fn serialize_tuple(self, len: usize) -> Result<Self::SerializeTuple, Self::Error> {
@@ -315,16 +317,40 @@ impl<'a> SerializeStruct for InTableSerializer<'a> {
     where
         T: ?Sized + serde::Serialize,
     {
-        self.serialized_keys.push(key.to_owned());
         match &mut self.table {
-            TableMut::TopLevel(table) => value.serialize(InItemSerializer {
-                // table.index_mut with a &str key is infallible: it creates
-                // an Item::None place to write in in case there was no item before
-                item: table.index_mut(key),
-            }),
+            TableMut::TopLevel(table) => {
+                self.serialized_keys.push(key.to_owned());
+                value.serialize(InItemSerializer {
+                    // table.index_mut with a &str key is infallible: it creates
+                    // an Item::None place to write in in case there was no item before
+                    item: table.index_mut(key),
+                })
+            }
             TableMut::Inline(table) => {
-                let _val = &mut table[key];
-                todo!("serialize in-value")
+                match table.entry(key) {
+                    InlineEntry::Occupied(mut e) => {
+                        match value.serialize(InValueSerializer::new(e.get_mut())) {
+                            Ok(()) => {
+                                self.serialized_keys.push(key.to_owned());
+                                Ok(())
+                            }
+                            // handle the "None value removes entry" by catching the UnsupportedNone error
+                            Err(Self::Error::UnsupportedNone) => Ok(()),
+                            e @ Err(_) => e,
+                        }
+                    }
+                    InlineEntry::Vacant(e) => {
+                        match value.serialize(toml_edit::ser::ValueSerializer::new()) {
+                            Ok(val) => {
+                                self.serialized_keys.push(key.to_owned());
+                                e.insert(val);
+                                Ok(())
+                            }
+                            Err(Self::Error::UnsupportedNone) => Ok(()),
+                            Err(e) => Err(e),
+                        }
+                    }
+                }
             }
         }
     }
@@ -383,7 +409,7 @@ impl SerializeSeq for InArraySerializer {
     }
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        Ok(())
     }
 }
 impl SerializeTuple for InArraySerializer {

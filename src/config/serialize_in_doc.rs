@@ -28,7 +28,9 @@ impl<'a> InItemSerializer<'a> {
     /// [`DocumentMut`], using the document's root item
     /// as the item to serialize into
     pub fn in_document(doc: &'a mut DocumentMut) -> Self {
-        Self { item: doc.as_item_mut() }
+        Self {
+            item: doc.as_item_mut(),
+        }
     }
 }
 
@@ -46,7 +48,6 @@ impl<'a> InValueSerializer<'a> {
     }
 }
 
-
 #[cfg(test)]
 mod test {
     use serde::{Deserialize, Serialize};
@@ -55,6 +56,15 @@ mod test {
     use crate::config::serialize_in_doc::InItemSerializer;
 
     #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+    struct ComplexStruct {
+        #[serde(default)]
+        simple: SimpleStruct,
+        num: Option<i32>,
+        #[serde(default)]
+        strings: Vec<String>,
+    }
+
+    #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Default)]
     struct SimpleStruct {
         a: Option<i32>,
         b: Option<i32>,
@@ -189,6 +199,72 @@ mod test {
         config.a = None;
 
         let expected = "            b = 3 # inline comment which should be preserved\n        ";
+        serialize_into_document(&mut doc, &config);
+        assert_eq!(doc.to_string(), expected);
+    }
+
+    #[test]
+    fn add_key_to_inline_table() {
+        let init_toml = r#"
+            # comment
+            simple = { a = 3 } # inline
+        "#;
+        let mut doc: DocumentMut = init_toml.parse().expect("valid TOML");
+        let mut config = from_str::<ComplexStruct>(init_toml).unwrap();
+
+        assert_eq!(
+            config,
+            ComplexStruct {
+                num: None,
+                strings: vec!(),
+                simple: SimpleStruct {
+                    a: Some(3),
+                    b: None,
+                    c: None,
+                },
+                some_enum: None,
+            },
+        );
+
+        config.simple.b = Some(15);
+
+        let expected = r#"
+            # comment
+            simple = { a = 3 , b = 15 } # inline
+        "#;
+        serialize_into_document(&mut doc, &config);
+        assert_eq!(doc.to_string(), expected);
+    }
+
+    #[test]
+    fn remove_key_from_inline_table() {
+        let init_toml = r#"
+            # comment
+            simple = { a = 3 , c = "xxxxxxx" } # inline c
+        "#;
+        let mut doc: DocumentMut = init_toml.parse().expect("valid TOML");
+        let mut config = from_str::<ComplexStruct>(init_toml).unwrap();
+
+        assert_eq!(
+            config,
+            ComplexStruct {
+                num: None,
+                strings: vec!(),
+                simple: SimpleStruct {
+                    a: Some(3),
+                    b: None,
+                    c: Some("xxxxxxx".to_owned()),
+                },
+                some_enum: None,
+            },
+        );
+
+        config.simple.c = None;
+
+        let expected = r#"
+            # comment
+            simple = { a = 3 } # inline c
+        "#;
         serialize_into_document(&mut doc, &config);
         assert_eq!(doc.to_string(), expected);
     }
