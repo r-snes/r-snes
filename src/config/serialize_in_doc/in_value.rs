@@ -8,7 +8,7 @@ use serde::ser::{
 use toml_edit::{Formatted, InlineTable, Value};
 
 macro_rules! serialize_simple_value {
-    ($value_mut:expr, $val:expr, $ty:ty, $variant:ident) => {{
+    ($value_mut:expr, $val:expr, $variant:ident) => {{
         let decor = std::mem::take($value_mut.decor_mut());
         let mut res = Formatted::new($val);
         *res.decor_mut() = decor;
@@ -29,7 +29,7 @@ impl<'a> serde::ser::Serializer for InValueSerializer<'a> {
     type SerializeStructVariant = InEnum<InInlineTableSerializer<'a>>;
 
     fn serialize_bool(self, v: bool) -> Result<Self::Ok, Self::Error> {
-        serialize_simple_value!(self.value, v, bool, Boolean)
+        serialize_simple_value!(self.value, v, Boolean)
     }
 
     fn serialize_i8(self, v: i8) -> Result<Self::Ok, Self::Error> {
@@ -45,7 +45,7 @@ impl<'a> serde::ser::Serializer for InValueSerializer<'a> {
     }
 
     fn serialize_i64(self, v: i64) -> Result<Self::Ok, Self::Error> {
-        serialize_simple_value!(self.value, v, i64, Integer)
+        serialize_simple_value!(self.value, v, Integer)
     }
 
     fn serialize_u8(self, v: u8) -> Result<Self::Ok, Self::Error> {
@@ -74,7 +74,7 @@ impl<'a> serde::ser::Serializer for InValueSerializer<'a> {
             v = v.copysign(1.0);
         }
 
-        serialize_simple_value!(self.value, v, f64, Float)
+        serialize_simple_value!(self.value, v, Float)
     }
 
     fn serialize_char(self, v: char) -> Result<Self::Ok, Self::Error> {
@@ -83,7 +83,7 @@ impl<'a> serde::ser::Serializer for InValueSerializer<'a> {
     }
 
     fn serialize_str(self, v: &str) -> Result<Self::Ok, Self::Error> {
-        serialize_simple_value!(self.value, v.to_owned(), &str, String)
+        serialize_simple_value!(self.value, v.to_owned(), String)
     }
 
     fn serialize_bytes(self, value: &[u8]) -> Result<Self::Ok, Self::Error> {

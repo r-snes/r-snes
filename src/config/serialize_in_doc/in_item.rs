@@ -8,21 +8,21 @@ use serde::ser::{
 use toml_edit::{Decor, Formatted, InlineTable, Item, Table, TableLike, Value};
 
 macro_rules! serialize_simple_value {
-    ($item:expr, $val:expr, $ty:ty, $variant:ident) => {{
-        let decor = match $item {
+    ($item_mut:expr, $val:expr, $variant:ident) => {{
+        let decor = match $item_mut {
             Item::Value(v) => std::mem::take(v.decor_mut()),
             Item::None => Decor::default(),
             Item::Table(_) | Item::ArrayOfTables(_) => {
                 eprintln!(concat!(
                     "weird replacement of non-value to ",
-                    stringify!($ty)
+                    stringify!($variant)
                 ));
                 Decor::default()
             }
         };
         let mut res = Formatted::new($val);
         *res.decor_mut() = decor;
-        *$item = Item::Value(Value::$variant(res));
+        *$item_mut = Item::Value(Value::$variant(res));
         Ok(())
     }};
 }
@@ -39,7 +39,7 @@ impl<'a> serde::ser::Serializer for InItemSerializer<'a> {
     type SerializeStructVariant = InEnum<InTableSerializer<'a>>;
 
     fn serialize_bool(self, v: bool) -> Result<Self::Ok, Self::Error> {
-        serialize_simple_value!(self.item, v, bool, Boolean)
+        serialize_simple_value!(self.item, v, Boolean)
     }
 
     fn serialize_i8(self, v: i8) -> Result<Self::Ok, Self::Error> {
@@ -55,7 +55,7 @@ impl<'a> serde::ser::Serializer for InItemSerializer<'a> {
     }
 
     fn serialize_i64(self, v: i64) -> Result<Self::Ok, Self::Error> {
-        serialize_simple_value!(self.item, v, i64, Integer)
+        serialize_simple_value!(self.item, v, Integer)
     }
 
     fn serialize_u8(self, v: u8) -> Result<Self::Ok, Self::Error> {
@@ -84,7 +84,7 @@ impl<'a> serde::ser::Serializer for InItemSerializer<'a> {
             v = v.copysign(1.0);
         }
 
-        serialize_simple_value!(self.item, v, f64, Float)
+        serialize_simple_value!(self.item, v, Float)
     }
 
     fn serialize_char(self, v: char) -> Result<Self::Ok, Self::Error> {
@@ -93,7 +93,7 @@ impl<'a> serde::ser::Serializer for InItemSerializer<'a> {
     }
 
     fn serialize_str(self, v: &str) -> Result<Self::Ok, Self::Error> {
-        serialize_simple_value!(self.item, v.to_owned(), &str, String)
+        serialize_simple_value!(self.item, v.to_owned(), String)
     }
 
     fn serialize_bytes(self, value: &[u8]) -> Result<Self::Ok, Self::Error> {
