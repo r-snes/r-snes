@@ -370,6 +370,11 @@ impl PPURegisters {
         self.window_masked(self.wobjsel, self.wobjlog, x)
     }
 
+    /// Returns true if `x` is inside the color window (WOBJSEL bits 4-7, WOBJLOG bits 2-3).
+    pub fn in_color_window(&self, x: usize) -> bool {
+        self.window_masked(self.wobjsel >> 4, self.wobjlog >> 2, x)
+    }
+
     // 4 bits per layer in `sel`: bit 0/1 = window 1 invert/enable, bit 2/3 = window 2 invert/enable.
     // `logic` (bits 0-1) combines the two windows when both are enabled: OR, AND, XOR, XNOR.
     fn window_masked(&self, sel: u8, logic: u8, x: usize) -> bool {

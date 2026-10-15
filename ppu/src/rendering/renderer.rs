@@ -420,19 +420,30 @@ impl Renderer {
         let fixed = ppu.regs.coldata;
         let brightness = ppu.brightness() as u16;
 
-        let clip_mode = (cgwsel >> 6) & 0x03; // 0=never 1=out 2=in 3=always
-        let math_region = (cgwsel >> 4) & 0x03; // 0=always 1=in 2=out 3=never
+        let clip_mode = (cgwsel >> 6) & 0x03; // 0=never 1=outside 2=inside 3=always
+        let math_region = (cgwsel >> 4) & 0x03; // 0=always 1=inside 2=outside 3=never
+
+        // Same table for both settings: true = keep the color / allow math.
+        let region = |mode: u8, inside: bool| match mode {
+            0 => true,
+            1 => inside,
+            2 => !inside,
+            _ => false,
+        };
 
         for x in 0..SCREEN_WIDTH {
             let main = self.main_line[x];
+            let inside = ppu.regs.in_color_window(x);
 
-            // Clip main screen to black. Window-relative cases (1/2) need the
-            // color window -> handled when window masking lands.
-            let force_black = clip_mode == 3;
-            let main_color = if force_black { 0 } else { main.color };
+            // Clip the main screen to black, before color math.
+            let main_color = if region(clip_mode, inside) {
+                main.color
+            } else {
+                0
+            };
 
             // Is color math active on this pixel?
-            let region_ok = math_region != 3; // 1/2 need color window
+            let region_ok = region(math_region, inside);
             let layer_enabled = match main.layer {
                 Layer::Obj => (cgadsub & 0x10 != 0) && main.obj_math,
                 l => cgadsub & (1 << l.math_bit()) != 0,
@@ -1407,5 +1418,122 @@ mod tests {
         assert!(ppu.regs.bg_window_masked(0, 12)); // OR: in window 1
         assert!(!ppu.regs.bg_window_masked(1, 12)); // AND: not in window 2
         assert!(ppu.regs.bg_window_masked(1, 17)); // AND: in both
+    }
+
+    // ============================================================
+    // Color window
+    // ============================================================
+
+    // BG1 red on the main screen, color window = window 1 from x = 10 to 20.
+    fn make_ppu_color_window(cgwsel: u8) -> PPU {
+        let mut ppu = make_ppu();
+        setup_bg1_uniform(&mut ppu, 0x001F);
+        ppu.write(0x212C, 0x01); // TM: BG1
+        ppu.write(0x2126, 10); // WH0
+        ppu.write(0x2127, 20); // WH1
+        ppu.write(0x2125, 0x20); // WOBJSEL: color window uses window 1
+        ppu.write(0x2130, cgwsel);
+        ppu
+    }
+
+    // CGWSEL bits 6-7 = 1: black outside the color window.
+    #[test]
+    fn test_color_window_clip_outside() {
+        let red = Renderer::apply_brightness(0x001F, 15);
+        let black = (0, 0, 0);
+        let ppu = make_ppu_color_window(0x40);
+
+        let mut r = make_renderer();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 9, 0), black);
+        assert_eq!(fb_pixel(&r, 10, 0), red);
+        assert_eq!(fb_pixel(&r, 20, 0), red);
+        assert_eq!(fb_pixel(&r, 21, 0), black);
+    }
+
+    // CGWSEL bits 6-7 = 2: black inside the color window.
+    #[test]
+    fn test_color_window_clip_inside() {
+        let red = Renderer::apply_brightness(0x001F, 15);
+        let black = (0, 0, 0);
+        let ppu = make_ppu_color_window(0x80);
+
+        let mut r = make_renderer();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 9, 0), red);
+        assert_eq!(fb_pixel(&r, 15, 0), black);
+        assert_eq!(fb_pixel(&r, 21, 0), red);
+    }
+
+    // With no window enabled, the color window is empty: "outside" is the whole line.
+    #[test]
+    fn test_color_window_clip_without_window() {
+        let red = Renderer::apply_brightness(0x001F, 15);
+        let black = (0, 0, 0);
+
+        let mut ppu = make_ppu_color_window(0x40);
+        ppu.write(0x2125, 0x00); // WOBJSEL: no window
+        let mut r = make_renderer();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 15, 0), black);
+
+        ppu.write(0x2130, 0x80);
+        let mut r = make_renderer();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 15, 0), red);
+    }
+
+    // CGWSEL bits 4-5 limit color math to inside (1) or outside (2) the color window, or turn it off (3).
+    #[test]
+    fn test_color_window_math_region() {
+        let plain = Renderer::apply_brightness(0x0008, 15); // R=8
+        let added = Renderer::apply_brightness(0x000C, 15); // R=8 + fixed R=4
+
+        let mut ppu = make_ppu();
+        ppu.write(0x2126, 10); // WH0
+        ppu.write(0x2127, 20); // WH1
+        ppu.write(0x2125, 0x20); // WOBJSEL: color window uses window 1
+        ppu.write(0x2132, 0x24); // fixed R=4
+        ppu.write(0x2131, 0x01); // BG1 math, add
+
+        // (CGWSEL, expected at x = 5 / 15)
+        let cases = [
+            (0x10, [plain, added]), // inside
+            (0x20, [added, plain]), // outside
+            (0x30, [plain, plain]), // never
+        ];
+        for (cgwsel, expected) in cases {
+            ppu.write(0x2130, cgwsel);
+            let mut r = make_renderer();
+            for x in [5, 15] {
+                r.deposit_main(x, 0x0008, Priority::Bg1Low, Layer::Bg1, false);
+            }
+            r.composite_line(&ppu, 0);
+            for (x, want) in [5, 15].into_iter().zip(expected) {
+                assert_eq!(fb_pixel(&r, x, 0), want, "CGWSEL {cgwsel:#04X}, x={x}");
+            }
+        }
+    }
+
+    // The color window reads WOBJSEL bits 4-7 and WOBJLOG bits 2-3, not the OBJ bits.
+    #[test]
+    fn test_color_window_uses_its_own_bits() {
+        let mut ppu = make_ppu();
+        ppu.write(0x2126, 10); // WH0
+        ppu.write(0x2127, 20); // WH1
+        ppu.write(0x2128, 15); // WH2
+        ppu.write(0x2129, 30); // WH3
+
+        ppu.write(0x2125, 0xA0); // color: window 1 + window 2 enable
+        ppu.write(0x212B, 0x04); // OBJ: OR, color: AND
+        assert!(!ppu.regs.in_color_window(12)); // only in window 1
+        assert!(ppu.regs.in_color_window(17)); // in both
+
+        ppu.write(0x212B, 0x01); // OBJ: AND, color: OR
+        assert!(ppu.regs.in_color_window(12));
+
+        ppu.write(0x2125, 0x30); // color: window 1 enable + invert
+        assert!(ppu.regs.in_color_window(5));
+        assert!(!ppu.regs.in_color_window(15));
     }
 }
