@@ -353,14 +353,34 @@ impl PPURegisters {
         (self.wh0 as usize..=self.wh1 as usize).contains(&x)
     }
 
-    /// Returns true if pixel `x` of BG `bg` is hidden by its windows (W12SEL/W34SEL).
+    /// Returns true if `x` is inside window 2 (WH2 <= x <= WH3). The window is empty if WH2 > WH3.
+    pub fn in_window2(&self, x: usize) -> bool {
+        (self.wh2 as usize..=self.wh3 as usize).contains(&x)
+    }
+
+    /// Returns true if pixel `x` of BG `bg` is hidden by its windows (W12SEL/W34SEL, WBGLOG).
     pub fn bg_window_masked(&self, bg: usize, x: usize) -> bool {
-        // 4 bits per BG: bit 0 = window 1 invert, bit 1 = window 1 enable.
         let sel = (if bg < 2 { self.w12sel } else { self.w34sel }) >> ((bg & 1) * 4);
-        if sel & 0x02 == 0 {
-            return false;
+        let logic = self.wbglog >> (bg * 2);
+        self.window_masked(sel, logic, x)
+    }
+
+    // 4 bits per layer in `sel`: bit 0/1 = window 1 invert/enable, bit 2/3 = window 2 invert/enable.
+    // `logic` (bits 0-1) combines the two windows when both are enabled: OR, AND, XOR, XNOR.
+    fn window_masked(&self, sel: u8, logic: u8, x: usize) -> bool {
+        let w1 = self.in_window1(x) ^ (sel & 0x01 != 0);
+        let w2 = self.in_window2(x) ^ (sel & 0x04 != 0);
+        match (sel & 0x02 != 0, sel & 0x08 != 0) {
+            (false, false) => false,
+            (true, false) => w1,
+            (false, true) => w2,
+            (true, true) => match logic & 0x03 {
+                0 => w1 || w2,
+                1 => w1 && w2,
+                2 => w1 != w2,
+                _ => w1 == w2,
+            },
         }
-        self.in_window1(x) ^ (sel & 0x01 != 0)
     }
 
     // ============================================================

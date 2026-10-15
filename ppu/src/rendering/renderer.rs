@@ -1345,4 +1345,67 @@ mod tests {
         assert!(!ppu.regs.bg_window_masked(3, 15));
         assert!(ppu.regs.bg_window_masked(3, 25));
     }
+
+    // Window 2 alone (W12SEL bit 3) hides x 30-40.
+    #[test]
+    fn test_window2_hides_inside() {
+        let red = Renderer::apply_brightness(0x001F, 15);
+        let black = (0, 0, 0);
+        let mut ppu = make_ppu_window1(0x08); // BG1: window 2 enable only
+        ppu.write(0x2128, 30); // WH2
+        ppu.write(0x2129, 40); // WH3
+
+        let mut r = make_renderer();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 15, 0), red); // window 1 is not enabled
+        assert_eq!(fb_pixel(&r, 29, 0), red);
+        assert_eq!(fb_pixel(&r, 30, 0), black);
+        assert_eq!(fb_pixel(&r, 40, 0), black);
+        assert_eq!(fb_pixel(&r, 41, 0), red);
+    }
+
+    // With both windows enabled, WBGLOG combines them: window 1 is 10-20, window 2 is 15-30.
+    #[test]
+    fn test_window_logic() {
+        let mut ppu = make_ppu();
+        ppu.write(0x2126, 10);
+        ppu.write(0x2127, 20);
+        ppu.write(0x2128, 15);
+        ppu.write(0x2129, 30);
+        ppu.write(0x2123, 0x0A); // BG1: window 1 + window 2 enable
+
+        // (WBGLOG, hidden at x = 5 / 12 / 17 / 25)
+        let cases = [
+            (0x00, [false, true, true, true]),   // OR
+            (0x01, [false, false, true, false]), // AND
+            (0x02, [false, true, false, true]),  // XOR
+            (0x03, [true, false, true, false]),  // XNOR
+        ];
+        for (wbglog, expected) in cases {
+            ppu.write(0x212A, wbglog);
+            for (x, hidden) in [5, 12, 17, 25].into_iter().zip(expected) {
+                assert_eq!(
+                    ppu.regs.bg_window_masked(0, x),
+                    hidden,
+                    "WBGLOG {wbglog:#04X}, x={x}"
+                );
+            }
+        }
+    }
+
+    // Each BG has its own 2 bits in WBGLOG: BG2 uses bits 2-3.
+    #[test]
+    fn test_window_logic_per_bg() {
+        let mut ppu = make_ppu();
+        ppu.write(0x2126, 10);
+        ppu.write(0x2127, 20);
+        ppu.write(0x2128, 15);
+        ppu.write(0x2129, 30);
+        ppu.write(0x2123, 0xAA); // BG1 and BG2: window 1 + window 2 enable
+        ppu.write(0x212A, 0x04); // BG1: OR, BG2: AND
+
+        assert!(ppu.regs.bg_window_masked(0, 12)); // OR: in window 1
+        assert!(!ppu.regs.bg_window_masked(1, 12)); // AND: not in window 2
+        assert!(ppu.regs.bg_window_masked(1, 17)); // AND: in both
+    }
 }
