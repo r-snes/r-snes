@@ -1,11 +1,9 @@
-use super::{SerError, InItemSerializer};
+use super::{InItemSerializer, SerError};
 use std::ops::{IndexMut, Not};
 
-use serde::{
-    ser::{
-        SerializeMap, SerializeSeq, SerializeStruct, SerializeStructVariant, SerializeTuple,
-        SerializeTupleStruct, SerializeTupleVariant,
-    },
+use serde::ser::{
+    SerializeMap, SerializeSeq, SerializeStruct, SerializeStructVariant, SerializeTuple,
+    SerializeTupleStruct, SerializeTupleVariant,
 };
 use toml_edit::{Decor, Formatted, InlineTable, Item, Table, TableLike, Value};
 
