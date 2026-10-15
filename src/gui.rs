@@ -9,7 +9,7 @@ use egui_sdl2::canvas::EguiCanvas;
 use egui_sdl2::{egui, sdl2};
 use sdl2::audio::{AudioQueue, AudioSpecDesired};
 use sdl2::controller::{Button as ControllerButton, GameController};
-use sdl2::event::Event as SdlEvent;
+use sdl2::event::{Event as SdlEvent, WindowEvent};
 use sdl2::keyboard::Keycode;
 use sdl2::rect::Rect;
 use sdl2::render::Texture;
@@ -479,6 +479,16 @@ impl Gui {
 
         let mut out = Vec::new();
         for event in pending {
+            // Consuming `WindowEvent::Minimized` to avoid egui-sdl2
+            // recomputing its scale to 0x0, which breaks the UI.
+            if let SdlEvent::Window {
+                win_event: WindowEvent::Minimized,
+                ..
+            } = event
+            {
+                continue;
+            }
+
             if self.egui_canvas.on_event(&event).consumed {
                 continue;
             }
