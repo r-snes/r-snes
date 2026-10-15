@@ -436,11 +436,8 @@ impl Renderer {
             let inside = ppu.regs.in_color_window(x);
 
             // Clip the main screen to black, before color math.
-            let main_color = if region(clip_mode, inside) {
-                main.color
-            } else {
-                0
-            };
+            let keep_main = region(clip_mode, inside);
+            let main_color = if keep_main { main.color } else { 0 };
 
             // Is color math active on this pixel?
             let region_ok = region(math_region, inside);
@@ -450,11 +447,13 @@ impl Renderer {
             };
 
             let out = if region_ok && layer_enabled {
-                let sub = if use_subscreen {
+                let sub_transparent = use_subscreen && self.sub_line[x].layer == Layer::Backdrop;
+                let sub = if use_subscreen && !sub_transparent {
                     self.sub_line[x].color
                 } else {
                     fixed
                 };
+                let half = half && keep_main && !sub_transparent;
                 Self::color_math(main_color, sub, subtract, half)
             } else {
                 main_color
@@ -888,9 +887,7 @@ mod tests {
 
     #[test]
     fn test_composite_half() {
-        // main R=8, fixed R=4, BG1 math + half add -> R=6
-        // NOTE: real HW inhibits half against the fixed colour; this asserts
-        // current behaviour (half always applied).
+        // main R=8, fixed R=4, BG1 math + half add -> (8 + 4) / 2 = 6, also against the fixed color
         let got = composite_bg1_with_fixed(0x0008, 0x24, 0x41);
         assert_eq!(got, Renderer::apply_brightness(0x0006, 15));
     }
@@ -977,6 +974,42 @@ mod tests {
         ppu.write(0x212D, 0x00);
         r.render_scanline(&ppu, 0);
         assert_eq!(fb_pixel(&r, 0, 0), Renderer::apply_brightness(0x000C, 15));
+    }
+
+    // Subscreen operand + half: divided by 2 against a sub layer, not against a transparent sub.
+    #[test]
+    fn test_composite_half_skipped_on_transparent_sub() {
+        let mut ppu = make_ppu();
+        ppu.write(0x2132, 0x24); // fixed R=4
+        ppu.write(0x2130, 0x02); // use subscreen
+        ppu.write(0x2131, 0x41); // BG1 math, half add
+
+        // Sub layer R=4 -> (8 + 4) / 2 = 6
+        let mut r = make_renderer();
+        r.deposit_main(0, 0x0008, Priority::Bg1Low, Layer::Bg1, false);
+        r.deposit_sub(0, 0x0004, Priority::Bg2Low, Layer::Bg2, false);
+        r.composite_line(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 0, 0), Renderer::apply_brightness(0x0006, 15));
+
+        // Transparent sub -> fixed R=4, not divided -> 8 + 4 = 12
+        let mut r = make_renderer();
+        r.deposit_main(0, 0x0008, Priority::Bg1Low, Layer::Bg1, false);
+        r.composite_line(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 0, 0), Renderer::apply_brightness(0x000C, 15));
+    }
+
+    // Main pixel clipped to black: math still runs (0 + fixed), not divided by 2.
+    #[test]
+    fn test_composite_half_skipped_when_clipped() {
+        // fixed R=8, half add, always clip -> 0 + 8 = 8 (not 4)
+        let mut r = make_renderer();
+        let mut ppu = make_ppu();
+        ppu.write(0x2132, 0x28); // fixed R=8
+        ppu.write(0x2130, 0xC0); // clip main to black always
+        ppu.write(0x2131, 0x41); // BG1 math, half add
+        r.deposit_main(0, 0x001F, Priority::Bg1Low, Layer::Bg1, false);
+        r.composite_line(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 0, 0), Renderer::apply_brightness(0x0008, 15));
     }
 
     // ============================================================
