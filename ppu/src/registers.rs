@@ -365,6 +365,11 @@ impl PPURegisters {
         self.window_masked(sel, logic, x)
     }
 
+    /// Returns true if pixel `x` of the sprites is hidden by their windows (WOBJSEL bits 0-3, WOBJLOG bits 0-1).
+    pub fn obj_window_masked(&self, x: usize) -> bool {
+        self.window_masked(self.wobjsel, self.wobjlog, x)
+    }
+
     // 4 bits per layer in `sel`: bit 0/1 = window 1 invert/enable, bit 2/3 = window 2 invert/enable.
     // `logic` (bits 0-1) combines the two windows when both are enabled: OR, AND, XOR, XNOR.
     fn window_masked(&self, sel: u8, logic: u8, x: usize) -> bool {
