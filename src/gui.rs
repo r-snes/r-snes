@@ -183,7 +183,10 @@ impl Gui {
             .build()
             .map_err(|e| e.to_string())?;
         window
-            .set_minimum_size(SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32)
+            .set_minimum_size(
+                SCREEN_WIDTH as u32,
+                SCREEN_HEIGHT as u32 + Self::MENU_BAR_HEIGHT,
+            )
             .map_err(|e| e.to_string())?;
 
         let egui_canvas = EguiCanvas::new(window);
