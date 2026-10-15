@@ -80,7 +80,9 @@ apu = { version = "0.1.0", path = "./apu" }
 plugins = { version = "0.1.0", path = "./plugins", optional = true }
 piccolo = { workspace = true, optional = true }
 piccolo-util = { workspace = true, optional = true }
-egui-sdl2 = { version = "0.4.0", default-features = false, features = ["canvas-backend"] }
+egui-sdl2 = { version = "0.4.0", default-features = false, features = [
+    "canvas-backend",
+] }
 rfd = "0.17.2"
 clap = { version = "^4.6.0", features = ["derive"], optional = true }
 duplicate.workspace = true
@@ -98,6 +100,7 @@ winresource = "0.1.31"
 cli = ["dep:clap"]
 plugins = ["dep:piccolo", "dep:piccolo-util", "dep:plugins"]
 default = ["cli", "plugins"]
+console = []
 
 [lints]
 workspace = true
