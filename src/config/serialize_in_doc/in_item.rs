@@ -221,12 +221,17 @@ impl<'a> serde::ser::Serializer for InItemSerializer<'a> {
     }
 }
 
+/// Helper enum to handle a mutable reference to either
+/// a [`Table`] or an [`InlineTable`]
 pub enum TableMut<'a> {
+    /// Contains an [`InlineTable`]
     Inline(&'a mut InlineTable),
+    /// Contains a [`Table`]
     TopLevel(&'a mut Table),
 }
 
 impl<'a> TableMut<'a> {
+    /// Forwards the [`TableLike::iter`] method
     pub fn iter(&self) -> impl Iterator<Item = (&str, &Item)> {
         match self {
             Self::Inline(tab) => TableLike::iter(*tab),
@@ -234,6 +239,7 @@ impl<'a> TableMut<'a> {
         }
     }
 
+    /// Forwards the [`TableLike::remove`] method
     pub fn remove(&mut self, key: &str) {
         match self {
             Self::Inline(tab) => {
@@ -246,8 +252,12 @@ impl<'a> TableMut<'a> {
     }
 }
 
+/// Custom serializer to write maps and structs in an existing
+/// [`Table`] or [`InlineTable`]
 pub struct InTableSerializer<'a> {
+    /// The table to serialize into
     pub table: TableMut<'a>,
+    /// Key which the next item will serialize into (used for [`SerializeMap`])
     pub pending_key: Option<Item>,
     /// Vec of keys we have serialized: kept track of to remove
     /// entries which existed in [`table`](struct.InTableSerializer#structfield.table)
@@ -260,6 +270,8 @@ pub struct InTableSerializer<'a> {
 }
 
 impl<'a> InTableSerializer<'a> {
+    /// Constructs a new [`InInlineTableSerializer`] which serializes into
+    /// the existing table passed as argument
     pub fn new(table: TableMut<'a>, size_hint: Option<usize>) -> Self {
         let key_vec = if let Some(size) = size_hint {
             Vec::with_capacity(size)
@@ -276,6 +288,9 @@ impl<'a> InTableSerializer<'a> {
 }
 
 impl<'a> InTableSerializer<'a> {
+    /// Constructs a new [`InInlineTableSerializer`] which serializes into
+    /// the value passed as argument, overriding it to be an [`InlineTable`]
+    /// if it isn't one already
     pub fn in_item(item: &'a mut Item, size_hint: Option<usize>) -> Self {
         match item {
             Item::Table(tab) => Self::new(TableMut::TopLevel(tab), size_hint),
