@@ -246,6 +246,13 @@ impl Gui {
         let _ = self.egui_canvas.painter.canvas.window_mut().set_title(&window_title);
     }
 
+    /// Closes every open overlay. Called when a game starts or stops, so no
+    /// window outlives the state it belongs to (e.g. ROM information with no
+    /// ROM loaded, where its toggle is disabled and couldn't close it).
+    pub fn close_overlays(&mut self) {
+        self.state.close_all();
+    }
+
     /// Takes the plugin the user granted this idle session, if any, and
     /// abandons any still-undecided prompt. Called when the idle loop exits.
     #[cfg(feature = "plugins")]

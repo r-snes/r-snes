@@ -52,6 +52,9 @@ fn gui_emu_loop(
     let mut frame_nb = 0_u64;
     let exec_start = Instant::now();
 
+    // Close any overlays that might have been left open from the previous window.
+    gui.close_overlays();
+
     // Snapshot the ROM header once — it never changes while the ROM is loaded,
     // so there's no reason to rebuild it every frame.
     let rom_info = rsnes.rom_info();
@@ -204,6 +207,9 @@ fn gui_emu_loop(
         frame_nb += 1;
     };
 
+    // Leave no game overlays behind.
+    gui.close_overlays();
+
     if !audio_failed {
         // Pause and discard anything still queued, whether or not
         // playback had started yet.
@@ -252,9 +258,7 @@ fn gui_idle_loop(gui: &mut Gui, default_framebuffer: &ppu::rendering::RawFramebu
     let ev = loop {
         let frame_start = Instant::now();
 
-        // Render the logo + overlays; this also polls input (routed
-        // through egui first). No ROM loaded, so no rom_info to show -
-        // the overlay will say so if the user opens it.
+        // Render the logo + overlays; this also polls input (routed through egui first).
         let events = gui.update(default_framebuffer, GuiFrameData::default());
 
         let mut terminal = None;

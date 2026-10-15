@@ -197,6 +197,7 @@ mod tests {
         assert!(!Command::CloseRom.is_enabled(&idle));
         assert!(!Command::Reset.is_enabled(&idle));
         assert!(!Command::TogglePause.is_enabled(&idle));
+        assert!(!Command::ToggleRomInfo.is_enabled(&idle));
         assert!(Command::OpenRom.is_enabled(&idle));
     }
 }
