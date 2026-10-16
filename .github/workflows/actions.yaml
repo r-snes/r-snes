@@ -7,24 +7,63 @@ on:
   pull_request:
     branches-ignore:
       - 'ga-ignore-*'
-env:
-  MIRROR_URL: "git@github.com:EpitechPromo2027/G-EIP-600-NAN-6-1-eip-florent.charpentier.git"
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
+# One run per branch/PR: a new push cancels the outdated run, except on main.
 concurrency:
-  group: "pages"
-  cancel-in-progress: false
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
-  check_program_compilation:
+  fmt:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
-      - name: Checkout fetch
+      - name: Checkout repository
+        uses: actions/checkout@v5.0.0
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          components: rustfmt
+
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+  clippy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5.0.0
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          components: clippy
+
+      - name: Cache cargo registry and build artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install SDL2
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libsdl2-dev
+
+      - name: Run clippy
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+  coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
         uses: actions/checkout@v5.0.0
 
       - name: Install Rust
@@ -33,106 +72,38 @@ jobs:
       - name: Cache cargo registry and build artifacts
         uses: Swatinem/rust-cache@v2
 
-      - name: Install SDL2
-        uses: libsdl-org/setup-sdl@main
-        id: sdl
+      - name: Install cargo-tarpaulin
+        uses: taiki-e/install-action@v2
         with:
-          install-linux-dependencies: true
-          version: 2-latest
-          version-sdl-image: 2-latest
-
-      - name: Check program compilation
-        timeout-minutes: 3
-        run: cargo check --workspace
-
-  coverage:
-    needs: [check_program_compilation]
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout fetch
-        uses: actions/checkout@v5.0.0
-
-      - name: Cache/Uncache cargo tarpaulin
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo/bin
-          key: ${{ runner.os }}-cargo-tarpaulin
-
-      - name: Install rust
-        uses: dtolnay/rust-toolchain@1.95.0
-        with:
-          components: clippy, rustfmt
-
-      - name: Cache cargo registry and build artifacts
-        uses: Swatinem/rust-cache@v2
-
-      - name: Check formatting
-        timeout-minutes: 2
-        run: cargo fmt --all --check 
-
-      - name: Install cargo-tarpaulin if not cached
-        run: |
-          if ! command -v cargo-tarpaulin &> /dev/null; then
-            cargo install cargo-tarpaulin
-          fi
+          tool: cargo-tarpaulin
 
       - name: Install SDL2
-        uses: libsdl-org/setup-sdl@main
-        id: sdl
-        with:
-          install-linux-dependencies: true
-          version: 2-latest
-          version-sdl-image: 2-latest
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libsdl2-dev
 
-      - name: Export SDL paths
-        run: |
-          echo "LIBRARY_PATH=${{ steps.sdl.outputs.prefix }}/lib" >> $GITHUB_ENV
-          echo "LD_LIBRARY_PATH=${{ steps.sdl.outputs.prefix }}/lib" >> $GITHUB_ENV
-
-      - name: Run clippy
-        timeout-minutes: 3
-        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
-
-      - name: Run coverage
-        run: cargo tarpaulin --out html
+      - name: Run tests with coverage
+        run: cargo tarpaulin --out html --no-fail-fast
 
       - name: Upload coverage report
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-report-${{ github.head_ref || github.ref_name }}
+          name: coverage-report-${{ github.sha }}
           path: ./tarpaulin-report.html
 
-
-  push_to_mirror:
-    needs: [coverage]
-    runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'push' }}
-
-    steps:
-      - name: Checkout fetch
-        uses: actions/checkout@v5.0.0
-        with:
-          fetch-depth: 0
-
-      - uses: pixta-dev/repository-mirroring-action@v1
-        with:
-          target_repo_url: ${{ env.MIRROR_URL }}
-          ssh_private_key: ${{ secrets.GIT_SSH_PRIVATE_KEY }}
-
   build_site:
-    needs: [push_to_mirror]
+    needs: [fmt, clippy, coverage]
     if: github.ref == 'refs/heads/main'
-
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5.0.0
 
-      - name: Download main branch coverage report
+      - name: Download coverage report
         uses: actions/download-artifact@v4
         with:
-          name: coverage-report-${{ github.ref_name }}
+          name: coverage-report-${{ github.sha }}
           path: ./site/
 
       - name: Upload Pages artifact
@@ -143,9 +114,17 @@ jobs:
   deploy_site:
     needs: [build_site]
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
