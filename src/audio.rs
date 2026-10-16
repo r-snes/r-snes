@@ -4,12 +4,12 @@ use crate::{gui::Gui, rsnes::RSnesEmu};
 
 /// Audio output of the running game.
 pub struct GameAudio {
-    // Wether the audio device has failed and been disabled.
+    /// Whether the audio device has failed and been disabled.
     failed: bool,
-    // Playback starts paused and only begins once TARGET_QUEUED_FRAMES are
-    // queued, so the device never starts from an empty queue.
+    /// Playback starts paused and only begins once TARGET_QUEUED_FRAMES are
+    /// queued, so the device never starts from an empty queue.
     playing: bool,
-    // Whether the emulation ran last frame.
+    /// Whether the emulation ran last frame.
     was_running: bool,
 }
 
