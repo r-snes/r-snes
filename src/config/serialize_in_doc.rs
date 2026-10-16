@@ -55,20 +55,40 @@ mod test {
 
     use crate::config::serialize_in_doc::InItemSerializer;
 
-    #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+    fn is_default<T: Default + Eq>(x: &T) -> bool {
+        x == &T::default()
+    }
+
+    #[derive(Default, Serialize, Deserialize, Debug, PartialEq, Eq)]
     struct ComplexStruct {
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "is_default")]
         simple: SimpleStruct,
         num: Option<i32>,
         #[serde(default)]
         strings: Vec<String>,
+        #[serde(default, skip_serializing_if = "is_default")]
+        enums: Enums,
     }
 
-    #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Default)]
+    #[derive(Default, Serialize, Deserialize, Debug, PartialEq, Eq)]
     struct SimpleStruct {
         a: Option<i32>,
         b: Option<i32>,
         c: Option<String>,
+    }
+
+    #[derive(Default, Serialize, Deserialize, Debug, PartialEq, Eq)]
+    struct Enums {
+        enum1: Option<SomeEnum>,
+    }
+
+    #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+    enum SomeEnum {
+        UnitVariantA,
+        UnitVariantB,
+        NewTypeVariant(u8),
+        TupleVariant(u32, u32, u32),
+        StructVariant { x: i16, y: i16 },
     }
 
     fn serialize_into_document(doc: &mut DocumentMut, value: &impl Serialize) {
@@ -85,14 +105,7 @@ mod test {
         let mut doc: DocumentMut = init_toml.parse().expect("valid TOML");
         let mut config = from_str::<SimpleStruct>(init_toml).unwrap();
 
-        assert_eq!(
-            config,
-            SimpleStruct {
-                a: None,
-                b: None,
-                c: None,
-            }
-        );
+        assert_eq!(config, SimpleStruct::default());
 
         config.a = Some(34);
         config.b = Some(56);
@@ -160,7 +173,7 @@ mod test {
             SimpleStruct {
                 a: Some(0),
                 b: Some(3),
-                c: None,
+                ..Default::default()
             }
         );
 
@@ -192,7 +205,7 @@ mod test {
             SimpleStruct {
                 a: Some(0),
                 b: Some(3),
-                c: None,
+                ..Default::default()
             }
         );
 
@@ -215,14 +228,11 @@ mod test {
         assert_eq!(
             config,
             ComplexStruct {
-                num: None,
-                strings: vec!(),
                 simple: SimpleStruct {
                     a: Some(3),
-                    b: None,
-                    c: None,
+                    ..Default::default()
                 },
-                some_enum: None,
+                ..Default::default()
             },
         );
 
@@ -248,14 +258,12 @@ mod test {
         assert_eq!(
             config,
             ComplexStruct {
-                num: None,
-                strings: vec!(),
                 simple: SimpleStruct {
                     a: Some(3),
-                    b: None,
                     c: Some("xxxxxxx".to_owned()),
+                    ..Default::default()
                 },
-                some_enum: None,
+                ..Default::default()
             },
         );
 
@@ -264,6 +272,60 @@ mod test {
         let expected = r#"
             # comment
             simple = { a = 3 } # inline c
+        "#;
+        serialize_into_document(&mut doc, &config);
+        assert_eq!(doc.to_string(), expected);
+    }
+
+    #[test]
+    fn change_enum_value() {
+        let init_toml = r#"
+            enums.enum1 = "UnitVariantA"
+        "#;
+        let mut doc: DocumentMut = init_toml.parse().expect("valid TOML");
+        let mut config = from_str::<ComplexStruct>(init_toml).unwrap();
+
+        assert_eq!(
+            config,
+            ComplexStruct {
+                enums: Enums {
+                    enum1: Some(SomeEnum::UnitVariantA)
+                },
+                ..Default::default()
+            },
+        );
+
+        config.enums.enum1 = Some(SomeEnum::UnitVariantB);
+
+        let expected = r#"
+            enums.enum1 = "UnitVariantB"
+        "#;
+        serialize_into_document(&mut doc, &config);
+        assert_eq!(doc.to_string(), expected);
+    }
+
+    #[test]
+    fn change_enum_struct_as_value() {
+        let init_toml = r#"
+            enums = { enum1.StructVariant = { x = 3, y = 8 }}
+        "#;
+        let mut doc: DocumentMut = init_toml.parse().expect("valid TOML");
+        let mut config = from_str::<ComplexStruct>(init_toml).unwrap();
+
+        assert_eq!(
+            config,
+            ComplexStruct {
+                enums: Enums {
+                    enum1: Some(SomeEnum::StructVariant { x: 3, y: 8 })
+                },
+                ..Default::default()
+            },
+        );
+
+        config.enums.enum1 = Some(SomeEnum::StructVariant { x: 20, y: -4 });
+
+        let expected = r#"
+            enums = { enum1.StructVariant = { x = 20, y = -4 }}
         "#;
         serialize_into_document(&mut doc, &config);
         assert_eq!(doc.to_string(), expected);
