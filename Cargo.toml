@@ -80,7 +80,7 @@ apu = { version = "0.1.0", path = "./apu" }
 plugins = { version = "0.1.0", path = "./plugins", optional = true }
 piccolo = { workspace = true, optional = true }
 piccolo-util = { workspace = true, optional = true }
-egui-sdl2 = { version = "0.4.0", default-features = false, features = [
+egui-sdl2 = { version = "0.12.0", default-features = false, features = [
     "canvas-backend",
 ] }
 rfd = "0.17.2"

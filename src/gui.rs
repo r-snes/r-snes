@@ -11,8 +11,10 @@ use sdl2::audio::{AudioQueue, AudioSpecDesired};
 use sdl2::controller::{Button as ControllerButton, GameController};
 use sdl2::event::{Event as SdlEvent, WindowEvent};
 use sdl2::keyboard::Keycode;
+use sdl2::pixels::Color;
 use sdl2::rect::Rect;
-use sdl2::render::Texture;
+use sdl2::render::{Canvas, Texture};
+use sdl2::video::Window;
 
 use ppu::constants::{SCREEN_HEIGHT, SCREEN_WIDTH};
 
@@ -27,6 +29,8 @@ use state::PendingPlugin;
 
 pub struct Gui {
     _sdl_ctx: sdl2::Sdl,
+    /// The window's canvas. The game and egui are both drawn on it.
+    canvas: Canvas<Window>,
     egui_canvas: EguiCanvas,
     event_pump: sdl2::EventPump,
 
@@ -189,7 +193,8 @@ impl Gui {
             )
             .map_err(|e| e.to_string())?;
 
-        let egui_canvas = EguiCanvas::new(window);
+        let canvas = window.into_canvas().build().map_err(|e| e.to_string())?;
+        let egui_canvas = EguiCanvas::new(&canvas);
         let event_pump = sdl_ctx.event_pump()?;
 
         let audio_subsystem = sdl_ctx.audio()?;
@@ -217,6 +222,7 @@ impl Gui {
 
         Ok(Gui {
             _sdl_ctx: sdl_ctx,
+            canvas,
             egui_canvas,
             event_pump,
             audio_queue,
@@ -243,7 +249,7 @@ impl Gui {
 
         // Ignore the error: a failed title update is cosmetic, not worth
         // propagating up through the emu loop.
-        let _ = self.egui_canvas.painter.canvas.window_mut().set_title(&window_title);
+        let _ = self.canvas.window_mut().set_title(&window_title);
     }
 
     /// Closes every open overlay. Called when a game starts or stops, so no
@@ -489,7 +495,7 @@ impl Gui {
                 continue;
             }
 
-            if self.egui_canvas.on_event(&event).consumed {
+            if self.egui_canvas.on_event(&self.canvas, &event).consumed {
                 continue;
             }
 
@@ -551,7 +557,7 @@ impl Gui {
         use sdl2::pixels::PixelFormatEnum;
 
         if self.framebuffer_texture.is_none() {
-            let texture_creator = self.egui_canvas.painter.canvas.texture_creator();
+            let texture_creator = self.canvas.texture_creator();
             let texture = texture_creator
                 .create_texture_streaming(
                     PixelFormatEnum::RGB24,
@@ -567,7 +573,7 @@ impl Gui {
             .update(None, framebuffer, SCREEN_WIDTH * 3)
             .map_err(|e| e.to_string())?;
 
-        let canvas = &mut self.egui_canvas.painter.canvas;
+        let canvas = &mut self.canvas;
         let (width, height) = canvas.output_size()?;
         if let Some(dst) = game_rect(width, height, menu_bar) {
             canvas.copy(texture, None, dst)?;
@@ -608,16 +614,13 @@ impl Gui {
 
         // Lay out the UI before drawing the game: the game goes in the space
         // the menu bar leaves, so the bar's height must be known first.
-        // Split the borrow: `run` takes `&mut self.egui_canvas`, so `state`
-        // must be borrowed separately rather than through `self`.
-        let state = &mut self.state;
         let mut menu_bar_bottom = 0.0;
-        self.egui_canvas.run(|ctx| {
-            menu_bar_bottom = widgets::menu_bar(ctx, state, &data, &mut commands);
+        self.egui_canvas.run_ui(|ui| {
+            menu_bar_bottom = widgets::menu_bar(ui, &self.state, &data, &mut commands);
             // Windows may cover the game, but not the menu bar.
-            let mut area = ctx.content_rect();
+            let mut area = ui.ctx().content_rect();
             area.min.y = area.min.y.max(menu_bar_bottom);
-            Self::draw_overlays(state, &data, ctx, area);
+            Self::draw_overlays(&mut self.state, &data, ui.ctx(), area);
         });
 
         let ctx = &self.egui_canvas.ctx;
@@ -636,10 +639,11 @@ impl Gui {
         });
         let menu_bar_px = (menu_bar_bottom * ppp + feathering_size).ceil() as u32;
 
-        self.egui_canvas.clear([30, 30, 35, 255]);
+        self.canvas.set_draw_color(Color::RGB(30, 30, 35));
+        self.canvas.clear();
         let _ = self.draw_framebuffer(framebuffer, menu_bar_px);
-        self.egui_canvas.paint();
-        self.egui_canvas.present();
+        self.egui_canvas.paint(&mut self.canvas);
+        self.canvas.present();
 
         // Run commands outside the egui pass: some open blocking file dialogs.
         for cmd in commands {

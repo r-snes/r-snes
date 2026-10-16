@@ -23,7 +23,7 @@ use super::state::PendingPlugin;
 ///
 /// Returns the bar's bottom edge in points.
 pub fn menu_bar(
-    ctx: &egui::Context,
+    ui: &mut egui::Ui,
     state: &GuiState,
     data: &GuiFrameData,
     commands: &mut Vec<Command>,
@@ -37,13 +37,9 @@ pub fn menu_bar(
         }
     };
 
-    #[expect(
-        deprecated,
-        reason = "egui-sdl2 only hands out a Context, not the root Ui `show_inside` needs"
-    )]
     let panel = egui::Panel::top("menu_bar")
         .show_separator_line(false)
-        .show(ctx, |ui| {
+        .show(ui, |ui| {
             egui::MenuBar::new().ui(ui, |ui| {
                 ui.menu_button("File", |ui| {
                     item(ui, Command::OpenRom, "Open ROM…", false);
