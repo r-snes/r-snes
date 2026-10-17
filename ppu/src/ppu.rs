@@ -538,7 +538,7 @@ impl PPU {
         self.regs.mosaic_size() as i16 - self.mosaic_vcounter as i16
     }
 
-    // Vertical mosaic counter, updated at the start of each scanline (bsnes mosaic.cpp).
+    // Vertical mosaic counter, updated at the start of each scanline.
     // Reloaded at line 1 if a BG uses mosaic, then counts down and restarts at the end of each block.
     fn update_mosaic_vcounter(&mut self) {
         let size = self.regs.mosaic_size();
