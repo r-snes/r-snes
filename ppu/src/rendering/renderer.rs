@@ -174,6 +174,8 @@ pub struct BgParams {
     pub h64: bool,
     /// Tiles are 16x16 (2x2 CHR tiles) instead of 8x8.
     pub tile16: bool,
+    /// Mosaic is enabled for this BG (MOSAIC bits 0-3).
+    pub mosaic: bool,
     /// Z-order of low priority tiles.
     pub z_low: Priority,
     /// Z-order of high priority tiles.
@@ -271,12 +273,26 @@ impl Renderer {
         let pal_shift = p.bpp.pal_shift();
 
         // y is the framebuffer row (scanline - 1); BG rows are fetched with the scanline number.
-        let py = (y + 1 + p.scroll_y) & (map_h - 1);
+        // Vertical mosaic: every line of a block reads the first line of the block.
+        let mut line = y as isize + 1;
+        if p.mosaic {
+            line -= ppu.mosaic_voffset() as isize;
+        }
+        let py = (line + p.scroll_y as isize).rem_euclid(map_h as isize) as usize;
         let tile_row = py / tile_px;
         let fine_y = py % tile_px;
 
+        // Horizontal mosaic: blocks start at screen x = 0, whatever the scroll.
+        let block = if p.mosaic {
+            ppu.regs.mosaic_size() as usize
+        } else {
+            1
+        };
+
         for x in 0..SCREEN_WIDTH {
-            let px = (x + p.scroll_x) & (map_w - 1);
+            // Every pixel of a block shows the first pixel of the block.
+            let src_x = x - x % block;
+            let px = (src_x + p.scroll_x) & (map_w - 1);
             let tile_col = px / tile_px;
             let fine_x = px % tile_px;
 
@@ -1213,5 +1229,96 @@ mod tests {
         r.render_scanline(&ppu, 0);
         assert_eq!(fb_pixel(&r, 0, 0), red);
         assert_eq!(fb_pixel(&r, 8, 0), black);
+    }
+
+    // ============================================================
+    // Mosaic
+    // ============================================================
+
+    // BG1 in mode 1: tilemap 0x0000 (all tile 0), CHR 0x1000, color 1 = red.
+    // Tile 0 uses `row_data` on each of its 8 rows (plane 0).
+    fn setup_bg1_mosaic(ppu: &mut PPU, rows: [u16; 8]) {
+        ppu.write(0x2107, 0x00);
+        let nba = (ppu.regs.bg12nba & 0xF0) | 0x01;
+        ppu.write(0x210B, nba);
+        ppu.write(0x212C, 0x01);
+        for (row, &data) in rows.iter().enumerate() {
+            ppu.vram.memory[0x1000 + row] = data;
+        }
+        set_color(ppu, 0x01, 0x001F);
+    }
+
+    // Each block shows its first pixel: with size 4, x 0-3 copy x 0 and x 4-7 copy x 4.
+    #[test]
+    fn test_mosaic_horizontal_blocks() {
+        let red = Renderer::apply_brightness(0x001F, 15);
+        let black = (0, 0, 0);
+        let mut ppu = make_ppu();
+        setup_bg1_mosaic(&mut ppu, [0x0080; 8]); // only x = 0 of each tile is opaque
+
+        // No mosaic: only x = 0 and x = 8.
+        let mut r = make_renderer();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 0, 0), red);
+        assert_eq!(fb_pixel(&r, 1, 0), black);
+
+        // Size 4 on BG1: x 0-3 and 8-11 are red, x 4-7 is transparent.
+        ppu.write(0x2106, 0x31);
+        let mut r = make_renderer();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 1, 0), red);
+        assert_eq!(fb_pixel(&r, 3, 0), red);
+        assert_eq!(fb_pixel(&r, 4, 0), black);
+        assert_eq!(fb_pixel(&r, 9, 0), red);
+
+        // Size 4 on BG2 only: BG1 is not affected.
+        ppu.write(0x2106, 0x32);
+        let mut r = make_renderer();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 1, 0), black);
+    }
+
+    // Blocks start at screen x = 0, not at BG x = 0: the scroll moves the content, not the blocks.
+    #[test]
+    fn test_mosaic_blocks_follow_the_screen() {
+        let red = Renderer::apply_brightness(0x001F, 15);
+        let black = (0, 0, 0);
+        let mut ppu = make_ppu();
+        setup_bg1_mosaic(&mut ppu, [0x0080; 8]);
+        ppu.write(0x210D, 0x07); // HOFS = 7: BG x 8 (opaque) is on screen x 1
+        ppu.write(0x210D, 0x00);
+
+        let mut r = make_renderer();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 1, 0), red);
+
+        // Block 0-3 copies screen x 0 (BG x 7, transparent).
+        ppu.write(0x2106, 0x31);
+        let mut r = make_renderer();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 1, 0), black);
+    }
+
+    // Each line of a block reads the first line of the block (line - voffset).
+    #[test]
+    fn test_mosaic_vertical_uses_block_first_line() {
+        let red = Renderer::apply_brightness(0x001F, 15);
+        let black = (0, 0, 0);
+        let mut ppu = make_ppu();
+        let mut rows = [0u16; 8];
+        rows[1] = 0x00FF; // only BG row 1 is opaque
+        setup_bg1_mosaic(&mut ppu, rows);
+
+        // Row 1 (scanline 2) shows BG row 2 without mosaic.
+        let mut r = make_renderer();
+        r.render_scanline(&ppu, 1);
+        assert_eq!(fb_pixel(&r, 0, 1), black);
+
+        // Size 4, counter 3: 1 line into the block, so scanline 2 reads BG row 1.
+        ppu.write(0x2106, 0x31);
+        ppu.mosaic_vcounter = 3;
+        let mut r = make_renderer();
+        r.render_scanline(&ppu, 1);
+        assert_eq!(fb_pixel(&r, 0, 1), red);
     }
 }
