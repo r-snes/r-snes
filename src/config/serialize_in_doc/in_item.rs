@@ -322,12 +322,12 @@ impl<'a> InTableSerializer<'a> {
             }
             Item::Table(tab) => Self::new(TableMut::TopLevel(tab), size_hint),
             i => {
-                *i = Item::Value(Value::InlineTable(InlineTable::new()));
-                let Item::Value(Value::InlineTable(tab)) = i else {
+                *i = Item::Table(Table::new());
+                let Item::Table(tab) = i else {
                     unreachable!()
                 };
-                tab.fmt();
-                Self::new(TableMut::Inline(tab), size_hint)
+                tab.set_implicit(true);
+                Self::new(TableMut::TopLevel(tab), size_hint)
             }
         }
     }

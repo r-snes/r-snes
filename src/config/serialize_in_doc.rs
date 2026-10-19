@@ -407,7 +407,7 @@ mod test {
             edit: |config: &mut ComplexStruct| {
                 config.enums.enum1 = Some(SomeEnum::StructVariant { x: 0, y: 1 });
             },
-            expected_toml: "enums = { enum1 = { StructVariant = { x = 0, y = 1 } } }\n",
+            expected_toml: "[enums.enum1.StructVariant]\nx = 0\ny = 1\n",
         }
         .run();
     }
