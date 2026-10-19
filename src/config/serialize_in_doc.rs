@@ -50,6 +50,8 @@ impl<'a> InValueSerializer<'a> {
 
 #[cfg(test)]
 mod test {
+    use std::fmt::Debug;
+
     use serde::{Deserialize, Serialize};
     use toml_edit::{DocumentMut, de::from_str};
 
@@ -57,6 +59,49 @@ mod test {
 
     fn is_default<T: Default + Eq>(x: &T) -> bool {
         x == &T::default()
+    }
+
+    struct InDocSerializeTest<T, F> {
+        /// The initial TOML string which the config is built from
+        pub init_toml: &'static str,
+
+        /// Optional initial value which will be `assert_eq!`'d with
+        /// the value parsed from `init_toml`
+        pub init_value: Option<T>,
+
+        /// The function that will mutate the parsed config
+        pub edit: F,
+
+        /// The expected string result after serialising the `edit`ed
+        /// config value back in the initial DocumentMut
+        pub expected_toml: &'static str,
+    }
+
+    impl<T, F> InDocSerializeTest<T, F>
+    where
+        T: Serialize + for<'a> Deserialize<'a> + Eq + Debug,
+        F: FnOnce(&mut T),
+    {
+        #[track_caller]
+        fn run(self) {
+            let mut doc: DocumentMut = self.init_toml.parse().expect("valid TOML");
+            let mut config = from_str::<T>(self.init_toml).unwrap();
+
+            if let Some(init_value) = self.init_value {
+                assert_eq!(config, init_value);
+            }
+
+            (self.edit)(&mut config);
+
+            serialize_into_document(&mut doc, &config);
+            assert_eq!(
+                doc.to_string(),
+                self.expected_toml,
+                "\nExpected:\n==========\n{}==========\nBut got\n==========\n{}==========",
+                self.expected_toml,
+                doc.to_string(),
+            );
+        }
     }
 
     #[derive(Default, Serialize, Deserialize, Debug, PartialEq, Eq)]
@@ -101,233 +146,182 @@ mod test {
 
     #[test]
     fn define_all_options() {
-        let init_toml = "";
-        let mut doc: DocumentMut = init_toml.parse().expect("valid TOML");
-        let mut config = from_str::<SimpleStruct>(init_toml).unwrap();
-
-        assert_eq!(config, SimpleStruct::default());
-
-        config.a = Some(34);
-        config.b = Some(56);
-        config.c = Some("foo".to_owned());
-
-        let expected = "a = 34\nb = 56\nc = \"foo\"\n";
-        serialize_into_document(&mut doc, &config);
-        assert_eq!(doc.to_string(), expected);
+        InDocSerializeTest {
+            init_toml: "",
+            init_value: Some(SimpleStruct::default()),
+            edit: |config: &mut SimpleStruct| {
+                config.a = Some(34);
+                config.b = Some(56);
+                config.c = Some("foo".to_owned());
+            },
+            expected_toml: "a = 34\nb = 56\nc = \"foo\"\n",
+        }
+        .run();
     }
 
     #[test]
     fn change_all_options() {
-        let init_toml = r#"
-            # some comment
-            b = 3
+        InDocSerializeTest {
+            init_toml: r#"
+                # some comment
+                b = 3
 
-            # other comment
-            a = 0 # inline comment stays even when value is changed
-            c = "foo"
-            # trailing comment
-        "#;
-        let mut doc: DocumentMut = init_toml.parse().expect("valid TOML");
-        let mut config = from_str::<SimpleStruct>(init_toml).unwrap();
-
-        assert_eq!(
-            config,
-            SimpleStruct {
+                # other comment
+                a = 0 # inline comment stays even when value is changed
+                c = "foo"
+                # trailing comment
+            "#,
+            init_value: Some(SimpleStruct {
                 a: Some(0),
                 b: Some(3),
                 c: Some("foo".to_owned()),
-            }
-        );
+            }),
+            edit: |config: &mut SimpleStruct| {
+                config.a = Some(34);
+                config.b = Some(56);
+                config.c = Some("bar".to_owned());
+            },
+            expected_toml: r#"
+                # some comment
+                b = 56
 
-        config.a = Some(34);
-        config.b = Some(56);
-        config.c = Some("bar".to_owned());
-
-        let expected = r#"
-            # some comment
-            b = 56
-
-            # other comment
-            a = 34 # inline comment stays even when value is changed
-            c = "bar"
-            # trailing comment
-        "#;
-        serialize_into_document(&mut doc, &config);
-        assert_eq!(doc.to_string(), expected);
+                # other comment
+                a = 34 # inline comment stays even when value is changed
+                c = "bar"
+                # trailing comment
+            "#,
+        }
+        .run();
     }
 
     #[test]
     fn change_one_option() {
-        let init_toml = r#"
-            # header comment
+        InDocSerializeTest {
+            init_toml: r#"
+                # header comment
 
-            # other comment
-            a = 0 # inline comment stays
-            b = 3 # inline comment which should be preserved
-        "#;
-        let mut doc: DocumentMut = init_toml.parse().expect("valid TOML");
-        let mut config = from_str::<SimpleStruct>(init_toml).unwrap();
-
-        assert_eq!(
-            config,
-            SimpleStruct {
+                # other comment
+                a = 0 # inline comment stays
+                b = 3 # inline comment which should be preserved
+            "#,
+            init_value: Some(SimpleStruct {
                 a: Some(0),
                 b: Some(3),
                 ..Default::default()
-            }
-        );
+            }),
+            edit: |config: &mut SimpleStruct| {
+                config.a = Some(10);
+            },
+            expected_toml: r#"
+                # header comment
 
-        config.a = Some(10);
-
-        let expected = r#"
-            # header comment
-
-            # other comment
-            a = 10 # inline comment stays
-            b = 3 # inline comment which should be preserved
-        "#;
-        serialize_into_document(&mut doc, &config);
-        assert_eq!(doc.to_string(), expected);
+                # other comment
+                a = 10 # inline comment stays
+                b = 3 # inline comment which should be preserved
+            "#,
+        }
+        .run();
     }
 
     #[test]
     fn undef_one_option() {
-        let init_toml = r#"
-            # gets removed
-            a = 0 # inline comment gets removed too
-            b = 3 # inline comment which should be preserved
-        "#;
-        let mut doc: DocumentMut = init_toml.parse().expect("valid TOML");
-        let mut config = from_str::<SimpleStruct>(init_toml).unwrap();
-
-        assert_eq!(
-            config,
-            SimpleStruct {
+        InDocSerializeTest {
+            init_toml: r#"
+                # gets removed
+                a = 0 # inline comment gets removed too
+                b = 3 # inline comment which should be preserved
+            "#,
+            init_value: Some(SimpleStruct {
                 a: Some(0),
                 b: Some(3),
                 ..Default::default()
-            }
-        );
-
-        config.a = None;
-
-        let expected = "            b = 3 # inline comment which should be preserved\n        ";
-        serialize_into_document(&mut doc, &config);
-        assert_eq!(doc.to_string(), expected);
+            }),
+            edit: |config: &mut SimpleStruct| config.a = None,
+            expected_toml: &r#"
+                b = 3 # inline comment which should be preserved
+            "#[1..], // trim leading newline
+        }
+        .run()
     }
 
     #[test]
     fn add_key_to_inline_table() {
-        let init_toml = r#"
-            # comment
-            simple = { a = 3 } # inline
-        "#;
-        let mut doc: DocumentMut = init_toml.parse().expect("valid TOML");
-        let mut config = from_str::<ComplexStruct>(init_toml).unwrap();
-
-        assert_eq!(
-            config,
-            ComplexStruct {
+        InDocSerializeTest {
+            init_toml: r#"
+                # comment
+                simple = { a = 3 } # inline
+            "#,
+            init_value: Some(ComplexStruct {
                 simple: SimpleStruct {
                     a: Some(3),
                     ..Default::default()
                 },
                 ..Default::default()
-            },
-        );
-
-        config.simple.b = Some(15);
-
-        let expected = r#"
-            # comment
-            simple = { a = 3 , b = 15 } # inline
-        "#;
-        serialize_into_document(&mut doc, &config);
-        assert_eq!(doc.to_string(), expected);
+            }),
+            edit: |config: &mut ComplexStruct| config.simple.b = Some(15),
+            expected_toml: r#"
+                # comment
+                simple = { a = 3 , b = 15 } # inline
+            "#,
+        }
+        .run()
     }
 
     #[test]
     fn remove_key_from_inline_table() {
-        let init_toml = r#"
-            # comment
-            simple = { a = 3 , c = "xxxxxxx" } # inline c
-        "#;
-        let mut doc: DocumentMut = init_toml.parse().expect("valid TOML");
-        let mut config = from_str::<ComplexStruct>(init_toml).unwrap();
-
-        assert_eq!(
-            config,
-            ComplexStruct {
+        InDocSerializeTest {
+            init_toml: r#"
+                # comment
+                simple = { a = 3 , c = "xxxxxxx" } # inline c
+            "#,
+            init_value: Some(ComplexStruct {
                 simple: SimpleStruct {
                     a: Some(3),
                     c: Some("xxxxxxx".to_owned()),
                     ..Default::default()
                 },
                 ..Default::default()
-            },
-        );
-
-        config.simple.c = None;
-
-        let expected = r#"
-            # comment
-            simple = { a = 3 } # inline c
-        "#;
-        serialize_into_document(&mut doc, &config);
-        assert_eq!(doc.to_string(), expected);
+            }),
+            edit: |config: &mut ComplexStruct| config.simple.c = None,
+            expected_toml: r#"
+                # comment
+                simple = { a = 3 } # inline c
+            "#,
+        }
+        .run()
     }
 
     #[test]
-    fn change_enum_value() {
-        let init_toml = r#"
-            enums.enum1 = "UnitVariantA"
-        "#;
-        let mut doc: DocumentMut = init_toml.parse().expect("valid TOML");
-        let mut config = from_str::<ComplexStruct>(init_toml).unwrap();
-
-        assert_eq!(
-            config,
-            ComplexStruct {
+    fn change_enum_unit_variant() {
+        InDocSerializeTest {
+            init_toml: r#"enums.enum1 = "UnitVariantA" # c"#,
+            init_value: Some(ComplexStruct {
                 enums: Enums {
-                    enum1: Some(SomeEnum::UnitVariantA)
+                    enum1: Some(SomeEnum::UnitVariantA),
                 },
                 ..Default::default()
-            },
-        );
-
-        config.enums.enum1 = Some(SomeEnum::UnitVariantB);
-
-        let expected = r#"
-            enums.enum1 = "UnitVariantB"
-        "#;
-        serialize_into_document(&mut doc, &config);
-        assert_eq!(doc.to_string(), expected);
+            }),
+            edit: |config: &mut ComplexStruct| config.enums.enum1 = Some(SomeEnum::UnitVariantB),
+            expected_toml: "enums.enum1 = \"UnitVariantB\" # c\n",
+        }
+        .run();
     }
 
     #[test]
     fn change_enum_struct_as_value() {
-        let init_toml = r#"
-            enums = { enum1.StructVariant = { x = 3, y = 8 }}
-        "#;
-        let mut doc: DocumentMut = init_toml.parse().expect("valid TOML");
-        let mut config = from_str::<ComplexStruct>(init_toml).unwrap();
-
-        assert_eq!(
-            config,
-            ComplexStruct {
+        InDocSerializeTest {
+            init_toml: "enums = { enum1.StructVariant = { x = 3, y = 8 }}",
+            init_value: Some(ComplexStruct {
                 enums: Enums {
-                    enum1: Some(SomeEnum::StructVariant { x: 3, y: 8 })
+                    enum1: Some(SomeEnum::StructVariant { x: 3, y: 8 }),
                 },
                 ..Default::default()
+            }),
+            edit: |config: &mut ComplexStruct| {
+                config.enums.enum1 = Some(SomeEnum::StructVariant { x: 20, y: -4 })
             },
-        );
-
-        config.enums.enum1 = Some(SomeEnum::StructVariant { x: 20, y: -4 });
-
-        let expected = r#"
-            enums = { enum1.StructVariant = { x = 20, y = -4 }}
-        "#;
-        serialize_into_document(&mut doc, &config);
-        assert_eq!(doc.to_string(), expected);
+            expected_toml: "enums = { enum1.StructVariant = { x = 20, y = -4 }}\n",
+        }
+        .run()
     }
 }
