@@ -146,11 +146,16 @@ impl<'a> serde::ser::Serializer for InValueSerializer<'a> {
     where
         T: serde::ser::Serialize + ?Sized,
     {
-        // let value = value.serialize(self)?;
-        // let mut table = toml_edit::InlineTable::new();
-        // table.insert(variant, value);
-        // Ok(table.into())
-        todo!()
+        // we use `EnumSerializer` to reuse the logic of the `{variant_name = ... }`
+        // inline table, but instead of building a serializer as the inner, we directly
+        // serialize the value, and store the result of that serialization as the "inner"
+        let in_enum = EnumSerializer::new_in_value(variant, self.value, |entry| match entry {
+            InlineEntry::Vacant(v) => value.serialize(ValueSerializer::new()).map(|val| {
+                v.insert(val);
+            }),
+            InlineEntry::Occupied(mut o) => value.serialize(InValueSerializer::new(o.get_mut())),
+        });
+        in_enum.get_inner_back()
     }
 
     fn serialize_seq(self, len: Option<usize>) -> Result<Self::SerializeSeq, Self::Error> {
@@ -247,9 +252,7 @@ impl<'a> InInlineTableSerializer<'a> {
             serialized_keys: key_vec,
         }
     }
-}
 
-impl<'a> InInlineTableSerializer<'a> {
     /// Constructs a new [`InInlineTableSerializer`] which serializes into
     /// the value passed as argument, overriding it to be an [`InlineTable`]
     /// if it isn't one already

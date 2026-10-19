@@ -6,7 +6,9 @@ use std::ops::{IndexMut, Not};
 use serde::ser::{
     SerializeMap, SerializeSeq, SerializeStruct, SerializeTuple, SerializeTupleStruct,
 };
-use toml_edit::{Decor, Formatted, InlineEntry, InlineTable, Item, Table, TableLike, Value};
+use toml_edit::{
+    Decor, Formatted, InlineEntry, InlineTable, Item, Table, TableLike, Value, ser::ValueSerializer,
+};
 
 macro_rules! serialize_simple_value {
     ($item_mut:expr, $val:expr, $variant:ident) => {{
@@ -159,11 +161,23 @@ impl<'a> serde::ser::Serializer for InItemSerializer<'a> {
     where
         T: serde::ser::Serialize + ?Sized,
     {
-        // let value = value.serialize(self)?;
-        // let mut table = toml_edit::InlineTable::new();
-        // table.insert(variant, value);
-        // Ok(table.into())
-        todo!()
+        // we use `EnumSerializer` to reuse the logic of the `{variant_name = ... }`
+        // inline table, but instead of building a serializer as the inner, we directly
+        // serialize the value, and store the result of that serialization as the "inner"
+        let in_enum = EnumSerializer::new_in_item(variant, self.item, |entry| match entry {
+            TableEntry::Inline(entry) => match entry {
+                InlineEntry::Vacant(v) => value.serialize(ValueSerializer::new()).map(|val| {
+                    v.insert(val);
+                }),
+                InlineEntry::Occupied(mut o) => {
+                    value.serialize(InValueSerializer::new(o.get_mut()))
+                }
+            },
+            TableEntry::TopLevel(entry) => {
+                value.serialize(InItemSerializer::new(entry.or_insert(Item::None)))
+            }
+        });
+        in_enum.get_inner_back()
     }
 
     fn serialize_seq(self, len: Option<usize>) -> Result<Self::SerializeSeq, Self::Error> {
@@ -318,6 +332,9 @@ impl<'a> InTableSerializer<'a> {
                 *i = Item::Table(Table::new());
                 let Item::Table(tab) = i else { unreachable!() };
                 tab.set_implicit(true);
+                if let Some(0 | 1) = size_hint {
+                    tab.set_dotted(true);
+                }
                 Self::in_table(tab, size_hint)
             }
         }

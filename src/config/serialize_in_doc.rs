@@ -442,12 +442,127 @@ mod test {
                 init_value: Some(ComplexStruct {
                     enums: Enums {
                         enum1: Some(SomeEnum::UnitVariantB),
-                        ..Default::default()
                     },
                     ..Default::default()
                 }),
                 edit: |config: &mut ComplexStruct| {
                     config.enums.enum1 = Some(SomeEnum::StructVariant { x: 0, y: 1 });
+                },
+                expected_toml: expected,
+            }
+            .run()
+        }
+    }
+
+    #[test]
+    fn change_newtype_enum_as_inline_table() {
+        InDocSerializeTest {
+            init_toml: "enums = { enum1.NewTypeVariant = 4 }",
+            init_value: Some(ComplexStruct {
+                enums: Enums {
+                    enum1: Some(SomeEnum::NewTypeVariant(4)),
+                },
+                ..Default::default()
+            }),
+            edit: |config: &mut ComplexStruct| {
+                config.enums.enum1 = Some(SomeEnum::NewTypeVariant(15))
+            },
+            expected_toml: "enums = { enum1.NewTypeVariant = 15 }\n",
+        }
+        .run()
+    }
+
+    #[test]
+    fn change_newtype_enum_as_toplevel_table() {
+        for (init, expected) in [
+            (
+                r#"
+                    [enums.enum1] # a
+                    # b
+                    NewTypeVariant = 43 # c
+                "#,
+                r#"
+                    [enums.enum1] # a
+                    # b
+                    NewTypeVariant = 56 # c
+                "#,
+            ),
+            (
+                r#"
+                    # a
+                    enums.enum1.NewTypeVariant = 43 # d
+                "#,
+                r#"
+                    # a
+                    enums.enum1.NewTypeVariant = 56 # d
+                "#,
+            ),
+        ] {
+            InDocSerializeTest {
+                init_toml: init,
+                init_value: Some(ComplexStruct {
+                    enums: Enums {
+                        enum1: Some(SomeEnum::NewTypeVariant(43)),
+                    },
+                    ..Default::default()
+                }),
+                edit: |config: &mut ComplexStruct| {
+                    config.enums.enum1 = Some(SomeEnum::NewTypeVariant(56))
+                },
+                expected_toml: expected,
+            }
+            .run()
+        }
+    }
+
+    #[test]
+    fn create_newtype_enum_from_empty() {
+        InDocSerializeTest {
+            init_toml: "",
+            init_value: Some(ComplexStruct::default()),
+            edit: |config: &mut ComplexStruct| {
+                config.enums.enum1 = Some(SomeEnum::NewTypeVariant(8));
+            },
+            expected_toml: "enums.enum1.NewTypeVariant = 8\n",
+        }
+        .run();
+    }
+
+    #[test]
+    fn create_newtype_enum_from_empty_table() {
+        InDocSerializeTest {
+            init_toml: "[enums]",
+            init_value: Some(ComplexStruct::default()),
+            edit: |config: &mut ComplexStruct| {
+                config.enums.enum1 = Some(SomeEnum::NewTypeVariant(7));
+            },
+            expected_toml: "[enums]\nenum1.NewTypeVariant = 7\n",
+        }
+        .run();
+    }
+
+    #[test]
+    fn replace_unit_to_newtype_variant() {
+        for (init, expected) in [
+            (
+                "[enums] # b\nenum1 = \"UnitVariantB\" # c",
+                "[enums] # b\nenum1 = { NewTypeVariant = 19 } # c\n",
+            ),
+            (
+                "enums.enum1 = \"UnitVariantB\" # c",
+                "enums.enum1 = { NewTypeVariant = 19 } # c\n",
+            ),
+        ] {
+            InDocSerializeTest {
+                init_toml: init,
+                init_value: Some(ComplexStruct {
+                    enums: Enums {
+                        enum1: Some(SomeEnum::UnitVariantB),
+                    },
+                    ..Default::default()
+                }),
+                edit: |config: &mut ComplexStruct| {
+                    config.enums.enum1 = Some(SomeEnum::NewTypeVariant(19));
                 },
                 expected_toml: expected,
             }
