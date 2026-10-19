@@ -7,7 +7,6 @@
 pub mod apu;
 pub mod cpu;
 pub mod dsp;
-pub mod jingle;
 pub mod memory;
 pub mod timers;
 
