@@ -1,11 +1,10 @@
-use super::{InValueSerializer, SerError};
+use super::{InValueSerializer, SerError, enum_ser::EnumSerializer};
 use std::ops::Not;
 
 use serde::ser::{
-    SerializeMap, SerializeSeq, SerializeStruct, SerializeStructVariant, SerializeTuple,
-    SerializeTupleStruct, SerializeTupleVariant,
+    SerializeMap, SerializeSeq, SerializeStruct, SerializeTuple, SerializeTupleStruct,
 };
-use toml_edit::{Formatted, InlineEntry, InlineTable, Value};
+use toml_edit::{Formatted, InlineEntry, InlineTable, Value, ser::ValueSerializer};
 
 macro_rules! serialize_simple_value {
     ($value_mut:expr, $val:expr, $variant:ident) => {{
@@ -390,115 +389,5 @@ impl SerializeTupleStruct for InArraySerializer {
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
         todo!()
-    }
-}
-
-pub struct EnumSerializer<InnerSer> {
-    inner: InnerSer,
-}
-impl<InnerSer> EnumSerializer<InnerSer> {
-    /// Build a new enum serializer which writes into a &mut Value
-    pub fn new_in_value<'a>(
-        variant: &str,
-        value: &'a mut Value,
-        build_inner: impl FnOnce(InlineEntry<'a>) -> InnerSer,
-    ) -> Self {
-        let entry = match value {
-            Value::InlineTable(tab) => {
-                if tab.len() == 1 && tab.get(variant).is_some() {
-                    tab.entry(variant)
-                } else {
-                    tab.clear();
-                    tab.entry(variant)
-                }
-            }
-            _ => {
-                let decor = std::mem::take(value.decor_mut());
-                let mut res = InlineTable::new();
-                *res.decor_mut() = decor;
-                *value = Value::InlineTable(res);
-                let Value::InlineTable(tab) = value else {
-                    unreachable!()
-                };
-                tab.entry(variant)
-            }
-        };
-
-        Self {
-            inner: build_inner(entry),
-        }
-    }
-
-    /// Build a new enum serializer which writes into a &mut Item
-    pub fn new_in_item<'a>(
-        variant: &str,
-        item: &'a mut Item,
-        build_inner: impl FnOnce(Entry<'a>) -> InnerSer,
-    ) -> Self {
-        let entry = match item {
-            Item::Table(tab) => {
-                if tab.len() == 1 && tab.get(variant).is_some() {
-                    tab.entry(variant)
-                } else {
-                    tab.clear();
-                    tab.entry(variant)
-                }
-            }
-            Item::Value(Value::InlineTable(tab)) => {
-                if tab.len() == 1 && tab.get(variant).is_some() {
-                    TableLike::entry(tab, variant)
-                } else {
-                    tab.clear();
-                    TableLike::entry(tab, variant)
-                }
-            }
-            Item::Value(value) => {
-                let decor = std::mem::take(value.decor_mut());
-                let mut res = InlineTable::new();
-                *res.decor_mut() = decor;
-                *value = Value::InlineTable(res);
-                let Value::InlineTable(tab) = value else {
-                    unreachable!()
-                };
-                TableLike::entry(tab, variant)
-            }
-            _ => {
-                todo!("EnumSerializer::new_in_item into Item::Empty or ArrayOfTables")
-            }
-        };
-
-        Self {
-            inner: build_inner(entry),
-        }
-    }
-}
-impl<InnerSer: SerializeTuple> SerializeTupleVariant for EnumSerializer<InnerSer> {
-    type Ok = InnerSer::Ok;
-    type Error = InnerSer::Error;
-
-    fn serialize_field<T>(&mut self, value: &T) -> Result<(), Self::Error>
-    where
-        T: ?Sized + serde::Serialize,
-    {
-        self.inner.serialize_element(value)
-    }
-
-    fn end(self) -> Result<Self::Ok, Self::Error> {
-        self.inner.end()
-    }
-}
-impl<InnerSer: SerializeStruct> SerializeStructVariant for EnumSerializer<InnerSer> {
-    type Ok = InnerSer::Ok;
-    type Error = InnerSer::Error;
-
-    fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<(), Self::Error>
-    where
-        T: ?Sized + serde::Serialize,
-    {
-        self.inner.serialize_field(key, value)
-    }
-
-    fn end(self) -> Result<Self::Ok, Self::Error> {
-        self.inner.end()
     }
 }

@@ -7,6 +7,9 @@ pub mod in_item;
 /// Serde trait implementations for [`InValueSerializer`]
 pub mod in_value;
 
+/// Helper for enum serialization
+pub mod enum_ser;
+
 #[doc(inline)]
 pub use toml_edit::ser::Error as SerError;
 use toml_edit::{DocumentMut, Item, Value};

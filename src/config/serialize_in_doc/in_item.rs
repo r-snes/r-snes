@@ -1,11 +1,8 @@
-use crate::config::serialize_in_doc::{InValueSerializer, in_value::EnumSerializer};
-
-use super::{InItemSerializer, SerError};
+use super::{InItemSerializer, InValueSerializer, SerError, enum_ser::EnumSerializer};
 use std::ops::{IndexMut, Not};
 
 use serde::ser::{
-    SerializeMap, SerializeSeq, SerializeStruct, SerializeStructVariant, SerializeTuple,
-    SerializeTupleStruct, SerializeTupleVariant,
+    SerializeMap, SerializeSeq, SerializeStruct, SerializeTuple, SerializeTupleStruct,
 };
 use toml_edit::{Decor, Formatted, InlineEntry, InlineTable, Item, Table, TableLike, Value};
 
@@ -219,10 +216,7 @@ impl<'a> serde::ser::Serializer for InItemSerializer<'a> {
         len: usize,
     ) -> Result<Self::SerializeStructVariant, Self::Error> {
         Ok(EnumSerializer::new_in_item(variant, self.item, |entry| {
-            InTableSerializer::in_item(
-                entry.or_insert(Item::Table(Table::new())),
-                Some(len),
-            )
+            InTableSerializer::in_item(entry.or_insert(Item::Table(Table::new())), Some(len))
         }))
     }
 }
