@@ -197,8 +197,7 @@ fn gui_emu_loop(
     closing_ev
 }
 
-/// The no-ROM idle state: render the logo screen (plus any open overlays)
-/// at the normal frame rate. The idle screen is silent now.
+/// The no-ROM idle state: render the logo screen (plus any open overlays).
 ///
 /// Returns the first event the outer loop cares about. Input-only events
 /// (buttons, plugin actions) are meaningless without a game and are
