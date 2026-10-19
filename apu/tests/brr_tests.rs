@@ -2,8 +2,9 @@
 //!
 //! Covers:
 //!   - decode_brr_nibble: zero input, positive/negative nibbles, all 4 filters
-//!   - shift boundary values (0, 12, 13–15 saturation)
-//!   - filter coefficient correctness (i32 intermediate math, 15-bit clamp)
+//!   - shift boundary values (0, 12, 13–15 forced to -0x800/0)
+//!   - filter rounding, 16-bit clamp and the deliberately wrapping doubling
+//!   - reference vectors from blargg's SPC_DSP / Mesen2 and a real-chip log
 //!   - decode_brr_block: header parsing, end/loop flags, history threading
 //!   - Brr struct defaults and field semantics
 //!   - BrrState block-advance and wrap logic
@@ -26,11 +27,10 @@ fn test_nibble_zero_input_no_filter() {
 
 #[test]
 fn test_nibble_shift0_filter0() {
-    // shift=0: raw = nibble sign-extended to 16 bits (no scaling)
-    // nibble=4 → 4 << 12 >> 12 = 4
+    // shift=0: (nibble << 0) >> 1, then doubled — the low bit is lost.
     assert_eq!(decode_brr_nibble(4, 0, 0, 0, 0), 4);
-    // nibble=-1 → -1
-    assert_eq!(decode_brr_nibble(-1, 0, 0, 0, 0), -1);
+    // -1 >> 1 = -1 (arithmetic), doubled → -2
+    assert_eq!(decode_brr_nibble(-1, 0, 0, 0, 0), -2);
 }
 
 #[test]
@@ -53,26 +53,29 @@ fn test_nibble_shift4_sign_extend_minus_one() {
 
 #[test]
 fn test_nibble_shift12_max_positive() {
-    // nibble=7 (max positive 4-bit), shift=12 → 7 << 12 = 28672, fits in 15-bit (+16383 max)
-    // 7 << 12 = 28672 → clamped to 0x3FFF = 16383
-    let s = decode_brr_nibble(7, 12, 0, 0, 0);
-    assert_eq!(s, 0x3FFF);
+    // nibble=7, shift=12 → (7 << 12) >> 1 = 0x3800, doubled = 0x7000.
+    // Must not be clipped to 0x3FFF (the old half-amplitude clamp).
+    assert_eq!(decode_brr_nibble(7, 12, 0, 0, 0), 0x7000);
 }
 
 #[test]
 fn test_nibble_shift12_max_negative() {
-    // nibble=-8 (min 4-bit), shift=12 → -8 << 12 = -32768, clamp to -0x4000 = -16384
-    let s = decode_brr_nibble(-8, 12, 0, 0, 0);
-    assert_eq!(s, -0x4000);
+    // nibble=-8, shift=12 → -0x4000 at 15-bit scale, doubled = -0x8000.
+    assert_eq!(decode_brr_nibble(-8, 12, 0, 0, 0), -0x8000);
 }
 
 #[test]
 fn test_nibble_shift_above_12_negative_saturates() {
-    // shift=13,14,15 with negative nibble → hardware saturates to -1 (as i16 = -1)
+    // shift=13-15 with a negative nibble → -0x800 at 15-bit scale, so
+    // -0x1000 once doubled, whatever the nibble's magnitude.
     for shift in 13u8..=15 {
-        let s = decode_brr_nibble(-1, shift, 0, 0, 0);
-        // real hardware gives -1 (sign replicated) for negative nibbles
-        assert_eq!(s, -1, "shift={shift} should saturate negative nibble to -1");
+        for nibble in -8i8..=-1 {
+            assert_eq!(
+                decode_brr_nibble(nibble, shift, 0, 0, 0),
+                -0x1000,
+                "shift={shift} nibble={nibble}"
+            );
+        }
     }
 }
 
@@ -101,11 +104,8 @@ fn test_filter0_ignores_history() {
 
 #[test]
 fn test_filter1_uses_prev1_only() {
-    // nibble=0, shift=0, filter=1: output = 0 + prev1 - (prev1 >> 4)
-    let prev1: i16 = 1024;
-    let expected = (prev1 as i32 - (prev1 as i32 >> 4)) as i16;
-    let s = decode_brr_nibble(0, 0, 1, prev1, 0);
-    assert_eq!(s, expected);
+    // nibble=0, filter=1: p1 = 1024 >> 1 = 512; 512 + (-512 >> 4) = 480, doubled
+    assert_eq!(decode_brr_nibble(0, 0, 1, 1024, 0), 960);
 }
 
 #[test]
@@ -118,59 +118,44 @@ fn test_filter1_ignores_prev2() {
 
 #[test]
 fn test_filter2_uses_both_prev() {
-    // filter=2: pred = p1*2 - (p1*3>>5) - p2 + (p2>>4)
-    let prev1: i16 = 512;
-    let prev2: i16 = 256;
-    let p1 = prev1 as i32;
-    let p2 = prev2 as i32;
-    let predicted = (p1 * 2) - ((p1 * 3) >> 5) - p2 + (p2 >> 4);
-    let expected = predicted.clamp(-0x4000, 0x3FFF) as i16;
-    let s = decode_brr_nibble(0, 0, 2, prev1, prev2);
-    assert_eq!(s, expected);
+    // p1=256, p2=128 (15-bit scale): 512 + (-768 >> 5) - 128 + 8 = 368, doubled
+    assert_eq!(decode_brr_nibble(0, 0, 2, 512, 256), 736);
 }
 
 #[test]
 fn test_filter3_uses_both_prev() {
-    // filter=3: pred = p1*2 - (p1*13>>6) - p2 + (p2*3>>4)
-    let prev1: i16 = 400;
-    let prev2: i16 = 200;
-    let p1 = prev1 as i32;
-    let p2 = prev2 as i32;
-    let predicted = (p1 * 2) - ((p1 * 13) >> 6) - p2 + ((p2 * 3) >> 4);
-    let expected = predicted.clamp(-0x4000, 0x3FFF) as i16;
-    let s = decode_brr_nibble(0, 0, 3, prev1, prev2);
-    assert_eq!(s, expected);
+    // p1=200, p2=100: 400 + (-2600 >> 6) - 100 + (300 >> 4) = 277, doubled
+    assert_eq!(decode_brr_nibble(0, 0, 3, 400, 200), 554);
 }
 
 #[test]
-fn test_filter_result_clamped_to_15_bit_positive() {
-    // Large prev1 with filter 1 could overflow 15-bit; result must be ≤ 0x3FFF
-    let s = decode_brr_nibble(7, 12, 1, 0x3FFF, 0);
-    assert!(s <= 0x3FFF, "result {s} exceeds +15-bit max");
+fn test_filter_result_clamped_to_16_bit_positive() {
+    // 15-bit-scale result far above 0x7FFF: clamped to 0x7FFF first,
+    // then doubled with wrap → 0xFFFE = -2.
+    assert_eq!(decode_brr_nibble(7, 12, 2, 32766, -32768), -2);
 }
 
 #[test]
-fn test_filter_result_clamped_to_15_bit_negative() {
-    let s = decode_brr_nibble(-8, 12, 1, -0x4000, 0);
-    assert!(s >= -0x4000, "result {s} below -15-bit min");
+fn test_filter_result_clamped_to_16_bit_negative() {
+    // Clamped to -0x8000, doubled → -0x10000, which wraps to 0.
+    assert_eq!(decode_brr_nibble(-8, 12, 3, -32768, 32766), 0);
+}
+
+#[test]
+fn test_doubling_wraps_instead_of_clamping() {
+    // Filter 1 with a loud history: at 15-bit scale the result
+    // is 22015 (fits in 16 bits, so no clamp), and doubling it to 44030
+    // wraps to -21506. Hardware does not clamp this step.
+    assert_eq!(decode_brr_nibble(7, 12, 1, 0x3FFE, 0), -21506);
+    // Same for filters 2/3 pushed past 0x3FFF by the history alone.
+    assert_eq!(decode_brr_nibble(0, 0, 2, 24000, 0), -19786);
+    assert_eq!(decode_brr_nibble(0, 0, 3, -24000, 0), 22410);
 }
 
 #[test]
 fn test_filter_with_nonzero_nibble_and_history() {
-    // Combined: nibble contribution + filter contribution, filter 2
-    let nibble: i8 = 3;
-    let shift: u8 = 4;
-    let prev1: i16 = 200;
-    let prev2: i16 = 100;
-
-    let raw = (nibble as i32) << 12 >> (12 - shift as i32);
-    let p1 = prev1 as i32;
-    let p2 = prev2 as i32;
-    let pred = (p1 * 2) - ((p1 * 3) >> 5) - p2 + (p2 >> 4);
-    let expected = (raw + pred).clamp(-0x4000, 0x3FFF) as i16;
-
-    let s = decode_brr_nibble(nibble, shift, 2, prev1, prev2);
-    assert_eq!(s, expected);
+    // nibble=3, shift=4 → 24; filter 2 on p1=100, p2=50 → +143; doubled
+    assert_eq!(decode_brr_nibble(3, 4, 2, 200, 100), 334);
 }
 
 // ============================================================
@@ -344,7 +329,7 @@ fn test_brr_default_state() {
     assert_eq!(brr.nibble_idx, 0);
     assert_eq!(brr.prev1, 0);
     assert_eq!(brr.prev2, 0);
-    assert_eq!(brr.loop_addr, 0);
+    assert!(!brr.block_end);
     assert_eq!(brr.buffer_fill, 0);
     assert_eq!(brr.sample_buffer, [0i16; 16]);
 }
@@ -382,19 +367,6 @@ fn test_brr_addr_advances_by_9_at_block_boundary() {
 }
 
 #[test]
-fn test_brr_loop_addr_stored_separately() {
-    let mut brr = apu::dsp::Brr {
-        addr: 0x2000,
-        loop_addr: 0x1500,
-        ..Default::default()
-    };
-
-    // On a loop event the DSP copies loop_addr → addr
-    brr.addr = brr.loop_addr;
-    assert_eq!(brr.addr, 0x1500);
-}
-
-#[test]
 fn test_brr_history_preserved_across_blocks() {
     // prev1/prev2 are NOT reset between normal blocks
     let mut brr = apu::dsp::Brr {
@@ -406,22 +378,6 @@ fn test_brr_history_preserved_across_blocks() {
     brr.addr = brr.addr.wrapping_add(9);
     assert_eq!(brr.prev1, 1234, "prev1 must survive a block advance");
     assert_eq!(brr.prev2, 5678, "prev2 must survive a block advance");
-}
-
-#[test]
-fn test_brr_history_reset_on_loop() {
-    // On a loop event, prev1 and prev2 are zeroed
-    let mut brr = apu::dsp::Brr {
-        prev1: 9999,
-        prev2: 8888,
-        ..Default::default()
-    };
-
-    brr.addr = brr.loop_addr;
-    brr.prev1 = 0;
-    brr.prev2 = 0;
-    assert_eq!(brr.prev1, 0);
-    assert_eq!(brr.prev2, 0);
 }
 
 #[test]
@@ -444,8 +400,8 @@ fn test_brr_buffer_fill_set_after_decode() {
 
 #[test]
 fn test_nibble_max_positive_nibble_shift0() {
-    // nibble=7 (max positive 4-bit), shift=0, filter=0 → 7
-    assert_eq!(decode_brr_nibble(7, 0, 0, 0, 0), 7);
+    // nibble=7, shift=0 → 7 >> 1 = 3, doubled → 6
+    assert_eq!(decode_brr_nibble(7, 0, 0, 0, 0), 6);
 }
 
 #[test]
@@ -462,8 +418,10 @@ fn test_nibble_shift1() {
 
 #[test]
 fn test_nibble_all_shifts_filter0_positive() {
-    // nibble=1, filter=0: result should be 1 << shift for shift 0–12
-    for shift in 0u8..=12 {
+    // nibble=1, filter=0: ((1 << shift) >> 1) * 2 — so 0 for shift 0,
+    // and 1 << shift for shifts 1–12.
+    assert_eq!(decode_brr_nibble(1, 0, 0, 0, 0), 0);
+    for shift in 1u8..=12 {
         let expected: i16 = 1 << shift;
         let got = decode_brr_nibble(1, shift, 0, 0, 0);
         assert_eq!(got, expected, "shift={shift}");
@@ -499,4 +457,113 @@ fn test_output_always_within_16bit_signed_range() {
             }
         }
     }
+}
+
+// ============================================================
+// Reference vectors
+// ============================================================
+
+/// (nibble, shift, filter, prev1, prev2, expected), computed with
+/// blargg's SPC_DSP `decode_brr` kernel; Mesen2's `DecodeBrrSample` gives
+/// identical results (checked over all nibble/shift/filter combinations
+/// and every even prev1).
+const REFERENCE_VECTORS: &[(i8, u8, u8, i16, i16, i16)] = &[
+    // shift 0 drops the low bit; shift 12 with max nibbles is full scale
+    (4, 0, 0, 0, 0, 4),
+    (-1, 0, 0, 0, 0, -2),
+    (7, 0, 0, 0, 0, 6),
+    (-8, 0, 0, 0, 0, -8),
+    (1, 0, 0, 0, 0, 0),
+    (7, 12, 0, 0, 0, 28672),
+    (-8, 12, 0, 0, 0, -32768),
+    // shifts 13-15: -0x800 / 0 at 15-bit scale
+    (-1, 13, 0, 0, 0, -4096),
+    (-8, 15, 0, 0, 0, -4096),
+    (7, 14, 0, 0, 0, 0),
+    (-1, 13, 2, 10000, -10000, 24340),
+    (5, 15, 3, -30000, 30000, 0),
+    // filter rounding
+    (0, 0, 1, 1024, 0, 960),
+    (0, 0, 2, 512, 256, 736),
+    (0, 0, 3, 400, 200, 554),
+    (3, 4, 2, 200, 100, 334),
+    // doubling wraps (no clamp on that step)
+    (7, 12, 1, 16382, 0, -21506),
+    (0, 0, 2, 24000, 0, -19786),
+    (0, 0, 3, -24000, 0, 22410),
+    (4, 11, 2, 20000, 2000, -21096),
+    // filters 2/3 pushed past 16 bits: clamp, then the doubling wraps
+    (7, 12, 2, 32766, -32768, -2),
+    (-8, 12, 3, -32768, 32766, 0),
+];
+
+#[test]
+fn test_reference_vectors() {
+    for &(n, shift, filter, p1, p2, want) in REFERENCE_VECTORS {
+        assert_eq!(
+            decode_brr_nibble(n, shift, filter, p1, p2),
+            want,
+            "nibble={n} shift={shift} filter={filter} p1={p1} p2={p2}"
+        );
+    }
+}
+
+/// (header, nibble, prev1, prev2, expected) captured from blargg's
+/// cycle-accurate SPC_DSP decoding random BRR data: shift 12 with max
+/// nibbles, shifts 13-15, filters 2/3 whose doubling wraps, clamp hits.
+const CHIP_LOG_VECTORS: &[(u8, i8, i16, i16, i16)] = &[
+    (0xcf, -8, 0, -25490, -12058),
+    (0xc3, -8, -20480, 20480, -32768),
+    (0xcd, -8, -778, -7998, -27668),
+    (0xef, -1, 0, -27454, 18210),
+    (0xf2, -5, 0, -4096, -4096),
+    (0xdd, 3, 21500, 3276, -29566),
+    (0xfb, 0, 0, -30430, 28528),
+    (0x9d, 7, -22160, 11560, 19906),
+    (0xdd, 2, 20976, 1478, -29048),
+    (0xdd, 5, 28940, 18386, -28476),
+    (0xdd, -8, 24830, 0, -25016),
+    (0xdd, 1, -31510, 21216, 0),
+    (0xbd, -3, -24968, 20792, 0),
+    (0xa7, -3, -12104, -8540, -14420),
+    (0x87, 4, -4796, -3750, -3474),
+    (0x23, 2, -4, -8, 8),
+];
+
+#[test]
+fn test_chip_log_vectors() {
+    for &(header, n, p1, p2, want) in CHIP_LOG_VECTORS {
+        let (shift, filter) = (header >> 4, (header >> 2) & 3);
+        assert_eq!(
+            decode_brr_nibble(n, shift, filter, p1, p2),
+            want,
+            "header={header:#04x} nibble={n} p1={p1} p2={p2}"
+        );
+    }
+}
+
+#[test]
+fn test_block_decode_full_scale_and_wrap() {
+    // shift 12, filter 0, nibbles 7 and -8: full-scale, not half-scale.
+    let mut mem = Memory::new();
+    write_block(&mut mem, 0x0200, 0xC0, [0x78; 8]);
+    let (mut p1, mut p2) = (0i16, 0i16);
+    let (samples, ..) = decode_brr_block(&mem.ram, 0x0200, &mut p1, &mut p2);
+    for pair in samples.chunks(2) {
+        assert_eq!(pair, [0x7000, -0x8000]);
+    }
+
+    // filter 1 accumulating a constant positive nibble: the 15-bit value
+    // climbs past 0x3FFF and the stored (doubled) sample wraps negative,
+    // exactly as on hardware.
+    write_block(&mut mem, 0x0209, 0xC4, [0x77; 8]);
+    let (mut p1, mut p2) = (0i16, 0i16);
+    let (samples, ..) = decode_brr_block(&mem.ram, 0x0209, &mut p1, &mut p2);
+    assert_eq!(samples[0], 0x7000);
+    assert!(
+        samples.iter().any(|&s| s < 0),
+        "doubling must wrap: {samples:?}"
+    );
+    assert_eq!(p1, samples[15]);
+    assert_eq!(p2, samples[14]);
 }

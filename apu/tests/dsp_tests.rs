@@ -221,7 +221,7 @@ fn test_kon_resets_brr_state() {
     mem.dsp.voices[0].brr.prev1 = 999;
     mem.dsp.voices[0].brr.prev2 = 888;
     mem.dsp.voices[0].brr.buffer_fill = 16;
-    mem.dsp.voices[0].brr.loop_addr = 0xDEAD;
+    mem.dsp.voices[0].brr.block_end = true;
     mem.dsp.voices[0].pitch_counter = 0x0FFF;
 
     dsp_gw(&mut mem, 0x4C, 0x01);
@@ -234,7 +234,7 @@ fn test_kon_resets_brr_state() {
         mem.dsp.voices[0].brr.buffer_fill, 0,
         "buffer_fill must reset"
     );
-    assert_eq!(mem.dsp.voices[0].brr.loop_addr, 0, "loop_addr must reset");
+    assert!(!mem.dsp.voices[0].brr.block_end, "block_end must reset");
     assert_eq!(
         mem.dsp.voices[0].pitch_counter, 0,
         "pitch_counter must reset"
@@ -2211,4 +2211,140 @@ fn test_pmon_modulator_volume_does_not_matter() {
         voice_trace(&pmon_counter_trace(0x00, 0), 1),
         "a volume-0 modulator must still modulate"
     );
+}
+
+// ============================================================
+// Loop address: read from DIR when the end block is passed
+// ============================================================
+//
+// On hardware the loop pointer is read from DIR*0x100 + SRCN*4 + 2 using
+// the current DIR ($5D) and SRCN ($x4) values when an end+loop block has
+// been played through — not cached at key-on (blargg's SPC_DSP reads it
+// every sample in V1/V2 and applies it in V4; Mesen2 does the same).
+// Drivers rely on this to switch loop points by rewriting SRCN mid-note.
+
+/// DIR $02: srcn 0 → start $1000, loop $2000; srcn 1 → start $1000, loop $3000;
+///          srcn 2 → start $5000, loop $5000.
+/// DIR $03: srcn 0 → start $1000, loop $4000.
+/// $1000 is a plain block followed by an end+loop block at $1009; every
+/// loop target is a single end+loop block, so it loops again right away.
+fn setup_loop_switch(mem: &mut Memory) {
+    write_dir_entry(mem, 0x02, 0, 0x1000, 0x2000);
+    write_dir_entry(mem, 0x02, 1, 0x1000, 0x3000);
+    write_dir_entry(mem, 0x02, 2, 0x5000, 0x5000);
+    write_dir_entry(mem, 0x03, 0, 0x1000, 0x4000);
+    write_silent_brr_block(mem, 0x1000, false, false);
+    write_silent_brr_block(mem, 0x1009, true, true);
+    for addr in [0x2000, 0x3000, 0x4000] {
+        write_silent_brr_block(mem, addr, true, true);
+    }
+    write_silent_brr_block(mem, 0x5000, false, false);
+    write_silent_brr_block(mem, 0x5009, true, true);
+
+    dsp_gw(mem, 0x5D, 0x02);
+    dsp_vw(mem, 0, 0x4, 0x00); // SRCN 0
+    dsp_vw(mem, 0, 0x2, 0x00); // pitch $1000: one block per 16 samples
+    dsp_vw(mem, 0, 0x3, 0x10);
+    dsp_vw(mem, 0, 0x5, 0x8F); // ADSR on, fastest attack
+    dsp_vw(mem, 0, 0x6, 0xE0);
+}
+
+/// Step until voice 0's BRR address leaves `from`, returning the new one.
+fn next_block_addr(mem: &mut Memory, from: u16) -> u16 {
+    for _ in 0..64 {
+        mem.dsp.step(&mut mem.ram);
+        let addr = mem.dsp.voices[0].brr.addr;
+        if addr != from {
+            return addr;
+        }
+    }
+    panic!("voice 0 never left ${from:04X}");
+}
+
+/// Key voice 0 on and run until it is playing its first block.
+fn start_loop_switch_voice(mem: &mut Memory) {
+    key_on(mem, 0x01);
+    assert_eq!(mem.dsp.voices[0].brr.addr, 0x1000, "start address from DIR");
+}
+
+#[test]
+fn test_loop_address_from_dir_without_changes() {
+    let mut mem = booted_memory();
+    setup_loop_switch(&mut mem);
+    start_loop_switch_voice(&mut mem);
+    assert_eq!(next_block_addr(&mut mem, 0x1000), 0x1009);
+    assert_eq!(next_block_addr(&mut mem, 0x1009), 0x2000);
+}
+
+#[test]
+fn test_srcn_change_during_end_block_switches_loop_point() {
+    let mut mem = booted_memory();
+    setup_loop_switch(&mut mem);
+    start_loop_switch_voice(&mut mem);
+    assert_eq!(next_block_addr(&mut mem, 0x1000), 0x1009);
+    // The end block has already been decoded; the loop pointer must
+    // still come from the SRCN in effect when it is passed.
+    dsp_vw(&mut mem, 0, 0x4, 0x01);
+    assert_eq!(next_block_addr(&mut mem, 0x1009), 0x3000);
+}
+
+#[test]
+fn test_srcn_change_before_end_block_switches_loop_point() {
+    let mut mem = booted_memory();
+    setup_loop_switch(&mut mem);
+    start_loop_switch_voice(&mut mem);
+    dsp_vw(&mut mem, 0, 0x4, 0x01);
+    // Changing SRCN mid-note does not restart the note or move the
+    // current position: playback carries on into $1009 as before.
+    assert_eq!(next_block_addr(&mut mem, 0x1000), 0x1009);
+    assert_eq!(next_block_addr(&mut mem, 0x1009), 0x3000);
+}
+
+#[test]
+fn test_srcn_change_after_loop_applies_to_next_end_block() {
+    let mut mem = booted_memory();
+    setup_loop_switch(&mut mem);
+    start_loop_switch_voice(&mut mem);
+    assert_eq!(next_block_addr(&mut mem, 0x1000), 0x1009);
+    assert_eq!(next_block_addr(&mut mem, 0x1009), 0x2000);
+    // Too late for the loop just taken, but the end+loop block at $2000
+    // reads the pointer again when it is passed.
+    dsp_vw(&mut mem, 0, 0x4, 0x01);
+    assert_eq!(next_block_addr(&mut mem, 0x2000), 0x3000);
+}
+
+#[test]
+fn test_dir_change_mid_note_switches_loop_point() {
+    let mut mem = booted_memory();
+    setup_loop_switch(&mut mem);
+    start_loop_switch_voice(&mut mem);
+    assert_eq!(next_block_addr(&mut mem, 0x1000), 0x1009);
+    dsp_gw(&mut mem, 0x5D, 0x03);
+    assert_eq!(next_block_addr(&mut mem, 0x1009), 0x4000);
+}
+
+#[test]
+fn test_dir_change_after_loop_applies_to_next_end_block() {
+    let mut mem = booted_memory();
+    setup_loop_switch(&mut mem);
+    start_loop_switch_voice(&mut mem);
+    assert_eq!(next_block_addr(&mut mem, 0x1000), 0x1009);
+    assert_eq!(next_block_addr(&mut mem, 0x1009), 0x2000);
+    dsp_gw(&mut mem, 0x5D, 0x03);
+    assert_eq!(next_block_addr(&mut mem, 0x2000), 0x4000);
+}
+
+#[test]
+fn test_key_on_start_address_unaffected() {
+    let mut mem = booted_memory();
+    setup_loop_switch(&mut mem);
+    start_loop_switch_voice(&mut mem);
+
+    // Re-key with SRCN 2: the start pointer (first DIR word) is used,
+    // not the loop pointer, and not the previous note's position.
+    dsp_vw(&mut mem, 0, 0x4, 0x02);
+    key_on(&mut mem, 0x01);
+    assert_eq!(mem.dsp.voices[0].brr.addr, 0x5000);
+    assert_eq!(next_block_addr(&mut mem, 0x5000), 0x5009);
+    assert_eq!(next_block_addr(&mut mem, 0x5009), 0x5000);
 }
