@@ -70,6 +70,7 @@ impl<InnerSer> EnumSerializer<InnerSer> {
                     unreachable!()
                 };
                 tab.set_implicit(true);
+                tab.set_dotted(true);
                 TableEntry::TopLevel(tab.entry(variant))
             }
         };
@@ -77,6 +78,11 @@ impl<InnerSer> EnumSerializer<InnerSer> {
         Self {
             inner: build_inner(entry),
         }
+    }
+
+    /// Allow getting back the build inner serializer after it's been used
+    pub fn get_inner_back(self) -> InnerSer {
+        self.inner
     }
 }
 
