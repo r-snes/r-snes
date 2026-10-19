@@ -16,9 +16,6 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
-env:
-  CARGO_TERM_COLOR: always
-
 jobs:
   fmt:
     runs-on: ubuntu-latest
@@ -26,7 +23,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5.0.0
+        uses: actions/checkout@v7
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@1.95.0
@@ -42,7 +39,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5.0.0
+        uses: actions/checkout@v7
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@1.95.0
@@ -64,7 +61,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5.0.0
+        uses: actions/checkout@v7
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@1.95.0
@@ -85,7 +82,7 @@ jobs:
 
       - name: Upload coverage report
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report-${{ github.sha }}
           path: ./tarpaulin-report.html
@@ -98,16 +95,16 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5.0.0
+        uses: actions/checkout@v7
 
       - name: Download coverage report
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: coverage-report-${{ github.sha }}
           path: ./site/
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: site/
 
@@ -128,4 +125,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

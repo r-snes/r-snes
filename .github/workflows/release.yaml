@@ -10,9 +10,6 @@ on:
 permissions:
   contents: read
 
-env:
-  CARGO_TERM_COLOR: always
-
 jobs:
   check_version:
     runs-on: ubuntu-latest
@@ -22,7 +19,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5.0.0
+        uses: actions/checkout@v7
 
       # The script names the files after the Cargo.toml version, so it must match the tag.
       - name: Check tag matches Cargo.toml version
@@ -46,13 +43,13 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5.0.0
+        uses: actions/checkout@v7
 
       - name: Build ${{ matrix.target }} release file
         run: bash packaging/build-release.sh ${{ matrix.target }}
 
       - name: Upload release file
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-${{ matrix.target }}
           path: dist/v${{ needs.check_version.outputs.version }}/r-snes_*
@@ -67,7 +64,7 @@ jobs:
 
     steps:
       - name: Download release files
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: release-*
           path: dist/
