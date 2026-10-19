@@ -1,4 +1,4 @@
-use crate::config::serialize_in_doc::InValueSerializer;
+use crate::config::serialize_in_doc::{InValueSerializer, in_value::EnumSerializer};
 
 use super::{InItemSerializer, SerError};
 use std::ops::{IndexMut, Not};
@@ -35,10 +35,10 @@ impl<'a> serde::ser::Serializer for InItemSerializer<'a> {
     type SerializeSeq = InArraySerializer;
     type SerializeTuple = InArraySerializer;
     type SerializeTupleStruct = InArraySerializer;
-    type SerializeTupleVariant = InEnum<InArraySerializer>;
+    type SerializeTupleVariant = EnumSerializer<InArraySerializer>;
     type SerializeMap = InTableSerializer<'a>;
     type SerializeStruct = InTableSerializer<'a>;
-    type SerializeStructVariant = InEnum<InTableSerializer<'a>>;
+    type SerializeStructVariant = EnumSerializer<InTableSerializer<'a>>;
 
     fn serialize_bool(self, v: bool) -> Result<Self::Ok, Self::Error> {
         serialize_simple_value!(self.item, v, Boolean)
@@ -218,8 +218,12 @@ impl<'a> serde::ser::Serializer for InItemSerializer<'a> {
         variant: &'static str,
         len: usize,
     ) -> Result<Self::SerializeStructVariant, Self::Error> {
-        // Ok(SerializeStructVariant::struct_(variant, len))
-        todo!()
+        Ok(EnumSerializer::new_in_item(variant, self.item, |entry| {
+            InTableSerializer::in_item(
+                entry.or_insert(Item::Table(Table::new())),
+                Some(len),
+            )
+        }))
     }
 }
 
@@ -287,9 +291,7 @@ impl<'a> InTableSerializer<'a> {
             serialized_keys: key_vec,
         }
     }
-}
 
-impl<'a> InTableSerializer<'a> {
     /// Constructs a new [`InInlineTableSerializer`] which serializes into
     /// the value passed as argument, overriding it to be an [`InlineTable`]
     /// if it isn't one already
@@ -432,40 +434,6 @@ impl SerializeTupleStruct for InArraySerializer {
     type Error = SerError;
 
     fn serialize_field<T>(&mut self, value: &T) -> Result<(), Self::Error>
-    where
-        T: ?Sized + serde::Serialize,
-    {
-        todo!()
-    }
-
-    fn end(self) -> Result<Self::Ok, Self::Error> {
-        todo!()
-    }
-}
-
-pub struct InEnum<InnerSer> {
-    inner: InnerSer,
-}
-impl<InnerSer: SerializeTuple> SerializeTupleVariant for InEnum<InnerSer> {
-    type Ok = InnerSer::Ok;
-    type Error = InnerSer::Error;
-
-    fn serialize_field<T>(&mut self, value: &T) -> Result<(), Self::Error>
-    where
-        T: ?Sized + serde::Serialize,
-    {
-        todo!()
-    }
-
-    fn end(self) -> Result<Self::Ok, Self::Error> {
-        todo!()
-    }
-}
-impl<InnerSer: SerializeStruct> SerializeStructVariant for InEnum<InnerSer> {
-    type Ok = InnerSer::Ok;
-    type Error = InnerSer::Error;
-
-    fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<(), Self::Error>
     where
         T: ?Sized + serde::Serialize,
     {

@@ -397,7 +397,7 @@ pub struct EnumSerializer<InnerSer> {
     inner: InnerSer,
 }
 impl<InnerSer> EnumSerializer<InnerSer> {
-    /// Build a new enum serializer
+    /// Build a new enum serializer which writes into a &mut Value
     pub fn new_in_value<'a>(
         variant: &str,
         value: &'a mut Value,
@@ -421,6 +421,49 @@ impl<InnerSer> EnumSerializer<InnerSer> {
                     unreachable!()
                 };
                 tab.entry(variant)
+            }
+        };
+
+        Self {
+            inner: build_inner(entry),
+        }
+    }
+
+    /// Build a new enum serializer which writes into a &mut Item
+    pub fn new_in_item<'a>(
+        variant: &str,
+        item: &'a mut Item,
+        build_inner: impl FnOnce(Entry<'a>) -> InnerSer,
+    ) -> Self {
+        let entry = match item {
+            Item::Table(tab) => {
+                if tab.len() == 1 && tab.get(variant).is_some() {
+                    tab.entry(variant)
+                } else {
+                    tab.clear();
+                    tab.entry(variant)
+                }
+            }
+            Item::Value(Value::InlineTable(tab)) => {
+                if tab.len() == 1 && tab.get(variant).is_some() {
+                    TableLike::entry(tab, variant)
+                } else {
+                    tab.clear();
+                    TableLike::entry(tab, variant)
+                }
+            }
+            Item::Value(value) => {
+                let decor = std::mem::take(value.decor_mut());
+                let mut res = InlineTable::new();
+                *res.decor_mut() = decor;
+                *value = Value::InlineTable(res);
+                let Value::InlineTable(tab) = value else {
+                    unreachable!()
+                };
+                TableLike::entry(tab, variant)
+            }
+            _ => {
+                todo!("EnumSerializer::new_in_item into Item::Empty or ArrayOfTables")
             }
         };
 

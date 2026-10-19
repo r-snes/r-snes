@@ -308,7 +308,7 @@ mod test {
     }
 
     #[test]
-    fn change_enum_struct_as_value() {
+    fn change_enum_struct_as_inline_table() {
         InDocSerializeTest {
             init_toml: "enums = { enum1.StructVariant = { x = 3, y = 8 }}",
             init_value: Some(ComplexStruct {
@@ -323,5 +323,76 @@ mod test {
             expected_toml: "enums = { enum1.StructVariant = { x = 20, y = -4 }}\n",
         }
         .run()
+    }
+
+    #[test]
+    fn change_enum_struct_as_toplevel_table() {
+        for (init, expected) in [
+            (
+                r#"
+                    # a
+                    [enums.enum1.StructVariant] # b
+                    x = 3
+                    y = 8 # c
+                "#,
+                r#"
+                    # a
+                    [enums.enum1.StructVariant] # b
+                    x = 20
+                    y = -4 # c
+                "#,
+            ),
+            (
+                r#"
+                    [enums.enum1] # a
+                    # b
+                    StructVariant = { x = 3, y = 8 }
+                "#,
+                r#"
+                    [enums.enum1] # a
+                    # b
+                    StructVariant = { x = 20, y = -4 }
+                "#,
+            ),
+            (
+                r#"
+                    [enums.enum1] # a
+                    # b
+                    StructVariant.x = 3 # d
+                    StructVariant.y = 8 # e
+                "#,
+                r#"
+                    [enums.enum1] # a
+                    # b
+                    StructVariant.x = 20 # d
+                    StructVariant.y = -4 # e
+                "#,
+            ),
+            (
+                r#"
+                    enums.enum1.StructVariant.x = 3 # d
+                    enums.enum1.StructVariant.y = 8 # e
+                "#,
+                r#"
+                    enums.enum1.StructVariant.x = 20 # d
+                    enums.enum1.StructVariant.y = -4 # e
+                "#,
+            ),
+        ] {
+            InDocSerializeTest {
+                init_toml: init,
+                init_value: Some(ComplexStruct {
+                    enums: Enums {
+                        enum1: Some(SomeEnum::StructVariant { x: 3, y: 8 }),
+                    },
+                    ..Default::default()
+                }),
+                edit: |config: &mut ComplexStruct| {
+                    config.enums.enum1 = Some(SomeEnum::StructVariant { x: 20, y: -4 })
+                },
+                expected_toml: expected,
+            }
+            .run()
+        }
     }
 }
