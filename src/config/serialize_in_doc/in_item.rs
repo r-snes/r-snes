@@ -291,43 +291,34 @@ pub enum InTableSerializer<'a> {
 }
 
 impl<'a> InTableSerializer<'a> {
-    /// Constructs a new [`InInlineTableSerializer`] which serializes into
+    /// Constructs a new [`InTableSerializer`] which serializes into
     /// the existing table passed as argument
-    pub fn new(table: TableMut<'a>, size_hint: Option<usize>) -> Self {
-        match table {
-            TableMut::Inline(tab) => Self::Inline(InInlineTableSerializer::new(tab, size_hint)),
-            TableMut::TopLevel(tab) => {
-                let key_vec = if let Some(size) = size_hint {
-                    Vec::with_capacity(size)
-                } else {
-                    Vec::new()
-                };
+    pub fn in_table(table: &'a mut Table, size_hint: Option<usize>) -> Self {
+        let key_vec = if let Some(size) = size_hint {
+            Vec::with_capacity(size)
+        } else {
+            Vec::new()
+        };
 
-                Self::TopLevel {
-                    table: tab,
-                    pending_key: None,
-                    serialized_keys: key_vec,
-                }
-            }
+        Self::TopLevel {
+            table,
+            pending_key: None,
+            serialized_keys: key_vec,
         }
     }
 
-    /// Constructs a new [`InInlineTableSerializer`] which serializes into
+    /// Constructs a new [`InTableSerializer`] which serializes into
     /// the value passed as argument, overriding it to be an [`InlineTable`]
     /// if it isn't one already
     pub fn in_item(item: &'a mut Item, size_hint: Option<usize>) -> Self {
         match item {
-            Item::Value(value) => {
-                Self::Inline(InInlineTableSerializer::in_value(value, size_hint))
-            }
-            Item::Table(tab) => Self::new(TableMut::TopLevel(tab), size_hint),
+            Item::Value(value) => Self::Inline(InInlineTableSerializer::in_value(value, size_hint)),
+            Item::Table(tab) => Self::in_table(tab, size_hint),
             i => {
                 *i = Item::Table(Table::new());
-                let Item::Table(tab) = i else {
-                    unreachable!()
-                };
+                let Item::Table(tab) = i else { unreachable!() };
                 tab.set_implicit(true);
-                Self::new(TableMut::TopLevel(tab), size_hint)
+                Self::in_table(tab, size_hint)
             }
         }
     }
