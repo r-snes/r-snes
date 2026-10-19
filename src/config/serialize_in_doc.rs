@@ -398,4 +398,60 @@ mod test {
             .run()
         }
     }
+
+    #[test]
+    fn create_enum_struct_from_empty() {
+        InDocSerializeTest {
+            init_toml: "",
+            init_value: Some(ComplexStruct::default()),
+            edit: |config: &mut ComplexStruct| {
+                config.enums.enum1 = Some(SomeEnum::StructVariant { x: 0, y: 1 });
+            },
+            expected_toml: "enums = { enum1 = { StructVariant = { x = 0, y = 1 } } }\n",
+        }
+        .run();
+    }
+
+    #[test]
+    fn create_enum_struct_from_empty_table() {
+        InDocSerializeTest {
+            init_toml: "[enums]",
+            init_value: Some(ComplexStruct::default()),
+            edit: |config: &mut ComplexStruct| {
+                config.enums.enum1 = Some(SomeEnum::StructVariant { x: 0, y: 1 });
+            },
+            expected_toml: "[enums]\n\n[enums.enum1.StructVariant]\nx = 0\ny = 1\n",
+        }
+        .run();
+    }
+
+    #[test]
+    fn replace_unit_to_struct_variant() {
+        for (init, expected) in [
+            (
+                "[enums] # b\nenum1 = \"UnitVariantB\" # c",
+                "[enums] # b\nenum1 = { StructVariant = { x = 0, y = 1 } } # c\n",
+            ),
+            (
+                "enums.enum1 = \"UnitVariantB\" # c",
+                "enums.enum1 = { StructVariant = { x = 0, y = 1 } } # c\n",
+            ),
+        ] {
+            InDocSerializeTest {
+                init_toml: init,
+                init_value: Some(ComplexStruct {
+                    enums: Enums {
+                        enum1: Some(SomeEnum::UnitVariantB),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }),
+                edit: |config: &mut ComplexStruct| {
+                    config.enums.enum1 = Some(SomeEnum::StructVariant { x: 0, y: 1 });
+                },
+                expected_toml: expected,
+            }
+            .run()
+        }
+    }
 }

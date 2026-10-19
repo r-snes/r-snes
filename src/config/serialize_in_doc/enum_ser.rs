@@ -1,5 +1,5 @@
 use serde::ser::{SerializeStruct, SerializeStructVariant, SerializeTuple, SerializeTupleVariant};
-use toml_edit::{Entry, InlineEntry, InlineTable, Item, TableLike, Value};
+use toml_edit::{Entry, InlineEntry, InlineTable, Item, Table, Value};
 
 /// Helper struct to implement enum variant serializers (other than
 /// unit variants).
@@ -48,37 +48,29 @@ impl<InnerSer> EnumSerializer<InnerSer> {
     pub fn new_in_item<'a>(
         variant: &str,
         item: &'a mut Item,
-        build_inner: impl FnOnce(Entry<'a>) -> InnerSer,
+        build_inner: impl FnOnce(TableEntry<'a>) -> InnerSer,
     ) -> Self {
         let entry = match item {
             Item::Table(tab) => {
                 if tab.len() == 1 && tab.get(variant).is_some() {
-                    tab.entry(variant)
+                    TableEntry::TopLevel(tab.entry(variant))
                 } else {
                     tab.clear();
-                    tab.entry(variant)
-                }
-            }
-            Item::Value(Value::InlineTable(tab)) => {
-                if tab.len() == 1 && tab.get(variant).is_some() {
-                    TableLike::entry(tab, variant)
-                } else {
-                    tab.clear();
-                    TableLike::entry(tab, variant)
+                    TableEntry::TopLevel(tab.entry(variant))
                 }
             }
             Item::Value(value) => {
-                let decor = std::mem::take(value.decor_mut());
-                let mut res = InlineTable::new();
-                *res.decor_mut() = decor;
-                *value = Value::InlineTable(res);
-                let Value::InlineTable(tab) = value else {
-                    unreachable!()
-                };
-                TableLike::entry(tab, variant)
+                return Self::new_in_value(variant, value, |inline_entry| {
+                    build_inner(TableEntry::Inline(inline_entry))
+                });
             }
             _ => {
-                todo!("EnumSerializer::new_in_item into Item::Empty or ArrayOfTables")
+                *item = Item::Table(Table::new());
+                let Item::Table(tab) = item else {
+                    unreachable!()
+                };
+                tab.set_implicit(true);
+                TableEntry::TopLevel(tab.entry(variant))
             }
         };
 
@@ -87,6 +79,15 @@ impl<InnerSer> EnumSerializer<InnerSer> {
         }
     }
 }
+
+/// Enum which represents either an [`InlineEntry`] or an [`Entry`]
+pub enum TableEntry<'a> {
+    /// Contains an [`InlineEntry`]
+    Inline(InlineEntry<'a>),
+    /// Contains an [`Entry`]
+    TopLevel(Entry<'a>),
+}
+
 impl<InnerSer: SerializeTuple> SerializeTupleVariant for EnumSerializer<InnerSer> {
     type Ok = InnerSer::Ok;
     type Error = InnerSer::Error;

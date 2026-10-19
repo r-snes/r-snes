@@ -1,3 +1,5 @@
+use crate::config::serialize_in_doc::{enum_ser::TableEntry, in_value::InInlineTableSerializer};
+
 use super::{InItemSerializer, InValueSerializer, SerError, enum_ser::EnumSerializer};
 use std::ops::{IndexMut, Not};
 
@@ -215,9 +217,22 @@ impl<'a> serde::ser::Serializer for InItemSerializer<'a> {
         variant: &'static str,
         len: usize,
     ) -> Result<Self::SerializeStructVariant, Self::Error> {
-        Ok(EnumSerializer::new_in_item(variant, self.item, |entry| {
-            InTableSerializer::in_item(entry.or_insert(Item::Table(Table::new())), Some(len))
-        }))
+        Ok(EnumSerializer::new_in_item(
+            variant,
+            self.item,
+            |entry| match entry {
+                TableEntry::Inline(entry) => {
+                    InTableSerializer::Inline(InInlineTableSerializer::in_value(
+                        entry.or_insert(Value::InlineTable(InlineTable::new())),
+                        Some(len),
+                    ))
+                }
+                TableEntry::TopLevel(entry) => InTableSerializer::in_item(
+                    entry.or_insert(Item::Table(Table::new())),
+                    Some(len),
+                ),
+            },
+        ))
     }
 }
 
@@ -254,35 +269,46 @@ impl<'a> TableMut<'a> {
 
 /// Custom serializer to write maps and structs in an existing
 /// [`Table`] or [`InlineTable`]
-pub struct InTableSerializer<'a> {
-    /// The table to serialize into
-    pub table: TableMut<'a>,
-    /// Key which the next item will serialize into (used for [`SerializeMap`])
-    pub pending_key: Option<Item>,
-    /// Vec of keys we have serialized: kept track of to remove
-    /// entries which existed in [`table`](struct.InTableSerializer#structfield.table)
-    /// but haven't been listed again with calls to
-    /// [`serialize_field`](SerializeStruct::serialize_field)/
-    /// [`serialize_key`](SerializeMap::serialize_key) once
-    /// [`SerializeStruct::end`] is called: at that point those entries
-    /// will be removed from the table.
-    pub serialized_keys: Vec<String>,
+pub enum InTableSerializer<'a> {
+    /// Serialize into an [`InlineTable`]
+    Inline(InInlineTableSerializer<'a>),
+
+    /// Serialize into a top-level [`Table`]
+    TopLevel {
+        /// The table to serialize into
+        table: &'a mut Table,
+        /// Key which the next item will serialize into (used for [`SerializeMap`])
+        pending_key: Option<Item>,
+        /// Vec of keys we have serialized: kept track of to remove
+        /// entries which existed in [`table`](struct.InTableSerializer#structfield.table)
+        /// but haven't been listed again with calls to
+        /// [`serialize_field`](SerializeStruct::serialize_field)/
+        /// [`serialize_key`](SerializeMap::serialize_key) once
+        /// [`SerializeStruct::end`] is called: at that point those entries
+        /// will be removed from the table.
+        serialized_keys: Vec<String>,
+    },
 }
 
 impl<'a> InTableSerializer<'a> {
     /// Constructs a new [`InInlineTableSerializer`] which serializes into
     /// the existing table passed as argument
     pub fn new(table: TableMut<'a>, size_hint: Option<usize>) -> Self {
-        let key_vec = if let Some(size) = size_hint {
-            Vec::with_capacity(size)
-        } else {
-            Vec::new()
-        };
+        match table {
+            TableMut::Inline(tab) => Self::Inline(InInlineTableSerializer::new(tab, size_hint)),
+            TableMut::TopLevel(tab) => {
+                let key_vec = if let Some(size) = size_hint {
+                    Vec::with_capacity(size)
+                } else {
+                    Vec::new()
+                };
 
-        Self {
-            table,
-            pending_key: None,
-            serialized_keys: key_vec,
+                Self::TopLevel {
+                    table: tab,
+                    pending_key: None,
+                    serialized_keys: key_vec,
+                }
+            }
         }
     }
 
@@ -291,8 +317,10 @@ impl<'a> InTableSerializer<'a> {
     /// if it isn't one already
     pub fn in_item(item: &'a mut Item, size_hint: Option<usize>) -> Self {
         match item {
+            Item::Value(value) => {
+                Self::Inline(InInlineTableSerializer::in_value(value, size_hint))
+            }
             Item::Table(tab) => Self::new(TableMut::TopLevel(tab), size_hint),
-            Item::Value(Value::InlineTable(tab)) => Self::new(TableMut::Inline(tab), size_hint),
             i => {
                 *i = Item::Value(Value::InlineTable(InlineTable::new()));
                 let Item::Value(Value::InlineTable(tab)) = i else {
@@ -313,60 +341,48 @@ impl<'a> SerializeStruct for InTableSerializer<'a> {
     where
         T: ?Sized + serde::Serialize,
     {
-        match &mut self.table {
-            TableMut::TopLevel(table) => {
-                self.serialized_keys.push(key.to_owned());
+        match self {
+            Self::TopLevel {
+                table,
+                serialized_keys,
+                ..
+            } => {
+                serialized_keys.push(key.to_owned());
                 value.serialize(InItemSerializer {
                     // table.index_mut with a &str key is infallible: it creates
                     // an Item::None place to write in in case there was no item before
                     item: table.index_mut(key),
                 })
             }
-            TableMut::Inline(table) => {
-                match table.entry(key) {
-                    InlineEntry::Occupied(mut e) => {
-                        match value.serialize(InValueSerializer::new(e.get_mut())) {
-                            Ok(()) => {
-                                self.serialized_keys.push(key.to_owned());
-                                Ok(())
-                            }
-                            // handle the "None value removes entry" by catching the UnsupportedNone error
-                            Err(Self::Error::UnsupportedNone) => Ok(()),
-                            e @ Err(_) => e,
-                        }
-                    }
-                    InlineEntry::Vacant(e) => {
-                        match value.serialize(toml_edit::ser::ValueSerializer::new()) {
-                            Ok(val) => {
-                                self.serialized_keys.push(key.to_owned());
-                                e.insert(val);
-                                Ok(())
-                            }
-                            Err(Self::Error::UnsupportedNone) => Ok(()),
-                            Err(e) => Err(e),
-                        }
-                    }
-                }
-            }
+            Self::Inline(inner) => SerializeStruct::serialize_field(inner, key, value),
         }
     }
 
     /// Removes the keys in [`self.table`] which haven't been serialised
     /// (not mentioned in any call to `serialize_field`)
-    fn end(mut self) -> Result<Self::Ok, Self::Error> {
-        self.table
-            .iter()
-            .filter_map(|(key, _)| {
-                self.serialized_keys
+    fn end(self) -> Result<Self::Ok, Self::Error> {
+        match self {
+            Self::Inline(inner) => SerializeStruct::end(inner),
+            Self::TopLevel {
+                table,
+                serialized_keys,
+                ..
+            } => {
+                table
                     .iter()
-                    .any(|ser_key| key == ser_key)
-                    .not()
-                    .then_some(key.to_owned())
-            })
-            .collect::<Vec<_>>() // intermediate collect to release the borrow on self.table
-            .iter()
-            .for_each(|key| self.table.remove(key));
-        Ok(())
+                    .filter_map(|(key, _)| {
+                        serialized_keys
+                            .iter()
+                            .any(|ser_key| key == ser_key)
+                            .not()
+                            .then_some(key.to_owned())
+                    })
+                    .collect::<Vec<_>>() // intermediate collect to release the borrow on table
+                    .iter()
+                    .for_each(|key| _ = table.remove(key));
+                Ok(())
+            }
+        }
     }
 }
 impl<'a> SerializeMap for InTableSerializer<'a> {
