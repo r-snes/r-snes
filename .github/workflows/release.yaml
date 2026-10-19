@@ -17,6 +17,8 @@ jobs:
   check_version:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
 
     steps:
       - name: Checkout repository
@@ -24,6 +26,7 @@ jobs:
 
       # The script names the files after the Cargo.toml version, so it must match the tag.
       - name: Check tag matches Cargo.toml version
+        id: version
         run: |
           version="$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"
           tag_version="${GITHUB_REF_NAME#v}"
@@ -31,6 +34,7 @@ jobs:
             echo "::error::Tag $GITHUB_REF_NAME does not match Cargo.toml version $version"
             exit 1
           fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
   build:
     needs: [check_version]
@@ -51,7 +55,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: release-${{ matrix.target }}
-          path: dist/v*/r-snes_*
+          path: dist/v${{ needs.check_version.outputs.version }}/r-snes_*
           if-no-files-found: error
 
   release:
