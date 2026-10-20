@@ -3,8 +3,8 @@
 R-SNES aims to be a decently fast and very accurate SNES emulator, while staying easy to understand as per modern coding standards.
 
 > [!NOTE]
-> For now, this is still a work in progress. We successfully run and pass the full [test ROM](https://github.com/gilyon/snes-tests) suite, but we're still some way from running actual commercial games.
-The [plugin system](#plugins) is functional, with several modules already implemented: RAM manipulation, CPU, PPU, display, and file read/write.
+> For now, this is still a work in progress. We're able to run commercial games with no crashes, partially working graphics (some rendering features and effects are still missing), and working game sound
+> The [plugin system](#plugins) is functional, with several modules already implemented: RAM manipulation, CPU, PPU, display, and file read/write.
 >
 > For the sake of brevity (and optimism!), some parts of this README describe features of the emulator as if they were already complete, which may not yet be the case.
 
@@ -20,6 +20,8 @@ Plugins will also be able to access things *outside* the emulator (which we refe
 
 Of course, plugins being able to do so much can cause risks since they might spread widely to non-developer communities (to people who can't easily audit what the plugin they are running is doing).
 For that, we require plugins to describe what permissions they require, and prompt the user to confirm that they do intend to grant said permissions to the plugin before running it, so they can at least raise an eyebrow if some plugin requires complete unrestricted access to the internet if it doesn't seem like it needs it.
+
+If you want to try writing plugins yourself, check out our [plugin API documentation](plugin_api.md). If you have any question or suggestion about this documentation, plugins in general (or anything else), feel free to [open a discussion about it](https://github.com/r-snes/r-snes/discussions).
 
 ## Project documents
 
