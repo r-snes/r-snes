@@ -7,6 +7,12 @@
 
 use crate::write_twice::WriteTwice;
 
+// Window layer indices: BG1-BG4 are 0-3.
+/// Window layer index of the sprites.
+pub const WINDOW_OBJ: usize = 4;
+/// Window layer index of the color window (used by CGWSEL).
+pub const WINDOW_COLOR: usize = 5;
+
 /// PPU register values and the internal latches used by write-twice registers.
 // Registers without a field here:
 // - $2104 OAMDATA, $2138 RDOAM: OAM ports, see oam.rs
@@ -337,6 +343,59 @@ impl PPURegisters {
     pub fn bg_tile16(&self, bg: usize) -> bool {
         self.bgmode & (0x10 << bg) != 0
     }
+
+    // ============================================================
+    // Windows
+    // ============================================================
+
+    /// Returns true if `x` is inside window 1 (WH0 <= x <= WH1). The window is empty if WH0 > WH1.
+    pub fn in_window1(&self, x: usize) -> bool {
+        (self.wh0 as usize..=self.wh1 as usize).contains(&x)
+    }
+
+    /// Returns true if `x` is inside window 2 (WH2 <= x <= WH3). The window is empty if WH2 > WH3.
+    pub fn in_window2(&self, x: usize) -> bool {
+        (self.wh2 as usize..=self.wh3 as usize).contains(&x)
+    }
+
+    /// Returns true if pixel `x` of BG `bg` is hidden by its windows (W12SEL/W34SEL, WBGLOG).
+    pub fn bg_window_masked(&self, bg: usize, x: usize) -> bool {
+        let sel = (if bg < 2 { self.w12sel } else { self.w34sel }) >> ((bg & 1) * 4);
+        let logic = self.wbglog >> (bg * 2);
+        self.window_masked(sel, logic, x)
+    }
+
+    /// Returns true if pixel `x` of the sprites is hidden by their windows (WOBJSEL bits 0-3, WOBJLOG bits 0-1).
+    pub fn obj_window_masked(&self, x: usize) -> bool {
+        self.window_masked(self.wobjsel, self.wobjlog, x)
+    }
+
+    /// Returns true if `x` is inside the color window (WOBJSEL bits 4-7, WOBJLOG bits 2-3).
+    pub fn in_color_window(&self, x: usize) -> bool {
+        self.window_masked(self.wobjsel >> 4, self.wobjlog >> 2, x)
+    }
+
+    // 4 bits per layer in `sel`: bit 0/1 = window 1 invert/enable, bit 2/3 = window 2 invert/enable.
+    // `logic` (bits 0-1) combines the two windows when both are enabled: OR, AND, XOR, XNOR.
+    fn window_masked(&self, sel: u8, logic: u8, x: usize) -> bool {
+        let w1 = self.in_window1(x) ^ (sel & 0x01 != 0);
+        let w2 = self.in_window2(x) ^ (sel & 0x04 != 0);
+        match (sel & 0x02 != 0, sel & 0x08 != 0) {
+            (false, false) => false,
+            (true, false) => w1,
+            (false, true) => w2,
+            (true, true) => match logic & 0x03 {
+                0 => w1 || w2,
+                1 => w1 && w2,
+                2 => w1 != w2,
+                _ => w1 == w2,
+            },
+        }
+    }
+
+    // ============================================================
+    // STAT78
+    // ============================================================
 
     /// STAT78 ($213F) read side effects: clears the counter latch and resets the OPHCT/OPVCT toggles.
     pub fn read_stat78_side_effects(&mut self) {
