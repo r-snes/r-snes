@@ -31,7 +31,18 @@ If you want to try writing plugins yourself, check out our [plugin API documenta
 
 ## Installing
 
-For now the only supported "install" method is building the emulator from source.
+To start using R-SNES, go to our [releases pages](https://github.com/r-snes/r-snes/releases), and download the file suited for your platform. We currently support:
+- Windows: .exe build
+- Debian-based linux distros (including Ubuntu, Linux Mint, Pop!_OS...): .deb package
+- Fedora-based linux distros (including Bazzite): .rpm package
+- Nix on linux: nix package available in our flake (`nix run 'github:r-snes/r-snes?ref=v0.1.0'`, or any other version you'd like)
+
+For now, R-SNES isn't available in any public package repository, but feel free to request it to be added. MacOS support is unknown, we've not tested it, feel free to try a manual install and report to us.
+If you have any trouble installing R-SNES, or want to discuss platform compatibility or integration in package repositories, please open a [discussion](https://github.com/r-snes/r-snes/discussions) about it.
+
+### Manual install/build
+
+You can also manually build from source:
 
 For this, you will need a local install of the Rust toolchain, including `cargo` and `rustc`. Building should be as simple as getting a local copy of the source code and then running `cargo build --release` from the project root.
 
@@ -39,8 +50,6 @@ You may need some system dependencies:
 
 - SDL2
 - Basic system-specific desktop libraries (for example, `libX11` and `libxkbcommon` on Linux)
-
-For now, the project is known to work on Linux (Wayland) and Windows, but could also already work fine on other systems, give it a try!
 
 ## Project structure
 
