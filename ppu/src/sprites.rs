@@ -74,12 +74,7 @@ impl Renderer {
             let tile_row = sy / 8;
             let fine_y = sy % 8;
 
-            let prio = match sprite.priority {
-                0 => Priority::Obj0,
-                1 => Priority::Obj1,
-                2 => Priority::Obj2,
-                _ => Priority::Obj3,
-            };
+            let prio = Priority::obj(sprite.priority);
 
             // Sprites do color math only when using palettes 4-7.
             let obj_math = sprite.palette >= 4;
