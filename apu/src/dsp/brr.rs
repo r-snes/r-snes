@@ -87,8 +87,7 @@ pub fn brr_filter(filter: u8, p1: i32, p2: i32) -> i32 {
 /// `prev1` / `prev2` are the two previously *decoded* samples, exactly as
 /// this function returned them (16-bit stored scale).
 ///
-/// Hardware steps (blargg's SPC_DSP `decode_brr`, Mesen2
-/// `DspVoice::DecodeBrrSample`, fullsnes):
+/// Hardware steps:
 ///   1. Sign-extend the nibble from 4 bits.
 ///   2. Scale: `(nibble << shift) >> 1` — a 15-bit-scale value.
 ///      Shifts 13–15 are invalid on hardware and force the value to
