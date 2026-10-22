@@ -166,31 +166,13 @@ fn gui_emu_loop(
     closing_ev
 }
 
-/// The no-ROM idle state: render the logo screen (plus any open overlays)
-/// at the normal frame rate, and after a few seconds start the waiting
-/// music - a real SPC700 driver uploaded into a standalone APU over the
-/// IPL boot protocol (see `apu::jingle`).
+/// The no-ROM idle state: render the logo screen (plus any open overlays).
 ///
 /// Returns the first event the outer loop cares about. Input-only events
 /// (buttons, plugin actions) are meaningless without a game and are
 /// swallowed here.
 fn gui_idle_loop(gui: &mut Gui, default_framebuffer: &ppu::rendering::RawFramebuffer) -> IdleExit {
-    use apu::jingle::IdleJingle;
-
-    /// Silence on the logo screen before the music starts.
-    const JINGLE_DELAY: Duration = Duration::from_secs(3);
-    /// Keep ~256 ms queued on the device: far more than one ~16 ms frame
-    /// interval, so scheduling hiccups never underrun, while staying
-    /// small enough to stop quickly when the user loads a ROM.
-    const TARGET_BUFFERED_FRAMES: u32 = 8_192;
-    /// Generation chunk: 32 ms of audio per `generate` call.
-    const CHUNK_FRAMES: usize = 1_024;
-
     gui.set_rom_title(None);
-
-    let idle_start = Instant::now();
-    let mut jingle: Option<IdleJingle> = None;
-    let mut jingle_failed = false;
 
     let ev = loop {
         let frame_start = Instant::now();
@@ -210,41 +192,8 @@ fn gui_idle_loop(gui: &mut Gui, default_framebuffer: &ppu::rendering::RawFramebu
         if let Some(ev) = terminal {
             break ev;
         }
-        // Boot the jingle APU once the delay has passed. A boot failure
-        // is loudly logged but non-fatal: the emulator just stays silent.
-        if jingle.is_none() && !jingle_failed && idle_start.elapsed() >= JINGLE_DELAY {
-            match IdleJingle::new() {
-                Ok(j) => {
-                    jingle = Some(j);
-                    gui.audio_play();
-                }
-                Err(e) => {
-                    eprintln!("waiting music disabled: {e}");
-                    jingle_failed = true;
-                }
-            }
-        }
 
-        // Keep the audio queue topped up.
-        let mut feed_error = None;
-        if let Some(j) = jingle.as_mut() {
-            while gui.audio_buffered_frames() < TARGET_BUFFERED_FRAMES {
-                let samples = j.generate(CHUNK_FRAMES);
-                if let Err(e) = gui.audio_queue_samples(&samples) {
-                    feed_error = Some(e);
-                    break;
-                }
-            }
-        }
-        if let Some(e) = feed_error {
-            eprintln!("waiting music disabled: {e}");
-            gui.audio_stop();
-            jingle = None;
-            jingle_failed = true;
-        }
-
-        // ~256 ms of queued audio makes sleeping out the rest of the
-        // frame safe for the jingle.
+        // Sleep out the rest of the frame.
         let elapsed = frame_start.elapsed().as_secs_f64();
         if elapsed < Gui::FRAME_DURATION {
             std::thread::sleep(Duration::from_secs_f64(Gui::FRAME_DURATION - elapsed));
@@ -252,7 +201,6 @@ fn gui_idle_loop(gui: &mut Gui, default_framebuffer: &ppu::rendering::RawFramebu
     };
 
     // Carry any granted plugin back to `gui_loop` alongside the exit event.
-    gui.audio_stop();
     cfg_select! {
         feature = "plugins" => (ev, gui.take_granted_plugin()),
         _ => ev,
