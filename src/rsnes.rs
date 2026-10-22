@@ -291,10 +291,11 @@ impl RSnesCore {
     pub fn check_hv_irq(&mut self) {
         let v = self.ppu.scanline;
         let h = self.bus.io.htime;
+        let h_target = IRQ_TRIGGER_OFFSET + self.ppu.dot_start_cycle(h);
 
         let target = match self.bus.io.irq_mode() {
             IrqMode::Disabled => return,
-            IrqMode::H => IRQ_TRIGGER_OFFSET + h as u32 * 4,
+            IrqMode::H => h_target,
             IrqMode::V => {
                 if v != self.bus.io.vtime {
                     return;
@@ -308,7 +309,7 @@ impl RSnesCore {
                 if h == 0 {
                     V_IRQ_TRIGGER_CYCLES
                 } else {
-                    IRQ_TRIGGER_OFFSET + h as u32 * 4
+                    h_target
                 }
             }
         };
@@ -709,6 +710,21 @@ mod tests {
         rsnes.bus.io.htime = 100;
 
         tick_core(&mut rsnes, 100 * 4 + IRQ_TRIGGER_OFFSET as u64);
+        assert!(rsnes.has_irq_occured());
+    }
+
+    /// Past the long dots 323 and 327, dot 330 starts 4 cycles after 330 * 4,
+    /// so the H-IRQ fires 4 cycles later too.
+    #[test]
+    fn test_h_irq_after_long_dots() {
+        let mut rsnes = TestRsnesCore::new();
+        rsnes.bus.io.nmitimen = 0b0001_0000;
+        rsnes.bus.io.htime = 330;
+
+        tick_core(&mut rsnes, 330 * 4 + IRQ_TRIGGER_OFFSET as u64);
+        assert!(!rsnes.has_irq_occured());
+
+        tick_core(&mut rsnes, 4);
         assert!(rsnes.has_irq_occured());
     }
 

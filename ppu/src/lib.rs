@@ -21,6 +21,10 @@ pub mod vram;
 /// Two-step byte latch.
 pub mod write_twice;
 
+// Helpers shared by the tests.
+#[cfg(test)]
+mod test_utils;
+
 // re-export the most important types for easy access
 pub use ppu::PPU;
 pub use rendering::Renderer;

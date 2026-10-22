@@ -34,9 +34,10 @@ impl Renderer {
 
         let objsel = ppu.regs.objsel;
         let oamadd = ppu.regs.oamadd;
+        let obj_interlace = ppu.obj_interlace();
 
         let (sprites, _time_over, _range_over) =
-            ppu.oam.eval_sprites_for_scanline(y, objsel, oamadd);
+            ppu.oam.eval_sprites_for_scanline(y, objsel, oamadd, obj_interlace);
 
         // OBJ line: one pixel per column, before comparison with the backgrounds.
         let mut obj_line: [Option<ObjPixel>; SCREEN_WIDTH] = [None; SCREEN_WIDTH];
@@ -54,6 +55,10 @@ impl Renderer {
             // Row within the sprite for this scanline (0..h), with V flip. Rectangular
             // sprites (taller than wide) flip each square half in place, without swapping them.
             let mut sy = (y as u8).wrapping_sub(sprite.y) as usize;
+            // OBJ interlace: field 0 draws the even rows, field 1 the odd rows.
+            if obj_interlace {
+                sy *= 2;
+            }
             if sprite.flip_y {
                 sy = if w == h {
                     h - 1 - sy
@@ -62,6 +67,9 @@ impl Renderer {
                 } else {
                     w + (w - 1) - (sy - w)
                 };
+            }
+            if obj_interlace && ppu.field() {
+                sy = if sprite.flip_y { sy - 1 } else { sy + 1 };
             }
             let tile_row = sy / 8;
             let fine_y = sy % 8;
@@ -141,13 +149,18 @@ impl Renderer {
             }
         }
 
-        // Compare the OBJ line with the backgrounds.
+        // Compare the OBJ line with the backgrounds. Windows apply to the OBJ line, after
+        // sprite vs sprite: a hidden sprite pixel never shows the sprite behind it.
+        let win_main = ppu.regs.tmw & 0x10 != 0;
+        let win_sub = ppu.regs.tsw & 0x10 != 0;
         for (x, pixel) in obj_line.iter().enumerate() {
             if let Some((color, prio, obj_math)) = *pixel {
-                if to_main {
+                // If the window hides this pixel, skip it on the screen(s) where TMW/TSW apply the window.
+                let masked = (win_main || win_sub) && ppu.regs.obj_window_masked(x);
+                if to_main && !(win_main && masked) {
                     self.deposit_main(x, color, prio, Layer::Obj, obj_math);
                 }
-                if to_sub {
+                if to_sub && !(win_sub && masked) {
                     self.deposit_sub(x, color, prio, Layer::Obj, obj_math);
                 }
             }
@@ -157,24 +170,13 @@ impl Renderer {
 
 #[cfg(test)]
 mod tests {
-    use crate::constants::SCREEN_WIDTH;
     use crate::ppu::PPU;
     use crate::rendering::renderer::Renderer;
+    use crate::test_utils::{fb_pixel, set_color, write_sprite};
 
     // ============================================================
     // Helpers
     // ============================================================
-
-    // Writes sprite `i`'s table-1 entry (X low, Y, tile, attributes) through $2102-$2104.
-    fn write_sprite(ppu: &mut PPU, i: u16, x: u8, y: u8, tile: u8, attr: u8) {
-        let word = i * 2;
-        ppu.write(0x2102, (word & 0xFF) as u8);
-        ppu.write(0x2103, ((word >> 8) & 0x01) as u8);
-        ppu.write(0x2104, x);
-        ppu.write(0x2104, y);
-        ppu.write(0x2104, tile);
-        ppu.write(0x2104, attr);
-    }
 
     // Writes the first bytes of OAM table 2 (2 bits per sprite: X bit 8, large).
     fn write_oam_high_table(ppu: &mut PPU, bytes: &[u8]) {
@@ -183,12 +185,6 @@ mod tests {
         for &b in bytes {
             ppu.write(0x2104, b);
         }
-    }
-
-    fn set_color(ppu: &mut PPU, entry: u8, color: u16) {
-        ppu.write(0x2121, entry);
-        ppu.write(0x2122, (color & 0xFF) as u8);
-        ppu.write(0x2122, (color >> 8) as u8);
     }
 
     // Mode 1, OBJ only on main, full brightness, all sprites below the screen,
@@ -210,12 +206,6 @@ mod tests {
         }
         set_color(&mut ppu, 129, 0x001F); // CGRAM 128 + palette 0 * 16 + 1
         ppu
-    }
-
-    // RGB of the framebuffer pixel at (x, y).
-    fn fb_pixel(r: &Renderer, x: usize, y: usize) -> (u8, u8, u8) {
-        let i = (y * SCREEN_WIDTH + x) * 3;
-        (r.framebuffer[i], r.framebuffer[i + 1], r.framebuffer[i + 2])
     }
 
     // ============================================================
@@ -353,5 +343,123 @@ mod tests {
         assert_eq!(fb_pixel(&r, 0, 0), black);
         assert_eq!(fb_pixel(&r, 0, 15), red);
         assert_eq!(fb_pixel(&r, 0, 31), black);
+    }
+
+    // ============================================================
+    // OBJ interlace (SETINI bit 1)
+    // ============================================================
+
+    /// With OBJ interlace, field 0 draws the even rows of the sprite and field 1
+    /// the odd rows, and an 8x8 sprite only covers 4 lines.
+    #[test]
+    fn test_obj_interlace_rows_per_field() {
+        let red = Renderer::apply_brightness(0x001F, 15);
+        let black = (0, 0, 0);
+
+        let mut ppu = make_ppu_sprites();
+        ppu.write(0x2133, 0x02); // OBJ interlace
+        // Tile 0: only rows 0 and 7 are opaque.
+        for row in 0..8 {
+            ppu.vram.memory[row] = 0;
+        }
+        ppu.vram.memory[0] = 0x00FF;
+        ppu.vram.memory[7] = 0x00FF;
+        write_sprite(&mut ppu, 0, 0, 0, 0, 0x00); // 8x8 at (0, 0)
+
+        // Field 0, line 0: sprite row 0 (opaque).
+        let mut r = Renderer::new();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 0, 0), red);
+
+        // Field 1, line 0: sprite row 1 (transparent).
+        ppu.frame = 1;
+        let mut r = Renderer::new();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 0, 0), black);
+
+        // Field 1, line 3: sprite row 7 (opaque, last line of the sprite).
+        let mut r = Renderer::new();
+        r.render_scanline(&ppu, 3);
+        assert_eq!(fb_pixel(&r, 0, 3), red);
+
+        // Line 4 is past the half height: nothing drawn.
+        let mut r = Renderer::new();
+        r.render_scanline(&ppu, 4);
+        assert_eq!(fb_pixel(&r, 0, 4), black);
+    }
+
+    /// With OBJ interlace and V flip, field 0 starts from the last row and field 1
+    /// from the row before it.
+    #[test]
+    fn test_obj_interlace_vflip() {
+        let red = Renderer::apply_brightness(0x001F, 15);
+        let black = (0, 0, 0);
+
+        let mut ppu = make_ppu_sprites();
+        ppu.write(0x2133, 0x02); // OBJ interlace
+        // Tile 0: only row 7 is opaque.
+        for row in 0..8 {
+            ppu.vram.memory[row] = 0;
+        }
+        ppu.vram.memory[7] = 0x00FF;
+        write_sprite(&mut ppu, 0, 0, 0, 0, 0x80); // 8x8 at (0, 0), V flip
+
+        // Field 0, line 0: row 7 (opaque).
+        let mut r = Renderer::new();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 0, 0), red);
+
+        // Field 1, line 0: row 6 (transparent).
+        ppu.frame = 1;
+        let mut r = Renderer::new();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 0, 0), black);
+    }
+
+    // ============================================================
+    // Windows
+    // ============================================================
+
+    /// Window 1 on the sprites (WOBJSEL bit 1) hides x 0-3, only with TMW bit 4.
+    #[test]
+    fn test_window_masks_sprites() {
+        let red = Renderer::apply_brightness(0x001F, 15);
+        let black = (0, 0, 0);
+        let mut ppu = make_ppu_sprites();
+        write_sprite(&mut ppu, 0, 0, 0, 0, 0); // 8x8 red at (0, 0)
+        ppu.write(0x2126, 0); // WH0
+        ppu.write(0x2127, 3); // WH1
+        ppu.write(0x2125, 0x02); // WOBJSEL: OBJ window 1 enable
+
+        // Without TMW, nothing is hidden.
+        let mut r = Renderer::new();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 0, 0), red);
+
+        ppu.write(0x212E, 0x10); // TMW: OBJ
+        let mut r = Renderer::new();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 0, 0), black);
+        assert_eq!(fb_pixel(&r, 3, 0), black);
+        assert_eq!(fb_pixel(&r, 4, 0), red);
+    }
+
+    /// The window hides the OBJ line after sprite vs sprite: where the first sprite is
+    /// hidden, the sprite behind it does not show up.
+    #[test]
+    fn test_window_masked_sprite_does_not_show_sprite_behind() {
+        let black = (0, 0, 0);
+        let mut ppu = make_ppu_sprites();
+        set_color(&mut ppu, 145, 0x03E0); // palette 1 color 1 = green
+        write_sprite(&mut ppu, 0, 0, 0, 0, 0x00); // red, in front
+        write_sprite(&mut ppu, 1, 0, 0, 0, 0x02); // green, behind
+        ppu.write(0x2126, 0);
+        ppu.write(0x2127, 3);
+        ppu.write(0x2125, 0x02);
+        ppu.write(0x212E, 0x10);
+
+        let mut r = Renderer::new();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 0, 0), black);
     }
 }

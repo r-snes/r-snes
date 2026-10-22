@@ -119,6 +119,17 @@ impl Layer {
         }
     }
 
+    // BG index of a BG layer (BG1=0..BG4=3).
+    fn bg_index(self) -> usize {
+        match self {
+            Layer::Bg1 => 0,
+            Layer::Bg2 => 1,
+            Layer::Bg3 => 2,
+            Layer::Bg4 => 3,
+            Layer::Obj | Layer::Backdrop => unreachable!("not a BG layer"),
+        }
+    }
+
     // CGADSUB layer-enable bit index (BG1=0..BG4=3, OBJ=4, backdrop=5)
     fn math_bit(self) -> u8 {
         match self {
@@ -174,6 +185,8 @@ pub struct BgParams {
     pub h64: bool,
     /// Tiles are 16x16 (2x2 CHR tiles) instead of 8x8.
     pub tile16: bool,
+    /// Mosaic is enabled for this BG (MOSAIC bits 0-3).
+    pub mosaic: bool,
     /// Z-order of low priority tiles.
     pub z_low: Priority,
     /// Z-order of high priority tiles.
@@ -250,11 +263,6 @@ impl Renderer {
             0 => self.render_scanline_mode0(ppu, y),
             1 => self.render_scanline_mode1(ppu, y),
             _ => self.render_scanline_mode1(ppu, y),
-            // _ => {
-            //     self.render_full_black(y);
-            //     println!("PPU mode {} not implemented", mode);
-            //     return;
-            // }
         }
 
         // Sprites deposit into main_line / sub_line too (gated on TM/TS bit 4).
@@ -276,12 +284,31 @@ impl Renderer {
         let pal_shift = p.bpp.pal_shift();
 
         // y is the framebuffer row (scanline - 1); BG rows are fetched with the scanline number.
-        let py = (y + 1 + p.scroll_y) & (map_h - 1);
+        // Vertical mosaic: every line of a block reads the first line of the block.
+        let mut line = y as isize + 1;
+        if p.mosaic {
+            line -= ppu.mosaic_voffset() as isize;
+        }
+        let py = (line + p.scroll_y as isize).rem_euclid(map_h as isize) as usize;
         let tile_row = py / tile_px;
         let fine_y = py % tile_px;
 
+        // Horizontal mosaic: blocks start at screen x = 0, whatever the scroll.
+        let block = if p.mosaic {
+            ppu.regs.mosaic_size() as usize
+        } else {
+            1
+        };
+
+        // Windows hide pixels on the screens selected by TMW (main) and TSW (sub).
+        let bg = p.layer.bg_index();
+        let win_main = ppu.regs.tmw & (1 << bg) != 0;
+        let win_sub = ppu.regs.tsw & (1 << bg) != 0;
+
         for x in 0..SCREEN_WIDTH {
-            let px = (x + p.scroll_x) & (map_w - 1);
+            // Every pixel of a block shows the first pixel of the block.
+            let src_x = x - x % block;
+            let px = (src_x + p.scroll_x) & (map_w - 1);
             let tile_col = px / tile_px;
             let fine_x = px % tile_px;
 
@@ -338,10 +365,12 @@ impl Renderer {
                 layer: p.layer,
                 obj_math: false,
             };
-            if p.to_main {
+            // A masked pixel is hidden on the screens selected by TMW/TSW.
+            let masked = (win_main || win_sub) && ppu.regs.bg_window_masked(bg, x);
+            if p.to_main && !(win_main && masked) {
                 Self::deposit(&mut self.main_line, x, pixel);
             }
-            if p.to_sub {
+            if p.to_sub && !(win_sub && masked) {
                 Self::deposit(&mut self.sub_line, x, pixel);
             }
         }
@@ -407,30 +436,40 @@ impl Renderer {
         let fixed = ppu.regs.coldata;
         let brightness = ppu.brightness() as u16;
 
-        let clip_mode = (cgwsel >> 6) & 0x03; // 0=never 1=out 2=in 3=always
-        let math_region = (cgwsel >> 4) & 0x03; // 0=always 1=in 2=out 3=never
+        let clip_mode = (cgwsel >> 6) & 0x03; // 0=never 1=outside 2=inside 3=always
+        let math_region = (cgwsel >> 4) & 0x03; // 0=always 1=inside 2=outside 3=never
+
+        // Same table for both settings: true = keep the color / allow math.
+        let region = |mode: u8, inside: bool| match mode {
+            0 => true,
+            1 => inside,
+            2 => !inside,
+            _ => false,
+        };
 
         for x in 0..SCREEN_WIDTH {
             let main = self.main_line[x];
+            let inside = ppu.regs.in_color_window(x);
 
-            // Clip main screen to black. Window-relative cases (1/2) need the
-            // color window -> handled when window masking lands.
-            let force_black = clip_mode == 3;
-            let main_color = if force_black { 0 } else { main.color };
+            // Clip the main screen to black, before color math.
+            let keep_main = region(clip_mode, inside);
+            let main_color = if keep_main { main.color } else { 0 };
 
             // Is color math active on this pixel?
-            let region_ok = math_region != 3; // 1/2 need color window
+            let region_ok = region(math_region, inside);
             let layer_enabled = match main.layer {
                 Layer::Obj => (cgadsub & 0x10 != 0) && main.obj_math,
                 l => cgadsub & (1 << l.math_bit()) != 0,
             };
 
             let out = if region_ok && layer_enabled {
-                let sub = if use_subscreen {
+                let sub_transparent = use_subscreen && self.sub_line[x].layer == Layer::Backdrop;
+                let sub = if use_subscreen && !sub_transparent {
                     self.sub_line[x].color
                 } else {
                     fixed
                 };
+                let half = half && keep_main && !sub_transparent;
                 Self::color_math(main_color, sub, subtract, half)
             } else {
                 main_color
@@ -506,6 +545,7 @@ impl Renderer {
 mod tests {
     use super::*;
     use crate::ppu::PPU;
+    use crate::test_utils::{fb_pixel, set_color};
 
     // ============================================================
     // Helpers
@@ -534,18 +574,6 @@ mod tests {
         ppu.write(0x2100, 0x0F);
         ppu.write(0x2105, 0x01);
         ppu
-    }
-
-    fn set_color(ppu: &mut PPU, entry: u8, color: u16) {
-        ppu.write(0x2121, entry);
-        ppu.write(0x2122, (color & 0xFF) as u8);
-        ppu.write(0x2122, (color >> 8) as u8);
-    }
-
-    // RGB of the framebuffer pixel at (x, y).
-    fn fb_pixel(r: &Renderer, x: usize, y: usize) -> (u8, u8, u8) {
-        let i = (y * SCREEN_WIDTH + x) * 3;
-        (r.framebuffer[i], r.framebuffer[i + 1], r.framebuffer[i + 2])
     }
 
     // BG1 (mode 1, 4bpp): tilemap word 0x0000, CHR word 0x1000, palette 0
@@ -875,9 +903,7 @@ mod tests {
 
     #[test]
     fn test_composite_half() {
-        // main R=8, fixed R=4, BG1 math + half add -> R=6
-        // NOTE: real HW inhibits half against the fixed colour; this asserts
-        // current behaviour (half always applied).
+        // main R=8, fixed R=4, BG1 math + half add -> (8 + 4) / 2 = 6, also against the fixed color
         let got = composite_bg1_with_fixed(0x0008, 0x24, 0x41);
         assert_eq!(got, Renderer::apply_brightness(0x0006, 15));
     }
@@ -964,6 +990,42 @@ mod tests {
         ppu.write(0x212D, 0x00);
         r.render_scanline(&ppu, 0);
         assert_eq!(fb_pixel(&r, 0, 0), Renderer::apply_brightness(0x000C, 15));
+    }
+
+    // Subscreen operand + half: divided by 2 against a sub layer, not against a transparent sub.
+    #[test]
+    fn test_composite_half_skipped_on_transparent_sub() {
+        let mut ppu = make_ppu();
+        ppu.write(0x2132, 0x24); // fixed R=4
+        ppu.write(0x2130, 0x02); // use subscreen
+        ppu.write(0x2131, 0x41); // BG1 math, half add
+
+        // Sub layer R=4 -> (8 + 4) / 2 = 6
+        let mut r = make_renderer();
+        r.deposit_main(0, 0x0008, Priority::Bg1Low, Layer::Bg1, false);
+        r.deposit_sub(0, 0x0004, Priority::Bg2Low, Layer::Bg2, false);
+        r.composite_line(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 0, 0), Renderer::apply_brightness(0x0006, 15));
+
+        // Transparent sub -> fixed R=4, not divided -> 8 + 4 = 12
+        let mut r = make_renderer();
+        r.deposit_main(0, 0x0008, Priority::Bg1Low, Layer::Bg1, false);
+        r.composite_line(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 0, 0), Renderer::apply_brightness(0x000C, 15));
+    }
+
+    // Main pixel clipped to black: math still runs (0 + fixed), not divided by 2.
+    #[test]
+    fn test_composite_half_skipped_when_clipped() {
+        // fixed R=8, half add, always clip -> 0 + 8 = 8 (not 4)
+        let mut r = make_renderer();
+        let mut ppu = make_ppu();
+        ppu.write(0x2132, 0x28); // fixed R=8
+        ppu.write(0x2130, 0xC0); // clip main to black always
+        ppu.write(0x2131, 0x41); // BG1 math, half add
+        r.deposit_main(0, 0x001F, Priority::Bg1Low, Layer::Bg1, false);
+        r.composite_line(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 0, 0), Renderer::apply_brightness(0x0008, 15));
     }
 
     // ============================================================
@@ -1229,5 +1291,389 @@ mod tests {
         r.render_scanline(&ppu, 0);
         assert_eq!(fb_pixel(&r, 0, 0), red);
         assert_eq!(fb_pixel(&r, 8, 0), black);
+    }
+
+    // ============================================================
+    // Mosaic
+    // ============================================================
+
+    // BG1 in mode 1: tilemap 0x0000 (all tile 0), CHR 0x1000, color 1 = red.
+    // Tile 0 uses `row_data` on each of its 8 rows (plane 0).
+    fn setup_bg1_mosaic(ppu: &mut PPU, rows: [u16; 8]) {
+        ppu.write(0x2107, 0x00);
+        let nba = (ppu.regs.bg12nba & 0xF0) | 0x01;
+        ppu.write(0x210B, nba);
+        ppu.write(0x212C, 0x01);
+        for (row, &data) in rows.iter().enumerate() {
+            ppu.vram.memory[0x1000 + row] = data;
+        }
+        set_color(ppu, 0x01, 0x001F);
+    }
+
+    // Each block shows its first pixel: with size 4, x 0-3 copy x 0 and x 4-7 copy x 4.
+    #[test]
+    fn test_mosaic_horizontal_blocks() {
+        let red = Renderer::apply_brightness(0x001F, 15);
+        let black = (0, 0, 0);
+        let mut ppu = make_ppu();
+        setup_bg1_mosaic(&mut ppu, [0x0080; 8]); // only x = 0 of each tile is opaque
+
+        // No mosaic: only x = 0 and x = 8.
+        let mut r = make_renderer();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 0, 0), red);
+        assert_eq!(fb_pixel(&r, 1, 0), black);
+
+        // Size 4 on BG1: x 0-3 and 8-11 are red, x 4-7 is transparent.
+        ppu.write(0x2106, 0x31);
+        let mut r = make_renderer();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 1, 0), red);
+        assert_eq!(fb_pixel(&r, 3, 0), red);
+        assert_eq!(fb_pixel(&r, 4, 0), black);
+        assert_eq!(fb_pixel(&r, 9, 0), red);
+
+        // Size 4 on BG2 only: BG1 is not affected.
+        ppu.write(0x2106, 0x32);
+        let mut r = make_renderer();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 1, 0), black);
+    }
+
+    // Blocks start at screen x = 0, not at BG x = 0: the scroll moves the content, not the blocks.
+    #[test]
+    fn test_mosaic_blocks_follow_the_screen() {
+        let red = Renderer::apply_brightness(0x001F, 15);
+        let black = (0, 0, 0);
+        let mut ppu = make_ppu();
+        setup_bg1_mosaic(&mut ppu, [0x0080; 8]);
+        ppu.write(0x210D, 0x07); // HOFS = 7: BG x 8 (opaque) is on screen x 1
+        ppu.write(0x210D, 0x00);
+
+        let mut r = make_renderer();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 1, 0), red);
+
+        // Block 0-3 copies screen x 0 (BG x 7, transparent).
+        ppu.write(0x2106, 0x31);
+        let mut r = make_renderer();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 1, 0), black);
+    }
+
+    // Each line of a block reads the first line of the block (line - voffset).
+    #[test]
+    fn test_mosaic_vertical_uses_block_first_line() {
+        let red = Renderer::apply_brightness(0x001F, 15);
+        let black = (0, 0, 0);
+        let mut ppu = make_ppu();
+        let mut rows = [0u16; 8];
+        rows[1] = 0x00FF; // only BG row 1 is opaque
+        setup_bg1_mosaic(&mut ppu, rows);
+
+        // Row 1 (scanline 2) shows BG row 2 without mosaic.
+        let mut r = make_renderer();
+        r.render_scanline(&ppu, 1);
+        assert_eq!(fb_pixel(&r, 0, 1), black);
+
+        // Size 4, counter 3: 1 line into the block, so scanline 2 reads BG row 1.
+        ppu.write(0x2106, 0x31);
+        ppu.mosaic_vcounter = 3;
+        let mut r = make_renderer();
+        r.render_scanline(&ppu, 1);
+        assert_eq!(fb_pixel(&r, 0, 1), red);
+    }
+
+    // ============================================================
+    // Windows
+    // ============================================================
+
+    // BG1 red on the main screen, window 1 from x = 10 to 20, applied on main (TMW).
+    fn make_ppu_window1(w12sel: u8) -> PPU {
+        let mut ppu = make_ppu();
+        setup_bg1_uniform(&mut ppu, 0x001F);
+        ppu.write(0x212C, 0x01); // TM: BG1
+        ppu.write(0x2126, 10); // WH0
+        ppu.write(0x2127, 20); // WH1
+        ppu.write(0x2123, w12sel);
+        ppu.write(0x212E, 0x01); // TMW: BG1
+        ppu
+    }
+
+    // Window 1 enabled on BG1 hides x 10-20, edges included.
+    #[test]
+    fn test_window1_hides_inside() {
+        let red = Renderer::apply_brightness(0x001F, 15);
+        let black = (0, 0, 0);
+        let ppu = make_ppu_window1(0x02); // BG1: window 1 enable
+
+        let mut r = make_renderer();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 9, 0), red);
+        assert_eq!(fb_pixel(&r, 10, 0), black);
+        assert_eq!(fb_pixel(&r, 20, 0), black);
+        assert_eq!(fb_pixel(&r, 21, 0), red);
+    }
+
+    // Inverted, window 1 hides everything outside x 10-20.
+    #[test]
+    fn test_window1_inverted_hides_outside() {
+        let red = Renderer::apply_brightness(0x001F, 15);
+        let black = (0, 0, 0);
+        let ppu = make_ppu_window1(0x03); // BG1: window 1 enable + invert
+
+        let mut r = make_renderer();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 9, 0), black);
+        assert_eq!(fb_pixel(&r, 15, 0), red);
+        assert_eq!(fb_pixel(&r, 21, 0), black);
+    }
+
+    // Without TMW, or without the enable bit, nothing is hidden.
+    #[test]
+    fn test_window1_needs_tmw_and_enable() {
+        let red = Renderer::apply_brightness(0x001F, 15);
+
+        let mut ppu = make_ppu_window1(0x02);
+        ppu.write(0x212E, 0x00); // TMW off
+        let mut r = make_renderer();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 15, 0), red);
+
+        let ppu = make_ppu_window1(0x01); // invert only, window disabled
+        let mut r = make_renderer();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 15, 0), red);
+    }
+
+    // With left > right the window is empty: nothing inside, everything outside.
+    #[test]
+    fn test_window1_empty_when_left_after_right() {
+        let red = Renderer::apply_brightness(0x001F, 15);
+        let black = (0, 0, 0);
+
+        let mut ppu = make_ppu_window1(0x02);
+        ppu.write(0x2126, 20); // WH0
+        ppu.write(0x2127, 10); // WH1
+        let mut r = make_renderer();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 15, 0), red);
+
+        ppu.write(0x2123, 0x03); // inverted: everything hidden
+        let mut r = make_renderer();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 15, 0), black);
+    }
+
+    // TSW applies the window on the sub screen only; the main screen is untouched.
+    #[test]
+    fn test_window1_on_sub_screen() {
+        let mut ppu = make_ppu_window1(0x02);
+        ppu.write(0x212D, 0x01); // TS: BG1
+        ppu.write(0x212E, 0x00); // TMW off
+        ppu.write(0x212F, 0x01); // TSW: BG1
+
+        let mut r = make_renderer();
+        r.render_scanline_mode1(&ppu, 0);
+        assert!(r.main_line[15].layer == Layer::Bg1);
+        assert!(r.sub_line[15].layer == Layer::Backdrop);
+        assert!(r.sub_line[9].layer == Layer::Bg1);
+    }
+
+    // Each BG has its own nibble: W12SEL bits 4-7 are BG2, W34SEL holds BG3 and BG4.
+    #[test]
+    fn test_window_sel_per_bg() {
+        let mut ppu = make_ppu();
+        ppu.write(0x2126, 10);
+        ppu.write(0x2127, 20);
+
+        ppu.write(0x2123, 0x20); // BG2: window 1 enable
+        assert!(!ppu.regs.bg_window_masked(0, 15));
+        assert!(ppu.regs.bg_window_masked(1, 15));
+
+        ppu.write(0x2124, 0x32); // BG3: enable, BG4: enable + invert
+        assert!(ppu.regs.bg_window_masked(2, 15));
+        assert!(!ppu.regs.bg_window_masked(3, 15));
+        assert!(ppu.regs.bg_window_masked(3, 25));
+    }
+
+    // Window 2 alone (W12SEL bit 3) hides x 30-40.
+    #[test]
+    fn test_window2_hides_inside() {
+        let red = Renderer::apply_brightness(0x001F, 15);
+        let black = (0, 0, 0);
+        let mut ppu = make_ppu_window1(0x08); // BG1: window 2 enable only
+        ppu.write(0x2128, 30); // WH2
+        ppu.write(0x2129, 40); // WH3
+
+        let mut r = make_renderer();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 15, 0), red); // window 1 is not enabled
+        assert_eq!(fb_pixel(&r, 29, 0), red);
+        assert_eq!(fb_pixel(&r, 30, 0), black);
+        assert_eq!(fb_pixel(&r, 40, 0), black);
+        assert_eq!(fb_pixel(&r, 41, 0), red);
+    }
+
+    // With both windows enabled, WBGLOG combines them: window 1 is 10-20, window 2 is 15-30.
+    #[test]
+    fn test_window_logic() {
+        let mut ppu = make_ppu();
+        ppu.write(0x2126, 10);
+        ppu.write(0x2127, 20);
+        ppu.write(0x2128, 15);
+        ppu.write(0x2129, 30);
+        ppu.write(0x2123, 0x0A); // BG1: window 1 + window 2 enable
+
+        // (WBGLOG, hidden at x = 5 / 12 / 17 / 25)
+        let cases = [
+            (0x00, [false, true, true, true]),   // OR
+            (0x01, [false, false, true, false]), // AND
+            (0x02, [false, true, false, true]),  // XOR
+            (0x03, [true, false, true, false]),  // XNOR
+        ];
+        for (wbglog, expected) in cases {
+            ppu.write(0x212A, wbglog);
+            for (x, hidden) in [5, 12, 17, 25].into_iter().zip(expected) {
+                assert_eq!(
+                    ppu.regs.bg_window_masked(0, x),
+                    hidden,
+                    "WBGLOG {wbglog:#04X}, x={x}"
+                );
+            }
+        }
+    }
+
+    // Each BG has its own 2 bits in WBGLOG: BG2 uses bits 2-3.
+    #[test]
+    fn test_window_logic_per_bg() {
+        let mut ppu = make_ppu();
+        ppu.write(0x2126, 10);
+        ppu.write(0x2127, 20);
+        ppu.write(0x2128, 15);
+        ppu.write(0x2129, 30);
+        ppu.write(0x2123, 0xAA); // BG1 and BG2: window 1 + window 2 enable
+        ppu.write(0x212A, 0x04); // BG1: OR, BG2: AND
+
+        assert!(ppu.regs.bg_window_masked(0, 12)); // OR: in window 1
+        assert!(!ppu.regs.bg_window_masked(1, 12)); // AND: not in window 2
+        assert!(ppu.regs.bg_window_masked(1, 17)); // AND: in both
+    }
+
+    // ============================================================
+    // Color window
+    // ============================================================
+
+    // BG1 red on the main screen, color window = window 1 from x = 10 to 20.
+    fn make_ppu_color_window(cgwsel: u8) -> PPU {
+        let mut ppu = make_ppu();
+        setup_bg1_uniform(&mut ppu, 0x001F);
+        ppu.write(0x212C, 0x01); // TM: BG1
+        ppu.write(0x2126, 10); // WH0
+        ppu.write(0x2127, 20); // WH1
+        ppu.write(0x2125, 0x20); // WOBJSEL: color window uses window 1
+        ppu.write(0x2130, cgwsel);
+        ppu
+    }
+
+    // CGWSEL bits 6-7 = 1: black outside the color window.
+    #[test]
+    fn test_color_window_clip_outside() {
+        let red = Renderer::apply_brightness(0x001F, 15);
+        let black = (0, 0, 0);
+        let ppu = make_ppu_color_window(0x40);
+
+        let mut r = make_renderer();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 9, 0), black);
+        assert_eq!(fb_pixel(&r, 10, 0), red);
+        assert_eq!(fb_pixel(&r, 20, 0), red);
+        assert_eq!(fb_pixel(&r, 21, 0), black);
+    }
+
+    // CGWSEL bits 6-7 = 2: black inside the color window.
+    #[test]
+    fn test_color_window_clip_inside() {
+        let red = Renderer::apply_brightness(0x001F, 15);
+        let black = (0, 0, 0);
+        let ppu = make_ppu_color_window(0x80);
+
+        let mut r = make_renderer();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 9, 0), red);
+        assert_eq!(fb_pixel(&r, 15, 0), black);
+        assert_eq!(fb_pixel(&r, 21, 0), red);
+    }
+
+    // With no window enabled, the color window is empty: "outside" is the whole line.
+    #[test]
+    fn test_color_window_clip_without_window() {
+        let red = Renderer::apply_brightness(0x001F, 15);
+        let black = (0, 0, 0);
+
+        let mut ppu = make_ppu_color_window(0x40);
+        ppu.write(0x2125, 0x00); // WOBJSEL: no window
+        let mut r = make_renderer();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 15, 0), black);
+
+        ppu.write(0x2130, 0x80);
+        let mut r = make_renderer();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 15, 0), red);
+    }
+
+    // CGWSEL bits 4-5 limit color math to inside (1) or outside (2) the color window, or turn it off (3).
+    #[test]
+    fn test_color_window_math_region() {
+        let plain = Renderer::apply_brightness(0x0008, 15); // R=8
+        let added = Renderer::apply_brightness(0x000C, 15); // R=8 + fixed R=4
+
+        let mut ppu = make_ppu();
+        ppu.write(0x2126, 10); // WH0
+        ppu.write(0x2127, 20); // WH1
+        ppu.write(0x2125, 0x20); // WOBJSEL: color window uses window 1
+        ppu.write(0x2132, 0x24); // fixed R=4
+        ppu.write(0x2131, 0x01); // BG1 math, add
+
+        // (CGWSEL, expected at x = 5 / 15)
+        let cases = [
+            (0x10, [plain, added]), // inside
+            (0x20, [added, plain]), // outside
+            (0x30, [plain, plain]), // never
+        ];
+        for (cgwsel, expected) in cases {
+            ppu.write(0x2130, cgwsel);
+            let mut r = make_renderer();
+            for x in [5, 15] {
+                r.deposit_main(x, 0x0008, Priority::Bg1Low, Layer::Bg1, false);
+            }
+            r.composite_line(&ppu, 0);
+            for (x, want) in [5, 15].into_iter().zip(expected) {
+                assert_eq!(fb_pixel(&r, x, 0), want, "CGWSEL {cgwsel:#04X}, x={x}");
+            }
+        }
+    }
+
+    // The color window reads WOBJSEL bits 4-7 and WOBJLOG bits 2-3, not the OBJ bits.
+    #[test]
+    fn test_color_window_uses_its_own_bits() {
+        let mut ppu = make_ppu();
+        ppu.write(0x2126, 10); // WH0
+        ppu.write(0x2127, 20); // WH1
+        ppu.write(0x2128, 15); // WH2
+        ppu.write(0x2129, 30); // WH3
+
+        ppu.write(0x2125, 0xA0); // color: window 1 + window 2 enable
+        ppu.write(0x212B, 0x04); // OBJ: OR, color: AND
+        assert!(!ppu.regs.in_color_window(12)); // only in window 1
+        assert!(ppu.regs.in_color_window(17)); // in both
+
+        ppu.write(0x212B, 0x01); // OBJ: AND, color: OR
+        assert!(ppu.regs.in_color_window(12));
+
+        ppu.write(0x2125, 0x30); // color: window 1 enable + invert
+        assert!(ppu.regs.in_color_window(5));
+        assert!(!ppu.regs.in_color_window(15));
     }
 }
