@@ -1,8 +1,14 @@
-#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+// #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
+#![cfg_attr(
+    all(windows, not(debug_assertions), not(feature = "console")),
+    windows_subsystem = "windows"
+)]
 //! This is the main entry point for the R-SNES emulator.
 //! It contains the main loop, which handles GUI events,
 //! emulation updates, and audio output.
 
+mod audio;
 mod dma;
 mod gui;
 mod rsnes;
@@ -11,6 +17,7 @@ mod rsnes;
 mod test_utils;
 
 use crate::{
+    audio::GameAudio,
     gui::{Gui, GuiFrameData, RSnesEvent, SnesButton},
     rsnes::{RSnesCore, RSnesEmu},
 };
@@ -47,13 +54,14 @@ fn gui_emu_loop(
     let mut frame_nb = 0_u64;
     let exec_start = Instant::now();
 
+    // Close any overlays that might have been left open from the previous window.
+    gui.close_overlays();
+
     // Snapshot the ROM header once — it never changes while the ROM is loaded,
     // so there's no reason to rebuild it every frame.
     let rom_info = rsnes.rom_info();
     let title = rom_info.header.title.trim();
     gui.set_rom_title(if title.is_empty() { None } else { Some(title) });
-    #[cfg(feature = "plugins")]
-    gui.set_plugin_loading(false);
 
     let mut emu = cfg_select! {
         feature = "plugins" => match RSnesEmu::new_with_plugin(rsnes, plugin) {
@@ -66,66 +74,43 @@ fn gui_emu_loop(
         _ => RSnesEmu::new(rsnes),
     };
 
-    /// Audio frames (32 kHz stereo pairs) to keep queued on the device:
-    /// ~64 ms, about four video frames. Enough cushion that one slow frame
-    /// never empties the queue, small enough to keep input-to-sound
-    /// latency low.
-    const TARGET_QUEUED_FRAMES: u32 = 2_048;
-    /// The DSP's native output rate; queued frames / this = seconds queued.
-    const AUDIO_RATE_HZ: f64 = 32_000.0;
-    /// Longest single pacing sleep, so input and the window stay responsive
-    /// even if the queue somehow grows far past the target.
-    const MAX_PACING_SLEEP: Duration = Duration::from_millis(50);
-
-    let mut audio_failed = false;
-    // Playback starts paused and only begins once TARGET_QUEUED_FRAMES are
-    // queued, so the device never starts from an empty queue.
-    let mut audio_playing = false;
+    let mut audio = GameAudio::new();
+    // Paused by the user.
+    let mut paused = false;
 
     let closing_ev = 'emu_loop: loop {
-        let deadline = Instant::now() + Duration::from_secs_f64(Gui::FRAME_DURATION);
+        let frame_start = Instant::now();
+
+        // Emulation also stands still while a menu is open, so the game
+        // doesn't carry on unattended. The last frame stays on screen, and
+        // the device is paused with its queue intact, so resuming picks up
+        // exactly where the sound left off.
+        let running = !paused && !gui.menu_open();
+        audio.set_running(gui, running);
 
         // run master cycles until the PPU completes a frame
         let curr_frame = emu.core_mut().ppu.frame;
-        while emu.core_mut().ppu.frame == curr_frame {
+        while running && emu.core_mut().ppu.frame == curr_frame {
             cfg_select! {
                 feature = "plugins" => gui.unwrap_result(emu.update()),
                 _ => emu.update(),
             }
         }
 
-        // Drain whatever audio the real hardware produced this frame and
-        // queue it straight through.
-        if !audio_failed {
-            let samples = emu.core_mut().apu.drain_samples();
-            if !samples.is_empty()
-                && let Err(e) = gui.audio_queue_samples(&samples)
-            {
-                eprintln!("audio output disabled: {e}");
-                gui.audio_stop();
-                audio_failed = true;
-            }
+        if running {
+            audio.queue_frame(gui, &mut emu);
         }
 
-        // Start playback once the cushion is built. If the queue ever runs
-        // dry anyway (a long stall), pause and rebuild the cushion rather
-        // than letting SDL alternate between sound and silence.
-        if !audio_failed {
-            let queued = gui.audio_buffered_frames();
-            if !audio_playing && queued >= TARGET_QUEUED_FRAMES {
-                gui.audio_play();
-                audio_playing = true;
-            } else if audio_playing && queued == 0 {
-                gui.audio_stop();
-                audio_playing = false;
-            }
-        }
-
+        #[cfg(feature = "plugins")]
+        let plugin_loaded = emu.plugin_mut().is_some();
         let emu_mut = emu.core_mut();
         let events = gui.update(
             emu_mut.ppu_renderer.presented(),
             GuiFrameData {
                 rom_info: Some(&rom_info),
+                paused,
+                #[cfg(feature = "plugins")]
+                plugin_loaded,
             },
         );
         drop(emu_mut);
@@ -134,11 +119,11 @@ fn gui_emu_loop(
             match state_event {
                 RSnesEvent::Quit => break 'emu_loop Some(RSnesEvent::Quit),
                 RSnesEvent::Close => break 'emu_loop None,
+                RSnesEvent::LoadRom { path } => break 'emu_loop Some(RSnesEvent::LoadRom { path }),
+                RSnesEvent::TogglePause => paused = !paused,
                 RSnesEvent::Reset => {
                     emu.core_mut().reset();
-                    gui.audio_stop();
-                    gui.audio_play();
-                    audio_failed = false;
+                    audio.reset(gui);
                 }
                 RSnesEvent::ButtonDown(button) => {
                     set_button(&mut emu, button, true);
@@ -153,36 +138,20 @@ fn gui_emu_loop(
                         gui.unwrap_result(p.run_default())
                     }
                 }
-
-                e => println!("ignored event: {e:?}"),
             }
         }
 
-        // Pace on the audio queue: the sound device consumes exactly 32 kHz,
-        // so letting it set the speed keeps emulation in step with real
-        // time and absorbs the 60.0988 Hz (SNES) vs 60 Hz mismatch. Sleep
-        // only for the audio queued beyond the target; at or below it, go
-        // straight to the next frame. Without audio, fall back to the
-        // fixed frame deadline.
-        let sleep = if audio_failed {
-            deadline.saturating_duration_since(Instant::now())
-        } else if !audio_playing {
-            Duration::ZERO // still building the cushion: run flat out
-        } else {
-            let excess = gui.audio_buffered_frames().saturating_sub(TARGET_QUEUED_FRAMES);
-            Duration::from_secs_f64(excess as f64 / AUDIO_RATE_HZ).min(MAX_PACING_SLEEP)
-        };
+        let sleep = audio.pacing_sleep(gui, running, frame_start);
         if !sleep.is_zero() {
             std::thread::sleep(sleep);
         }
         frame_nb += 1;
     };
 
-    if !audio_failed {
-        // Pause and discard anything still queued, whether or not
-        // playback had started yet.
-        gui.audio_stop();
-    }
+    // Leave no game overlays behind.
+    gui.close_overlays();
+
+    audio.stop(gui);
 
     #[cfg(feature = "plugins")]
     if let Some(p) = emu.plugin_mut() {
@@ -204,15 +173,11 @@ fn gui_emu_loop(
 /// swallowed here.
 fn gui_idle_loop(gui: &mut Gui, default_framebuffer: &ppu::rendering::RawFramebuffer) -> IdleExit {
     gui.set_rom_title(None);
-    #[cfg(feature = "plugins")]
-    gui.set_plugin_loading(true);
 
     let ev = loop {
         let frame_start = Instant::now();
 
-        // Render the logo + overlays; this also polls input (routed
-        // through egui first). No ROM loaded, so no rom_info to show -
-        // the overlay will say so if the user opens it.
+        // Render the logo + overlays; this also polls input (routed through egui first).
         let events = gui.update(default_framebuffer, GuiFrameData::default());
 
         let mut terminal = None;
