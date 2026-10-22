@@ -48,22 +48,27 @@ pub enum BitDepth {
     Two,
     /// 4 bits per pixel (16 colors per palette).
     Four,
+    /// 8 bits per pixel (256 colors, no palette).
+    Eight,
 }
 
 impl BitDepth {
-    // Words per tile in VRAM: 2bpp = 8, 4bpp = 16.
+    // Words per tile in VRAM: 2bpp = 8, 4bpp = 16, 8bpp = 32.
     fn tile_words(self) -> usize {
         match self {
             BitDepth::Two => 8,
             BitDepth::Four => 16,
+            BitDepth::Eight => 32,
         }
     }
 
-    // Palette block shift: 2bpp = 4 colours (shift 2), 4bpp = 16 colours (shift 4).
-    fn pal_shift(self) -> u8 {
+    // CGRAM offset of tilemap palette `palette_num`: 2bpp = 4 colors per palette, 4bpp = 16.
+    // 8bpp tiles use all 256 colors: the palette bits are ignored.
+    fn palette_offset(self, palette_num: u8) -> u8 {
         match self {
-            BitDepth::Two => 2,
-            BitDepth::Four => 4,
+            BitDepth::Two => palette_num << 2,
+            BitDepth::Four => palette_num << 4,
+            BitDepth::Eight => 0,
         }
     }
 }
@@ -240,6 +245,7 @@ impl Renderer {
         match ppu.regs.bg_mode() {
             0 => self.render_scanline_mode0(ppu, y),
             1 => self.render_scanline_mode1(ppu, y),
+            3 => self.render_scanline_mode3(ppu, y),
             _ => self.render_scanline_mode1(ppu, y),
         }
 
@@ -259,7 +265,6 @@ impl Renderer {
         let screens_wide = if p.w64 { 2 } else { 1 };
 
         let tile_words = p.bpp.tile_words();
-        let pal_shift = p.bpp.pal_shift();
 
         // y is the framebuffer row (scanline - 1); BG rows are fetched with the scanline number.
         // Vertical mosaic: every line of a block reads the first line of the block.
@@ -326,6 +331,12 @@ impl Renderer {
                     fx & 7,
                     fy & 7,
                 ),
+                BitDepth::Eight => Self::decode_8bpp_tile_pixel_from(
+                    &ppu.vram.memory,
+                    tile_word_base,
+                    fx & 7,
+                    fy & 7,
+                ),
             };
 
             // Transparent pixel -> do nothing
@@ -333,7 +344,7 @@ impl Renderer {
                 continue;
             }
 
-            let palette_entry = p.palette_base + (palette_num << pal_shift) + color_index;
+            let palette_entry = p.palette_base + p.bpp.palette_offset(palette_num) + color_index;
             let color = ppu.cgram.read(palette_entry);
             let prio = if priority { p.z_high } else { p.z_low };
 
@@ -756,8 +767,7 @@ mod tests {
             *b = 0xFF;
         }
         let ppu = make_ppu_with_mode(1, true, 15);
-        renderer.render_scanline(&ppu, 1); // blank scanline 1
-                                           // Scanline 0 must be untouched
+        renderer.render_scanline(&ppu, 1); // blank scanline 1, scanline 0 must be untouched
         assert_eq!(renderer.framebuffer[0], 0xFF);
     }
 
