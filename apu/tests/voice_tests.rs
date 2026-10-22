@@ -85,7 +85,7 @@ fn test_brr_default_all_zero() {
     assert_eq!(brr.nibble_idx, 0, "nibble_idx must be 0");
     assert_eq!(brr.prev1, 0, "prev1 must be 0");
     assert_eq!(brr.prev2, 0, "prev2 must be 0");
-    assert_eq!(brr.loop_addr, 0, "loop_addr must be 0");
+    assert!(!brr.block_end, "block_end must be false");
     assert_eq!(
         brr.buffer_fill, 0,
         "buffer_fill must be 0 (no block decoded)"

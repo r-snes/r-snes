@@ -417,9 +417,10 @@ impl Dsp {
     ///
     /// Marks the voice active, resets all playback state, and starts the
     /// 5-sample key-on delay (see `kon_delay`).
-    /// The actual BRR start/loop addresses are read from the DIR table
-    /// on the first call to `step()` after key-on, when we have access
-    /// to APU RAM.
+    /// The BRR start address is read from the DIR table on the first call
+    /// to `step()` after key-on, when we have access to APU RAM. The loop
+    /// address is not read here at all: it is fetched each time an end
+    /// block is played through, using the DIR/SRCN values at that moment.
     fn key_on_voice(&mut self, v: usize) {
         let voice = &mut self.voices[v];
         voice.key_on = true;
@@ -436,7 +437,7 @@ impl Dsp {
         voice.brr.prev1 = 0;
         voice.brr.prev2 = 0;
         voice.brr.buffer_fill = 0;
-        voice.brr.loop_addr = 0;
+        voice.brr.block_end = false;
 
         // Reset pitch counter
         voice.pitch_counter = 0;

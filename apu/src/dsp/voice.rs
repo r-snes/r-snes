@@ -81,20 +81,12 @@ impl Voice {
             return;
         }
 
-        // 2. Resolve DIR table on first tick after key-on.
-        // buffer_fill == 0 means no block has been decoded yet.
+        // 2. Resolve the start address on the first tick after key-on.
+        // buffer_fill == 0 means no block has been decoded yet, and
+        // brr.addr still holds the DIR entry address set by key_on_voice.
         if self.brr.buffer_fill == 0 {
-            let dir_entry = self.brr.addr;
-
-            let start_lo = ram_read8(ram, dir_entry) as u16;
-            let start_hi = ram_read8(ram, dir_entry + 1) as u16;
-            let loop_lo = ram_read8(ram, dir_entry + 2) as u16;
-            let loop_hi = ram_read8(ram, dir_entry + 3) as u16;
-
-            self.brr.addr = (start_hi << 8) | start_lo;
-            self.brr.loop_addr = (loop_hi << 8) | loop_lo;
-
-            self.decode_next_block(i, ram, registers);
+            self.brr.addr = read_le16(ram, self.brr.addr);
+            self.decode_current_block(i, ram, registers);
         }
 
         // 3. Pitch counter advance.
@@ -127,7 +119,7 @@ impl Voice {
 
             if self.brr.nibble_idx >= self.brr.buffer_fill {
                 self.brr.nibble_idx = 0;
-                self.decode_next_block(i, ram, registers);
+                self.advance_block(i, ram, registers);
                 if !self.key_on {
                     break;
                 }
@@ -176,28 +168,52 @@ impl Voice {
         out.clamp(i16::MIN as i32, i16::MAX as i32) as i16
     }
 
-    /// Decode the next 9-byte BRR block and advance the BRR address.
+    /// Move past the block that has just been played and decode the next.
     ///
-    /// Handles end/loop flags:
-    /// - end=true,  loop=true  → jump to loop_addr and continue
-    /// - end=true,  loop=false → mute the voice immediately
-    /// - end=false             → advance address by 9 bytes
+    /// - previous block had no end flag → the next block is 9 bytes on
+    /// - previous block had the end flag → jump to the loop pointer, read
+    ///   from the DIR table now, with the *current* DIR ($5D) and SRCN
+    ///   ($x4) register values
+    ///
+    /// Reading the loop pointer here rather than caching it at key-on is
+    /// what lets a driver switch loop points by rewriting SRCN (or DIR)
+    /// while a note is playing, as on hardware (blargg's SPC_DSP reads the
+    /// pointer every sample and applies it when the end block is passed;
+    /// Mesen2 does the same).
+    fn advance_block(&mut self, i: usize, ram: &RawARAM, registers: &mut [u8; 128]) {
+        self.brr.addr = if self.brr.block_end {
+            let dir = registers[0x5D] as u16;
+            let srcn = registers[(i << 4) | 0x4] as u16;
+            let entry = dir.wrapping_mul(0x100).wrapping_add(srcn * 4);
+            read_le16(ram, entry.wrapping_add(2))
+        } else {
+            self.brr.addr.wrapping_add(9)
+        };
+        self.decode_current_block(i, ram, registers);
+    }
+
+    /// Decode the 9-byte BRR block at `brr.addr` into `sample_buffer`.
+    ///
+    /// The address is not advanced here; `advance_block` does that once
+    /// the block has been played through. On an end block:
+    /// - loop=true  → keep playing; `advance_block` will jump to the loop
+    ///   pointer afterwards
+    /// - loop=false → mute the voice immediately
     ///
     /// Sets bit `i` of `registers[0x7C]` (ENDX) when an end block is reached.
-    fn decode_next_block(&mut self, i: usize, ram: &RawARAM, registers: &mut [u8; 128]) {
+    fn decode_current_block(&mut self, i: usize, ram: &RawARAM, registers: &mut [u8; 128]) {
         let (samples, end, do_loop) =
             decode_brr_block(ram, self.brr.addr, &mut self.brr.prev1, &mut self.brr.prev2);
 
         self.brr.sample_buffer = samples;
         self.brr.buffer_fill = 16;
         self.brr.nibble_idx = 0;
+        self.brr.block_end = end;
 
         if end {
             registers[0x7C] |= 1u8 << i;
 
-            if do_loop {
-                self.brr.addr = self.brr.loop_addr;
-            } else {
+            if !do_loop {
                 // Real hardware does NOT fade this out via a normal
                 // release: hitting an end block with the loop flag clear
                 // forces the envelope to 0 immediately (a hard mute), not
@@ -211,8 +227,13 @@ impl Voice {
                 self.adsr.envelope_level = 0;
                 self.adsr.envelope_phase = EnvelopePhase::Off;
             }
-        } else {
-            self.brr.addr = self.brr.addr.wrapping_add(9);
         }
     }
+}
+
+/// Read a little-endian 16-bit pointer from APU RAM, wrapping at $FFFF.
+fn read_le16(ram: &RawARAM, addr: u16) -> u16 {
+    let lo = ram_read8(ram, addr) as u16;
+    let hi = ram_read8(ram, addr.wrapping_add(1)) as u16;
+    (hi << 8) | lo
 }

@@ -15,8 +15,8 @@ pub struct Brr {
     /// Sample before prev1 (p2 in filter equations).
     pub prev2: i16,
 
-    /// Loop start address (from the sample directory table).
-    pub loop_addr: u16,
+    /// Whether the block currently in `sample_buffer` had its end flag set.
+    pub block_end: bool,
 
     /// Decoded sample buffer: holds all 16 samples from the current block.
     pub sample_buffer: [i16; 16],
@@ -64,51 +64,60 @@ pub(super) const GAUSS: [i16; 512] = [
     1734, 1741, 1748, 1755, 1762, 1769, 1777, 1784, 1791, 1798, 1805, 1812, 1819, 1826, 1833,
 ];
 
+/// The BRR prediction filter, at the decoder's internal 15-bit scale.
+///
+/// `p1` and `p2` are the two previous samples *at 15-bit scale*, i.e. the
+/// stored 16-bit samples shifted right by one (`stored >> 1`). Returns the
+/// amount to add to the scaled nibble.
+#[inline]
+pub fn brr_filter(filter: u8, p1: i32, p2: i32) -> i32 {
+    match filter & 3 {
+        0 => 0,
+        // 15/16
+        1 => p1 + ((-p1) >> 4),
+        // 61/32 * p1 - 15/16 * p2
+        2 => (p1 << 1) + ((-(p1 * 3)) >> 5) - p2 + (p2 >> 4),
+        // 115/64 * p1 - 13/16 * p2
+        _ => (p1 << 1) + ((-(p1 * 13)) >> 6) - p2 + ((p2 * 3) >> 4),
+    }
+}
+
 /// Decode one 4-bit BRR nibble into a 16-bit PCM sample.
 ///
+/// `prev1` / `prev2` are the two previously *decoded* samples, exactly as
+/// this function returned them (16-bit stored scale).
+///
 /// Hardware steps:
-///   1. Sign-extend nibble from 4 bits to i16
-///   2. Scale by shift: arithmetically shift left so the value is
-///      placed at the top of a 16-bit integer, then shift right by
-///      (12 - shift). This is equivalent to: (nibble << 12) >> (12 - shift).
-///      Shifts > 12 are clamped (hardware saturates the sign bit).
-///   3. Add the prediction filter result (computed in i32 to avoid overflow)
-///   4. Clamp to 15-bit signed range (-16384..+16383) — hardware precision
-///   5. The result is a valid i16 (fits in 16 bits)
+///   1. Sign-extend the nibble from 4 bits.
+///   2. Scale: `(nibble << shift) >> 1` — a 15-bit-scale value.
+///      Shifts 13–15 are invalid on hardware and force the value to
+///      -0x800 for negative nibbles, 0 otherwise.
+///   3. Add the prediction filter, computed on `prev >> 1`.
+///   4. Clamp to 16 bits (-0x8000..=0x7FFF).
+///   5. Double and truncate to i16. This doubling is *not* clamped: a
+///      value above 0x3FFF wraps to negative. Some samples rely on this
+///      wrap, so it must be reproduced exactly.
+///
+/// The returned sample is therefore always even.
 pub fn decode_brr_nibble(nibble: i8, shift: u8, filter: u8, prev1: i16, prev2: i16) -> i16 {
-    // Step 1 + 2: scale the nibble to a 16-bit range.
-    let raw: i32 = if shift <= 12 {
-        // Standard path: sign-extend to i32, align to bit 15, then scale back.
-        let extended = nibble as i32; // already sign-extended from i8
-        (extended << 12) >> (12u32.saturating_sub(shift as u32))
+    // Step 1: force a 4-bit sign extension even if the caller passed a
+    // wider value.
+    let n = ((nibble as i32) << 28) >> 28;
+
+    // Step 2: scale to 15-bit scale.
+    let mut s: i32 = if shift <= 12 {
+        (n << shift) >> 1
+    } else if n < 0 {
+        -0x800
     } else {
-        // Shifts 13–15: hardware quirk — the sign bit replicates, so the
-        // result is either 0x0000 or 0xFFFF (0 or -1 in i16).
-        if nibble < 0 { -1 } else { 0 }
+        0
     };
 
-    // Step 3: prediction filter in i32 to prevent intermediate overflow.
-    let p1 = prev1 as i32;
-    let p2 = prev2 as i32;
+    // Step 3: prediction filter on the halved history.
+    s += brr_filter(filter, (prev1 as i32) >> 1, (prev2 as i32) >> 1);
 
-    let predicted: i32 = match filter {
-        0 => 0,
-        // Filter 1: coefficient ≈ 15/16
-        1 => p1 - (p1 >> 4),
-        // Filter 2: p1 * ~61/32 - p2 * ~15/16
-        2 => (p1 * 2) - ((p1 * 3) >> 5) - p2 + (p2 >> 4),
-        // Filter 3: p1 * ~115/64 - p2 * ~13/16
-        3 => (p1 * 2) - ((p1 * 13) >> 6) - p2 + ((p2 * 3) >> 4),
-        _ => 0,
-    };
-
-    let result = raw + predicted;
-
-    // Step 4: clamp to 15-bit signed range (-0x4000..+0x3FFF).
-    // The SNES hardware uses 15 significant bits internally.
-    let clamped = result.clamp(-0x4000, 0x3FFF);
-
-    clamped as i16
+    // Step 4: clamp to 16 bits, then step 5: double with wrap-around.
+    (s.clamp(i16::MIN as i32, i16::MAX as i32) as i16).wrapping_mul(2)
 }
 
 /// Read one byte from a raw RAM slice; returns 0 for out-of-range addresses.
