@@ -23,12 +23,6 @@ For that, we require plugins to describe what permissions they require, and prom
 
 If you want to try writing plugins yourself, check out our [plugin API documentation](plugin_api.md). If you have any question or suggestion about this documentation, plugins in general (or anything else), feel free to [open a discussion about it](https://github.com/r-snes/r-snes/discussions).
 
-## Project documents
-
-- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Contribution policy. External pull requests are currently closed while the core systems (CPU, APU, PPU...) are under active development as part of a university project, but issues and discussions are welcome. Also covers the rules that apply once contributions open: one crate per component, mandatory unit tests (80% coverage minimum per crate), `cargo fmt`, zero warnings, and doc comments on all public items.
-- **[LEGAL.md](LEGAL.md)** - Legal and ethical framework for developing a SNES emulator under French/EU law: clean-room implementation, the private-copy exception, the interoperability exception for reverse engineering, and the project's policy of never distributing ROMs, BIOS, or firmware.
-- **[FINANCE.md](FINANCE.md)** - Funding policy: the project is non-commercial and won't be sold, voluntary donations are allowed, and a future model for commissioned plugins (public-release or exclusive-release) is outlined.
-
 ## Installing
 
 To start using R-SNES, go to our [releases pages](https://github.com/r-snes/r-snes/releases), and download the file suited for your platform. We currently support:
@@ -99,10 +93,10 @@ The `cpu` and `ppu` crates don't talk to memory directly - they go through the `
 The `apu` crate is a bit different: it has its own internal CPU (the S-SMP) and its own separate memory zone, so it doesn't go through the shared `bus` crate at all - it manages its reads and writes internally. The main program only steps it forward cycle by cycle according to its own clock speed (which differs from the main CPU's), the same way it does for the CPU and PPU, and then collects its audio output.
 
 ```
-                              +--------------------+    
-                              | r-snes crate: root |          | Key:    
+                              +--------------------+
+                              | r-snes crate: root |          | Key:
                               |--------------------|   2      |  1. Steps component cycles
-      +-----------------------|    main program:   |<------+  |  2. Fills output (image/audio)   
+      +-----------------------|    main program:   |<------+  |  2. Fills output (image/audio)
       |                       |  orchestrates all  |----+  |  |  3. Read/Write requests
       |  +------------------->|     components     |    |  |  |  4. Perform read/write
       |  |                    +--------------------+    |  |  |  5. Return CPU reads
@@ -123,10 +117,10 @@ The `apu` crate is a bit different: it has its own internal CPU (the S-SMP) and 
          |               |                   v  |       |       |
          |       4       |          +----------------+  |      4|
          +---------------|--------->|      Bus       |<-|-------+
-                         |          |----------------|  | 
-                         |          | defines the    |  | 
-                         |  +-------| memory mapping |  | 
-                         |  |       +----------------+  | 
+                         |          |----------------|  |
+                         |          | defines the    |  |
+                         |  +-------| memory mapping |  |
+                         |  |       +----------------+  |
                          |  |4      4|        4|        |
                          |  v        v         v        |
                          | RAM      ROM     IO devices  |
