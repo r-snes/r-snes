@@ -4,6 +4,7 @@
 //! then decodes the tile data from VRAM.
 //! BG1 uses all 256 CGRAM colors: the palette bits of its tilemap entries are ignored.
 //! BG2 uses 8 palettes of 16 colors (entries 0-127). Color 0 is transparent.
+//! With direct color (CGWSEL bit 0), BG1 skips CGRAM: the index and palette bits are the color.
 //! There is no BG3 or BG4 in this mode.
 
 use crate::ppu::PPU;
@@ -296,5 +297,79 @@ mod tests {
             r.render_scanline(&ppu, 0);
             assert_eq!(fb_pixel(&r, 0, 0), expected, "BG2 {bg2_entry:#06X}");
         }
+    }
+
+    // ============================================================
+    // Direct color
+    // ============================================================
+
+    // Draws BG1 with color index `index` on every pixel, tilemap palette `palette`.
+    fn setup_bg1_index(ppu: &mut PPU, index: u8, palette: u16) {
+        ppu.write(0x212C, 0x01); // TM: BG1
+        fill_tilemap(ppu, BG1_MAP, palette << 10); // tile 0
+        for plane in 0..8 {
+            if index & (1 << plane) != 0 {
+                let bits = if plane % 2 == 0 { 0x00FF } else { 0xFF00 };
+                for row in 0..8 {
+                    ppu.vram.memory[BG1_CHR + (plane / 2) * 8 + row] |= bits;
+                }
+            }
+        }
+    }
+
+    // With direct color, index 0x07 is R = 28 whatever CGRAM entry 7 holds.
+    #[test]
+    fn test_mode3_direct_color_skips_cgram() {
+        let mut ppu = make_ppu_mode3();
+        ppu.write(0x2130, 0x01); // CGWSEL: direct color
+        setup_bg1_index(&mut ppu, 0x07, 0);
+        set_color(&mut ppu, 7, 0x7C00);
+
+        let mut r = Renderer::new();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 0, 0), Renderer::apply_brightness(28, 15));
+    }
+
+    // The tilemap palette bits are no longer ignored: palette 1 adds the next bit of R.
+    #[test]
+    fn test_mode3_direct_color_uses_palette_bits() {
+        let mut ppu = make_ppu_mode3();
+        ppu.write(0x2130, 0x01); // CGWSEL: direct color
+        setup_bg1_index(&mut ppu, 0x07, 1);
+
+        let mut r = Renderer::new();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 0, 0), Renderer::apply_brightness(30, 15));
+    }
+
+    // Index 0 stays transparent: the backdrop (CGRAM 0) shows through.
+    #[test]
+    fn test_mode3_direct_color_index_0_transparent() {
+        let mut ppu = make_ppu_mode3();
+        ppu.write(0x2130, 0x01); // CGWSEL: direct color
+        setup_bg1_index(&mut ppu, 0x00, 7);
+        set_color(&mut ppu, 0, 0x03E0);
+
+        let mut r = Renderer::new();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 0, 0), Renderer::apply_brightness(0x03E0, 15));
+    }
+
+    // Direct color only applies to 8bpp layers: BG2 (4bpp) still reads CGRAM.
+    #[test]
+    fn test_mode3_direct_color_bg2_uses_cgram() {
+        let blue = Renderer::apply_brightness(0x7C00, 15);
+        let mut ppu = make_ppu_mode3();
+        ppu.write(0x2130, 0x01); // CGWSEL: direct color
+        ppu.write(0x212C, 0x02); // TM: BG2
+        fill_tilemap(&mut ppu, BG2_MAP, 0x0400); // tile 0, palette 1
+        for row in 0..8 {
+            ppu.vram.memory[BG2_CHR + row] = 0x00FF;
+        }
+        set_color(&mut ppu, 17, 0x7C00);
+
+        let mut r = Renderer::new();
+        r.render_scanline(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 0, 0), blue);
     }
 }

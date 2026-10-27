@@ -344,8 +344,14 @@ impl Renderer {
                 continue;
             }
 
-            let palette_entry = p.palette_base + p.bpp.palette_offset(palette_num) + color_index;
-            let color = ppu.cgram.read(palette_entry);
+            // Direct color (CGWSEL bit 0): 8bpp layers skip CGRAM, the index is the color.
+            let color = if p.bpp == BitDepth::Eight && ppu.regs.direct_color() {
+                Self::direct_color(color_index, palette_num)
+            } else {
+                let palette_entry =
+                    p.palette_base + p.bpp.palette_offset(palette_num) + color_index;
+                ppu.cgram.read(palette_entry)
+            };
             let prio = if priority { p.z_high } else { p.z_low };
 
             let pixel = LinePixel {
@@ -467,6 +473,17 @@ impl Renderer {
             let (r, g, b) = Self::apply_brightness(out, brightness);
             self.set_pixel(x, y, r, g, b);
         }
+    }
+
+    /// Converts an 8bpp color index to BGR555 in direct color mode.
+    /// Index BBGGGRRR and tilemap palette bits bgr give R = RRRr0, G = GGGg0, B = BBb00.
+    pub fn direct_color(index: u8, palette_num: u8) -> u16 {
+        let index = index as u16;
+        let pal = palette_num as u16;
+        let r = ((index & 0x07) << 2) | ((pal & 0x01) << 1);
+        let g = (((index >> 3) & 0x07) << 2) | (pal & 0x02);
+        let b = (((index >> 6) & 0x03) << 3) | (pal & 0x04);
+        r | (g << 5) | (b << 10)
     }
 
     /// Per-channel BGR555 add/subtract with optional halving.
@@ -838,6 +855,32 @@ mod tests {
         let sub = 4 | (5 << 5) | (6 << 10);
         let expected = 5 | (7 << 5) | (9 << 10);
         assert_eq!(Renderer::color_math(main, sub, false, false), expected);
+    }
+
+    // ============================================================
+    // direct_color (pure)
+    // ============================================================
+
+    // RRR, GGG and BB fill the top bits of each channel.
+    #[test]
+    fn test_direct_color_index_bits() {
+        assert_eq!(Renderer::direct_color(0x07, 0), 28); // R = 11100
+        assert_eq!(Renderer::direct_color(0x38, 0), 28 << 5); // G = 11100
+        assert_eq!(Renderer::direct_color(0xC0, 0), 24 << 10); // B = 11000
+    }
+
+    // Palette bits 0, 1, 2 give the next bit of R, G and B.
+    #[test]
+    fn test_direct_color_palette_bits() {
+        assert_eq!(Renderer::direct_color(0, 0x01), 2); // R = 00010
+        assert_eq!(Renderer::direct_color(0, 0x02), 2 << 5); // G = 00010
+        assert_eq!(Renderer::direct_color(0, 0x04), 4 << 10); // B = 00100
+    }
+
+    // The lowest bit of each channel is always 0: the brightest color is R = G = 30, B = 28.
+    #[test]
+    fn test_direct_color_max() {
+        assert_eq!(Renderer::direct_color(0xFF, 0x07), 30 | (30 << 5) | (28 << 10));
     }
 
     // ============================================================
