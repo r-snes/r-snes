@@ -880,7 +880,10 @@ mod tests {
     // The lowest bit of each channel is always 0: the brightest color is R = G = 30, B = 28.
     #[test]
     fn test_direct_color_max() {
-        assert_eq!(Renderer::direct_color(0xFF, 0x07), 30 | (30 << 5) | (28 << 10));
+        assert_eq!(
+            Renderer::direct_color(0xFF, 0x07),
+            30 | (30 << 5) | (28 << 10)
+        );
     }
 
     // ============================================================
