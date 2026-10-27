@@ -33,6 +33,62 @@ pub enum PluginLoadError {
     PluginTabError(picc::error::ExternError),
 }
 
+pub enum PluginTabError {
+    /// Runtime lua error when interpreting the expression
+    LuaError(picc::error::ExternError),
+}
+
+/// Struct used to represent the path in the plugin table where
+/// something occured (e.g. an error or a warn)
+///
+/// # Example
+/// ```
+/// # use plugins::plugin::PathTo;
+/// // replace the integer with an error type or anything you like
+/// let mut some_error = PathTo::<i32>::here(4);
+///
+/// some_error.put_in("c".to_owned());
+/// some_error.put_in("b".to_owned());
+/// some_error.put_in("a".to_owned());
+///
+/// assert_eq!(
+///     some_error.path_from_root().collect::<Vec<_>>(),
+///     vec!["a", "b", "c"],
+/// );
+/// ```
+pub struct PathTo<T> {
+    /// The wrapped item
+    pub item: T,
+    path: Vec<String>,
+}
+
+impl<T> PathTo<T> {
+    /// Create a [`PathTo`] with an empty path
+    pub fn here(item: T) -> Self {
+        Self {
+            item,
+            path: Vec::default(),
+        }
+    }
+
+    /// Wrap this [`PathTo`] in the path segment passed as parameter
+    pub fn put_in(&mut self, path_segment: String) {
+        self.path.push(path_segment);
+    }
+
+    /// Returns the path from the root
+    pub fn path_from_root(&self) -> impl Iterator<Item = &str> {
+        self.path.iter().map(|s| s.as_ref()).rev()
+    }
+}
+
+pub enum PluginFromValueResult<T> {
+    Ok(T, Vec<PathTo<PluginFromValueWarning>>),
+    Err(Vec<PathTo<PluginFromValueError>>),
+}
+pub struct PluginFromValueError;
+pub struct PluginFromValueWarning;
+
 /// A Lua plugin which may be loaded in the R-SNES emulator
 pub struct Plugin {
     /// The lua VM
