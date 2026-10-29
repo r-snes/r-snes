@@ -1008,6 +1008,16 @@ impl<T, U> VarWidth<T, U> {
             },
         }
     }
+
+    pub fn for_each_mut(&mut self, mut f: impl FnMut(&mut T)) {
+        match self {
+            Self::ConstWidth(x) => f(x),
+            Self::VarWidth { short, long, .. } => {
+                f(short);
+                f(long);
+            }
+        }
+    }
 }
 
 impl<T, U: Default> VarWidth<T, U> {
@@ -1184,23 +1194,13 @@ impl Instr {
         }
 
         if pstate.has_stack_native {
-            let stack_page1_reset = quote! {
-                if cpu.registers.E {
-                    *cpu.registers.S.hi_mut() = 0x01;
+            ret.body.for_each_mut(|ib| {
+                *ib.cycles.last_mut().expect("at least 1 cycle") += quote! {
+                    if cpu.registers.E {
+                        *cpu.registers.S.hi_mut() = 0x01;
+                    }
                 }
-            };
-
-            match &mut ret.body {
-                VarWidth::ConstWidth(ib) => {
-                    *ib.cycles.last_mut().expect("at least 1 cycle") += stack_page1_reset;
-                }
-                VarWidth::VarWidth {
-                    short: s, long: l, ..
-                } => {
-                    *s.cycles.last_mut().expect("at least 1 cycle") += stack_page1_reset.clone();
-                    *l.cycles.last_mut().expect("at least 1 cycle") += stack_page1_reset;
-                }
-            }
+            });
         }
 
         // here `data` is the condition in which the instr is in 16-bit mode
