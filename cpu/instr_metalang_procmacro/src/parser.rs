@@ -1273,22 +1273,21 @@ impl InstrBody {
         loop {
             let it = it.by_ref();
 
-            ret += it
-                .take_while(|token| token.to_string() != "meta")
-                .collect::<TokenStream>();
+            match it.next() {
+                None => break,
+                Some(t) if t.to_string() == "meta" => {
+                    let meta_instr = MetaInstruction::try_from(it.take_while(|token| {
+                        let TokenTree::Punct(p) = token else {
+                            return true;
+                        };
+                        p.as_char() != ';'
+                    }))?;
+                    let exp = meta_instr.expand(pstate);
 
-            if it.peek().is_none() {
-                break;
+                    ret += exp;
+                }
+                Some(t) => ret += t,
             }
-
-            let meta_instr = MetaInstruction::try_from(it.take_while(|token| {
-                let TokenTree::Punct(p) = token else {
-                    return true;
-                };
-                p.as_char() != ';'
-            }))?;
-
-            ret += meta_instr.expand(pstate);
         }
         Ok(ret)
     }
