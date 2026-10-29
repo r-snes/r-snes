@@ -43,6 +43,7 @@ pub(crate) struct ParserState {
     wrapping_mode: AddrWrappingMode,
 
     has_stack_native: bool,
+    no_irqb: bool,
 }
 
 #[derive(PartialEq, Eq)]
@@ -120,6 +121,7 @@ impl Default for ParserState {
             operand_size: OpSize::Constant,
             wrapping_mode: AddrWrappingMode::BankWrap,
             has_stack_native: false,
+            no_irqb: false,
         }
     }
 }
@@ -215,6 +217,9 @@ pub(crate) enum MetaInstruction {
     /// Skip remaining cycles and jump straight to the next opcode
     /// fetch (during the cycle this meta-instr is in)
     EarlyReturn,
+
+    /// Disables IRQB checks for this instruction
+    NoIrqb,
 
     /// Sets the operand size for variable width instructions
     SetOperandSize(TokenTree),
@@ -423,6 +428,8 @@ impl MetaInstruction {
             "END_CYCLE" => MetaInstruction::EndCycle(it.by_ref().collect()),
             "EARLY_RETURN" => MetaInstruction::EarlyReturn,
 
+            "NO_IRQB" => MetaInstruction::NoIrqb,
+
             "SET_OP_SIZE" => MetaInstruction::SetOperandSize(it.next().expect("size")),
 
             "IDLE_IF" => MetaInstruction::IdleIf(it.by_ref().collect()),
@@ -512,8 +519,10 @@ impl MetaInstruction {
             }
 
             Self::EarlyReturn => {
-                ret += quote!(return (cpu.next_fetch.0)(cpu));
+                ret += quote!(return (cpu.next_fetch.0)(cpu, _metalang_private_irqb));
             }
+
+            Self::NoIrqb => pstate.no_irqb = true,
 
             Self::SetOperandSize(arg) => {
                 if pstate.operand_size != OpSize::Constant {
@@ -1200,6 +1209,15 @@ impl Instr {
                         *cpu.registers.S.hi_mut() = 0x01;
                     }
                 }
+            });
+        }
+
+        if !pstate.no_irqb {
+            ret.body.for_each_mut(|ib| {
+                ib.cycles
+                    .last_mut()
+                    .expect("at least 1 cycle")
+                    .prepend(quote!(cpu.last_cycle(_metalang_private_irqb);))
             });
         }
 

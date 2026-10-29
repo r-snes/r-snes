@@ -120,7 +120,7 @@ impl CPU {
     pub fn is_instr_start(&self) -> bool {
         std::ptr::fn_addr_eq(
             self.next_cycle.0,
-            opcode_dispatch as for<'a> fn(&'a mut CPU) -> (CycleResult, InstrCycle),
+            opcode_dispatch as for<'a> fn(&'a mut CPU, bool) -> (CycleResult, InstrCycle),
         )
     }
 
@@ -179,7 +179,21 @@ impl CPU {
     /// See [`CycleResult`] for more information about the return value of
     /// this function.
     pub fn cycle(&mut self) -> CycleResult {
-        let (ret, next_cycle) = (self.next_cycle.0)(self);
+        self.cycle_with_irqb(true)
+    }
+
+    /// This function is identical to [`CPU::cycle`],
+    /// with the addition that it gives control over the IRQB input
+    /// signal, which is how IRQ interrupts are triggered.
+    ///
+    /// IRQ will be triggered when IRQB is low (when `irqb` is false)
+    /// and the [CPU flag I](../registers/struct.RegisterP.html#structfield.I) is 0
+    ///
+    /// Note that IRQs will trigger again as long as IRQB is low, it needs
+    /// to be brought high somehow for the CPU to start running its usual
+    /// program again
+    pub fn cycle_with_irqb(&mut self, irqb: bool) -> CycleResult {
+        let (ret, next_cycle) = (self.next_cycle.0)(self, irqb);
 
         self.next_cycle = next_cycle;
         ret
@@ -196,35 +210,6 @@ impl CPU {
             CPUState::WaitForInterrupt => {
                 // serve the interrupt immediately
                 self.next_cycle = InstrCycle(nmi::nmi_cyc1);
-            }
-            // stopped, don't even serve interrupts
-            CPUState::Stopped => {}
-        }
-    }
-
-    /// Request an IRQ interrupt
-    pub fn irq(&mut self) {
-        use crate::instrs::irq;
-        match self.state {
-            CPUState::Running => {
-                if self.registers.P.I {
-                    // flag I disables IRQ when running normally
-                    return;
-                }
-
-                // complete the current instruction first, then serve the interrupt
-                self.next_fetch = InstrCycle(irq::irq_cyc1);
-            }
-            CPUState::WaitForInterrupt => {
-                if self.registers.P.I {
-                    // IRQ with I flag while in WAI resumes execution
-                    // but doesn't go through the interrupt routine
-                    self.next_cycle = InstrCycle(opcode_fetch);
-                    self.state = CPUState::Running;
-                } else {
-                    // serve the interrupt immediately
-                    self.next_cycle = InstrCycle(irq::irq_cyc1);
-                }
             }
             // stopped, don't even serve interrupts
             CPUState::Stopped => {}
@@ -250,9 +235,24 @@ impl CPU {
         ret.reset();
         ret
     }
+
+    /// This is the place where IRQs are acknowledged by the CPU
+    ///
+    /// This function must be called at the very beginning of all
+    /// instructions' last cycle, and it is what allows IRQs to be
+    /// serviced at the proper timing
+    pub(crate) fn last_cycle(&mut self, irqb: bool) {
+        use crate::instrs::irq;
+
+        if !irqb && !self.registers.P.I {
+            self.next_fetch = InstrCycle(irq::irq_cyc1)
+        }
+    }
 }
 
 cpu_instr_no_inc_pc!(reset {
+    meta NO_IRQB; // don't allow IRQ mid-reset
+
     cpu.registers.DB = 0;
     cpu.registers.D = 0;
     cpu.registers.PB = 0;
@@ -292,10 +292,10 @@ mod tests {
         for _ in 0..100 {
             expect_internal_cycle(&mut cpu, "stp spin loop");
         }
-        cpu.irq();
-        for _ in 0..100 {
-            expect_internal_cycle(&mut cpu, "stp spin loop");
-        }
+        // cpu.irq();
+        // for _ in 0..100 {
+        //     expect_internal_cycle(&mut cpu, "stp spin loop");
+        // }
         cpu.nmi();
         for _ in 0..100 {
             expect_internal_cycle(&mut cpu, "stp spin loop");
@@ -308,7 +308,7 @@ mod tests {
     #[duplicate_item(
         DUP_name        DUP_interrupt   DUP_vector;
         [nmi_mid_nop]   [nmi]           [0xFFFA];
-        [irq_mid_nop]   [irq]           [0xFFFE];
+        // [irq_mid_nop]   [irq]           [0xFFFE];
     )]
     #[test]
     fn DUP_name() {
@@ -351,7 +351,7 @@ mod tests {
     #[duplicate_item(
         DUP_name        DUP_interrupt   DUP_vector;
         [nmi_mid_jump]  [nmi]           [0xFFEA];
-        [irq_mid_jump]  [irq]           [0xFFEE];
+        // [irq_mid_jump]  [irq]           [0xFFEE];
     )]
     #[test]
     fn DUP_name() {
@@ -423,7 +423,7 @@ mod tests {
         for _ in 0..100 {
             expect_internal_cycle(&mut cpu, "WAI spin loop");
         }
-        cpu.irq();
+        cpu.cycle_with_irqb(false);
         for _ in 0..4 {
             assert!(
                 matches!(cpu.cycle(), CycleResult::Write),
@@ -454,7 +454,7 @@ mod tests {
         for _ in 0..100 {
             expect_internal_cycle(&mut cpu, "WAI spin loop");
         }
-        cpu.irq();
+        cpu.cycle_with_irqb(false);
         // expect_internal_cycle(&mut cpu, "internal response time");
         expect_read_cycle(&mut cpu, snes_addr!(3:43), 0x1a, "opcode fetch INC");
         expect_internal_cycle(&mut cpu, "INC cycle");

@@ -173,7 +173,7 @@ impl RSnesCore {
             return;
         }
 
-        match self.cpu.cycle() {
+        match self.cpu.cycle_with_irqb(!self.bus.io.timer_flag()) {
             CycleResult::Internal => {
                 self.cpu_master_cycles_to_wait = 6; // TODO : Confirm internal cpu cycle is 6 master cycles
             }
@@ -316,7 +316,6 @@ impl RSnesCore {
 
         if self.ppu.h_cycles == target {
             self.bus.io.set_timer_flag(true);
-            self.cpu.irq();
         }
     }
 
