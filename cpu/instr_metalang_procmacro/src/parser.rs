@@ -1,6 +1,6 @@
 use pm2::{Ident, TokenStream, TokenTree};
-use proc_macro2 as pm2;
-use quote::quote;
+use proc_macro2::{self as pm2, Delimiter, Group};
+use quote::{TokenStreamExt, quote};
 use std::ops::AddAssign;
 
 #[derive(Eq, PartialEq, Copy, Clone, Debug)]
@@ -527,7 +527,7 @@ impl MetaInstruction {
                     AddrBusPosition::Immediate => {} // already imm, nothing to do
                     AddrBusPosition::Opcode => {
                         // addrbus is already at PB:PC
-                        ret += pstate.imm_offset.map_into(|increment| {
+                        ret += pstate.imm_offset.map(|increment| {
                             quote! {
                                 // in practice the increment is always 1
                                 cpu.addr_bus.addr = cpu.addr_bus.addr.wrapping_add(#increment);
@@ -536,7 +536,7 @@ impl MetaInstruction {
                     }
                     _ => {
                         // default case, reset entire addrbus from scratch
-                        ret += pstate.imm_offset.map_into(|increment| {
+                        ret += pstate.imm_offset.map(|increment| {
                             quote! {
                                 cpu.addr_bus.bank = cpu.registers.PB;
                                 cpu.addr_bus.addr = cpu.registers.PC.wrapping_add(#increment);
@@ -976,13 +976,26 @@ impl<T, U> VarWidth<T, U> {
 }
 
 impl<T, U: Clone> VarWidth<T, U> {
-    pub fn map_into<T2>(&self, mut mapfunc: impl FnMut(&T) -> T2) -> VarWidth<T2, U> {
+    pub fn map<T2>(&self, mut mapfunc: impl FnMut(&T) -> T2) -> VarWidth<T2, U> {
         match self {
             Self::ConstWidth(x) => VarWidth::ConstWidth(mapfunc(x)),
             Self::VarWidth { short, long, data } => VarWidth::VarWidth {
                 short: mapfunc(short),
                 long: mapfunc(long),
                 data: data.clone(),
+            },
+        }
+    }
+}
+
+impl<T, U> VarWidth<T, U> {
+    pub fn map_into<T2>(self, mut mapfunc: impl FnMut(T) -> T2) -> VarWidth<T2, U> {
+        match self {
+            Self::ConstWidth(x) => VarWidth::ConstWidth(mapfunc(x)),
+            Self::VarWidth { short, long, data } => VarWidth::VarWidth {
+                short: mapfunc(short),
+                long: mapfunc(long),
+                data,
             },
         }
     }
@@ -1129,7 +1142,7 @@ impl Instr {
         // Set PC to point at the next opcode
         match (
             &mut ret.body,
-            pstate.imm_offset.map_into(|i| pstate.conditionally_inc_pc(*i)),
+            pstate.imm_offset.map(|i| pstate.conditionally_inc_pc(*i)),
         ) {
             (VarWidth::ConstWidth(ib), VarWidth::ConstWidth(offs)) => {
                 *ib.cycles.last_mut().expect("at least 1 cycle") += offs;
@@ -1221,6 +1234,13 @@ impl AddAssign<TokenStream> for InstrBody {
     }
 }
 
+impl AddAssign<TokenTree> for InstrBody {
+    /// Appends a token stream to the end of this InstrBody
+    fn add_assign(&mut self, tt: TokenTree) {
+        self.post_instr.append(tt);
+    }
+}
+
 // impl which allows us to use +=
 impl AddAssign for InstrBody {
     /// Concatenates an InstrBody to [`self`].
@@ -1285,6 +1305,16 @@ impl InstrBody {
                     let exp = meta_instr.expand(pstate);
 
                     ret += exp;
+                }
+                Some(TokenTree::Group(g)) if g.delimiter() == Delimiter::Brace => {
+                    let inner = Self::parse(g.stream(), pstate)?;
+
+                    ret += inner.map_into(|body| {
+                        if !body.cycles.is_empty() {
+                            panic!("Unexpected cycle expansion in braces");
+                        }
+                        TokenTree::Group(Group::new(Delimiter::Brace, body.post_instr))
+                    });
                 }
                 Some(t) => ret += t,
             }
