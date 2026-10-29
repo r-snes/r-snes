@@ -212,6 +212,10 @@ pub(crate) enum MetaInstruction {
     /// with the CycleResult (cycle type) produced by the token stream
     EndCycle(TokenStream),
 
+    /// Skip remaining cycles and jump straight to the next opcode
+    /// fetch (during the cycle this meta-instr is in)
+    EarlyReturn,
+
     /// Sets the operand size for variable width instructions
     SetOperandSize(TokenTree),
 
@@ -417,6 +421,7 @@ impl MetaInstruction {
         };
         let ret = match meta_kw.to_string().as_str() {
             "END_CYCLE" => MetaInstruction::EndCycle(it.by_ref().collect()),
+            "EARLY_RETURN" => MetaInstruction::EarlyReturn,
 
             "SET_OP_SIZE" => MetaInstruction::SetOperandSize(it.next().expect("size")),
 
@@ -504,6 +509,10 @@ impl MetaInstruction {
         match self {
             Self::EndCycle(cyctype) => {
                 ret += InstrBody::cycles(vec![Cycle::new(TokenStream::new(), cyctype)]);
+            }
+
+            Self::EarlyReturn => {
+                ret += quote!(return (cpu.next_fetch.0)(cpu));
             }
 
             Self::SetOperandSize(arg) => {
