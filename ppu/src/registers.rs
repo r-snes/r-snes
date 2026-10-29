@@ -297,6 +297,11 @@ impl PPURegisters {
         self.bgmode & 0x07
     }
 
+    /// Returns true if 8bpp BG layers use direct color instead of CGRAM (CGWSEL bit 0).
+    pub fn direct_color(&self) -> bool {
+        self.cgwsel & 0x01 != 0
+    }
+
     // ============================================================
     // Per-BG helpers
     // ============================================================

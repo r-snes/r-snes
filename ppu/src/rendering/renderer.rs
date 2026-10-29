@@ -15,52 +15,30 @@ pub type RawFramebuffer = [u8; SCREEN_WIDTH * SCREEN_HEIGHT * 3];
 // ============================================================
 // Z-order (priority) scale. Higher = closer to the front.
 // A pixel is only overwritten when the incoming z is >= the z stored
-// for that column. Every (layer, priority) pair gets a UNIQUE value, so
-// draw order between layers is irrelevant and one scale serves both modes.
+// for that column. Every (layer, priority) pair gets a unique value, so
+// draw order between layers is irrelevant.
 //
-// Mode 0 (front -> back):
-//   OBJ3 > BG1.1 > BG2.1 > OBJ2 > BG1.0 > BG2.0 > OBJ1 >
-//   BG3.1 > BG4.1 > OBJ0 > BG3.0 > BG4.0 > backdrop
-//
-// Mode 1, BGMODE bit3 = 0 (front -> back):
-//   OBJ3 > BG1.1 > BG2.1 > OBJ2 > BG1.0 > BG2.0 > OBJ1 >
-//   BG3.1 > OBJ0 > BG3.0 > backdrop
-//
-// Mode 1, BGMODE bit3 = 1: BG3.1 is lifted above everything (Bg3Prio).
+// Sprites use the same values in every BG mode (OBJ0-OBJ3 = 3, 6, 9, 12).
+// Each BG mode places its layers in the gaps between them.
 // ============================================================
 
-/// Z-order of a pixel on the priority scale, from back to front.
-/// Declaration order is the priority order: the derived `Ord` compares variants by it.
+/// Z-order of a pixel, from back to front: a higher value is drawn in front.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Priority {
+pub struct Priority(u8);
+
+impl Priority {
     /// Backdrop, always behind everything.
-    Backdrop,
-    /// Low priority BG4 tiles.
-    Bg4Low,
-    /// Low priority BG3 tiles.
-    Bg3Low,
-    /// Priority 0 sprites.
-    Obj0,
-    /// High priority BG4 tiles.
-    Bg4High,
-    /// High priority BG3 tiles.
-    Bg3High,
-    /// Priority 1 sprites.
-    Obj1,
-    /// Low priority BG2 tiles.
-    Bg2Low,
-    /// Low priority BG1 tiles.
-    Bg1Low,
-    /// Priority 2 sprites.
-    Obj2,
-    /// High priority BG2 tiles.
-    Bg2High,
-    /// High priority BG1 tiles.
-    Bg1High,
-    /// Priority 3 sprites.
-    Obj3,
-    /// High priority BG3 tiles in mode 1 with BGMODE bit 3 set, above everything.
-    Bg3Prio,
+    pub const BACKDROP: Priority = Priority(0);
+
+    /// Creates a z-order value. BG modes use it to place their layers between the sprites.
+    pub const fn new(z: u8) -> Priority {
+        Priority(z)
+    }
+
+    /// Returns the z-order of sprites with priority `prio` (0-3): 3, 6, 9 or 12 in every BG mode.
+    pub const fn obj(prio: u8) -> Priority {
+        Priority(3 + 3 * (prio & 0x03))
+    }
 }
 
 /// Bit depth of a BG layer's tiles. Drives tile size in VRAM and palette shift.
@@ -70,22 +48,27 @@ pub enum BitDepth {
     Two,
     /// 4 bits per pixel (16 colors per palette).
     Four,
+    /// 8 bits per pixel (256 colors, no palette).
+    Eight,
 }
 
 impl BitDepth {
-    // Words per tile in VRAM: 2bpp = 8, 4bpp = 16.
+    // Words per tile in VRAM: 2bpp = 8, 4bpp = 16, 8bpp = 32.
     fn tile_words(self) -> usize {
         match self {
             BitDepth::Two => 8,
             BitDepth::Four => 16,
+            BitDepth::Eight => 32,
         }
     }
 
-    // Palette block shift: 2bpp = 4 colours (shift 2), 4bpp = 16 colours (shift 4).
-    fn pal_shift(self) -> u8 {
+    // CGRAM offset of tilemap palette `palette_num`: 2bpp = 4 colors per palette, 4bpp = 16.
+    // 8bpp tiles use all 256 colors: the palette bits are ignored.
+    fn palette_offset(self, palette_num: u8) -> u8 {
         match self {
-            BitDepth::Two => 2,
-            BitDepth::Four => 4,
+            BitDepth::Two => palette_num << 2,
+            BitDepth::Four => palette_num << 4,
+            BitDepth::Eight => 0,
         }
     }
 }
@@ -159,7 +142,7 @@ pub struct LinePixel {
 impl LinePixel {
     const BACKDROP: LinePixel = LinePixel {
         color: 0,
-        z: Priority::Backdrop,
+        z: Priority::BACKDROP,
         layer: Layer::Backdrop,
         obj_math: false,
     };
@@ -262,6 +245,7 @@ impl Renderer {
         match ppu.regs.bg_mode() {
             0 => self.render_scanline_mode0(ppu, y),
             1 => self.render_scanline_mode1(ppu, y),
+            3 => self.render_scanline_mode3(ppu, y),
             _ => self.render_scanline_mode1(ppu, y),
         }
 
@@ -281,7 +265,6 @@ impl Renderer {
         let screens_wide = if p.w64 { 2 } else { 1 };
 
         let tile_words = p.bpp.tile_words();
-        let pal_shift = p.bpp.pal_shift();
 
         // y is the framebuffer row (scanline - 1); BG rows are fetched with the scanline number.
         // Vertical mosaic: every line of a block reads the first line of the block.
@@ -348,6 +331,12 @@ impl Renderer {
                     fx & 7,
                     fy & 7,
                 ),
+                BitDepth::Eight => Self::decode_8bpp_tile_pixel_from(
+                    &ppu.vram.memory,
+                    tile_word_base,
+                    fx & 7,
+                    fy & 7,
+                ),
             };
 
             // Transparent pixel -> do nothing
@@ -355,8 +344,14 @@ impl Renderer {
                 continue;
             }
 
-            let palette_entry = p.palette_base + (palette_num << pal_shift) + color_index;
-            let color = ppu.cgram.read(palette_entry);
+            // Direct color (CGWSEL bit 0): 8bpp layers skip CGRAM, the index is the color.
+            let color = if p.bpp == BitDepth::Eight && ppu.regs.direct_color() {
+                Self::direct_color(color_index, palette_num)
+            } else {
+                let palette_entry =
+                    p.palette_base + p.bpp.palette_offset(palette_num) + color_index;
+                ppu.cgram.read(palette_entry)
+            };
             let prio = if priority { p.z_high } else { p.z_low };
 
             let pixel = LinePixel {
@@ -480,6 +475,17 @@ impl Renderer {
         }
     }
 
+    /// Converts an 8bpp color index to BGR555 in direct color mode.
+    /// Index BBGGGRRR and tilemap palette bits bgr give R = RRRr0, G = GGGg0, B = BBb00.
+    pub fn direct_color(index: u8, palette_num: u8) -> u16 {
+        let index = index as u16;
+        let pal = palette_num as u16;
+        let r = ((index & 0x07) << 2) | ((pal & 0x01) << 1);
+        let g = (((index >> 3) & 0x07) << 2) | (pal & 0x02);
+        let b = (((index >> 6) & 0x03) << 3) | (pal & 0x04);
+        r | (g << 5) | (b << 10)
+    }
+
     /// Per-channel BGR555 add/subtract with optional halving.
     fn color_math(main: u16, sub: u16, subtract: bool, half: bool) -> u16 {
         let (mr, mg, mb) = (main & 0x1F, (main >> 5) & 0x1F, (main >> 10) & 0x1F);
@@ -546,6 +552,10 @@ mod tests {
     use super::*;
     use crate::ppu::PPU;
     use crate::test_utils::{fb_pixel, set_color};
+
+    // Mode 1 z-order of low priority BG1 and BG2 tiles.
+    const BG1_LOW: Priority = Priority::new(8);
+    const BG2_LOW: Priority = Priority::new(7);
 
     // ============================================================
     // Helpers
@@ -774,8 +784,7 @@ mod tests {
             *b = 0xFF;
         }
         let ppu = make_ppu_with_mode(1, true, 15);
-        renderer.render_scanline(&ppu, 1); // blank scanline 1
-        // Scanline 0 must be untouched
+        renderer.render_scanline(&ppu, 1); // blank scanline 1, scanline 0 must be untouched
         assert_eq!(renderer.framebuffer[0], 0xFF);
     }
 
@@ -849,14 +858,43 @@ mod tests {
     }
 
     // ============================================================
+    // direct_color (pure)
+    // ============================================================
+
+    // RRR, GGG and BB fill the top bits of each channel.
+    #[test]
+    fn test_direct_color_index_bits() {
+        assert_eq!(Renderer::direct_color(0x07, 0), 28); // R = 11100
+        assert_eq!(Renderer::direct_color(0x38, 0), 28 << 5); // G = 11100
+        assert_eq!(Renderer::direct_color(0xC0, 0), 24 << 10); // B = 11000
+    }
+
+    // Palette bits 0, 1, 2 give the next bit of R, G and B.
+    #[test]
+    fn test_direct_color_palette_bits() {
+        assert_eq!(Renderer::direct_color(0, 0x01), 2); // R = 00010
+        assert_eq!(Renderer::direct_color(0, 0x02), 2 << 5); // G = 00010
+        assert_eq!(Renderer::direct_color(0, 0x04), 4 << 10); // B = 00100
+    }
+
+    // The lowest bit of each channel is always 0: the brightest color is R = G = 30, B = 28.
+    #[test]
+    fn test_direct_color_max() {
+        assert_eq!(
+            Renderer::direct_color(0xFF, 0x07),
+            30 | (30 << 5) | (28 << 10)
+        );
+    }
+
+    // ============================================================
     // deposit / z-order
     // ============================================================
 
     #[test]
     fn test_deposit_higher_z_wins() {
         let mut r = Renderer::new();
-        r.deposit_main(0, 0x0001, Priority::Bg2Low, Layer::Bg2, false);
-        r.deposit_main(0, 0x0002, Priority::Bg1Low, Layer::Bg1, false); // higher z
+        r.deposit_main(0, 0x0001, BG2_LOW, Layer::Bg2, false);
+        r.deposit_main(0, 0x0002, BG1_LOW, Layer::Bg1, false); // higher z
         assert_eq!(r.main_line[0].color, 0x0002);
         assert!(r.main_line[0].layer == Layer::Bg1);
     }
@@ -864,8 +902,8 @@ mod tests {
     #[test]
     fn test_deposit_lower_z_ignored() {
         let mut r = Renderer::new();
-        r.deposit_main(0, 0x0002, Priority::Bg1Low, Layer::Bg1, false);
-        r.deposit_main(0, 0x0001, Priority::Bg2Low, Layer::Bg2, false); // lower z
+        r.deposit_main(0, 0x0002, BG1_LOW, Layer::Bg1, false);
+        r.deposit_main(0, 0x0001, BG2_LOW, Layer::Bg2, false); // lower z
         assert_eq!(r.main_line[0].color, 0x0002);
         assert!(r.main_line[0].layer == Layer::Bg1);
     }
@@ -882,7 +920,7 @@ mod tests {
         ppu.write(0x2132, coldata_write); // fixed colour
         ppu.write(0x2130, 0x00); // CGWSEL bit1=0 -> fixed colour operand
         ppu.write(0x2131, cgadsub);
-        r.deposit_main(0, main, Priority::Bg1Low, Layer::Bg1, false);
+        r.deposit_main(0, main, BG1_LOW, Layer::Bg1, false);
         r.composite_line(&ppu, 0);
         fb_pixel(&r, 0, 0)
     }
@@ -928,7 +966,7 @@ mod tests {
         let mut ppu = make_ppu();
         ppu.write(0x2130, 0xC0); // CGWSEL bits7-6 = 11 -> clip main to black always
         ppu.write(0x2131, 0x00); // no math
-        r.deposit_main(0, 0x7FFF, Priority::Bg1Low, Layer::Bg1, false);
+        r.deposit_main(0, 0x7FFF, BG1_LOW, Layer::Bg1, false);
         r.composite_line(&ppu, 0);
         assert_eq!(fb_pixel(&r, 0, 0), (0, 0, 0));
     }
@@ -942,13 +980,13 @@ mod tests {
 
         // Palette 0-3 sprite (obj_math=false): no math, main passes through.
         let mut r = make_renderer();
-        r.deposit_main(0, 0x0008, Priority::Obj2, Layer::Obj, false);
+        r.deposit_main(0, 0x0008, Priority::obj(2), Layer::Obj, false);
         r.composite_line(&ppu, 0);
         assert_eq!(fb_pixel(&r, 0, 0), Renderer::apply_brightness(0x0008, 15));
 
         // Palette 4-7 sprite (obj_math=true): math applies -> R=12.
         let mut r = make_renderer();
-        r.deposit_main(0, 0x0008, Priority::Obj2, Layer::Obj, true);
+        r.deposit_main(0, 0x0008, Priority::obj(2), Layer::Obj, true);
         r.composite_line(&ppu, 0);
         assert_eq!(fb_pixel(&r, 0, 0), Renderer::apply_brightness(0x000C, 15));
     }
@@ -962,16 +1000,16 @@ mod tests {
         ppu.write(0x2132, 0x24); // fixed R=4
         ppu.write(0x2130, 0x02); // use subscreen
         ppu.write(0x2131, 0x01); // BG1 math, add
-        r.deposit_main(0, 0x0008, Priority::Bg1Low, Layer::Bg1, false);
-        r.deposit_sub(0, 0x0002, Priority::Bg2Low, Layer::Bg2, false);
+        r.deposit_main(0, 0x0008, BG1_LOW, Layer::Bg1, false);
+        r.deposit_sub(0, 0x0002, BG2_LOW, Layer::Bg2, false);
         r.composite_line(&ppu, 0);
         assert_eq!(fb_pixel(&r, 0, 0), Renderer::apply_brightness(0x000A, 15));
 
         // CGWSEL bit1=0 -> operand is fixed colour (R=4) -> R=12.
         let mut r = make_renderer();
         ppu.write(0x2130, 0x00);
-        r.deposit_main(0, 0x0008, Priority::Bg1Low, Layer::Bg1, false);
-        r.deposit_sub(0, 0x0002, Priority::Bg2Low, Layer::Bg2, false);
+        r.deposit_main(0, 0x0008, BG1_LOW, Layer::Bg1, false);
+        r.deposit_sub(0, 0x0002, BG2_LOW, Layer::Bg2, false);
         r.composite_line(&ppu, 0);
         assert_eq!(fb_pixel(&r, 0, 0), Renderer::apply_brightness(0x000C, 15));
     }
@@ -1002,14 +1040,14 @@ mod tests {
 
         // Sub layer R=4 -> (8 + 4) / 2 = 6
         let mut r = make_renderer();
-        r.deposit_main(0, 0x0008, Priority::Bg1Low, Layer::Bg1, false);
-        r.deposit_sub(0, 0x0004, Priority::Bg2Low, Layer::Bg2, false);
+        r.deposit_main(0, 0x0008, BG1_LOW, Layer::Bg1, false);
+        r.deposit_sub(0, 0x0004, BG2_LOW, Layer::Bg2, false);
         r.composite_line(&ppu, 0);
         assert_eq!(fb_pixel(&r, 0, 0), Renderer::apply_brightness(0x0006, 15));
 
         // Transparent sub -> fixed R=4, not divided -> 8 + 4 = 12
         let mut r = make_renderer();
-        r.deposit_main(0, 0x0008, Priority::Bg1Low, Layer::Bg1, false);
+        r.deposit_main(0, 0x0008, BG1_LOW, Layer::Bg1, false);
         r.composite_line(&ppu, 0);
         assert_eq!(fb_pixel(&r, 0, 0), Renderer::apply_brightness(0x000C, 15));
     }
@@ -1023,7 +1061,7 @@ mod tests {
         ppu.write(0x2132, 0x28); // fixed R=8
         ppu.write(0x2130, 0xC0); // clip main to black always
         ppu.write(0x2131, 0x41); // BG1 math, half add
-        r.deposit_main(0, 0x001F, Priority::Bg1Low, Layer::Bg1, false);
+        r.deposit_main(0, 0x001F, BG1_LOW, Layer::Bg1, false);
         r.composite_line(&ppu, 0);
         assert_eq!(fb_pixel(&r, 0, 0), Renderer::apply_brightness(0x0008, 15));
     }
@@ -1646,7 +1684,7 @@ mod tests {
             ppu.write(0x2130, cgwsel);
             let mut r = make_renderer();
             for x in [5, 15] {
-                r.deposit_main(x, 0x0008, Priority::Bg1Low, Layer::Bg1, false);
+                r.deposit_main(x, 0x0008, BG1_LOW, Layer::Bg1, false);
             }
             r.composite_line(&ppu, 0);
             for (x, want) in [5, 15].into_iter().zip(expected) {

@@ -14,18 +14,21 @@ impl Renderer {
     /// Renders BG1-BG3 in Mode 1 on framebuffer row `y`.
     pub fn render_scanline_mode1(&mut self, ppu: &PPU, y: usize) {
         // Mode 1: BG1/BG2 4bpp, BG3 2bpp. No per-layer palette offset.
+        // Mode 1 order (front to back), between the sprites (OBJ0-OBJ3 = 3, 6, 9, 12):
+        //   OBJ3 > BG1.1 > BG2.1 > OBJ2 > BG1.0 > BG2.0 > OBJ1 >
+        //   BG3.1 > OBJ0 > BG3.0 > backdrop
         // BGMODE bit3 lifts BG3 high-priority tiles above every other layer.
         let bg3_high = if ppu.regs.bgmode & 0x08 != 0 {
-            Priority::Bg3Prio
+            Priority::new(13)
         } else {
-            Priority::Bg3High
+            Priority::new(5)
         };
 
         // (bg_index, bpp, z_low, z_high)
         let layers = [
-            (0usize, BitDepth::Four, Priority::Bg1Low, Priority::Bg1High),
-            (1, BitDepth::Four, Priority::Bg2Low, Priority::Bg2High),
-            (2, BitDepth::Two, Priority::Bg3Low, bg3_high),
+            (0usize, BitDepth::Four, Priority::new(8), Priority::new(11)),
+            (1, BitDepth::Four, Priority::new(7), Priority::new(10)),
+            (2, BitDepth::Two, Priority::new(2), bg3_high),
         ];
 
         for (bg, bpp, z_low, z_high) in layers {

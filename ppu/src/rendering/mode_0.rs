@@ -16,17 +16,16 @@ impl Renderer {
         // Mode 0: BG1-BG4, all 2bpp. Each BG owns a separate 32-colour region:
         // BG1 -> 0, BG2 -> 32, BG3 -> 64, BG4 -> 96.
         const PALETTE_BASE: [u8; 4] = [0, 32, 64, 96];
-        const Z_LOW: [Priority; 4] = [
-            Priority::Bg1Low,
-            Priority::Bg2Low,
-            Priority::Bg3Low,
-            Priority::Bg4Low,
-        ];
-        const Z_HIGH: [Priority; 4] = [
-            Priority::Bg1High,
-            Priority::Bg2High,
-            Priority::Bg3High,
-            Priority::Bg4High,
+
+        // Mode 0 order (front to back):
+        //   OBJ3 > BG1.1 > BG2.1 > OBJ2 > BG1.0 > BG2.0 > OBJ1 >
+        //   BG3.1 > BG4.1 > OBJ0 > BG3.0 > BG4.0 > backdrop
+        // (low, high) priority tiles of BG1-BG4, between the sprites (OBJ0-OBJ3 = 3, 6, 9, 12).
+        const Z: [(Priority, Priority); 4] = [
+            (Priority::new(8), Priority::new(11)),
+            (Priority::new(7), Priority::new(10)),
+            (Priority::new(2), Priority::new(5)),
+            (Priority::new(1), Priority::new(4)),
         ];
 
         for bg in 0..4 {
@@ -53,8 +52,8 @@ impl Renderer {
                     h64,
                     tile16: ppu.regs.bg_tile16(bg),
                     mosaic: ppu.regs.bg_mosaic(bg),
-                    z_low: Z_LOW[bg],
-                    z_high: Z_HIGH[bg],
+                    z_low: Z[bg].0,
+                    z_high: Z[bg].1,
                     layer: Layer::from_bg(bg),
                     to_main,
                     to_sub,
