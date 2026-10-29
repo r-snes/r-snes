@@ -3,8 +3,8 @@
 R-SNES aims to be a decently fast and very accurate SNES emulator, while staying easy to understand as per modern coding standards.
 
 > [!NOTE]
-> For now, this is still a work in progress. We successfully run and pass the full [test ROM](https://github.com/gilyon/snes-tests) suite, but we're still some way from running actual commercial games.
-The [plugin system](#plugins) is functional, with several modules already implemented: RAM manipulation, CPU, PPU, display, and file read/write.
+> For now, this is still a work in progress. We're able to run commercial games with no crashes, partially working graphics (some rendering features and effects are still missing), and working game sound
+> The [plugin system](#plugins) is functional, with several modules already implemented: RAM manipulation, CPU, PPU, display, and file read/write.
 >
 > For the sake of brevity (and optimism!), some parts of this README describe features of the emulator as if they were already complete, which may not yet be the case.
 
@@ -21,15 +21,22 @@ Plugins will also be able to access things *outside* the emulator (which we refe
 Of course, plugins being able to do so much can cause risks since they might spread widely to non-developer communities (to people who can't easily audit what the plugin they are running is doing).
 For that, we require plugins to describe what permissions they require, and prompt the user to confirm that they do intend to grant said permissions to the plugin before running it, so they can at least raise an eyebrow if some plugin requires complete unrestricted access to the internet if it doesn't seem like it needs it.
 
-## Project documents
-
-- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Contribution policy. External pull requests are currently closed while the core systems (CPU, APU, PPU...) are under active development as part of a university project, but issues and discussions are welcome. Also covers the rules that apply once contributions open: one crate per component, mandatory unit tests (80% coverage minimum per crate), `cargo fmt`, zero warnings, and doc comments on all public items.
-- **[LEGAL.md](LEGAL.md)** - Legal and ethical framework for developing a SNES emulator under French/EU law: clean-room implementation, the private-copy exception, the interoperability exception for reverse engineering, and the project's policy of never distributing ROMs, BIOS, or firmware.
-- **[FINANCE.md](FINANCE.md)** - Funding policy: the project is non-commercial and won't be sold, voluntary donations are allowed, and a future model for commissioned plugins (public-release or exclusive-release) is outlined.
+If you want to try writing plugins yourself, check out our [plugin API documentation](plugin_api.md). If you have any question or suggestion about this documentation, plugins in general (or anything else), feel free to [open a discussion about it](https://github.com/r-snes/r-snes/discussions).
 
 ## Installing
 
-For now the only supported "install" method is building the emulator from source.
+To start using R-SNES, go to our [releases pages](https://github.com/r-snes/r-snes/releases), and download the file suited for your platform. We currently support:
+- Windows: .exe build
+- Debian-based linux distros (including Ubuntu, Linux Mint, Pop!_OS...): .deb package
+- Fedora-based linux distros (including Bazzite): .rpm package
+- Nix on linux: nix package available in our flake (`nix run 'github:r-snes/r-snes?ref=v0.1.0'`, or any other version you'd like)
+
+For now, R-SNES isn't available in any public package repository, but feel free to request it to be added. MacOS support is unknown, we've not tested it, feel free to try a manual install and report to us.
+If you have any trouble installing R-SNES, or want to discuss platform compatibility or integration in package repositories, please open a [discussion](https://github.com/r-snes/r-snes/discussions) about it.
+
+### Manual install/build
+
+You can also manually build from source:
 
 For this, you will need a local install of the Rust toolchain, including `cargo` and `rustc`. Building should be as simple as getting a local copy of the source code and then running `cargo build --release` from the project root.
 
@@ -37,8 +44,6 @@ You may need some system dependencies:
 
 - SDL2
 - Basic system-specific desktop libraries (for example, `libX11` and `libxkbcommon` on Linux)
-
-For now, the project is known to work on Linux (Wayland) and Windows, but could also already work fine on other systems, give it a try!
 
 ## Project structure
 
@@ -88,10 +93,10 @@ The `cpu` and `ppu` crates don't talk to memory directly - they go through the `
 The `apu` crate is a bit different: it has its own internal CPU (the S-SMP) and its own separate memory zone, so it doesn't go through the shared `bus` crate at all - it manages its reads and writes internally. The main program only steps it forward cycle by cycle according to its own clock speed (which differs from the main CPU's), the same way it does for the CPU and PPU, and then collects its audio output.
 
 ```
-                              +--------------------+    
-                              | r-snes crate: root |          | Key:    
+                              +--------------------+
+                              | r-snes crate: root |          | Key:
                               |--------------------|   2      |  1. Steps component cycles
-      +-----------------------|    main program:   |<------+  |  2. Fills output (image/audio)   
+      +-----------------------|    main program:   |<------+  |  2. Fills output (image/audio)
       |                       |  orchestrates all  |----+  |  |  3. Read/Write requests
       |  +------------------->|     components     |    |  |  |  4. Perform read/write
       |  |                    +--------------------+    |  |  |  5. Return CPU reads
@@ -112,10 +117,10 @@ The `apu` crate is a bit different: it has its own internal CPU (the S-SMP) and 
          |               |                   v  |       |       |
          |       4       |          +----------------+  |      4|
          +---------------|--------->|      Bus       |<-|-------+
-                         |          |----------------|  | 
-                         |          | defines the    |  | 
-                         |  +-------| memory mapping |  | 
-                         |  |       +----------------+  | 
+                         |          |----------------|  |
+                         |          | defines the    |  |
+                         |  +-------| memory mapping |  |
+                         |  |       +----------------+  |
                          |  |4      4|        4|        |
                          |  v        v         v        |
                          | RAM      ROM     IO devices  |
