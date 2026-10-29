@@ -1268,10 +1268,8 @@ impl AddAssign for InstrBody {
         // other.post_instr already where it needs to be in the end
         let old_postinstr = std::mem::replace(&mut self.post_instr, other.post_instr);
 
-        // swap out the first cycle body of the other InstrBody for our current
-        // post_instr, and then glue it back *after* our current post_instr
-        let second_firstcycle = std::mem::replace(other.cycles[0].body_mut(), old_postinstr);
-        other.cycles[0].body_mut().extend(second_firstcycle);
+        // put our previous postinstr at the start of other's first cycle
+        other.cycles[0].prepend(old_postinstr);
 
         // finally merge the two cycle vectors
         self.cycles.extend(other.cycles);
@@ -1404,6 +1402,11 @@ impl Cycle {
             Self::Unconditional { body, .. } => body,
             Self::ConditionalIdle { body, .. } => body,
         }
+    }
+
+    fn prepend(&mut self, ts: TokenStream) {
+        let old = std::mem::replace(self.body_mut(), ts);
+        self.body_mut().extend(old);
     }
 }
 
