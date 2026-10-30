@@ -173,7 +173,7 @@ impl RSnesCore {
             return;
         }
 
-        match self.cpu.cycle_with_irqb(!self.bus.io.timer_flag()) {
+        match self.cpu.cycle_with_irqb(!self.bus.io.timeup_flag()) {
             CycleResult::Internal => {
                 self.cpu_master_cycles_to_wait = 6; // TODO : Confirm internal cpu cycle is 6 master cycles
             }
@@ -315,7 +315,7 @@ impl RSnesCore {
         };
 
         if self.ppu.h_cycles == target {
-            self.bus.io.set_timer_flag(true);
+            self.bus.io.set_timeup_flag(true);
         }
     }
 
@@ -771,7 +771,7 @@ mod tests {
 
         advance_core_to_scanline(&mut rsnes, 150);
         assert!(!rsnes.has_irq_occured());
-        assert!(!rsnes.bus.io.timer_flag());
+        assert!(!rsnes.bus.io.timeup_flag());
     }
 
     // ============================================================
