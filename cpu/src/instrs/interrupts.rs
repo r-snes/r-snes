@@ -288,11 +288,9 @@ mod test {
     }
 
     #[duplicate_item(
-        DUP_name        DUP_cycles  DUP_interrupt   DUP_vec;
-        [nmi_mid_wai2]   [(1, 1)]   [nmi]           [0xFFEA];
-        [nmi_mid_wai3]   [(2, 0)]   [nmi]           [0xFFEA];
-        // [irq_mid_wai2]   [(1, 1)]   [irq]           [0xFFEE];
-        // [irq_mid_wai3]   [(2, 0)]   [irq]           [0xFFEE];
+        DUP_name        DUP_cycles;
+        [nmi_mid_wai2]   [(1, 1)];
+        [nmi_mid_wai3]   [(2, 0)];
     )]
     #[test]
     fn DUP_name() {
@@ -302,7 +300,7 @@ mod test {
         for i in 1..=DUP_cycles.0 {
             expect_internal_cycle(&mut cpu, &format!("WAI init cycle {i}"));
         }
-        cpu.DUP_interrupt();
+        cpu.nmi();
         for i in 1..=DUP_cycles.1 {
             expect_internal_cycle(&mut cpu, &format!("WAI init cycle {i}"));
         }
@@ -310,6 +308,21 @@ mod test {
         for i in 1..=4 {
             assert_eq!(cpu.cycle(), CycleResult::Write, "push {i} for interrupt");
         }
-        expect_vector_to(&mut cpu, DUP_vec);
+        expect_vector_to(&mut cpu, 0xFFEA);
+    }
+
+    #[test]
+    fn irq_mid_wai3() {
+        let mut cpu = CPU::new(Registers::default());
+
+        expect_opcode_fetch(&mut cpu, 0xcb);
+
+        expect_internal_cycle(&mut cpu, "WAI init cycle 1");
+        expect_internal_cycle_with_irqb(&mut cpu, false, "WAI init cycle 2 (with IRQB=0");
+
+        for i in 1..=4 {
+            assert_eq!(cpu.cycle(), CycleResult::Write, "push {i} for interrupt");
+        }
+        expect_vector_to(&mut cpu, 0xFFEE);
     }
 }

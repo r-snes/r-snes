@@ -292,10 +292,9 @@ mod tests {
         for _ in 0..100 {
             expect_internal_cycle(&mut cpu, "stp spin loop");
         }
-        // cpu.irq();
-        // for _ in 0..100 {
-        //     expect_internal_cycle(&mut cpu, "stp spin loop");
-        // }
+        for _ in 0..100 {
+            expect_internal_cycle_with_irqb(&mut cpu, false, "stp spin loop");
+        }
         cpu.nmi();
         for _ in 0..100 {
             expect_internal_cycle(&mut cpu, "stp spin loop");
@@ -307,8 +306,8 @@ mod tests {
 
     #[duplicate_item(
         DUP_name        DUP_interrupt   DUP_vector;
-        [nmi_mid_nop]   [nmi]           [0xFFFA];
-        // [irq_mid_nop]   [irq]           [0xFFFE];
+        [nmi_mid_nop]   [cpu.nmi(); expect_internal_cycle(&mut cpu, "NOP cycle")]   [0xFFFA];
+        [irq_mid_nop]   [expect_internal_cycle_with_irqb(&mut cpu, false, "NOP cycle")]     [0xFFFE];
     )]
     #[test]
     fn DUP_name() {
@@ -321,8 +320,7 @@ mod tests {
         });
 
         expect_opcode_fetch(&mut cpu, 0xea);
-        cpu.DUP_interrupt();
-        expect_internal_cycle(&mut cpu, "NOP cycle");
+        DUP_interrupt;
 
         expect_write_cycle(&mut cpu, snes_addr!(0:0x0188), 0xee, "save PCH");
         expect_write_cycle(&mut cpu, snes_addr!(0:0x0187), 0xab, "save PCL");
@@ -349,9 +347,9 @@ mod tests {
     /// successful.<br>
     /// We still test the entire scenario to show what it would look like
     #[duplicate_item(
-        DUP_name        DUP_interrupt   DUP_vector;
-        [nmi_mid_jump]  [nmi]           [0xFFEA];
-        // [irq_mid_jump]  [irq]           [0xFFEE];
+        DUP_name        DUP_interrupt   DUP_irqb    DUP_vector;
+        [nmi_mid_jump]  [cpu.nmi()]           [true]      [0xFFEA];
+        [irq_mid_jump]  [()]           [false]     [0xFFEE];
     )]
     #[test]
     fn DUP_name() {
@@ -368,21 +366,18 @@ mod tests {
 
         expect_opcode_fetch(&mut cpu, 0x5c); // jml
         expect_read_cycle(&mut cpu, snes_addr!(4:8), 0x56, "PCL");
-        cpu.DUP_interrupt(); // request an interrupt which has to be served only once the JML completes
-        expect_read_cycle(&mut cpu, snes_addr!(4:9), 0x34, "PCH");
-        expect_read_cycle(&mut cpu, snes_addr!(4:10), 0x12, "PB");
+        DUP_interrupt; // request an interrupt which has to be served only once the JML completes
+        expect_read_cycle_with_irqb(&mut cpu, DUP_irqb, snes_addr!(4:9), 0x34, "PCH");
+        expect_read_cycle_with_irqb(&mut cpu, DUP_irqb, snes_addr!(4:10), 0x12, "PB");
 
-        expect_write_cycle(&mut cpu, snes_addr!(0:0x0244), 0x12, "save PB");
-        expect_write_cycle(&mut cpu, snes_addr!(0:0x0243), 0x34, "save PCH");
-        expect_write_cycle(&mut cpu, snes_addr!(0:0x0242), 0x56, "save PCL");
-        expect_write_cycle(&mut cpu, snes_addr!(0:0x0241), 123, "save P");
-        expect_read_cycle(&mut cpu, snes_addr!(0:DUP_vector), 0x68, "interrupt vec lo");
-        expect_read_cycle(
-            &mut cpu,
-            snes_addr!(0:DUP_vector + 1),
-            0x24,
-            "interrupt vec hi",
-        );
+        // it's even safe to have IRQB low for a few cycles: it should
+        // be ignored during the IRQ or NMI setup
+        expect_write_cycle_with_irqb(&mut cpu, false, snes_addr!(0:0x0244), 0x12, "save PB");
+        expect_write_cycle_with_irqb(&mut cpu, false, snes_addr!(0:0x0243), 0x34, "save PCH");
+        expect_write_cycle_with_irqb(&mut cpu, false, snes_addr!(0:0x0242), 0x56, "save PCL");
+        expect_write_cycle_with_irqb(&mut cpu, false, snes_addr!(0:0x0241), 123, "save P");
+        expect_read_cycle_with_irqb(&mut cpu, false, snes_addr!(0:DUP_vector), 0x68, "vec lo");
+        expect_read_cycle_with_irqb(&mut cpu, false, snes_addr!(0:DUP_vector+1), 0x24, "vec hi");
 
         expect_read_cycle(&mut cpu, snes_addr!(0:0x2468), 0x40, "fetch RTI opcode");
         expect_internal_cycle(&mut cpu, "RTI first idle");
@@ -454,8 +449,7 @@ mod tests {
         for _ in 0..100 {
             expect_internal_cycle(&mut cpu, "WAI spin loop");
         }
-        cpu.cycle_with_irqb(false);
-        // expect_internal_cycle(&mut cpu, "internal response time");
+        expect_internal_cycle_with_irqb(&mut cpu, false, "IRQB acknowlege cycle");
         expect_read_cycle(&mut cpu, snes_addr!(3:43), 0x1a, "opcode fetch INC");
         expect_internal_cycle(&mut cpu, "INC cycle");
         assert_eq!(cpu.registers.A, 16);
