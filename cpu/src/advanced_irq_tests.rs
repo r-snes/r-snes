@@ -27,7 +27,9 @@ use crate::{
 /// RTI
 /// ```
 ///
-/// This expects 0x42 to be in $00
+/// This expects 0x42 to be in $00: since CLI only clears I during
+/// its last cycle, the next instruction is executed before serving
+/// the interrupt
 #[test]
 fn cli_executes_next_instr() {
     let mut irqb = true; // no IRQ request at the start
@@ -307,6 +309,12 @@ fn cli_rti_might_not_irq() {
 /// STA $00
 /// RTI
 /// ```
+///
+/// In this case, we assume an RTI pulls I=0 while IRQB is still active,
+/// which means that an interrupt will occur right after the RTI finished.
+///
+/// So we execute the interrupt routine first, then RTI from it, and then run
+/// the LDA #$42
 #[test]
 fn rti_triggers_irq() {
     let mut irqb = true; // no IRQ request at the start
@@ -393,15 +401,17 @@ fn rti_triggers_irq() {
     expected_regs.PC = 0x3013;
     assert_eq!(cpu.regs(), &expected_regs);
 
+    irqb = true; // we assume the interrupt routine has stopped the IRQB signal
+
     // RTI
     expect_opcode_fetch_with_irqb(&mut cpu, irqb, 0x40);
     expect_internal_cycle_with_irqb(&mut cpu, irqb, "RTI idle 1");
     expect_internal_cycle_with_irqb(&mut cpu, irqb, "RTI idle 2");
-    expect_read_cycle_with_irqb(&mut cpu, irqb, snes_addr!(0:0x0181), 0b00100100, "pull P");
+    expect_read_cycle_with_irqb(&mut cpu, irqb, snes_addr!(0:0x0181), 0b00100000, "pull P");
     expect_read_cycle_with_irqb(&mut cpu, irqb, snes_addr!(0:0x0182), 0x00, "pull PCL");
     expect_read_cycle_with_irqb(&mut cpu, irqb, snes_addr!(0:0x0183), 0x10, "pull PCH");
     expect_read_cycle_with_irqb(&mut cpu, irqb, snes_addr!(0:0x0184), 0x10, "pull PB");
-    expected_regs.P.I = true; // we pulled I=0
+    expected_regs.P.I = false; // we pulled I=0
     expected_regs.PC = 0x1000;
     expected_regs.S = 0x0184;
     assert_eq!(cpu.regs(), &expected_regs);
@@ -417,4 +427,3 @@ fn rti_triggers_irq() {
     expect_opcode_fetch_cycle(&mut cpu);
     assert_eq!(cpu.regs(), &expected_regs);
 }
-
