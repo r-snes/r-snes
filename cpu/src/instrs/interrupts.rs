@@ -101,10 +101,13 @@ pub(crate) mod wai {
     ) -> (CycleResult, InstrCycle) {
         cpu.registers.PC = cpu.registers.PC.wrapping_add(1);
         cpu.next_fetch = InstrCycle(wai_cyc2);
-        (Internal, InstrCycle(|cpu, irqb| {
-            cpu.state = crate::cpu::CPUState::WaitForInterrupt;
-            return wai_cyc2(cpu, irqb)
-        }))
+        (
+            Internal,
+            InstrCycle(|cpu, irqb| {
+                cpu.state = crate::cpu::CPUState::WaitForInterrupt;
+                wai_cyc2(cpu, irqb)
+            }),
+        )
     }
     pub(crate) fn wai_cyc2(cpu: &mut CPU, irqb: bool) -> (CycleResult, InstrCycle) {
         // IRQ triggers when IRQB is low
