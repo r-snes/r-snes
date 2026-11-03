@@ -1,12 +1,16 @@
 # R-SNES
 
+[![CI](https://github.com/r-snes/r-snes/actions/workflows/actions.yaml/badge.svg?branch=main)](https://github.com/r-snes/r-snes/actions/workflows/actions.yaml)
+[![Latest release](https://img.shields.io/github/v/release/r-snes/r-snes)](https://github.com/r-snes/r-snes/releases/latest)
+[![License: MIT](https://img.shields.io/github/license/r-snes/r-snes)](LICENSE)
+
 R-SNES aims to be a decently fast and very accurate SNES emulator, while staying easy to understand as per modern coding standards.
+
+**Website: [r-snes.github.io/r-snes](https://r-snes.github.io/r-snes/)**, with guides to play games and write plugins, the API documentation of the code, and our test coverage.
 
 > [!NOTE]
 > For now, this is still a work in progress. We're able to run commercial games with no crashes, partially working graphics (some rendering features and effects are still missing), and working game sound
 > The [plugin system](#plugins) is functional, with several modules already implemented: RAM manipulation, CPU, PPU, display, and file read/write.
->
-> For the sake of brevity (and optimism!), some parts of this README describe features of the emulator as if they were already complete, which may not yet be the case.
 
 ## Project purpose
 
@@ -14,18 +18,19 @@ Being a SNES emulator, R-SNES allows users to play SNES games. We also try to st
 
 ### Plugins
 
-We also wish to make the player experience extensible with Lua plugins which can affect many parts of the emulator, be run automatically for each rendered frame, on each CPU cycle, or when a specific value in memory changes (among other trigger conditions).
+The player experience is extensible with Lua plugins, which can read and change many parts of the emulator (memory, PPU, controller inputs...). They can run automatically before each CPU instruction, at regular intervals (in emulated or real time), or when the player triggers them with a key press.
 
-Plugins will also be able to access things *outside* the emulator (which we refer to as "external"), which could allow them to, for example, read data from files, save data extracted from a running game to a file, or even send it over the network in HTTP requests.
+Plugins can also access things *outside* the emulator (which we refer to as "external"). For now, they can read and write files, for example to save data extracted from a running game. In the future, we would like to let them do more, such as sending data over the network in HTTP requests.
 
 Of course, plugins being able to do so much can cause risks since they might spread widely to non-developer communities (to people who can't easily audit what the plugin they are running is doing).
-For that, we require plugins to describe what permissions they require, and prompt the user to confirm that they do intend to grant said permissions to the plugin before running it, so they can at least raise an eyebrow if some plugin requires complete unrestricted access to the internet if it doesn't seem like it needs it.
+For that, we require plugins to describe what permissions they require, and prompt the user to confirm that they do intend to grant said permissions to the plugin before running it, so they can at least raise an eyebrow if some plugin requires access to their files if it doesn't seem like it needs it.
 
-If you want to try writing plugins yourself, check out our [plugin API documentation](plugin_api.md). If you have any question or suggestion about this documentation, plugins in general (or anything else), feel free to [open a discussion about it](https://github.com/r-snes/r-snes/discussions).
+If you want to try writing plugins yourself, follow our [first plugin tutorial](https://r-snes.github.io/r-snes/book/first-plugin.html), then check out the [plugin API documentation](https://r-snes.github.io/r-snes/book/plugin-api.html). If you have any question or suggestion about this documentation, plugins in general (or anything else), feel free to [open a discussion about it](https://github.com/r-snes/r-snes/discussions).
 
 ## Installing
 
 To start using R-SNES, go to our [releases pages](https://github.com/r-snes/r-snes/releases), and download the file suited for your platform. We currently support:
+
 - Windows: .exe build
 - Debian-based linux distros (including Ubuntu, Linux Mint, Pop!_OS...): .deb package
 - Fedora-based linux distros (including Bazzite): .rpm package
@@ -33,6 +38,8 @@ To start using R-SNES, go to our [releases pages](https://github.com/r-snes/r-sn
 
 For now, R-SNES isn't available in any public package repository, but feel free to request it to be added. MacOS support is unknown, we've not tested it, feel free to try a manual install and report to us.
 If you have any trouble installing R-SNES, or want to discuss platform compatibility or integration in package repositories, please open a [discussion](https://github.com/r-snes/r-snes/discussions) about it.
+
+Then, the [getting started guide](https://r-snes.github.io/r-snes/book/getting-started.html) explains how to launch a game, and lists the [controls](https://r-snes.github.io/r-snes/book/controls.html).
 
 ### Manual install/build
 
@@ -47,85 +54,9 @@ You may need some system dependencies:
 
 ## Project structure
 
-Each component (hardware piece of the original console) is implemented in its own crate, in its own subfolder at the repository root (see the up-to-date list of workspace members in the root `Cargo.toml`). The main emulator program (front-end, window/GUI, and top-level glue between crates) lives directly in `src/`.
+Each component (hardware piece of the original console) is implemented in its own crate, in its own subfolder at the repository root: `cpu/`, `ppu/`, `apu/` and `bus/`, along with the plugin system in `plugins/` and a few helper crates (see the up-to-date list of workspace members in the root `Cargo.toml`). The main emulator program (front-end, window/GUI, and top-level glue between crates) lives directly in `src/`, and the project's website in `site/`.
 
-- **`cpu/`** - Emulation of the 65816 CPU core, including the full instruction set. Instructions are defined through a small custom DSL, compiled via the `instr_metalang_procmacro` proc-macro sub-crate.
-- **`ppu/`** - Emulation of the Picture Processing Unit: VRAM/CGRAM, PPU registers, and the frame rendering pipeline (one module per background/rendering mode).
-- **`apu/`** - Emulation of the Audio Processing Unit: the S-SMP CPU core and the S-DSP sound chip (ADSR envelopes, BRR sample decoding, voices, timers).
-- **`bus/`** - The system bus tying the components together: address space, WRAM, memory-mapped I/O, and ROM loading/header parsing.
-- **`common/`** - Small shared types and utilities used across the other crates (e.g. SNES address types, bit-splitting helpers).
-- **`plugins/`** - The Lua plugin system described [above](#plugins): the plugin runtime and the permission tree that gates what a plugin is allowed to do, with two dedicated derive-macro sub-crates.
-- **`product_order/`** - Derive-macro crate that provides comparison/ordering logic used by the permission tree in `plugins/`, so permission nodes can be compared against each other.
-
-At the repository root you'll also find the workspace's `Cargo.toml`/`Cargo.lock`, project documentation (`README.md`, `CONTRIBUTING.md`, `TECHNOLOGY_EVALUATION.md`, `LEGAL.md`, `FINANCE.md`), test ROMs used for validation (e.g. `cputest-*.sfc`, `spctest.sfc`), a Nix flake for a reproducible dev environment, and the project's static website under `site/`.
-
-```
-R-SNES/
-├── src/                  # main binary: front-end, GUI, wiring between crates
-│   └── rsnes/
-├── cpu/                  # 65816 CPU core + instruction set
-│   ├── instr_metalang_procmacro/
-│   ├── docs/
-│   │   └── README.md
-│   └── README.md
-├── ppu/                  # Picture Processing Unit (rendering, VRAM, CGRAM)
-│   └── rendering/
-├── apu/                  # Audio Processing Unit (S-SMP + S-DSP)
-│   └── dsp/
-├── bus/                  # system bus, WRAM, ROM loading/header
-│   └── rom/
-├── common/               # shared types & utilities
-├── plugins/              # Lua plugin runtime + permission system
-│   ├── perm_tree_node_derive/
-│   └── permission_derive_macro/
-├── product_order/        # permission-tree comparison/ordering derive macro
-├── site/                 # project website
-├── Cargo.toml            # workspace definition
-└── README.md
-```
-
-## Project architecture
-
-Architecturally, the root `r-snes` crate (`src/`) acts as the orchestrator: it owns and steps every hardware component crate (`cpu`, `ppu`, `apu`) forward cycle by cycle, and collects their output (the rendered frame, the audio samples) to hand off to the front-end.
-
-The `cpu` and `ppu` crates don't talk to memory directly - they go through the `bus` crate, which owns the SNES memory map and knows how to route a given address to RAM, ROM, or a memory-mapped IO device. This keeps each component crate focused purely on its own emulation logic, while `bus` is the single place that knows *where things live in memory*.
-
-The `apu` crate is a bit different: it has its own internal CPU (the S-SMP) and its own separate memory zone, so it doesn't go through the shared `bus` crate at all - it manages its reads and writes internally. The main program only steps it forward cycle by cycle according to its own clock speed (which differs from the main CPU's), the same way it does for the CPU and PPU, and then collects its audio output.
-
-```
-                              +--------------------+
-                              | r-snes crate: root |          | Key:
-                              |--------------------|   2      |  1. Steps component cycles
-      +-----------------------|    main program:   |<------+  |  2. Fills output (image/audio)
-      |                       |  orchestrates all  |----+  |  |  3. Read/Write requests
-      |  +------------------->|     components     |    |  |  |  4. Perform read/write
-      |  |                    +--------------------+    |  |  |  5. Return CPU reads
-      |  |2                     ^  |  |      |  ^      1|  |
-     1|  |                     3|  |1 |5     |  |       v  |
-      v  |                      |  v  v      |  |     +------------------------+
-+-----------------+  +-------------------+   |  |     |    ppu crate: PPU      |
-| apu crate: APU  |  |  cpu crate: CPU   |   |  |     |------------------------|
-|-----------------|  |-------------------|   |  |     |  graphics processing.  |
-| audio rendering |  | handles execution |   |  |     | writes the framebuffer |
-+-----------------+  |    of the main    |   |  |     |    according to        |
-         ^           |     program       |   |  |5    |    write requests      |
-         |           +-------------------+  3|  |     +------------------------+
-         |                                   |  |               ^
-         |               +------------------------------+       |
-         |               |         bus crate |  |       |       |
-         |               |-------------------|--|-------|       |
-         |               |                   v  |       |       |
-         |       4       |          +----------------+  |      4|
-         +---------------|--------->|      Bus       |<-|-------+
-                         |          |----------------|  |
-                         |          | defines the    |  |
-                         |  +-------| memory mapping |  |
-                         |  |       +----------------+  |
-                         |  |4      4|        4|        |
-                         |  v        v         v        |
-                         | RAM      ROM     IO devices  |
-                         +------------------------------+
-```
+The [architecture page](https://r-snes.github.io/r-snes/book/architecture.html) of our documentation describes each crate and how they work together, and the [API documentation](https://r-snes.github.io/r-snes/api/r_snes/index.html) is generated from the code.
 
 ## Language and technology choices
 
@@ -133,4 +64,12 @@ The emulator is implemented in Rust. This choice of language is mostly by person
 
 Beyond the language itself, the project's front-end relies on SDL2 for windowing, with egui layered on top for easier UI handling.
 
-The full reasoning behind these decisions, methodology, comparison tables, and what would make us reconsider each one, is documented in [`TECHNOLOGY_EVALUATION.md`](TECHNOLOGY_EVALUATION.md).
+## Contributing
+
+R-SNES is open to contributions! If you're looking for a place to start, check the issues labelled [`good first issue`](https://github.com/r-snes/r-snes/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22). Before opening a pull request, please read our [contributing guide](CONTRIBUTING.md): it explains what we accept, and the quality bar every change must meet.
+
+You can also help by [reporting bugs](https://github.com/r-snes/r-snes/issues), or by sharing your questions, ideas and plugins in the [discussions](https://github.com/r-snes/r-snes/discussions).
+
+## License
+
+R-SNES is released under the [MIT license](LICENSE). It doesn't include any ROM, BIOS or firmware: see our [legal notice](LEGAL.md).
