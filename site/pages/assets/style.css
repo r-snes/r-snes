@@ -1,0 +1,522 @@
+/* Shared styles of the hand-written pages (landing page and coverage dashboard). */
+
+:root {
+    color-scheme: light;
+    --bg: #f6f7f9;
+    --surface: #ffffff;
+    --surface-2: #eceff3;
+    --border: #d9dee5;
+    --text: #12161c;
+    --text-2: #444c58;
+    --muted: #677180;
+    --accent: #0a74b8;
+    --accent-ink: #ffffff;
+    --code-bg: #161b22;
+    --code-text: #e6edf3;
+
+    /* The four SNES face buttons, as on the logo */
+    --btn-x: #12a5e8;
+    --btn-y: #13a84a;
+    --btn-a: #e5383b;
+    --btn-b: #e8b800;
+
+    --good: #1a7f37;
+    --warn: #9a6700;
+    --meter: #0a74b8;
+    --meter-track: #dbe8f3;
+
+    --radius: 12px;
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 4px 16px rgb(0 0 0 / 0.06);
+    --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        color-scheme: dark;
+        --bg: #0e1116;
+        --surface: #161b22;
+        --surface-2: #1f2630;
+        --border: #2d3540;
+        --text: #eef1f5;
+        --text-2: #bcc4cf;
+        --muted: #8b95a3;
+        --accent: #4cc2ff;
+        --accent-ink: #06121c;
+        --code-bg: #0a0d11;
+        --good: #3fb950;
+        --warn: #d29922;
+        --meter: #4cc2ff;
+        --meter-track: #1d3242;
+        --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 4px 16px rgb(0 0 0 / 0.25);
+    }
+}
+
+:root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #0e1116;
+    --surface: #161b22;
+    --surface-2: #1f2630;
+    --border: #2d3540;
+    --text: #eef1f5;
+    --text-2: #bcc4cf;
+    --muted: #8b95a3;
+    --accent: #4cc2ff;
+    --accent-ink: #06121c;
+    --code-bg: #0a0d11;
+    --good: #3fb950;
+    --warn: #d29922;
+    --meter: #4cc2ff;
+    --meter-track: #1d3242;
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 4px 16px rgb(0 0 0 / 0.25);
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+html {
+    scroll-behavior: smooth;
+    scroll-padding-top: 72px;
+}
+
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 17px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+}
+
+a {
+    color: var(--accent);
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+code {
+    font-family: var(--mono);
+    font-size: 0.9em;
+    background: var(--surface-2);
+    padding: 0.1em 0.35em;
+    border-radius: 5px;
+}
+
+img {
+    max-width: 100%;
+}
+
+.container {
+    width: 100%;
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 0 16px;
+}
+
+@media (min-width: 720px) {
+    .container {
+        padding: 0 32px;
+    }
+}
+
+/* ---------- Header ---------- */
+
+.site-header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: color-mix(in srgb, var(--bg) 85%, transparent);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border);
+}
+
+.site-header .container {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    height: 60px;
+}
+
+.brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--text);
+    font-weight: 700;
+    font-size: 1.1rem;
+    letter-spacing: 0.02em;
+}
+
+.brand:hover {
+    text-decoration: none;
+}
+
+.brand img {
+    width: 30px;
+    height: 30px;
+}
+
+.nav {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+}
+
+.nav a {
+    color: var(--text-2);
+    padding: 6px 10px;
+    border-radius: 8px;
+    font-size: 0.95rem;
+}
+
+.nav a:hover,
+.nav a.active {
+    color: var(--text);
+    background: var(--surface-2);
+    text-decoration: none;
+}
+
+.icon-btn {
+    display: inline-grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--text-2);
+    cursor: pointer;
+    padding: 0;
+}
+
+.icon-btn:hover {
+    color: var(--text);
+}
+
+.icon-btn svg {
+    width: 18px;
+    height: 18px;
+}
+
+.menu-toggle {
+    display: none;
+}
+
+@media (max-width: 860px) {
+    .menu-toggle {
+        display: inline-grid;
+        margin-left: auto;
+    }
+
+    .nav {
+        display: none;
+        position: absolute;
+        top: 60px;
+        left: 0;
+        right: 0;
+        flex-direction: column;
+        align-items: stretch;
+        padding: 8px 16px 16px;
+        background: var(--bg);
+        border-bottom: 1px solid var(--border);
+    }
+
+    .nav.open {
+        display: flex;
+    }
+
+    .nav a {
+        padding: 10px 12px;
+    }
+}
+
+/* ---------- Buttons ---------- */
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 11px 20px;
+    border-radius: 10px;
+    font-weight: 600;
+    font-size: 0.98rem;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.btn:hover {
+    text-decoration: none;
+    transform: translateY(-1px);
+    box-shadow: var(--shadow);
+}
+
+.btn.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-ink);
+}
+
+.btn svg {
+    width: 18px;
+    height: 18px;
+}
+
+/* ---------- Sections ---------- */
+
+section {
+    padding: 88px 0;
+}
+
+section + section {
+    border-top: 1px solid var(--border);
+}
+
+.eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+    margin: 0 0 12px;
+}
+
+h1,
+h2,
+h3 {
+    line-height: 1.2;
+    margin: 0;
+}
+
+h2 {
+    font-size: clamp(1.7rem, 3.5vw, 2.4rem);
+    letter-spacing: -0.01em;
+}
+
+h3 {
+    font-size: 1.15rem;
+}
+
+.lead {
+    font-size: 1.12rem;
+    color: var(--text-2);
+    max-width: 68ch;
+    margin: 16px 0 0;
+}
+
+.section-head {
+    margin-bottom: 40px;
+}
+
+/* Small diamond of the four SNES buttons, used as a bullet */
+.dots {
+    display: inline-grid;
+    grid-template-columns: repeat(3, 5px);
+    grid-template-rows: repeat(3, 5px);
+}
+
+.dots i {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+}
+
+.dots i:nth-child(1) { grid-area: 1 / 2; background: var(--btn-x); }
+.dots i:nth-child(2) { grid-area: 2 / 1; background: var(--btn-y); }
+.dots i:nth-child(3) { grid-area: 2 / 3; background: var(--btn-a); }
+.dots i:nth-child(4) { grid-area: 3 / 2; background: var(--btn-b); }
+
+/* ---------- Cards ---------- */
+
+.grid {
+    display: grid;
+    gap: 16px;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+}
+
+.card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+}
+
+.card p {
+    color: var(--text-2);
+    margin: 8px 0 0;
+    font-size: 0.97rem;
+}
+
+a.card {
+    display: block;
+    color: inherit;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+a.card:hover {
+    text-decoration: none;
+    transform: translateY(-2px);
+    box-shadow: var(--shadow);
+    border-color: var(--accent);
+}
+
+.card .tag {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--muted);
+    margin-bottom: 8px;
+}
+
+/* ---------- Code blocks ---------- */
+
+pre.code {
+    margin: 0;
+    background: var(--code-bg);
+    color: var(--code-text);
+    border-radius: var(--radius);
+    padding: 20px 22px;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: 0.88rem;
+    line-height: 1.65;
+    border: 1px solid var(--border);
+}
+
+pre.code code {
+    background: none;
+    padding: 0;
+    font-size: inherit;
+}
+
+.tok-k { color: #ff7b72; }
+.tok-s { color: #a5d6ff; }
+.tok-c { color: #8b949e; font-style: italic; }
+.tok-f { color: #d2a8ff; }
+.tok-n { color: #79c0ff; }
+
+/* ---------- Footer ---------- */
+
+.site-footer {
+    border-top: 1px solid var(--border);
+    padding: 40px 0;
+    color: var(--muted);
+    font-size: 0.9rem;
+}
+
+.site-footer .container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px 32px;
+    justify-content: space-between;
+}
+
+.site-footer p {
+    margin: 0;
+    max-width: 60ch;
+}
+
+.footer-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 20px;
+}
+
+.footer-links a {
+    color: var(--text-2);
+}
+
+/* ---------- Coverage meters (shared by both pages) ---------- */
+
+.meter {
+    position: relative;
+    height: 10px;
+    border-radius: 5px;
+    background: var(--meter-track);
+    min-width: 80px;
+}
+
+.meter > span {
+    display: block;
+    height: 100%;
+    border-radius: 5px;
+    background: var(--meter);
+}
+
+/* The 80% workspace minimum required by CONTRIBUTING.md */
+.meter::after {
+    content: "";
+    position: absolute;
+    top: -3px;
+    bottom: -3px;
+    left: 80%;
+    width: 2px;
+    background: var(--text-2);
+    border-radius: 1px;
+}
+
+.status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.85rem;
+    white-space: nowrap;
+}
+
+.status svg {
+    width: 15px;
+    height: 15px;
+    flex: none;
+}
+
+.status.good svg { color: var(--good); }
+.status.warn svg { color: var(--warn); }
+
+.num {
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    white-space: nowrap;
+}
+
+/* ---------- Scroll reveal ---------- */
+
+.reveal {
+    opacity: 0;
+    transform: translateY(24px);
+    transition: opacity 0.6s ease, transform 0.6s ease;
+}
+
+.reveal.visible {
+    opacity: 1;
+    transform: none;
+}
+
+.no-js .reveal {
+    opacity: 1;
+    transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html {
+        scroll-behavior: auto;
+    }
+
+    .reveal {
+        opacity: 1;
+        transform: none;
+        transition: none;
+    }
+}

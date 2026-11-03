@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en" class="no-js">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>R-SNES</title>
+    <meta name="description"
+        content="R-SNES is a cycle-accurate Super Nintendo emulator written in Rust, extensible with sandboxed Lua plugins.">
+    <link rel="icon" type="image/png" href="assets/logo.png">
+    <link rel="stylesheet" href="assets/style.css">
+    <script>
+        // Applied before the first paint to avoid a flash of the wrong theme
+        try {
+            const t = localStorage.getItem("rsnes-theme");
+            if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+        } catch { }
+    </script>
+    <style>
+        /* ---------- Hero ---------- */
+
+        .hero {
+            position: relative;
+            overflow: hidden;
+            padding: 96px 0 104px;
+        }
+
+        .hero .container {
+            display: grid;
+            gap: 48px;
+            align-items: center;
+            grid-template-columns: 1.2fr 1fr;
+        }
+
+        .hero h1 {
+            font-size: clamp(3rem, 8vw, 5.2rem);
+            font-weight: 800;
+            letter-spacing: -0.03em;
+        }
+
+        .hero h1 span {
+            background: linear-gradient(90deg, var(--btn-x), var(--btn-y), var(--btn-b), var(--btn-a));
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+
+        .hero .tagline {
+            font-size: clamp(1.15rem, 2.2vw, 1.4rem);
+            color: var(--text-2);
+            margin: 16px 0 0;
+            max-width: 32ch;
+        }
+
+        .actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-top: 32px;
+        }
+
+        .hero-art {
+            position: relative;
+            justify-self: center;
+            width: min(100%, 380px);
+            aspect-ratio: 1;
+        }
+
+        .hero-art::before {
+            content: "";
+            position: absolute;
+            inset: -10%;
+            border-radius: 50%;
+            background:
+                radial-gradient(circle at 50% 18%, color-mix(in srgb, var(--btn-x) 45%, transparent), transparent 45%),
+                radial-gradient(circle at 18% 50%, color-mix(in srgb, var(--btn-y) 40%, transparent), transparent 45%),
+                radial-gradient(circle at 82% 50%, color-mix(in srgb, var(--btn-a) 40%, transparent), transparent 45%),
+                radial-gradient(circle at 50% 82%, color-mix(in srgb, var(--btn-b) 40%, transparent), transparent 45%);
+            filter: blur(40px);
+            opacity: 0.7;
+        }
+
+        .hero-art img {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            animation: spin-in 1.2s cubic-bezier(.2, .8, .2, 1) both;
+        }
+
+        @keyframes spin-in {
+            from {
+                transform: rotate(-90deg) scale(0.85);
+                opacity: 0;
+            }
+        }
+
+        .scroll-hint {
+            position: absolute;
+            left: 50%;
+            bottom: 24px;
+            transform: translateX(-50%);
+            color: var(--muted);
+            font-size: 0.8rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .scroll-hint svg {
+            width: 18px;
+            height: 18px;
+            animation: bob 2s ease-in-out infinite;
+        }
+
+        @keyframes bob {
+            50% {
+                transform: translateY(5px);
+            }
+        }
+
+        @media (max-width: 860px) {
+            .hero {
+                padding: 56px 0 88px;
+            }
+
+            .hero .container {
+                grid-template-columns: 1fr;
+            }
+
+            .hero-art {
+                order: -1;
+                width: 180px;
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+
+            .hero-art img,
+            .scroll-hint svg {
+                animation: none;
+            }
+        }
+
+        /* ---------- About ---------- */
+
+        .about {
+            max-width: 72ch;
+            margin: 0 auto;
+            text-align: center;
+        }
+
+        .about .lead {
+            margin: 16px auto 0;
+        }
+
+        .about p {
+            color: var(--text-2);
+            margin: 0 0 16px;
+        }
+
+        /* ---------- Download ---------- */
+
+        .release-info {
+            margin: 12px 0 0;
+            color: var(--muted);
+            font-size: 0.95rem;
+        }
+
+        .downloads {
+            grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+        }
+
+        .downloads .card {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .downloads .card p {
+            flex: 1;
+        }
+
+        .downloads .file {
+            display: block;
+            margin-top: 16px;
+            font-family: var(--mono);
+            font-size: 0.85rem;
+            color: var(--accent);
+            word-break: break-all;
+        }
+
+        .downloads pre.code {
+            margin-top: 16px;
+            padding: 10px 12px;
+            font-size: 0.8rem;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        /* ---------- Plugins ---------- */
+
+        .split {
+            display: grid;
+            gap: 40px;
+            grid-template-columns: 1fr 1fr;
+            align-items: center;
+        }
+
+        @media (max-width: 860px) {
+            .split {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .steps {
+            list-style: none;
+            padding: 0;
+            margin: 24px 0 0;
+            counter-reset: step;
+            display: grid;
+            gap: 16px;
+        }
+
+        .steps li {
+            counter-increment: step;
+            display: grid;
+            grid-template-columns: 32px 1fr;
+            gap: 12px;
+            color: var(--text-2);
+        }
+
+        .steps li::before {
+            content: counter(step);
+            display: grid;
+            place-items: center;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: var(--surface-2);
+            color: var(--text);
+            font-weight: 700;
+            font-size: 0.9rem;
+        }
+
+        .steps b {
+            color: var(--text);
+        }
+
+        /* ---------- Coverage summary ---------- */
+
+        .quality {
+            display: grid;
+            gap: 24px;
+            grid-template-columns: 1fr 1.6fr;
+            align-items: stretch;
+        }
+
+        @media (max-width: 860px) {
+            .quality {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .hero-figure {
+            font-size: 3.6rem;
+            font-weight: 700;
+            line-height: 1;
+            margin: 8px 0 12px;
+        }
+
+        .crate-meters {
+            display: grid;
+            grid-template-columns: auto 1fr auto;
+            gap: 12px 16px;
+            align-items: center;
+            font-size: 0.93rem;
+        }
+
+        .crate-meters .name {
+            font-family: var(--mono);
+            font-size: 0.85rem;
+            color: var(--text-2);
+        }
+
+        .muted {
+            color: var(--muted);
+        }
+
+        /* ---------- Community ---------- */
+
+        .social {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+        }
+
+        .social svg {
+            width: 32px;
+            height: 32px;
+            flex: none;
+        }
+
+        .community {
+            grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+        }
+    </style>
+</head>
+
+<body>
+    <header class="site-header">
+        <div class="container">
+            <a class="brand" href="./">
+                <img src="assets/logo.png" alt="" width="30" height="30">
+                R-SNES
+            </a>
+            <button class="icon-btn menu-toggle" aria-label="Menu" aria-expanded="false">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                    <path d="M4 7h16M4 12h16M4 17h16" />
+                </svg>
+            </button>
+            <nav class="nav">
+                <a href="#about">About</a>
+                <a href="#download">Download</a>
+                <a href="#plugins">Plugins</a>
+                <a href="#docs">Docs</a>
+                <a href="#quality">Coverage</a>
+                <a href="#community">Community</a>
+                <a href="https://github.com/r-snes/r-snes" aria-label="GitHub repository">GitHub</a>
+            </nav>
+            <button class="icon-btn" data-theme-toggle aria-label="Toggle dark mode">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                    stroke-linejoin="round">
+                    <path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9Z" />
+                </svg>
+            </button>
+        </div>
+    </header>
+
+    <main>
+        <!-- ================= Hero ================= -->
+        <section class="hero">
+            <div class="container">
+                <div>
+                    <h1><span>R-SNES</span></h1>
+                    <p class="tagline">A cycle-accurate Super Nintendo emulator written in Rust, extensible with
+                        sandboxed Lua plugins.</p>
+                    <div class="actions">
+                        <a class="btn primary" href="#download">Download</a>
+                        <a class="btn" href="book/getting-started.html">Get started</a>
+                        <a class="btn" href="https://github.com/r-snes/r-snes">
+                            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                                <path
+                                    d="M8 0c4.42 0 8 3.58 8 8a8.01 8.01 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A8 8 0 0 1 0 8c0-4.42 3.58-8 8-8Z" />
+                            </svg>
+                            GitHub
+                        </a>
+                    </div>
+                </div>
+                <div class="hero-art">
+                    <img src="assets/logo.png" alt="R-SNES logo: the Rust gear with the four SNES buttons">
+                </div>
+            </div>
+            <a class="scroll-hint" href="#about" aria-label="Scroll to the project description">
+                Scroll
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                    stroke-linejoin="round">
+                    <path d="m6 9 6 6 6-6" />
+                </svg>
+            </a>
+        </section>
+
+        <!-- ================= About ================= -->
+        <section id="about">
+            <div class="container about">
+                <div class="reveal">
+                    <p class="eyebrow"><span class="dots"><i></i><i></i><i></i><i></i></span>About the project</p>
+                    <h2>Play SNES games, and understand how they run</h2>
+                    <p class="lead">R-SNES aims to be a decently fast and very accurate SNES emulator, while staying
+                        easy to understand thanks to modern coding standards.</p>
+                    <p style="margin-top:24px">We try to stay performant (low resource usage on your machine) and
+                        accurate to our best effort: games should behave exactly as they would on the original
+                        console. Each piece of hardware lives in its own Rust crate, documented and tested, so the
+                        emulator doubles as a readable reference of how the console works.</p>
+                    <p>The experience is extensible with Lua plugins that can watch and change what happens inside
+                        the console, on every CPU instruction or at set intervals. Since plugins can be powerful,
+                        each one has to declare the permissions it needs, and you approve them before it runs.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- ================= Download ================= -->
+        <section id="download">
+            <div class="container">
+                <div class="section-head reveal">
+                    <p class="eyebrow"><span class="dots"><i></i><i></i><i></i><i></i></span>Download</p>
+                    <h2>Get R-SNES</h2>
+                    <p class="lead">Download the latest release for your system, then follow the <a
+                            href="book/getting-started.html">getting started guide</a> to launch your first game.</p>
+                    <p class="release-info" id="release-info"><a
+                            href="https://github.com/r-snes/r-snes/releases">All releases and release notes</a></p>
+                </div>
+                <div class="grid downloads reveal">
+                    <a class="card" href="https://github.com/r-snes/r-snes/releases/latest" data-asset=".exe">
+                        <span class="tag">.exe</span>
+                        <h3>Windows</h3>
+                        <p>A single executable, nothing to install.</p>
+                        <span class="file">r-snes_&lt;version&gt;_x86_64.exe</span>
+                    </a>
+                    <a class="card" href="https://github.com/r-snes/r-snes/releases/latest" data-asset=".deb">
+                        <span class="tag">.deb</span>
+                        <h3>Debian, Ubuntu</h3>
+                        <p>Package for Debian-based distributions, such as Linux Mint or Pop!_OS.</p>
+                        <span class="file">r-snes_&lt;version&gt;_amd64.deb</span>
+                    </a>
+                    <a class="card" href="https://github.com/r-snes/r-snes/releases/latest" data-asset=".rpm">
+                        <span class="tag">.rpm</span>
+                        <h3>Fedora</h3>
+                        <p>Package for Fedora-based distributions, such as Bazzite.</p>
+                        <span class="file">r-snes_&lt;version&gt;_x86_64.rpm</span>
+                    </a>
+                    <div class="card">
+                        <span class="tag">flake</span>
+                        <h3>Nix</h3>
+                        <p>Run any released version straight from our flake.</p>
+                        <pre class="code"><code id="nix-command">nix run 'github:r-snes/r-snes?ref=v0.1.0'</code></pre>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ================= Plugins ================= -->
+        <section id="plugins">
+            <div class="container split">
+                <div class="reveal">
+                    <p class="eyebrow"><span class="dots"><i></i><i></i><i></i><i></i></span>Plugins</p>
+                    <h2>Extend the console with a few lines of Lua</h2>
+                    <p class="lead">A plugin is a Lua file returning a table: the permissions it needs, and the
+                        functions the emulator should call.</p>
+                    <ol class="steps">
+                        <li><span><b>Write a plugin</b> declaring the permissions it requests.</span></li>
+                        <li><span><b>Load it</b> with <i>File &gt; Load plugin…</i> (<code>Ctrl+P</code>) and review
+                                the permissions.</span></li>
+                        <li><span><b>Open a ROM</b>: your plugin starts alongside the game. Press <code>R</code>
+                                to run its action.</span></li>
+                    </ol>
+                    <div class="actions">
+                        <a class="btn primary" href="book/first-plugin.html">Write your first plugin</a>
+                        <a class="btn" href="book/plugin-api.html">Plugin API reference</a>
+                    </div>
+                </div>
+                <pre class="code reveal"><code><span class="tok-c">-- hello.lua: print the CPU's program counter on demand</span>
+<span class="tok-k">return</span> {
+    permissions = {
+        internal = { cpu = { <span class="tok-s">"registers"</span> } },
+    },
+
+    init = <span class="tok-k">function</span>()
+        <span class="tok-f">print</span>(<span class="tok-s">"Hello, world!"</span>)
+    <span class="tok-k">end</span>,
+
+    actions = {
+        <span class="tok-c">-- run when you press R</span>
+        default = <span class="tok-k">function</span>()
+            <span class="tok-f">print</span>(<span class="tok-s">"PC = "</span> .. rsnes.cpu.pc)
+        <span class="tok-k">end</span>,
+    },
+}</code></pre>
+            </div>
+        </section>
+
+        <!-- ================= Documentation ================= -->
+        <section id="docs">
+            <div class="container">
+                <div class="section-head reveal">
+                    <p class="eyebrow"><span class="dots"><i></i><i></i><i></i><i></i></span>Documentation</p>
+                    <h2>Find your way around</h2>
+                    <p class="lead">Guides for players and plugin authors, and the generated Rust documentation for
+                        contributors.</p>
+                </div>
+                <div class="grid reveal">
+                    <a class="card" href="book/getting-started.html">
+                        <span class="tag">Guide</span>
+                        <h3>Getting started</h3>
+                        <p>Install R-SNES, launch a game, and learn the controls and shortcuts.</p>
+                    </a>
+                    <a class="card" href="book/using-plugins.html">
+                        <span class="tag">Guide</span>
+                        <h3>Using plugins</h3>
+                        <p>Load a plugin, review its permissions and trigger its actions.</p>
+                    </a>
+                    <a class="card" href="book/first-plugin.html">
+                        <span class="tag">Tutorial</span>
+                        <h3>Writing your first plugin</h3>
+                        <p>From “Hello, world!” to reading CPU registers, step by step.</p>
+                    </a>
+                    <a class="card" href="book/plugin-api.html">
+                        <span class="tag">Reference</span>
+                        <h3>Plugin API</h3>
+                        <p>Every permission, autoaction and <code>rsnes.*</code> function available to plugins.</p>
+                    </a>
+                    <a class="card" href="api/r_snes/index.html">
+                        <span class="tag">Reference · rustdoc</span>
+                        <h3>Rust API documentation</h3>
+                        <p>Generated from the source code's doc comments, with search and source view.</p>
+                    </a>
+                    <a class="card" href="book/architecture.html">
+                        <span class="tag">Contributors</span>
+                        <h3>Architecture</h3>
+                        <p>How the crates fit together, and where to start reading the code.</p>
+                    </a>
+                </div>
+            </div>
+        </section>
+
+        <!-- ================= Coverage ================= -->
+        <section id="quality">
+            <div class="container">
+                <div class="section-head reveal">
+                    <p class="eyebrow"><span class="dots"><i></i><i></i><i></i><i></i></span>Code quality</p>
+                    <h2>Test coverage</h2>
+                    <p class="lead">Measured by <a href="https://github.com/xd009642/tarpaulin">cargo-tarpaulin</a>
+                        on every commit to <code>main</code>. The workspace must stay above 80%, the target marked
+                        on each bar.</p>
+                </div>
+                <div class="quality reveal">
+                    <div class="card">
+                        <div class="muted">Lines covered, whole workspace</div>
+                        <div class="hero-figure" id="cov-total">–</div>
+                        <div id="cov-total-detail" class="muted">Loading coverage data…</div>
+                        <div class="actions">
+                            <a class="btn primary" href="coverage/index.html">Coverage dashboard</a>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="crate-meters" id="cov-crates"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ================= Community ================= -->
+        <section id="community">
+            <div class="container">
+                <div class="section-head reveal">
+                    <p class="eyebrow"><span class="dots"><i></i><i></i><i></i><i></i></span>Community</p>
+                    <h2>Get involved</h2>
+                    <p class="lead">R-SNES is open to contributions: features and fixes around the emulator,
+                        documentation, tests, plugins, bug reports and ideas. The core emulation is developed by the
+                        core team, but minor contributions to it are welcome too. Read our <a
+                            href="https://github.com/r-snes/r-snes/blob/main/CONTRIBUTING.md">contributing guide</a>
+                        to get started.</p>
+                </div>
+                <div class="grid community reveal">
+                    <a class="card social" href="https://github.com/r-snes/r-snes">
+                        <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                            <path
+                                d="M8 0c4.42 0 8 3.58 8 8a8.01 8.01 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A8 8 0 0 1 0 8c0-4.42 3.58-8 8-8Z" />
+                        </svg>
+                        <div>
+                            <h3>GitHub</h3>
+                            <p>Source code and releases.</p>
+                        </div>
+                    </a>
+                    <a class="card social" href="https://github.com/r-snes/r-snes/issues">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <circle cx="12" cy="12" r="9" />
+                            <circle cx="12" cy="12" r="1.5" fill="currentColor" />
+                        </svg>
+                        <div>
+                            <h3>Issues</h3>
+                            <p>Report a bug, suggest a feature, or pick a good first issue.</p>
+                        </div>
+                    </a>
+                    <a class="card social" href="https://github.com/r-snes/r-snes/pulls">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <circle cx="6" cy="6" r="2.5" />
+                            <circle cx="6" cy="18" r="2.5" />
+                            <circle cx="18" cy="18" r="2.5" />
+                            <path d="M6 8.5v7M18 15.5V9a3 3 0 0 0-3-3h-4m2-2.5L10.5 6 13 8.5" />
+                        </svg>
+                        <div>
+                            <h3>Pull requests</h3>
+                            <p>Review ongoing work, or open your own.</p>
+                        </div>
+                    </a>
+                    <a class="card social" href="https://github.com/r-snes/r-snes/discussions">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z" />
+                        </svg>
+                        <div>
+                            <h3>Discussions</h3>
+                            <p>Ask questions and share your plugins.</p>
+                        </div>
+                    </a>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="site-footer">
+        <div class="container">
+            <div>
+                <p>R-SNES is released under the MIT license. It is not affiliated with Nintendo, and never
+                    distributes ROMs, BIOS or firmware: see our <a
+                        href="https://github.com/r-snes/r-snes/blob/main/LEGAL.md">legal notice</a>.</p>
+                <p data-build-info="build-info.json" style="margin-top:8px"></p>
+            </div>
+            <div class="footer-links">
+                <a href="book/index.html">Guides</a>
+                <a href="api/r_snes/index.html">API docs</a>
+                <a href="coverage/index.html">Coverage</a>
+                <a href="https://github.com/r-snes/r-snes/blob/main/CONTRIBUTING.md">Contributing</a>
+                <a href="https://github.com/r-snes/r-snes">GitHub</a>
+            </div>
+        </div>
+    </footer>
+
+    <script src="assets/coverage.js"></script>
+    <script src="assets/main.js"></script>
+    <script>
+        RSnesCoverage.load("coverage/lcov.info")
+            .then((cov) => {
+                document.getElementById("cov-total").textContent = `${cov.pct.toFixed(1)}%`;
+                document.getElementById("cov-total-detail").innerHTML =
+                    `${cov.hit.toLocaleString("en")} of ${cov.found.toLocaleString("en")} lines · ` +
+                    RSnesCoverage.statusHtml(cov.pct);
+                document.getElementById("cov-crates").innerHTML = cov.crates
+                    .map((c) =>
+                        `<span class="name">${c.name}</span>` +
+                        RSnesCoverage.meterHtml(c.pct, c.name) +
+                        `<span class="num">${c.pct.toFixed(1)}%</span>`)
+                    .join("");
+            })
+            .catch(() => {
+                document.getElementById("cov-total-detail").textContent =
+                    "Coverage data isn't available in this build.";
+            });
+
+        // Point the download cards at the files of the latest release. Without
+        // this (offline, API rate limit…), they link to the release page.
+        fetch("https://api.github.com/repos/r-snes/r-snes/releases/latest")
+            .then((res) => (res.ok ? res.json() : Promise.reject()))
+            .then((release) => {
+                for (const card of document.querySelectorAll("[data-asset]")) {
+                    const asset = release.assets.find((a) => a.name.endsWith(card.dataset.asset));
+                    if (asset) {
+                        card.href = asset.browser_download_url;
+                        card.querySelector(".file").textContent = asset.name;
+                    }
+                }
+                document.getElementById("nix-command").textContent =
+                    `nix run 'github:r-snes/r-snes?ref=${release.tag_name}'`;
+
+                const date = new Date(release.published_at)
+                    .toLocaleDateString("en", { year: "numeric", month: "long", day: "numeric" });
+                const notes = document.createElement("a");
+                notes.href = release.html_url;
+                notes.textContent = "release notes";
+                const all = document.createElement("a");
+                all.href = "https://github.com/r-snes/r-snes/releases";
+                all.textContent = "all releases";
+                document.getElementById("release-info")
+                    .replaceChildren(`Latest release: ${release.tag_name}, published on ${date}. See the `,
+                        notes, " or ", all, ".");
+            })
+            .catch(() => { });
+    </script>
+</body>
+
+</html>
