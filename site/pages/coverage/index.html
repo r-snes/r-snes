@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en" class="no-js">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>R-SNES Coverage</title>
+    <meta name="description" content="Test coverage of every R-SNES crate, measured by cargo-tarpaulin.">
+    <link rel="icon" type="image/png" href="../assets/logo.png">
+    <link rel="stylesheet" href="../assets/style.css">
+    <script>
+        try {
+            const t = localStorage.getItem("rsnes-theme");
+            if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+        } catch { }
+    </script>
+    <style>
+        main {
+            padding: 48px 0 80px;
+        }
+
+        .summary {
+            display: grid;
+            gap: 16px;
+            grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+            margin: 32px 0;
+        }
+
+        .label {
+            color: var(--muted);
+            font-size: 0.9rem;
+        }
+
+        .hero-figure {
+            font-size: 3.4rem;
+            font-weight: 700;
+            line-height: 1.1;
+            margin: 4px 0 8px;
+        }
+
+        .value {
+            font-size: 1.8rem;
+            font-weight: 600;
+            margin: 4px 0;
+        }
+
+        .toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            align-items: center;
+            justify-content: space-between;
+            margin: 40px 0 16px;
+        }
+
+        .segmented {
+            display: inline-flex;
+            border: 1px solid var(--border);
+            border-radius: 9px;
+            overflow: hidden;
+        }
+
+        .segmented button {
+            border: 0;
+            background: var(--surface);
+            color: var(--text-2);
+            padding: 7px 14px;
+            font: inherit;
+            font-size: 0.9rem;
+            cursor: pointer;
+        }
+
+        .segmented button + button {
+            border-left: 1px solid var(--border);
+        }
+
+        .segmented button[aria-pressed="true"] {
+            background: var(--surface-2);
+            color: var(--text);
+            font-weight: 600;
+        }
+
+        .table-wrap {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.95rem;
+        }
+
+        th,
+        td {
+            padding: 12px 16px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+
+        th {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--muted);
+            font-weight: 600;
+        }
+
+        th.num {
+            text-align: right;
+        }
+
+        tbody tr:last-child td {
+            border-bottom: 0;
+        }
+
+        td.meter-cell {
+            width: 40%;
+            min-width: 140px;
+        }
+
+        .crate-row {
+            cursor: pointer;
+        }
+
+        .crate-row:hover td {
+            background: var(--surface-2);
+        }
+
+        .crate-row td:first-child {
+            font-family: var(--mono);
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .chevron {
+            display: inline-block;
+            width: 1em;
+            color: var(--muted);
+            transition: transform 0.15s ease;
+        }
+
+        .crate-row[aria-expanded="true"] .chevron {
+            transform: rotate(90deg);
+        }
+
+        .file-row td {
+            background: var(--bg);
+            font-size: 0.88rem;
+            padding-top: 8px;
+            padding-bottom: 8px;
+        }
+
+        .file-row td:first-child {
+            font-family: var(--mono);
+            padding-left: 40px;
+            color: var(--text-2);
+            word-break: break-all;
+        }
+
+        .file-row .meter {
+            height: 6px;
+        }
+
+        .file-row .meter::after {
+            display: none;
+        }
+
+        .empty {
+            padding: 32px;
+            color: var(--text-2);
+        }
+
+        @media (max-width: 640px) {
+            th,
+            td {
+                padding: 10px 8px;
+            }
+
+            /* Keep crate, bar, percentage and status icon on phones */
+            th:nth-child(4),
+            td:nth-child(4),
+            td .status-label {
+                display: none;
+            }
+
+            td.meter-cell {
+                width: auto;
+                min-width: 70px;
+            }
+
+            .crate-row td:first-child {
+                white-space: normal;
+                word-break: break-word;
+            }
+
+            .file-row td:first-child {
+                padding-left: 24px;
+            }
+        }
+
+        .note {
+            color: var(--muted);
+            font-size: 0.9rem;
+            margin-top: 16px;
+        }
+    </style>
+</head>
+
+<body>
+    <header class="site-header">
+        <div class="container">
+            <a class="brand" href="../">
+                <img src="../assets/logo.png" alt="" width="30" height="30">
+                R-SNES
+            </a>
+            <nav class="nav" style="display:flex;position:static;flex-direction:row;padding:0;border:0;background:none">
+                <a href="../">Home</a>
+                <a href="../book/index.html">Docs</a>
+            </nav>
+            <button class="icon-btn" data-theme-toggle aria-label="Toggle dark mode">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                    stroke-linejoin="round">
+                    <path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9Z" />
+                </svg>
+            </button>
+        </div>
+    </header>
+
+    <main class="container">
+        <p class="eyebrow"><span class="dots"><i></i><i></i><i></i><i></i></span>Code quality</p>
+        <h2>Test coverage</h2>
+        <p class="lead">Lines of code executed by the test suite, measured by <a
+                href="https://github.com/xd009642/tarpaulin">cargo-tarpaulin</a>. Our contribution rules require
+            at least 80% for the whole workspace, the target marked on each bar.</p>
+
+        <div class="summary">
+            <div class="card">
+                <div class="label">Workspace coverage</div>
+                <div class="hero-figure" id="total">–</div>
+                <div id="total-status"></div>
+            </div>
+            <div class="card">
+                <div class="label">Lines covered</div>
+                <div class="value num" style="text-align:left" id="lines">–</div>
+                <div class="label" id="lines-total"></div>
+            </div>
+            <div class="card">
+                <div class="label">Crates above 80%</div>
+                <div class="value num" style="text-align:left" id="passing">–</div>
+                <div class="label" id="passing-total"></div>
+            </div>
+        </div>
+
+        <div class="toolbar">
+            <div class="segmented" role="group" aria-label="Sort crates">
+                <button type="button" data-sort="name" aria-pressed="true">By name</button>
+                <button type="button" data-sort="pct" aria-pressed="false">By coverage</button>
+            </div>
+            <div class="actions" style="margin:0">
+                <a class="btn" href="tarpaulin-report.html">Line-by-line report</a>
+                <a class="btn" href="lcov.info" download>Download lcov.info</a>
+            </div>
+        </div>
+
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th scope="col">Crate</th>
+                        <th scope="col">Coverage</th>
+                        <th scope="col" class="num">%</th>
+                        <th scope="col" class="num">Lines</th>
+                        <th scope="col">Status</th>
+                    </tr>
+                </thead>
+                <tbody id="rows">
+                    <tr>
+                        <td colspan="5" class="empty">Loading coverage data…</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="note">Click a crate to see the coverage of each of its files. The line-by-line report shows
+            exactly which lines the tests run.</p>
+        <p class="note" data-build-info="../build-info.json"></p>
+    </main>
+
+    <script src="../assets/coverage.js"></script>
+    <script src="../assets/main.js"></script>
+    <script>
+        (() => {
+            const rows = document.getElementById("rows");
+            const fmt = (n) => n.toLocaleString("en");
+            const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+            let cov;
+            let sort = "name";
+            const expanded = new Set();
+
+            function render() {
+                const crates = [...cov.crates].sort(sort === "pct"
+                    ? (a, b) => a.pct - b.pct
+                    : (a, b) => a.name.localeCompare(b.name));
+
+                rows.innerHTML = crates.map((c) => {
+                    const open = expanded.has(c.dir);
+                    const files = open ? c.files.map((f) => `
+                        <tr class="file-row">
+                            <td>${esc(f.path)}</td>
+                            <td class="meter-cell">${RSnesCoverage.meterHtml(f.pct, esc(f.path))}</td>
+                            <td class="num">${f.pct.toFixed(1)}%</td>
+                            <td class="num">${fmt(f.hit)} / ${fmt(f.found)}</td>
+                            <td></td>
+                        </tr>`).join("") : "";
+                    return `
+                        <tr class="crate-row" tabindex="0" data-dir="${esc(c.dir)}" aria-expanded="${open}">
+                            <td><span class="chevron">›</span> ${esc(c.name)}</td>
+                            <td class="meter-cell">${RSnesCoverage.meterHtml(c.pct, esc(c.name))}</td>
+                            <td class="num">${c.pct.toFixed(1)}%</td>
+                            <td class="num">${fmt(c.hit)} / ${fmt(c.found)}</td>
+                            <td>${RSnesCoverage.statusHtml(c.pct)}</td>
+                        </tr>${files}`;
+                }).join("");
+            }
+
+            function toggle(row) {
+                const dir = row.dataset.dir;
+                expanded.has(dir) ? expanded.delete(dir) : expanded.add(dir);
+                render();
+                rows.querySelector(`.crate-row[data-dir="${CSS.escape(dir)}"]`)?.focus();
+            }
+
+            rows.addEventListener("click", (e) => {
+                const row = e.target.closest(".crate-row");
+                if (row) toggle(row);
+            });
+            rows.addEventListener("keydown", (e) => {
+                const row = e.target.closest(".crate-row");
+                if (row && (e.key === "Enter" || e.key === " ")) {
+                    e.preventDefault();
+                    toggle(row);
+                }
+            });
+
+            document.querySelectorAll("[data-sort]").forEach((btn) =>
+                btn.addEventListener("click", () => {
+                    sort = btn.dataset.sort;
+                    document.querySelectorAll("[data-sort]").forEach((b) =>
+                        b.setAttribute("aria-pressed", String(b === btn)));
+                    if (cov) render();
+                }));
+
+            RSnesCoverage.load("lcov.info")
+                .then((data) => {
+                    cov = data;
+                    const passing = cov.crates.filter((c) => c.pct >= RSnesCoverage.THRESHOLD).length;
+                    document.getElementById("total").textContent = `${cov.pct.toFixed(1)}%`;
+                    document.getElementById("total-status").innerHTML = RSnesCoverage.statusHtml(cov.pct);
+                    document.getElementById("lines").textContent = fmt(cov.hit);
+                    document.getElementById("lines-total").textContent = `out of ${fmt(cov.found)} coverable lines`;
+                    document.getElementById("passing").textContent = `${passing} / ${cov.crates.length}`;
+                    document.getElementById("passing-total").textContent = "crates meet the minimum";
+                    render();
+                })
+                .catch(() => {
+                    rows.innerHTML = `<tr><td colspan="5" class="empty">Coverage data isn't available in this
+                        build. Run <code>cargo tarpaulin --out html --out lcov</code>, then
+                        <code>site/build.sh &lt;report folder&gt;</code>.</td></tr>`;
+                });
+        })();
+    </script>
+</body>
+
+</html>
