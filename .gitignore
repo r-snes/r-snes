@@ -27,3 +27,10 @@ target/
 
 # Release files built by packaging/build-release.sh
 /dist
+
+# Website assembled by site/build.sh
+/_site
+
+# cargo tarpaulin output files
+tarpaulin-report.html
+lcov.info
