@@ -1,6 +1,6 @@
 use pm2::{Ident, TokenStream, TokenTree};
-use proc_macro2 as pm2;
-use quote::quote;
+use proc_macro2::{self as pm2, Delimiter, Group};
+use quote::{TokenStreamExt, quote};
 use std::ops::AddAssign;
 
 #[derive(Eq, PartialEq, Copy, Clone, Debug)]
@@ -43,6 +43,7 @@ pub(crate) struct ParserState {
     wrapping_mode: AddrWrappingMode,
 
     has_stack_native: bool,
+    no_irqb: bool,
 }
 
 #[derive(PartialEq, Eq)]
@@ -120,6 +121,7 @@ impl Default for ParserState {
             operand_size: OpSize::Constant,
             wrapping_mode: AddrWrappingMode::BankWrap,
             has_stack_native: false,
+            no_irqb: false,
         }
     }
 }
@@ -211,6 +213,13 @@ pub(crate) enum MetaInstruction {
     /// Manually delimit the end of a cycle,
     /// with the CycleResult (cycle type) produced by the token stream
     EndCycle(TokenStream),
+
+    /// Skip remaining cycles and jump straight to the next opcode
+    /// fetch (during the cycle this meta-instr is in)
+    EarlyReturn,
+
+    /// Disables IRQB checks for this instruction
+    NoIrqb,
 
     /// Sets the operand size for variable width instructions
     SetOperandSize(TokenTree),
@@ -417,6 +426,9 @@ impl MetaInstruction {
         };
         let ret = match meta_kw.to_string().as_str() {
             "END_CYCLE" => MetaInstruction::EndCycle(it.by_ref().collect()),
+            "EARLY_RETURN" => MetaInstruction::EarlyReturn,
+
+            "NO_IRQB" => MetaInstruction::NoIrqb,
 
             "SET_OP_SIZE" => MetaInstruction::SetOperandSize(it.next().expect("size")),
 
@@ -506,6 +518,12 @@ impl MetaInstruction {
                 ret += InstrBody::cycles(vec![Cycle::new(TokenStream::new(), cyctype)]);
             }
 
+            Self::EarlyReturn => {
+                ret += quote!(return (cpu.next_fetch.0)(cpu, _metalang_private_irqb));
+            }
+
+            Self::NoIrqb => pstate.no_irqb = true,
+
             Self::SetOperandSize(arg) => {
                 if pstate.operand_size != OpSize::Constant {
                     panic!("Operand size can only be set once!");
@@ -527,7 +545,7 @@ impl MetaInstruction {
                     AddrBusPosition::Immediate => {} // already imm, nothing to do
                     AddrBusPosition::Opcode => {
                         // addrbus is already at PB:PC
-                        ret += pstate.imm_offset.map_into(|increment| {
+                        ret += pstate.imm_offset.map(|increment| {
                             quote! {
                                 // in practice the increment is always 1
                                 cpu.addr_bus.addr = cpu.addr_bus.addr.wrapping_add(#increment);
@@ -536,7 +554,7 @@ impl MetaInstruction {
                     }
                     _ => {
                         // default case, reset entire addrbus from scratch
-                        ret += pstate.imm_offset.map_into(|increment| {
+                        ret += pstate.imm_offset.map(|increment| {
                             quote! {
                                 cpu.addr_bus.bank = cpu.registers.PB;
                                 cpu.addr_bus.addr = cpu.registers.PC.wrapping_add(#increment);
@@ -976,7 +994,7 @@ impl<T, U> VarWidth<T, U> {
 }
 
 impl<T, U: Clone> VarWidth<T, U> {
-    pub fn map_into<T2>(&self, mut mapfunc: impl FnMut(&T) -> T2) -> VarWidth<T2, U> {
+    pub fn map<T2>(&self, mut mapfunc: impl FnMut(&T) -> T2) -> VarWidth<T2, U> {
         match self {
             Self::ConstWidth(x) => VarWidth::ConstWidth(mapfunc(x)),
             Self::VarWidth { short, long, data } => VarWidth::VarWidth {
@@ -984,6 +1002,29 @@ impl<T, U: Clone> VarWidth<T, U> {
                 long: mapfunc(long),
                 data: data.clone(),
             },
+        }
+    }
+}
+
+impl<T, U> VarWidth<T, U> {
+    pub fn map_into<T2>(self, mut mapfunc: impl FnMut(T) -> T2) -> VarWidth<T2, U> {
+        match self {
+            Self::ConstWidth(x) => VarWidth::ConstWidth(mapfunc(x)),
+            Self::VarWidth { short, long, data } => VarWidth::VarWidth {
+                short: mapfunc(short),
+                long: mapfunc(long),
+                data,
+            },
+        }
+    }
+
+    pub fn for_each_mut(&mut self, mut f: impl FnMut(&mut T)) {
+        match self {
+            Self::ConstWidth(x) => f(x),
+            Self::VarWidth { short, long, .. } => {
+                f(short);
+                f(long);
+            }
         }
     }
 }
@@ -1129,7 +1170,7 @@ impl Instr {
         // Set PC to point at the next opcode
         match (
             &mut ret.body,
-            pstate.imm_offset.map_into(|i| pstate.conditionally_inc_pc(*i)),
+            pstate.imm_offset.map(|i| pstate.conditionally_inc_pc(*i)),
         ) {
             (VarWidth::ConstWidth(ib), VarWidth::ConstWidth(offs)) => {
                 *ib.cycles.last_mut().expect("at least 1 cycle") += offs;
@@ -1162,23 +1203,22 @@ impl Instr {
         }
 
         if pstate.has_stack_native {
-            let stack_page1_reset = quote! {
-                if cpu.registers.E {
-                    *cpu.registers.S.hi_mut() = 0x01;
+            ret.body.for_each_mut(|ib| {
+                *ib.cycles.last_mut().expect("at least 1 cycle") += quote! {
+                    if cpu.registers.E {
+                        *cpu.registers.S.hi_mut() = 0x01;
+                    }
                 }
-            };
+            });
+        }
 
-            match &mut ret.body {
-                VarWidth::ConstWidth(ib) => {
-                    *ib.cycles.last_mut().expect("at least 1 cycle") += stack_page1_reset;
-                }
-                VarWidth::VarWidth {
-                    short: s, long: l, ..
-                } => {
-                    *s.cycles.last_mut().expect("at least 1 cycle") += stack_page1_reset.clone();
-                    *l.cycles.last_mut().expect("at least 1 cycle") += stack_page1_reset;
-                }
-            }
+        if !pstate.no_irqb {
+            ret.body.for_each_mut(|ib| {
+                ib.cycles
+                    .last_mut()
+                    .expect("at least 1 cycle")
+                    .prepend(quote!(cpu.last_cycle(_metalang_private_irqb);))
+            });
         }
 
         // here `data` is the condition in which the instr is in 16-bit mode
@@ -1221,6 +1261,13 @@ impl AddAssign<TokenStream> for InstrBody {
     }
 }
 
+impl AddAssign<TokenTree> for InstrBody {
+    /// Appends a token stream to the end of this InstrBody
+    fn add_assign(&mut self, tt: TokenTree) {
+        self.post_instr.append(tt);
+    }
+}
+
 // impl which allows us to use +=
 impl AddAssign for InstrBody {
     /// Concatenates an InstrBody to [`self`].
@@ -1239,10 +1286,8 @@ impl AddAssign for InstrBody {
         // other.post_instr already where it needs to be in the end
         let old_postinstr = std::mem::replace(&mut self.post_instr, other.post_instr);
 
-        // swap out the first cycle body of the other InstrBody for our current
-        // post_instr, and then glue it back *after* our current post_instr
-        let second_firstcycle = std::mem::replace(other.cycles[0].body_mut(), old_postinstr);
-        other.cycles[0].body_mut().extend(second_firstcycle);
+        // put our previous postinstr at the start of other's first cycle
+        other.cycles[0].prepend(old_postinstr);
 
         // finally merge the two cycle vectors
         self.cycles.extend(other.cycles);
@@ -1273,22 +1318,31 @@ impl InstrBody {
         loop {
             let it = it.by_ref();
 
-            ret += it
-                .take_while(|token| token.to_string() != "meta")
-                .collect::<TokenStream>();
+            match it.next() {
+                None => break,
+                Some(t) if t.to_string() == "meta" => {
+                    let meta_instr = MetaInstruction::try_from(it.take_while(|token| {
+                        let TokenTree::Punct(p) = token else {
+                            return true;
+                        };
+                        p.as_char() != ';'
+                    }))?;
+                    let exp = meta_instr.expand(pstate);
 
-            if it.peek().is_none() {
-                break;
+                    ret += exp;
+                }
+                Some(TokenTree::Group(g)) if g.delimiter() == Delimiter::Brace => {
+                    let inner = Self::parse(g.stream(), pstate)?;
+
+                    ret += inner.map_into(|body| {
+                        if !body.cycles.is_empty() {
+                            panic!("Unexpected cycle expansion in braces");
+                        }
+                        TokenTree::Group(Group::new(Delimiter::Brace, body.post_instr))
+                    });
+                }
+                Some(t) => ret += t,
             }
-
-            let meta_instr = MetaInstruction::try_from(it.take_while(|token| {
-                let TokenTree::Punct(p) = token else {
-                    return true;
-                };
-                p.as_char() != ';'
-            }))?;
-
-            ret += meta_instr.expand(pstate);
         }
         Ok(ret)
     }
@@ -1366,6 +1420,11 @@ impl Cycle {
             Self::Unconditional { body, .. } => body,
             Self::ConditionalIdle { body, .. } => body,
         }
+    }
+
+    fn prepend(&mut self, ts: TokenStream) {
+        let old = std::mem::replace(self.body_mut(), ts);
+        self.body_mut().extend(old);
     }
 }
 

@@ -5,6 +5,8 @@ mod instrs;
 mod reg;
 pub mod registers;
 
+mod advanced_irq_tests;
+
 #[cfg(doc)]
 #[cfg(not(doctest))]
 pub mod docs {

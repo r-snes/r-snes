@@ -19,11 +19,20 @@ fn describe_cycle(cpu: &CPU, cyc_type: CycleResult) -> String {
 /// Same as [`expect_opcode_fetch`], but doesn't require providing an
 /// opcode to inject for the next cycle. This only checks that the CPU
 /// is fetching from the appropriate address
+#[track_caller]
 pub(crate) fn expect_opcode_fetch_cycle(cpu: &mut CPU) {
+    expect_opcode_fetch_cycle_with_irqb(cpu, true)
+}
+
+/// Same as [`expect_opcode_fetch_cycle`], but gives control to irqb
+#[track_caller]
+pub(crate) fn expect_opcode_fetch_cycle_with_irqb(cpu: &mut CPU, irqb: bool) {
+    let cyc_type = cpu.cycle_with_irqb(irqb);
     assert_eq!(
-        cpu.cycle(),
+        cyc_type,
         CycleResult::Read,
-        "Expecting a read cycle for an opcode fetch",
+        "Expecting a read cycle for an opcode fetch, but got {}",
+        describe_cycle(cpu, cyc_type),
     );
 
     let expected_address = SnesAddress {
@@ -33,21 +42,34 @@ pub(crate) fn expect_opcode_fetch_cycle(cpu: &mut CPU) {
     assert_eq!(
         *cpu.addr_bus(),
         expected_address,
-        "Opcode fetch should be from {:#?} (current PB:PC)",
-        expected_address
+        "Opcode fetch should be from {expected_address:#?} (current PB:PC)",
     );
 }
 
 /// Expects that the CPU does an opcode fetch cycle (a read cycle reading
 /// from PB:PC).
+#[track_caller]
 pub(crate) fn expect_opcode_fetch(cpu: &mut CPU, opcode: u8) {
-    expect_opcode_fetch_cycle(cpu);
+    expect_opcode_fetch_with_irqb(cpu, true, opcode)
+}
+
+/// Same as [`expect_opcode_fetch`], but gives control to irqb
+#[track_caller]
+pub(crate) fn expect_opcode_fetch_with_irqb(cpu: &mut CPU, irqb: bool, opcode: u8) {
+    expect_opcode_fetch_cycle_with_irqb(cpu, irqb);
     cpu.data_bus = opcode;
 }
 
 /// Expects (creates an assertion) the CPU to return an internal cycle
+#[track_caller]
 pub(crate) fn expect_internal_cycle(cpu: &mut CPU, reason: &str) {
-    let cyc_type = cpu.cycle();
+    expect_internal_cycle_with_irqb(cpu, true, reason)
+}
+
+/// Same as [`expect_internal_cycle`], but gives control to irqb
+#[track_caller]
+pub(crate) fn expect_internal_cycle_with_irqb(cpu: &mut CPU, irqb: bool, reason: &str) {
+    let cyc_type = cpu.cycle_with_irqb(irqb);
     assert_eq!(
         cyc_type,
         CycleResult::Internal,
@@ -59,13 +81,26 @@ pub(crate) fn expect_internal_cycle(cpu: &mut CPU, reason: &str) {
 /// Expects (creates an assertion) the CPU to return a Read cycle
 /// from the specified address, and injects the value
 /// passed as parameter to be received by the CPU for the next cycle.
+#[track_caller]
 pub(crate) fn expect_read_cycle(
     cpu: &mut CPU,
     expected_address: SnesAddress,
     value: u8,
     reason: &str,
 ) {
-    let cyc_type = cpu.cycle();
+    expect_read_cycle_with_irqb(cpu, true, expected_address, value, reason)
+}
+
+/// Same as [`expect_read_cycle`], but gives control to irqb
+#[track_caller]
+pub(crate) fn expect_read_cycle_with_irqb(
+    cpu: &mut CPU,
+    irqb: bool,
+    expected_address: SnesAddress,
+    value: u8,
+    reason: &str,
+) {
+    let cyc_type = cpu.cycle_with_irqb(irqb);
     assert_eq!(
         cyc_type,
         CycleResult::Read,
@@ -75,21 +110,33 @@ pub(crate) fn expect_read_cycle(
     assert_eq!(
         *cpu.addr_bus(),
         expected_address,
-        "Read cycle for {reason} should be from {:#?}",
-        expected_address
+        "Read cycle for {reason} should be from {expected_address:#?}",
     );
     cpu.data_bus = value;
 }
 
 /// Expects (creates an assertion) the CPU to return a Write cycle
 /// at the specified address, of the specified value.
+#[track_caller]
 pub(crate) fn expect_write_cycle(
     cpu: &mut CPU,
     expected_address: SnesAddress,
     expected_value: u8,
     reason: &str,
 ) {
-    let cyc_type = cpu.cycle();
+    expect_write_cycle_with_irqb(cpu, true, expected_address, expected_value, reason)
+}
+
+/// Same as [`expect_write_cycle`], but gives control to irqb
+#[track_caller]
+pub(crate) fn expect_write_cycle_with_irqb(
+    cpu: &mut CPU,
+    irqb: bool,
+    expected_address: SnesAddress,
+    expected_value: u8,
+    reason: &str,
+) {
+    let cyc_type = cpu.cycle_with_irqb(irqb);
     assert_eq!(
         cyc_type,
         CycleResult::Write,
@@ -99,13 +146,11 @@ pub(crate) fn expect_write_cycle(
     assert_eq!(
         *cpu.addr_bus(),
         expected_address,
-        "Write cycle for {reason} should be from {:#?}",
-        expected_address
+        "Write cycle for {reason} should be from {expected_address:#?}",
     );
     assert_eq!(
         cpu.data_bus, expected_value,
-        "Write cycle for {reason} at {:#?} should be of value {:#x}",
-        expected_address, expected_value,
+        "Write cycle for {reason} at {expected_address:#?} should be of value {expected_value:#x}",
     )
 }
 
@@ -114,6 +159,7 @@ pub(crate) fn expect_write_cycle(
 /// - read interrupt vector lo
 /// - read interrupt vector hi
 /// - opcode fetch at the address contained in the interrupt vector
+#[track_caller]
 pub(crate) fn expect_vector_to(cpu: &mut CPU, vector: u16) {
     expect_read_cycle(cpu, snes_addr!(0:vector), 0x68, "start address lo");
     expect_read_cycle(cpu, snes_addr!(0:vector + 1), 0x24, "start address hi");

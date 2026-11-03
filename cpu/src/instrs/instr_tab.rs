@@ -6,15 +6,9 @@ use crate::instrs::{
     transfers::*, uncategorised::*,
 };
 
-pub(crate) struct InstrCycle(pub fn(&mut CPU) -> (CycleResult, InstrCycle));
+pub(crate) struct InstrCycle(pub fn(&mut CPU, bool) -> (CycleResult, InstrCycle));
 
-impl From<fn(&mut CPU) -> (CycleResult, InstrCycle)> for InstrCycle {
-    fn from(value: fn(&mut CPU) -> (CycleResult, InstrCycle)) -> Self {
-        InstrCycle(value)
-    }
-}
-
-pub(crate) fn opcode_fetch(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
+pub(crate) fn opcode_fetch(cpu: &mut CPU, _irqb: bool) -> (CycleResult, InstrCycle) {
     cpu.addr_bus = SnesAddress {
         bank: cpu.registers.PB,
         addr: cpu.registers.PC,
@@ -23,8 +17,8 @@ pub(crate) fn opcode_fetch(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
     (CycleResult::Read, InstrCycle(opcode_dispatch))
 }
 
-pub(crate) fn opcode_dispatch(cpu: &mut CPU) -> (CycleResult, InstrCycle) {
-    (INSTR_CYC1[cpu.data_bus as usize].0)(cpu)
+pub(crate) fn opcode_dispatch(cpu: &mut CPU, irqb: bool) -> (CycleResult, InstrCycle) {
+    (INSTR_CYC1[cpu.data_bus as usize].0)(cpu, irqb)
 }
 
 const INSTR_CYC1: [InstrCycle; 256] = [

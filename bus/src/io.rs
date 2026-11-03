@@ -507,12 +507,12 @@ impl Io {
     // ================================================================
 
     /// Raise or lower the Timer TIMEUP flag.
-    pub fn set_timer_flag(&mut self, on: bool) {
+    pub fn set_timeup_flag(&mut self, on: bool) {
         Self::set_bit(&mut self.timeup, Self::TIMEUP_FLAG, on);
     }
 
     /// Check whether the TIMEUP IRQ flag is set.
-    pub fn timer_flag(&self) -> bool {
+    pub fn timeup_flag(&self) -> bool {
         self.timeup & Self::TIMEUP_FLAG != 0
     }
 
@@ -765,7 +765,7 @@ impl Io {
             0x4200 => {
                 self.nmitimen = value;
                 if self.irq_mode() == IrqMode::Disabled {
-                    self.set_timer_flag(false);
+                    self.set_timeup_flag(false);
                 }
             }
 
@@ -1382,7 +1382,7 @@ mod tests {
         io.open_bus = 0b0101_1010;
         let read_value = io.read(timeup_addr, &mut wram, &mut ppu, &mut apu).0;
         assert_eq!(read_value, 0b1101_1010);
-        assert!(!io.timer_flag());
+        assert!(!io.timeup_flag());
 
         io.open_bus = 0b1010_0101;
         let second_read_value = io.read(timeup_addr, &mut wram, &mut ppu, &mut apu).0;
