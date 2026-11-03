@@ -24,7 +24,7 @@ in
     version = cargo-toml.package.version;
 
     meta = {
-      descriptioon = "Fast and accurate SNES emulator";
+      description = "Fast and accurate SNES emulator";
       homepage = "https://github.com/r-snes/r-snes";
       license = lib.licenses.mit;
       mainProgram = "r-snes";
