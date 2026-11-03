@@ -3,7 +3,7 @@
 The R-SNES website is made of three parts, all built from the repository and deployed to GitHub Pages by CI on every push to `main`:
 
 | Part | Source | Built with | Published at |
-|:-----|:-------|:-----------|:-------------|
+| :----- | :------- | :----------- | :------------- |
 | Landing page and coverage dashboard | `site/pages/` | nothing (plain HTML/CSS/JS) | `/` and `/coverage/` |
 | Guides (this book) | `site/book/` | [mdBook](https://rust-lang.github.io/mdBook/) | `/book/` |
 | Rust API documentation | doc comments in the code | `cargo doc` (rustdoc) | `/api/` |
@@ -43,7 +43,7 @@ mdbook serve site/book --open
 
 ## The whole website
 
-`site/build.sh` assembles everything into `_site/`, exactly like CI does:
+`site/build.sh` assembles everything into `_site/`:
 
 ```sh
 # without coverage data
