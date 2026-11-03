@@ -26,26 +26,43 @@ The CPU and PPU don't access memory directly: they go through the `bus` crate, w
 The APU is a bit different: it has its own CPU (the S-SMP) and its own memory, so it doesn't use the shared bus at all. The main loop only steps it at its own clock speed and collects its audio output.
 
 ```text
-            ┌────────────────────────────┐
-            │      r-snes (main loop)    │
-            └──┬──────────┬──────────┬───┘
-     steps &   │          │          │   steps &
-     collects  ▼          ▼          ▼   collects frames
-          ┌─────┐     ┌─────┐     ┌─────┐
-          │ APU │     │ CPU │     │ PPU │
-          └─────┘     └──┬──┘     └──▲──┘
-       own memory        │ reads/    │ register
-                         │ writes    │ writes
-                      ┌──▼───────────┴──┐
-                      │       bus       │
-                      └──┬─────┬─────┬──┘
-                        RAM   ROM   I/O
+                              +--------------------+
+                              | r-snes crate: root |          | Key:
+                              |--------------------|   2      |  1. Steps component cycles
+      +-----------------------|    main program:   |<------+  |  2. Fills output (image/audio)
+      |                       |  orchestrates all  |----+  |  |  3. Read/Write requests
+      |  +------------------->|     components     |    |  |  |  4. Perform read/write
+      |  |                    +--------------------+    |  |  |  5. Return CPU reads
+      |  |2                     ^  |  |      |  ^      1|  |
+     1|  |                     3|  |1 |5     |  |       v  |
+      v  |                      |  v  v      |  |     +------------------------+
++-----------------+  +-------------------+   |  |     |    ppu crate: PPU      |
+| apu crate: APU  |  |  cpu crate: CPU   |   |  |     |------------------------|
+|-----------------|  |-------------------|   |  |     |  graphics processing.  |
+| audio rendering |  | handles execution |   |  |     | writes the framebuffer |
++-----------------+  |    of the main    |   |  |     |    according to        |
+         ^           |     program       |   |  |5    |    write requests      |
+         |           +-------------------+  3|  |     +------------------------+
+         |                                   |  |               ^
+         |               +------------------------------+       |
+         |               |         bus crate |  |       |       |
+         |               |-------------------|--|-------|       |
+         |               |                   v  |       |       |
+         |       4       |          +----------------+  |      4|
+         +---------------|--------->|      Bus       |<-|-------+
+                         |          |----------------|  |
+                         |          | defines the    |  |
+                         |  +-------| memory mapping |  |
+                         |  |       +----------------+  |
+                         |  |4      4|        4|        |
+                         |  v        v         v        |
+                         | RAM      ROM     IO devices  |
+                         +------------------------------+
 ```
 
 Plugins hook into this loop: the root crate gives them access to the components they have permission for, and calls their autoactions at the right moments (before each instruction, at intervals…).
 
 ## Where to go next
 
-- The [README](https://github.com/r-snes/r-snes#readme) has a more detailed diagram of the data flow.
 - The [contribution policy](https://github.com/r-snes/r-snes/blob/main/CONTRIBUTING.md) lists the rules every crate follows: unit tests keeping the workspace above 80% coverage, `cargo fmt`, no warnings, and doc comments on every public item.
 - The [coverage dashboard](../coverage/index.html) shows how well each crate is tested.
