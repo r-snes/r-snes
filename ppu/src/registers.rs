@@ -39,7 +39,7 @@ pub struct PPURegisters {
 
     /// $2107/$2108/$2109/$210A - BG1SC/BG2SC/BG3SC/BG4SC (W8)
     /// Bits: AAAAAAYX | Tilemap VRAM address (A), vertical tilemap count (Y), horizontal tilemap count (X)
-    /// bgsc[0] = BG1SC ($2107), bgsc[1] = BG2SC ($2108), bgsc[2] = BG3SC ($2109), bgsc[3] = BG4SC ($210A)
+    /// `bgsc[0]` = BG1SC ($2107), `bgsc[1]` = BG2SC ($2108), `bgsc[2]` = BG3SC ($2109), `bgsc[3]` = BG4SC ($210A)
     pub bgsc: [u8; 4],
 
     /// $210B - BG12NBA (W8)
@@ -70,13 +70,13 @@ pub struct PPURegisters {
     pub m7vofs: u16,
 
     /// $210F/$2110/$2111/$2112/$2113/$2114 - BG2HOFS/BG2VOFS/BG3HOFS/BG3VOFS/BG4HOFS/BG4VOFS (W8x2)
-    /// bghofs[0] = BG2HOFS ($210F), bghofs[1] = BG3HOFS ($2111), bghofs[2] = BG4HOFS ($2113)
+    /// `bghofs[0]` = BG2HOFS ($210F), `bghofs[1]` = BG3HOFS ($2111), `bghofs[2]` = BG4HOFS ($2113)
     /// Bits: ......XX XXXXXXXX | BGn horizontal scroll
     /// On write: BGnHOFS = (value << 8) | (bgofs_latch & ~7) | (bghofs_latch & 7)
     ///           bgofs_latch = value; bghofs_latch = value
     pub bghofs: [u16; 3],
 
-    /// bgvofs[0] = BG2VOFS ($2110), bgvofs[1] = BG3VOFS ($2112), bgvofs[2] = BG4VOFS ($2114)
+    /// `bgvofs[0]` = BG2VOFS ($2110), `bgvofs[1]` = BG3VOFS ($2112), `bgvofs[2]` = BG4VOFS ($2114)
     /// Bits: ......YY YYYYYYYY | BGn vertical scroll
     /// On write: BGnVOFS = (value << 8) | bgofs_latch; bgofs_latch = value
     pub bgvofs: [u16; 3],

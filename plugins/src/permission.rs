@@ -6,8 +6,8 @@ pub mod helpers;
 /// Trait representing any kind of permission, with varying degrees
 ///
 /// [`Permission`] requires the implementor to define two levels of granted permissions:
-/// - [`all`]: As much permissions as the implementor can represent
-/// - [`none`]: Absolutely zero permission
+/// - [`all`](Permission::all): As much permissions as the implementor can represent
+/// - [`none`](Permission::none): Absolutely zero permission
 pub trait Permission: Eq + PartialOrd + Sized {
     /// Construct a [`Permission`] requesting as much as the implementor can represent
     fn all() -> Self;
