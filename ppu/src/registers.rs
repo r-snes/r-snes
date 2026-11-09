@@ -350,6 +350,38 @@ impl PPURegisters {
     }
 
     // ============================================================
+    // Mode 7
+    // ============================================================
+
+    /// Returns the Mode 7 matrix (M7A, M7B, M7C, M7D), signed 8.8 fixed point.
+    pub fn m7_matrix(&self) -> (i32, i32, i32, i32) {
+        (
+            self.m7a as i16 as i32,
+            self.m7b as i16 as i32,
+            self.m7c as i16 as i32,
+            self.m7d as i16 as i32,
+        )
+    }
+
+    /// Returns the Mode 7 center (M7X, M7Y), 13-bit signed.
+    pub fn m7_center(&self) -> (i32, i32) {
+        (Self::sign_extend_13(self.m7x), Self::sign_extend_13(self.m7y))
+    }
+
+    /// Returns the Mode 7 scroll (M7HOFS, M7VOFS), 13-bit signed.
+    pub fn m7_scroll(&self) -> (i32, i32) {
+        (
+            Self::sign_extend_13(self.m7hofs),
+            Self::sign_extend_13(self.m7vofs),
+        )
+    }
+
+    // The registers keep the whole high byte: bits 13-15 are ignored, bit 12 is the sign.
+    fn sign_extend_13(value: u16) -> i32 {
+        ((value << 3) as i16 >> 3) as i32
+    }
+
+    // ============================================================
     // Mosaic
     // ============================================================
 

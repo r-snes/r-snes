@@ -246,6 +246,7 @@ impl Renderer {
             0 => self.render_scanline_mode0(ppu, y),
             1 => self.render_scanline_mode1(ppu, y),
             3 => self.render_scanline_mode3(ppu, y),
+            7 => self.render_scanline_mode7(ppu, y),
             _ => self.render_scanline_mode1(ppu, y),
         }
 
@@ -283,10 +284,7 @@ impl Renderer {
             1
         };
 
-        // Windows hide pixels on the screens selected by TMW (main) and TSW (sub).
         let bg = p.layer.bg_index();
-        let win_main = ppu.regs.tmw & (1 << bg) != 0;
-        let win_sub = ppu.regs.tsw & (1 << bg) != 0;
 
         for x in 0..SCREEN_WIDTH {
             // Every pixel of a block shows the first pixel of the block.
@@ -360,14 +358,29 @@ impl Renderer {
                 layer: p.layer,
                 obj_math: false,
             };
-            // A masked pixel is hidden on the screens selected by TMW/TSW.
-            let masked = (win_main || win_sub) && ppu.regs.bg_window_masked(bg, x);
-            if p.to_main && !(win_main && masked) {
-                Self::deposit(&mut self.main_line, x, pixel);
-            }
-            if p.to_sub && !(win_sub && masked) {
-                Self::deposit(&mut self.sub_line, x, pixel);
-            }
+            self.deposit_bg(ppu, bg, x, pixel, p.to_main, p.to_sub);
+        }
+    }
+
+    /// Deposits a pixel of BG `bg` on the screens it is enabled on (`to_main`, `to_sub`).
+    /// Windows hide it on the screens selected by TMW (main) and TSW (sub).
+    pub fn deposit_bg(
+        &mut self,
+        ppu: &PPU,
+        bg: usize,
+        x: usize,
+        pixel: LinePixel,
+        to_main: bool,
+        to_sub: bool,
+    ) {
+        let win_main = ppu.regs.tmw & (1 << bg) != 0;
+        let win_sub = ppu.regs.tsw & (1 << bg) != 0;
+        let masked = (win_main || win_sub) && ppu.regs.bg_window_masked(bg, x);
+        if to_main && !(win_main && masked) {
+            Self::deposit(&mut self.main_line, x, pixel);
+        }
+        if to_sub && !(win_sub && masked) {
+            Self::deposit(&mut self.sub_line, x, pixel);
         }
     }
 
