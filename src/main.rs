@@ -13,6 +13,8 @@ mod dma;
 mod gui;
 mod rsnes;
 mod save_state;
+mod config;
+
 #[cfg(test)]
 mod test_utils;
 
