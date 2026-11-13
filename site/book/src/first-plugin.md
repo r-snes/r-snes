@@ -10,7 +10,7 @@ You don't need to know Lua well to follow along. If you have never seen it, [Lea
 - A text editor.
 - A ROM to run the plugin with. The free [snes-tests](https://github.com/gilyon/snes-tests) ROMs are fine.
 
-## Step 1: Hello, world!
+## Step 1: Hello, world
 
 Create a file named `hello.lua` with this content:
 

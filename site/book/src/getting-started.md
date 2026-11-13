@@ -61,7 +61,7 @@ The emulator ends up in `target/release/r-snes` (`r-snes.exe` on Windows). You c
 
 R-SNES doesn't come with any game. You need a ROM file, usually with a `.sfc` or `.smc` extension. Only use ROMs you are legally allowed to use, for example dumps of cartridges you own. See our [legal notice](https://github.com/r-snes/r-snes/blob/main/LEGAL.md) for details.
 
-To check that everything works, you can use the free test ROMs from [snes-tests](https://github.com/gilyon/snes-tests) (`cputest-full.sfc`, `spctest.sfc`), which R-SNES passes, or even the free ROMs in [PVSnesLib](https://github.com/alekmaul/pvsneslib/tree/master/snes-examples)(already compiled in [PVSnesLib release](https://github.com/alekmaul/pvsneslib/releases) zip files)
+To check that everything works, you can use the free test ROMs from [snes-tests](https://github.com/gilyon/snes-tests) (`cputest-full.sfc`, `spctest.sfc`), which R-SNES passes, or even the free ROMs in [PVSnesLib](https://github.com/alekmaul/pvsneslib/tree/master/snes-examples) (already compiled in [PVSnesLib release] (<https://github.com/alekmaul/pvsneslib/releases>) zip files)
 
 ## Launching a game
 
