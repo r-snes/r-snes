@@ -30,8 +30,19 @@ impl Renderer {
         let (flip_x, flip_y) = ppu.regs.m7_flip();
         let outside = ppu.regs.m7_outside();
 
+        // Mosaic works on screen pixels and lines, before the flip.
+        let mosaic = ppu.regs.bg_mosaic(0);
+        let block = if mosaic {
+            ppu.regs.mosaic_size() as usize
+        } else {
+            1
+        };
+
         // The math uses the scanline number, not the framebuffer row.
         let mut line = y as i32 + 1;
+        if mosaic {
+            line -= ppu.mosaic_voffset() as i32;
+        }
         if flip_y {
             line = 255 - line;
         }
@@ -44,7 +55,8 @@ impl Renderer {
 
         let vram = &ppu.vram.memory;
         for x in 0..SCREEN_WIDTH {
-            let sx = if flip_x { 255 - x as i32 } else { x as i32 };
+            let src_x = (x - x % block) as i32;
+            let sx = if flip_x { 255 - src_x } else { src_x };
 
             let map_x = (origin_x + a * sx) >> 8;
             let map_y = (origin_y + c * sx) >> 8;
@@ -508,5 +520,78 @@ mod tests {
         assert_eq!(fb_pixel(&r, 1, 0), blue());
         assert_eq!(fb_pixel(&r, 8, 0), red());
         assert_eq!(fb_pixel(&r, 16, 0), red());
+    }
+
+    // ============================================================
+    // Mosaic
+    // ============================================================
+
+    // Only column `x` of tile 0 is red, on every row.
+    fn setup_mosaic_column(ppu: &mut PPU, x: usize) {
+        for y in 0..8 {
+            set_tile_pixel(ppu, 0, x, y, 1);
+        }
+        set_color(ppu, 1, 0x001F);
+    }
+
+    // Size 4: screen x 0-3 copy screen x 0, x 4-7 copy x 4.
+    #[test]
+    fn test_mode7_mosaic_horizontal() {
+        let mut ppu = make_ppu_mode7();
+        setup_mosaic_column(&mut ppu, 0);
+
+        let r = render(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 0, 0), red());
+        assert_eq!(fb_pixel(&r, 1, 0), (0, 0, 0));
+
+        ppu.write(0x2106, 0x31); // size 4, BG1
+        let r = render(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 3, 0), red());
+        assert_eq!(fb_pixel(&r, 4, 0), (0, 0, 0));
+        assert_eq!(fb_pixel(&r, 9, 0), red());
+    }
+
+    // Mosaic on BG2 only does not change BG1.
+    #[test]
+    fn test_mode7_mosaic_needs_bg1_bit() {
+        let mut ppu = make_ppu_mode7();
+        setup_mosaic_column(&mut ppu, 0);
+        ppu.write(0x2106, 0x32); // size 4, BG2
+
+        assert_eq!(fb_pixel(&render(&ppu, 0), 1, 0), (0, 0, 0));
+    }
+
+    // Only map row 1 is red. Counter 3 with size 4: scanline 2 is 1 line into the block,
+    // so the math uses line 1.
+    #[test]
+    fn test_mode7_mosaic_vertical() {
+        let mut ppu = make_ppu_mode7();
+        for x in 0..8 {
+            set_tile_pixel(&mut ppu, 0, x, 1, 1);
+        }
+        set_color(&mut ppu, 1, 0x001F);
+
+        assert_eq!(fb_pixel(&render(&ppu, 1), 0, 1), (0, 0, 0));
+
+        ppu.write(0x2106, 0x31);
+        ppu.mosaic_vcounter = 3;
+        assert_eq!(fb_pixel(&render(&ppu, 1), 0, 1), red());
+    }
+
+    // With the flip, blocks still start at screen x 0: x 0-3 copy x 0 (map x 255).
+    #[test]
+    fn test_mode7_mosaic_with_flip() {
+        let mut ppu = make_ppu_mode7();
+        setup_mosaic_column(&mut ppu, 7);
+        ppu.write(0x211A, 0x01);
+
+        let r = render(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 0, 0), red());
+        assert_eq!(fb_pixel(&r, 1, 0), (0, 0, 0));
+
+        ppu.write(0x2106, 0x31);
+        let r = render(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 3, 0), red());
+        assert_eq!(fb_pixel(&r, 4, 0), (0, 0, 0));
     }
 }
