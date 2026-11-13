@@ -22,7 +22,7 @@ Plugins run in a sandbox: by default they can't see or change anything, neither 
 
 - `internal.cpu.registers`: read the CPU registers;
 - `internal.bus.write`: write anywhere in the console's memory;
-- `internal.input`: press controller buttons in your place;
+- `internal.input`: press or release controller buttons;
 - `external.filesystem.files`: open specific files on your computer.
 
 Permissions under `internal` only affect the emulated console. Permissions under `external` reach outside of it, onto your computer: be careful and only grant them to plugins you trust. Ask yourself whether the plugin really needs what it asks for; a cheat plugin has no reason to read your files.
@@ -68,7 +68,7 @@ The [`plugin_examples/`](https://github.com/r-snes/r-snes/tree/main/plugin_examp
 
 | Plugin | What it does |
 | :------- | :------------- |
-| `rom_test_blue.lua` | Press `R` to cycle the colours of the [snes-tests](https://github.com/gilyon/snes-tests) screens (blue, green, red). |
+| `rom_test_colors.lua` | Press `R` to cycle the colours of the [snes-tests](https://github.com/gilyon/snes-tests) screens (blue, green, red). |
 | `breakout_autoplay.lua` | Plays the [PVSnesLib breakout example](https://github.com/alekmaul/pvsneslib) by itself, by reading the ball position in memory and moving the paddle. |
 | `interval_plugin.lua` | Prints a message every 5 seconds, in emulated time and in real time. |
 | `read_file.lua` | Reads `plugin_examples/example.txt` and prints it (run R-SNES from the repository root). |
