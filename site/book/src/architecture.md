@@ -5,7 +5,7 @@ R-SNES is a Cargo workspace. Each hardware component of the console is implement
 ## The crates
 
 | Crate | Folder | Role | API docs |
-|:------|:-------|:-----|:---------|
+| :------ | :------- | :----- | :--------- |
 | `r-snes` | `src/` | Front-end (window, GUI, audio output) and the main loop driving every component | [r_snes](../api/r_snes/index.html) |
 | `cpu` | `cpu/` | The 65816 CPU core. Instructions are written in a small DSL compiled by the `instr_metalang_procmacro` sub-crate | [cpu](../api/cpu/index.html) |
 | `ppu` | `ppu/` | Picture Processing Unit: VRAM, CGRAM, PPU registers and the rendering pipeline (one module per background mode) | [ppu](../api/ppu/index.html) |
@@ -23,7 +23,7 @@ The root crate acts as the orchestrator: it owns every component and steps the C
 
 The CPU and PPU don't access memory directly: they go through the `bus` crate, which owns the SNES memory map and knows how to route an address to RAM, ROM or a memory-mapped I/O register. This keeps each component focused on its own logic, while `bus` is the single place that knows where things live in memory.
 
-The APU is a bit different: it has its own CPU (the S-SMP) and its own memory, so it doesn't use the shared bus at all. The main loop only steps it at its own clock speed and collects its audio output.
+The APU is a bit different: it has its own CPU (the S-SMP) and its own memory, so it doesn't use the shared bus at all, it instead relies on its own 4 bidirectional communication ports, which are mapped to a fixed address in memory. The main loop only steps it at its own clock speed and collects its audio output.
 
 ```text
                               +--------------------+
