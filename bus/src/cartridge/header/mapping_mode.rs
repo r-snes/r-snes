@@ -91,10 +91,6 @@ impl MappingMode {
     ///     `Some(MappingMode)` if one mapping mode scores higher.
     ///     `None` if the mapping is ambiguous or the ROM is too small.
     pub fn detect_rom_mapping(rom_data: &[u8]) -> Option<MappingMode> {
-        if rom_data.len() < HIROM_BANK_SIZE {
-            return None;
-        }
-
         // Try LoROM header
         let lorom_score = Self::score_header(rom_data, LOROM_HEADER_OFFSET);
         // Try HiROM header
