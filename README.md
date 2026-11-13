@@ -2,14 +2,13 @@
 
 [![CI](https://github.com/r-snes/r-snes/actions/workflows/actions.yaml/badge.svg?branch=main)](https://github.com/r-snes/r-snes/actions/workflows/actions.yaml)
 [![Latest release](https://img.shields.io/github/v/release/r-snes/r-snes)](https://github.com/r-snes/r-snes/releases/latest)
-[![License: MIT](https://img.shields.io/github/license/r-snes/r-snes)](LICENSE)
+[![Website](https://img.shields.io/website?url=https%3A%2F%2Fr-snes.github.io%2Fr-snes%2F)](https://r-snes.github.io/r-snes/)
+[![GitHub License](https://img.shields.io/github/license/r-snes/r-snes?color=blue)](LICENSE)
 
 R-SNES aims to be a decently fast and very accurate SNES emulator, while staying easy to understand as per modern coding standards.
 
-**Website: [r-snes.github.io/r-snes](https://r-snes.github.io/r-snes/)**, with guides to play games and write plugins, the API documentation of the code, and our test coverage.
-
 > [!NOTE]
-> For now, this is still a work in progress. We're able to run commercial games with no crashes, partially working graphics (some rendering features and effects are still missing), and working game sound
+> For now, this is still a work in progress. We're able to run commercial games with no crashes, partially working graphics (some rendering features and effects are still missing), and working game sound.
 > The [plugin system](#plugins) is functional, with several modules already implemented: RAM manipulation, CPU, PPU, display, and file read/write.
 
 ## Project purpose
@@ -18,7 +17,7 @@ Being a SNES emulator, R-SNES allows users to play SNES games. We also try to st
 
 ### Plugins
 
-The player experience is extensible with Lua plugins, which can read and change many parts of the emulator (memory, PPU, controller inputs...). They can run automatically before each CPU instruction, at regular intervals (in emulated or real time), or when the player triggers them with a key press.
+The player experience is extensible with Lua plugins, which can read and interact with many parts of the emulator (memory, PPU, controller inputs...). They can run automatically before each CPU instruction, at regular intervals (in emulated or real time), or when the player triggers them with a key press.
 
 Plugins can also access things *outside* the emulator (which we refer to as "external"). For now, they can read and write files, for example to save data extracted from a running game. In the future, we would like to let them do more, such as sending data over the network in HTTP requests.
 
