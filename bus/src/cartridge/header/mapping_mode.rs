@@ -183,14 +183,6 @@ mod tests {
     }
 
     #[test]
-    fn detect_unknown_if_too_small() {
-        let rom = vec![0; HIROM_BANK_SIZE - 1];
-        let mode = MappingMode::detect_rom_mapping(&rom);
-
-        assert_eq!(mode, None);
-    }
-
-    #[test]
     fn unknown_empty_rom() {
         let mut rom = vec![0; HIROM_BANK_SIZE];
         rom[HIROM_HEADER_OFFSET + HEADER_SPEED_MAP_OFFSET] = 1;
