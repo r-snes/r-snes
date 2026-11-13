@@ -376,7 +376,10 @@ impl PPURegisters {
 
     /// Returns the Mode 7 center (M7X, M7Y), 13-bit signed.
     pub fn m7_center(&self) -> (i32, i32) {
-        (Self::sign_extend_13(self.m7x), Self::sign_extend_13(self.m7y))
+        (
+            Self::sign_extend_13(self.m7x),
+            Self::sign_extend_13(self.m7y),
+        )
     }
 
     /// Returns the Mode 7 scroll (M7HOFS, M7VOFS), 13-bit signed.
