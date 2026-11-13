@@ -251,13 +251,11 @@ img {
     border: 1px solid var(--border);
     background: var(--surface);
     color: var(--text);
-    transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
 .btn:hover {
     text-decoration: none;
-    transform: translateY(-1px);
-    box-shadow: var(--shadow);
+    border-color: var(--muted);
 }
 
 .btn.primary {
@@ -363,13 +361,10 @@ h3 {
 a.card {
     display: block;
     color: inherit;
-    transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
 }
 
 a.card:hover {
     text-decoration: none;
-    transform: translateY(-2px);
-    box-shadow: var(--shadow);
     border-color: var(--accent);
 }
 
@@ -491,32 +486,8 @@ pre.code code {
     white-space: nowrap;
 }
 
-/* ---------- Scroll reveal ---------- */
-
-.reveal {
-    opacity: 0;
-    transform: translateY(24px);
-    transition: opacity 0.6s ease, transform 0.6s ease;
-}
-
-.reveal.visible {
-    opacity: 1;
-    transform: none;
-}
-
-.no-js .reveal {
-    opacity: 1;
-    transform: none;
-}
-
 @media (prefers-reduced-motion: reduce) {
     html {
         scroll-behavior: auto;
-    }
-
-    .reveal {
-        opacity: 1;
-        transform: none;
-        transition: none;
     }
 }
