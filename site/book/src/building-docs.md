@@ -5,8 +5,39 @@ The R-SNES website is made of three parts, all built from the repository and dep
 | Part | Source | Built with | Published at |
 | :----- | :------- | :----------- | :------------- |
 | Landing page and coverage dashboard | `site/pages/` | nothing (plain HTML/CSS/JS) | `/` and `/coverage/` |
-| Guides (this book) | `site/book/` | [mdBook](https://rust-lang.github.io/mdBook/) | `/book/` |
-| Rust API documentation | doc comments in the code | `cargo doc` (rustdoc) | `/api/` |
+| [Guides (this book)](#guides) | `site/book/` | [mdBook](https://rust-lang.github.io/mdBook/) | `/book/` |
+| [Rust API documentation](#rust-api-documentation) | doc comments in the code | `cargo doc` (rustdoc) | `/api/` |
+
+## The whole website
+
+`site/build.sh` assembles everything into `_site/`:
+
+```sh
+# without coverage data
+site/build.sh
+
+# with coverage data
+cargo tarpaulin --out html --out lcov --output-dir target/coverage
+site/build.sh target/coverage
+```
+
+To preview it, serve the `_site/` folder with any static web server, for example:
+
+```sh
+python3 -m http.server --directory _site
+```
+
+## Guides
+
+The guides are Markdown files in `site/book/src/`, and `site/book/src/SUMMARY.md` defines the table of contents. To add a page, create the file and add it to `SUMMARY.md`.
+
+The [Plugin API reference](plugin-api.md) isn't copied here: it includes `plugin_api.md` from the repository root, so there's a single file to keep up to date.
+
+Install mdBook (`cargo install mdbook`, or a binary from its [releases page](https://github.com/rust-lang/mdBook/releases)), then preview the book with live reload:
+
+```sh
+mdbook serve site/book --open
+```
 
 ## Rust API documentation
 
@@ -28,34 +59,3 @@ cargo doc --workspace --no-deps --open
 - the result goes to `target/doc/<crate>/index.html`.
 
 Rustdoc reports broken links and other problems as warnings: please fix them along with the code you change.
-
-## Guides
-
-The guides are Markdown files in `site/book/src/`, and `site/book/src/SUMMARY.md` defines the table of contents. To add a page, create the file and add it to `SUMMARY.md`.
-
-The [Plugin API reference](plugin-api.md) isn't copied here: it includes `plugin_api.md` from the repository root, so there's a single file to keep up to date.
-
-Install mdBook (`cargo install mdbook`, or a binary from its [releases page](https://github.com/rust-lang/mdBook/releases)), then preview the book with live reload:
-
-```sh
-mdbook serve site/book --open
-```
-
-## The whole website
-
-`site/build.sh` assembles everything into `_site/`:
-
-```sh
-# without coverage data
-site/build.sh
-
-# with coverage data
-cargo tarpaulin --out html --out lcov --output-dir target/coverage
-site/build.sh target/coverage
-```
-
-To preview it, serve the `_site/` folder with any static web server, for example:
-
-```sh
-python3 -m http.server --directory _site
-```
