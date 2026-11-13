@@ -1,9 +1,7 @@
 // Behaviour shared by the hand-written pages: theme toggle, mobile menu,
-// scroll animations and the "built from commit" footer line.
+// nav highlight and the "built from commit" footer line.
 
 "use strict";
-
-document.documentElement.classList.remove("no-js");
 
 (() => {
     const root = document.documentElement;
@@ -33,23 +31,8 @@ document.documentElement.classList.remove("no-js");
         if (e.target.closest("a")) nav.classList.remove("open");
     });
 
-    // ---------- Reveal sections when scrolled into view ----------
-    const reveals = document.querySelectorAll(".reveal");
+    // ---------- Highlight the nav link of the section on screen ----------
     if ("IntersectionObserver" in window) {
-        const io = new IntersectionObserver(
-            (entries) => {
-                for (const e of entries) {
-                    if (e.isIntersecting) {
-                        e.target.classList.add("visible");
-                        io.unobserve(e.target);
-                    }
-                }
-            },
-            { rootMargin: "0px 0px -10% 0px" },
-        );
-        reveals.forEach((el) => io.observe(el));
-
-        // Highlight the nav link of the section on screen
         const links = new Map(
             [...document.querySelectorAll('.nav a[href^="#"]')].map((a) => [a.hash.slice(1), a]),
         );
@@ -68,8 +51,6 @@ document.documentElement.classList.remove("no-js");
             const section = document.getElementById(id);
             if (section) spy.observe(section);
         });
-    } else {
-        reveals.forEach((el) => el.classList.add("visible"));
     }
 
     // ---------- Build information (written by site/build.sh) ----------
