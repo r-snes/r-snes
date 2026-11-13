@@ -22,5 +22,3 @@ R-SNES is a Super Nintendo emulator written in Rust. It aims to be decently fast
 - [R-SNES website](../index.html): project overview and [test coverage](../coverage/index.html)
 - [GitHub repository](https://github.com/r-snes/r-snes): source code, [issues](https://github.com/r-snes/r-snes/issues) and [discussions](https://github.com/r-snes/r-snes/discussions)
 - [Contribution policy](https://github.com/r-snes/r-snes/blob/main/CONTRIBUTING.md) and [legal notice](https://github.com/r-snes/r-snes/blob/main/LEGAL.md)
-
-You can search this documentation with the magnifying glass at the top of the page, or by pressing `S`.
