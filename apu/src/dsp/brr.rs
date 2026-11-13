@@ -139,7 +139,7 @@ pub(super) fn ram_read8(ram: &RawARAM, addr: u16) -> u8 {
 ///   bytes 1-8 — 8 data bytes = 16 nibbles = 16 samples
 ///
 /// `prev1` and `prev2` are updated in place so history carries forward.
-/// Returns (samples[16], end_flag, loop_flag).
+/// Returns `(samples[16], end_flag, loop_flag)`.
 pub fn decode_brr_block(
     ram: &RawARAM,
     addr: u16,
