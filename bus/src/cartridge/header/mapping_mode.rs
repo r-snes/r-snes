@@ -3,8 +3,7 @@
 
 use crate::constants::{
     HEADER_CHECKSUM_COMPLEMENT_OFFSET, HEADER_CHECKSUM_OFFSET, HEADER_SIZE,
-    HEADER_SPEED_MAP_OFFSET, HEADER_TITLE_LEN, HIROM_BANK_SIZE, HIROM_HEADER_OFFSET,
-    LOROM_HEADER_OFFSET,
+    HEADER_SPEED_MAP_OFFSET, HEADER_TITLE_LEN, HIROM_HEADER_OFFSET, LOROM_HEADER_OFFSET,
 };
 use std::cmp::Ordering;
 use strum_macros::Display;
@@ -91,10 +90,6 @@ impl MappingMode {
     ///     `Some(MappingMode)` if one mapping mode scores higher.
     ///     `None` if the mapping is ambiguous or the ROM is too small.
     pub fn detect_rom_mapping(rom_data: &[u8]) -> Option<MappingMode> {
-        if rom_data.len() < HIROM_BANK_SIZE {
-            return None;
-        }
-
         // Try LoROM header
         let lorom_score = Self::score_header(rom_data, LOROM_HEADER_OFFSET);
         // Try HiROM header
@@ -169,6 +164,7 @@ impl MappingMode {
 mod tests {
     use super::*;
     use crate::cartridge::test_rom::*;
+    use crate::constants::HIROM_BANK_SIZE;
 
     #[test]
     fn detect_lorom() {
@@ -184,14 +180,6 @@ mod tests {
         let mode = MappingMode::detect_rom_mapping(&rom);
 
         assert_eq!(mode, Some(MappingMode::HiRom));
-    }
-
-    #[test]
-    fn detect_unknown_if_too_small() {
-        let rom = vec![0; HIROM_BANK_SIZE - 1];
-        let mode = MappingMode::detect_rom_mapping(&rom);
-
-        assert_eq!(mode, None);
     }
 
     #[test]
