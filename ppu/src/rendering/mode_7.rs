@@ -1,16 +1,14 @@
-//! BG Mode 7 renderer: one 8bpp layer (BG1) drawn through an affine transformation.
+//! BG Mode 7 renderer: one 8bpp layer (BG1) that can rotate and scale.
 //!
-//! The map is 128x128 tiles (1024x1024 pixels), interleaved in the first 16K words of VRAM:
-//! the low byte of word `ty * 128 + tx` is the tile number of map tile (tx, ty),
-//! the high byte of word `tile * 64 + y * 8 + x` is the color index of pixel (x, y) of `tile`.
-//! There are no palette bits, no flips per tile and no priority bit. Color 0 is transparent.
-//!
-//! Each screen pixel is mapped to a map pixel with the M7A-M7D matrix (8.8 fixed point),
-//! around the M7X/M7Y center, after the M7HOFS/M7VOFS scroll.
+//! The map is 128x128 tiles (1024x1024 pixels), in the first 16K words of VRAM:
+//! - low byte of word `ty * 128 + tx` = tile number of map tile (tx, ty)
+//! - high byte of word `tile * 64 + y * 8 + x` = color index of pixel (x, y) of `tile`
 
 use crate::constants::SCREEN_WIDTH;
 use crate::ppu::PPU;
+use crate::registers::M7Outside;
 use crate::rendering::renderer::{Layer, LinePixel, Priority, Renderer};
+use crate::vram::RawVRAM;
 
 // OBJ3 > OBJ2 > OBJ1 > BG1 > OBJ0 (sprites are 3, 6, 9, 12)
 const BG1_Z: Priority = Priority::new(5);
@@ -29,9 +27,14 @@ impl Renderer {
         let (a, b, c, d) = ppu.regs.m7_matrix();
         let (cx, cy) = ppu.regs.m7_center();
         let (h, v) = ppu.regs.m7_scroll();
+        let (flip_x, flip_y) = ppu.regs.m7_flip();
+        let outside = ppu.regs.m7_outside();
 
         // The math uses the scanline number, not the framebuffer row.
-        let line = y as i32 + 1;
+        let mut line = y as i32 + 1;
+        if flip_y {
+            line = 255 - line;
+        }
 
         // Map position of screen pixel 0 (8.8 fixed point), low 6 bits of each product removed.
         let hx = Self::m7_clip(h - cx);
@@ -41,12 +44,17 @@ impl Renderer {
 
         let vram = &ppu.vram.memory;
         for x in 0..SCREEN_WIDTH {
-            let map_x = ((origin_x + a * x as i32) >> 8) & (MAP_PX - 1);
-            let map_y = ((origin_y + c * x as i32) >> 8) & (MAP_PX - 1);
+            let sx = if flip_x { 255 - x as i32 } else { x as i32 };
 
-            let tile_x = (map_x >> 3) as usize;
-            let tile_y = (map_y >> 3) as usize;
-            let tile = (vram[tile_y * 128 + tile_x] & 0x00FF) as usize;
+            let map_x = (origin_x + a * sx) >> 8;
+            let map_y = (origin_y + c * sx) >> 8;
+
+            let in_map = (map_x | map_y) & !(MAP_PX - 1) == 0;
+            let tile = match (in_map, outside) {
+                (true, _) | (false, M7Outside::Wrap) => Self::m7_map_tile(vram, map_x, map_y),
+                (false, M7Outside::Tile0) => 0,
+                (false, M7Outside::Transparent) => continue,
+            };
 
             let fine_x = (map_x & 7) as usize;
             let fine_y = (map_y & 7) as usize;
@@ -71,6 +79,12 @@ impl Renderer {
             };
             self.deposit_bg(ppu, 0, x, pixel, to_main, to_sub);
         }
+    }
+
+    fn m7_map_tile(vram: &RawVRAM, map_x: i32, map_y: i32) -> usize {
+        let tile_x = ((map_x & (MAP_PX - 1)) >> 3) as usize;
+        let tile_y = ((map_y & (MAP_PX - 1)) >> 3) as usize;
+        (vram[tile_y * 128 + tile_x] & 0x00FF) as usize
     }
 
     // (scroll - center) keeps only 10 bits and the sign (bit 13).
@@ -401,5 +415,98 @@ mod tests {
             fb_pixel(&render(&ppu, 0), 0, 0),
             Renderer::apply_brightness(28, 15)
         );
+    }
+
+    // ============================================================
+    // M7SEL: screen flip
+    // ============================================================
+
+    // Screen x 247 shows map x 8, screen x 248 shows map x 7.
+    #[test]
+    fn test_mode7_flip_x() {
+        let mut ppu = make_ppu_mode7();
+        setup_two_tiles(&mut ppu);
+        ppu.write(0x211A, 0x01);
+
+        let r = render(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 247, 0), red());
+        assert_eq!(fb_pixel(&r, 248, 0), blue());
+        assert_eq!(fb_pixel(&r, 0, 0), blue());
+    }
+
+    // Row 0 (scanline 1) is computed like line 254.
+    #[test]
+    fn test_mode7_flip_y() {
+        let mut ppu = make_ppu_mode7();
+        setup_two_tiles(&mut ppu);
+        set_map_tile(&mut ppu, 0, 31, 1);
+
+        assert_eq!(fb_pixel(&render(&ppu, 0), 0, 0), blue());
+
+        ppu.write(0x211A, 0x02);
+        assert_eq!(fb_pixel(&render(&ppu, 0), 0, 0), red());
+    }
+
+    // ============================================================
+    // M7SEL: outside the map
+    // ============================================================
+
+    // Bit 6 alone does nothing.
+    #[test]
+    fn test_mode7_outside_wraps() {
+        for m7sel in [0x00, 0x40] {
+            let mut ppu = make_ppu_mode7();
+            setup_two_tiles(&mut ppu);
+            set_map_tile(&mut ppu, 127, 0, 1);
+            write_m7(&mut ppu, 0x210D, 0x1FF8); // M7HOFS = -8
+            ppu.write(0x211A, m7sel);
+
+            assert_eq!(
+                fb_pixel(&render(&ppu, 0), 0, 0),
+                red(),
+                "M7SEL {m7sel:#04X}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_mode7_outside_transparent() {
+        let mut ppu = make_ppu_mode7();
+        setup_two_tiles(&mut ppu);
+        set_map_tile(&mut ppu, 127, 0, 1);
+        write_m7(&mut ppu, 0x210D, 0x1FF8); // M7HOFS = -8
+        ppu.write(0x211A, 0x80);
+
+        let r = render(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 0, 0), (0, 0, 0));
+        assert_eq!(fb_pixel(&r, 7, 0), (0, 0, 0));
+        assert_eq!(fb_pixel(&r, 8, 0), blue());
+    }
+
+    #[test]
+    fn test_mode7_outside_transparent_vertical() {
+        let mut ppu = make_ppu_mode7();
+        setup_two_tiles(&mut ppu);
+        write_m7(&mut ppu, 0x210E, 0x1FF0); // M7VOFS = -16
+        ppu.write(0x211A, 0x80);
+
+        assert_eq!(fb_pixel(&render(&ppu, 0), 0, 0), (0, 0, 0));
+    }
+
+    // The pixel inside tile 0 comes from the map position: screen x 0 (map x -8) is pixel (0, 1).
+    #[test]
+    fn test_mode7_outside_tile0() {
+        let mut ppu = make_ppu_mode7();
+        setup_two_tiles(&mut ppu);
+        set_map_tile(&mut ppu, 127, 0, 1); // red if the map repeats
+        set_tile_pixel(&mut ppu, 0, 0, 1, 1);
+        write_m7(&mut ppu, 0x210D, 0x1FF8); // M7HOFS = -8
+        ppu.write(0x211A, 0xC0);
+
+        let r = render(&ppu, 0);
+        assert_eq!(fb_pixel(&r, 0, 0), red());
+        assert_eq!(fb_pixel(&r, 1, 0), blue());
+        assert_eq!(fb_pixel(&r, 8, 0), red());
+        assert_eq!(fb_pixel(&r, 16, 0), red());
     }
 }
