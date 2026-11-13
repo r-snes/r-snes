@@ -9,7 +9,7 @@ This page explains how to install R-SNES and play your first game.
 Download the file for your system from the [latest release](https://github.com/r-snes/r-snes/releases/latest):
 
 | System | File |
-|:-------|:-----|
+| :------- | :----- |
 | Windows | `r-snes_<version>_x86_64.exe` |
 | Debian, Ubuntu, Linux Mint, Pop!_OS… | `r-snes_<version>_amd64.deb` |
 | Fedora, Bazzite… | `r-snes_<version>_x86_64.rpm` |
@@ -67,9 +67,11 @@ To check that everything works, you can use the free test ROMs from [snes-tests]
 
 There are two ways to open a game.
 
-**From the window.** Start R-SNES without arguments. The R-SNES logo shows up: open the **File** menu and choose **Open ROM…** (or press `Ctrl+L`), then pick your ROM file.
+**From the window:**  
+Open the **File** menu and choose **Open ROM…** (or press `Ctrl+L`), then pick your ROM file.
 
-**From a terminal.** Give the ROM path as an argument:
+**From a terminal:**  
+Give the ROM path as an argument:
 
 ```sh
 r-snes path/to/game.sfc
