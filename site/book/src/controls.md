@@ -5,7 +5,7 @@
 The default layout is designed for AZERTY keyboards: the SNES buttons sit on the left hand, the D-pad on the arrow keys.
 
 | SNES button | Key |
-|:------------|:----|
+| :------------ | :---- |
 | D-pad | Arrow keys |
 | A | `D` |
 | B | `S` |
@@ -16,7 +16,7 @@ The default layout is designed for AZERTY keyboards: the SNES buttons sit on the
 | Start | `Enter` |
 | Select | `Right Shift` |
 
-Keys are matched by the letter they type, not by their position, so on other layouts (QWERTY…) use the same letters: they are just less conveniently placed.
+At the moment the keys are made for an AZERTY keyboard layout but keybinds configuration will soon be available (<https://github.com/r-snes/r-snes/issues/120>).
 
 ## Gamepad
 
@@ -25,7 +25,7 @@ Any controller supported by SDL2 works (Xbox, PlayStation, Switch Pro, most gene
 Buttons are mapped by position, so the layout matches the original SNES controller:
 
 | SNES button | Xbox-style controller |
-|:------------|:----------------------|
+| :------------ | :---------------------- |
 | D-pad | D-pad or left stick |
 | B (bottom) | A (bottom) |
 | A (right) | B (right) |
@@ -38,7 +38,7 @@ Buttons are mapped by position, so the layout matches the original SNES controll
 ## Shortcuts
 
 | Action | Shortcut | Menu |
-|:-------|:---------|:-----|
+| :------- | :--------- | :----- |
 | Open a ROM | `Ctrl+L` | File > Open ROM… |
 | Close the ROM (or the open window) | `Esc` | File > Close ROM |
 | Load a plugin (no ROM running) | `Ctrl+P` | File > Load plugin… |

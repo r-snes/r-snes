@@ -10,7 +10,7 @@ R-SNES is a Super Nintendo emulator written in Rust. It aims to be decently fast
 ## Where to start
 
 | I want to… | Read |
-|:-----------|:-----|
+| :----------- | :----- |
 | Install R-SNES and run a game | [Getting started](getting-started.md) |
 | Know which key does what | [Controls and shortcuts](controls.md) |
 | Run a plugin someone gave me | [Using plugins](using-plugins.md) |

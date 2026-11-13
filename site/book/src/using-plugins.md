@@ -67,7 +67,7 @@ r-snes --load-plugin-noconfirm my_plugin.lua path/to/game.sfc
 The [`plugin_examples/`](https://github.com/r-snes/r-snes/tree/main/plugin_examples) folder of the repository has a few plugins to try:
 
 | Plugin | What it does |
-|:-------|:-------------|
+| :------- | :------------- |
 | `rom_test_blue.lua` | Press `R` to cycle the colours of the [snes-tests](https://github.com/gilyon/snes-tests) screens (blue, green, red). |
 | `breakout_autoplay.lua` | Plays the [PVSnesLib breakout example](https://github.com/alekmaul/pvsneslib) by itself, by reading the ball position in memory and moving the paddle. |
 | `interval_plugin.lua` | Prints a message every 5 seconds, in emulated time and in real time. |
