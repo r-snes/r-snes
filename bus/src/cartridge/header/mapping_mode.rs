@@ -3,8 +3,7 @@
 
 use crate::constants::{
     HEADER_CHECKSUM_COMPLEMENT_OFFSET, HEADER_CHECKSUM_OFFSET, HEADER_SIZE,
-    HEADER_SPEED_MAP_OFFSET, HEADER_TITLE_LEN, HIROM_BANK_SIZE, HIROM_HEADER_OFFSET,
-    LOROM_HEADER_OFFSET,
+    HEADER_SPEED_MAP_OFFSET, HEADER_TITLE_LEN, HIROM_HEADER_OFFSET, LOROM_HEADER_OFFSET,
 };
 use std::cmp::Ordering;
 use strum_macros::Display;
@@ -165,6 +164,7 @@ impl MappingMode {
 mod tests {
     use super::*;
     use crate::cartridge::test_rom::*;
+    use crate::constants::HIROM_BANK_SIZE;
 
     #[test]
     fn detect_lorom() {
