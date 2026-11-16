@@ -400,7 +400,7 @@ mod tests {
     // Layer order and screens
     // ============================================================
 
-        // OBJ3 > OBJ2 > OBJ1 > BG1 > OBJ0
+    // OBJ3 > OBJ2 > OBJ1 > BG1 > OBJ0
     #[test]
     fn test_mode7_bg1_vs_sprites() {
         let green = Renderer::apply_brightness(0x03E0, 15);
