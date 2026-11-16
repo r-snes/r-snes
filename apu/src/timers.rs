@@ -18,6 +18,7 @@ use crate::memory::Memory;
 /// A 0 -> 1 transition of an enable bit resets that timer's stage and
 /// output counters, matching hardware: drivers enable a timer and expect
 /// the first tick a full period later, not a leftover partial count.
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct Timers {
     /// Position within the 128-cycle base period (0..=127). Timer 2's
     /// 16-cycle clock is derived from the same counter (every 16th cycle),

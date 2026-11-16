@@ -20,9 +20,11 @@ use common::u16_split::U16Split;
 use crate::memory::RawARAM;
 
 /// The SNES DSP: 8 voices, ADSR envelopes, BRR decoding, stereo mix.
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct Dsp {
     /// 128 DSP registers (indexed 0x00–0x7F).
     /// Accessed externally via SPC700 I/O ports $F2 (index) / $F3 (data).
+    #[serde(with = "common::serde_arrays::array")]
     registers: [u8; 128],
 
     /// The 8 independent audio voices.

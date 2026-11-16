@@ -13,8 +13,10 @@ use common::u16_split::U16Split;
 pub type RawVRAM = [u16; VRAM_SIZE / 2];
 
 /// Video memory and its read latch.
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct VRAM {
     /// VRAM content, stored as 16-bit words.
+    #[serde(with = "common::serde_arrays::boxed_array")]
     pub memory: Box<RawVRAM>,
     /// Prefetched word returned by VRAM reads.
     pub vram_latch: u16,
