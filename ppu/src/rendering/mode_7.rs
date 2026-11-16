@@ -95,14 +95,8 @@ impl Renderer {
         }
     }
 
-    // Draws BG `bg` (0 = BG1, 1 = BG2) on the screens in `(to_main, to_sub)`.
-    fn render_m7_layer(
-        &mut self,
-        ppu: &PPU,
-        m7: &M7Line,
-        bg: usize,
-        (to_main, to_sub): (bool, bool),
-    ) {
+    // Draws BG `bg` (0 = BG1, 1 = BG2) on the screens in `screens` (main, sub).
+    fn render_m7_layer(&mut self, ppu: &PPU, m7: &M7Line, bg: usize, screens: (bool, bool)) {
         // Horizontal mosaic uses the bit of the layer.
         let block = if ppu.regs.bg_mosaic(bg) {
             ppu.regs.mosaic_size() as usize
@@ -111,6 +105,7 @@ impl Renderer {
         };
 
         for x in 0..SCREEN_WIDTH {
+            // Mosaic works on screen pixels, before the flip.
             let src_x = (x - x % block) as i32;
             let sx = if m7.flip_x { 255 - src_x } else { src_x };
 
@@ -141,7 +136,7 @@ impl Renderer {
                 layer: Layer::from_bg(bg),
                 obj_math: false,
             };
-            self.deposit_bg(ppu, bg, x, pixel, to_main, to_sub);
+            self.deposit_bg(ppu, bg, x, pixel, screens);
         }
     }
 

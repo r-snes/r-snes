@@ -358,20 +358,19 @@ impl Renderer {
                 layer: p.layer,
                 obj_math: false,
             };
-            self.deposit_bg(ppu, bg, x, pixel, p.to_main, p.to_sub);
+            self.deposit_bg(ppu, bg, x, pixel, (p.to_main, p.to_sub));
         }
     }
 
     /// Deposits a pixel of BG `bg` on the screens it is enabled on (`to_main`, `to_sub`).
     /// Windows hide it on the screens selected by TMW (main) and TSW (sub).
-    pub fn deposit_bg(
+    pub(super) fn deposit_bg(
         &mut self,
         ppu: &PPU,
         bg: usize,
         x: usize,
         pixel: LinePixel,
-        to_main: bool,
-        to_sub: bool,
+        (to_main, to_sub): (bool, bool),
     ) {
         let win_main = ppu.regs.tmw & (1 << bg) != 0;
         let win_sub = ppu.regs.tsw & (1 << bg) != 0;
