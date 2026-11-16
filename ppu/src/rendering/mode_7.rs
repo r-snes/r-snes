@@ -154,7 +154,7 @@ impl Renderer {
 mod tests {
     use crate::ppu::PPU;
     use crate::rendering::renderer::Renderer;
-    use crate::test_utils::{fb_pixel, set_color, write_sprite};
+    use crate::test_utils::{fb_pixel, set_color, setup_sprite_at_origin};
 
     // ============================================================
     // Helpers
@@ -400,7 +400,7 @@ mod tests {
     // Layer order and screens
     // ============================================================
 
-    // OBJ3 > OBJ2 > OBJ1 > BG1 > OBJ0
+        // OBJ3 > OBJ2 > OBJ1 > BG1 > OBJ0
     #[test]
     fn test_mode7_bg1_vs_sprites() {
         let green = Renderer::apply_brightness(0x03E0, 15);
@@ -410,17 +410,8 @@ mod tests {
             ppu.write(0x212C, 0x11); // TM: BG1 + OBJ
             fill_tile(&mut ppu, 0, 1);
             set_color(&mut ppu, 1, 0x001F);
-
             // Sprite CHR at word 0x4000, after the Mode 7 data.
-            ppu.write(0x2101, 0x02);
-            for i in 0..128 {
-                write_sprite(&mut ppu, i, 0, 0xF0, 0, 0);
-            }
-            write_sprite(&mut ppu, 0, 0, 0, 0, prio << 4);
-            for row in 0..8 {
-                ppu.vram.memory[0x4000 + row] = 0x00FF;
-            }
-            set_color(&mut ppu, 129, 0x03E0);
+            setup_sprite_at_origin(&mut ppu, 0x02, prio, 0x03E0);
 
             assert_eq!(fb_pixel(&render(&ppu, 0), 0, 0), expected, "OBJ{prio}");
         }
@@ -690,17 +681,8 @@ mod tests {
             ppu.write(0x212C, 0x12); // TM: BG2 + OBJ
             fill_tile(&mut ppu, 0, index);
             set_color(&mut ppu, 1, 0x001F);
-
             // Sprite CHR at word 0x4000, after the Mode 7 data.
-            ppu.write(0x2101, 0x02);
-            for i in 0..128 {
-                write_sprite(&mut ppu, i, 0, 0xF0, 0, 0);
-            }
-            write_sprite(&mut ppu, 0, 0, 0, 0, prio << 4);
-            for row in 0..8 {
-                ppu.vram.memory[0x4000 + row] = 0x00FF;
-            }
-            set_color(&mut ppu, 129, 0x03E0);
+            setup_sprite_at_origin(&mut ppu, 0x02, prio, 0x03E0);
 
             assert_eq!(
                 fb_pixel(&render(&ppu, 0), 0, 0),
