@@ -4,7 +4,7 @@ use super::adsr::{Adsr, EnvelopePhase};
 use super::brr::{Brr, GAUSS, decode_brr_block, ram_read8};
 
 /// One voice (channel) of the SNES APU DSP.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, serde::Serialize, serde::Deserialize)]
 pub struct Voice {
     /// Left channel volume, signed (-128..+127).
     pub left_vol: i8,

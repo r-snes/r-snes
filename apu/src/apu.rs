@@ -42,7 +42,7 @@ macro_rules! ipl_trace {
 /// IPL code during this phase. Uploaded code can jump back to $FFC0 to
 /// re-run the boot ROM for another upload; `Apu::step` detects this and
 /// re-arms the state machine (see `reenter_ipl`).
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 enum IplHle {
     /// Boot-time before the announce, modeling the real IPL's SP init and
     /// zero-page clear loop (~1000 cycles). This delay is load-bearing:
@@ -123,6 +123,7 @@ const IPL_EXEC_DELAY_CYCLES: u16 = 256;
 /// A freshly created `Apu` starts inside the (high-level emulated) IPL boot
 /// ROM, waiting for the main CPU to upload a sound driver. Use
 /// [`Apu::skip_ipl_boot`] to bypass this when running code directly.
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct Apu {
     /// The SPC700 CPU core running the uploaded sound driver.
     pub cpu: Spc700,
@@ -152,6 +153,7 @@ pub struct Apu {
     /// to interleaved `Vec<i16>`, so `drain_samples` can hand the buffer
     /// to the host audio backend zero-copy via `into_flattened`. Capped
     /// (see step) so it can't grow unbounded when nothing drains it.
+    #[serde(skip)]
     sample_buf: Vec<[i16; 2]>,
 
     /// HLE IPL boot state. `None` once the upload has

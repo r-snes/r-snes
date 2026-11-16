@@ -35,6 +35,7 @@ pub enum ScanlineKind {
 }
 
 /// The PPU: registers, video memories and timing counters.
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct PPU {
     /// PPU registers and internal latches.
     pub regs: PPURegisters,

@@ -1,7 +1,7 @@
 use crate::memory::RawARAM;
 
 /// BRR playback state for one voice.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, serde::Serialize, serde::Deserialize)]
 pub struct Brr {
     /// Address of the current BRR block header byte in APU RAM.
     pub addr: u16,

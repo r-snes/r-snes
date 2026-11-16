@@ -22,7 +22,7 @@
 /// |     | B  | Y  | Select | Start | Up | Down | Left | Right | A | X | L | R | ID  |
 ///
 /// A set bit means "pressed". The 4 ID bits are always `0` for a standard pad.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ControllerPort {
     /// Whether a standard pad is plugged in. An empty port reads `0` forever.
     pub connected: bool,

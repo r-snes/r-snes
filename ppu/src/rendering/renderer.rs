@@ -189,14 +189,19 @@ pub struct BgParams {
 }
 
 /// Double-buffered framebuffer and per-scanline rendering state.
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct Renderer {
     /// Back buffer, the PPU writes here.
+    #[serde(with = "common::serde_arrays::boxed_array")]
     pub framebuffer: Box<RawFramebuffer>,
     /// Front buffer, the GUI reads here.
+    #[serde(with = "common::serde_arrays::boxed_array")]
     pub presented: Box<RawFramebuffer>,
 
     // Per-column top pixel of each screen for the scanline being rendered.
+    #[serde(skip, default = "Renderer::blank_line")]
     main_line: Box<[LinePixel; SCREEN_WIDTH]>,
+    #[serde(skip, default = "Renderer::blank_line")]
     sub_line: Box<[LinePixel; SCREEN_WIDTH]>,
 }
 
@@ -212,9 +217,14 @@ impl Renderer {
         Self {
             framebuffer: Box::new([0; SCREEN_WIDTH * SCREEN_HEIGHT * 3]),
             presented: Box::new([0; SCREEN_WIDTH * SCREEN_HEIGHT * 3]),
-            main_line: Box::new([LinePixel::BACKDROP; SCREEN_WIDTH]),
-            sub_line: Box::new([LinePixel::BACKDROP; SCREEN_WIDTH]),
+            main_line: Self::blank_line(),
+            sub_line: Self::blank_line(),
         }
+    }
+
+    /// A scanline buffer filled with backdrop pixels.
+    fn blank_line() -> Box<[LinePixel; SCREEN_WIDTH]> {
+        Box::new([LinePixel::BACKDROP; SCREEN_WIDTH])
     }
 
     /// Swaps the back and front buffers, making the last rendered frame visible.

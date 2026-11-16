@@ -30,6 +30,7 @@ pub enum M7Outside {
 // - $2118/$2119 VMDATA, $2139/$213A RDVRAM: VRAM ports, see vram.rs
 // - $2121 CGADD, $2122 CGDATA, $213B RDCGRAM: CGRAM ports, see cgram.rs
 // - $2137 SLHV, $213E STAT77, $213F STAT78: computed in PPU::read
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct PPURegisters {
     /// $2100 - INIDISP (W8)
     pub inidisp: u8, // Bits: F...BBBB | Forced blanking (F), screen brightness (B).

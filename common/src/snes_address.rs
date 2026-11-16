@@ -7,7 +7,7 @@ use std::convert::From;
 /// SNES adddress space.
 ///
 /// The address space is split in 256 64Ko banks.
-#[derive(Copy, Clone, Eq, PartialEq, Default)]
+#[derive(Copy, Clone, Eq, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub struct SnesAddress {
     /// The bank number of the address
     pub bank: u8,

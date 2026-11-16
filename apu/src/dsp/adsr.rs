@@ -11,7 +11,7 @@ pub(super) const ENVELOPE_RATE_TABLE: [u16; 32] = [
 ];
 
 /// Current phase of the ADSR envelope state machine.
-#[derive(Copy, Clone, Debug, Default, PartialEq)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum EnvelopePhase {
     /// Rise linearly from 0 to 0x7FF. Rate index comes from the 4-bit
     /// `attack_rate` field. Special case: `attack_rate == 15` uses a fixed
@@ -37,7 +37,7 @@ pub enum EnvelopePhase {
 }
 
 /// ADSR envelope for one voice.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, serde::Serialize, serde::Deserialize)]
 pub struct Adsr {
     /// true = ADSR mode, false = GAIN mode
     pub adsr_mode: bool,

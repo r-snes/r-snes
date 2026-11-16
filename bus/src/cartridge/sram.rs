@@ -6,7 +6,7 @@ use crate::cartridge::header::RomHeader;
 ///
 /// On real hardware this chip is battery-backed, which is what makes it save
 /// data. At the moment it does not save anywhere and just acts as a basic RAM.
-#[derive(PartialEq)]
+#[derive(PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Sram {
     data: Vec<u8>,
     mask: usize,

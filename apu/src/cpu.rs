@@ -4,7 +4,7 @@
 use crate::memory::Memory;
 
 /// The SPC700 register file.
-#[derive(Default)]
+#[derive(Default, serde::Serialize, serde::Deserialize)]
 pub struct Registers {
     /// Accumulator.
     pub a: u8,
@@ -45,6 +45,7 @@ pub const FLAG_N: u8 = 0x80;
 ///
 /// Executes one whole instruction per call to [`Spc700::step`] against a
 /// [`Memory`], and keeps a running count of the cycles it has consumed.
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct Spc700 {
     /// Architectural registers.
     pub regs: Registers,
