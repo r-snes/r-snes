@@ -390,6 +390,11 @@ impl PPURegisters {
         )
     }
 
+    /// Returns true if EXTBG is on (SETINI bit 6)
+    pub fn extbg(&self) -> bool {
+        self.setini & 0x40 != 0
+    }
+
     /// Returns the Mode 7 screen flips (horizontal, vertical) (M7SEL bits 0-1).
     pub fn m7_flip(&self) -> (bool, bool) {
         (self.m7sel & 0x01 != 0, self.m7sel & 0x02 != 0)

@@ -10,37 +10,65 @@ use crate::registers::M7Outside;
 use crate::rendering::renderer::{Layer, LinePixel, Priority, Renderer};
 use crate::vram::RawVRAM;
 
-// OBJ3 > OBJ2 > OBJ1 > BG1 > OBJ0 (sprites are 3, 6, 9, 12)
+// OBJ3 > OBJ2 > BG2.1 > OBJ1 > BG1 > OBJ0 > BG2.0 (sprites are 3, 6, 9, 12)
 const BG1_Z: Priority = Priority::new(5);
+const BG2_LOW: Priority = Priority::new(2);
+const BG2_HIGH: Priority = Priority::new(8);
 
 const MAP_PX: i32 = 1024;
 
+// Values shared by BG1 and BG2 on one line.
+struct M7Line {
+    origin_x: i32,
+    origin_y: i32,
+    a: i32,
+    c: i32,
+    flip_x: bool,
+    outside: M7Outside,
+}
+
+impl M7Line {
+    // Color index at screen x `sx`, or None if nothing is drawn there.
+    fn color_index(&self, vram: &RawVRAM, sx: i32) -> Option<u8> {
+        let map_x = (self.origin_x + self.a * sx) >> 8;
+        let map_y = (self.origin_y + self.c * sx) >> 8;
+
+        let in_map = (map_x | map_y) & !(MAP_PX - 1) == 0;
+        let tile = match (in_map, self.outside) {
+            (true, _) | (false, M7Outside::Wrap) => {
+                let tile_x = ((map_x & (MAP_PX - 1)) >> 3) as usize;
+                let tile_y = ((map_y & (MAP_PX - 1)) >> 3) as usize;
+                (vram[tile_y * 128 + tile_x] & 0x00FF) as usize
+            }
+            (false, M7Outside::Tile0) => 0,
+            (false, M7Outside::Transparent) => return None,
+        };
+
+        let fine_x = (map_x & 7) as usize;
+        let fine_y = (map_y & 7) as usize;
+        Some((vram[tile * 64 + fine_y * 8 + fine_x] >> 8) as u8)
+    }
+}
+
 impl Renderer {
-    /// Renders BG1 in Mode 7 on framebuffer row `y`.
+    /// Renders BG1 (and BG2 with EXTBG) in Mode 7 on framebuffer row `y`.
     pub fn render_scanline_mode7(&mut self, ppu: &PPU, y: usize) {
-        let to_main = ppu.regs.tm & 0x01 != 0;
-        let to_sub = ppu.regs.ts & 0x01 != 0;
-        if !to_main && !to_sub {
+        let regs = &ppu.regs;
+        let extbg = regs.extbg();
+        let bg1 = (regs.tm & 0x01 != 0, regs.ts & 0x01 != 0);
+        let bg2 = (extbg && regs.tm & 0x02 != 0, extbg && regs.ts & 0x02 != 0);
+        if bg1 == (false, false) && bg2 == (false, false) {
             return;
         }
 
-        let (a, b, c, d) = ppu.regs.m7_matrix();
-        let (cx, cy) = ppu.regs.m7_center();
-        let (h, v) = ppu.regs.m7_scroll();
-        let (flip_x, flip_y) = ppu.regs.m7_flip();
-        let outside = ppu.regs.m7_outside();
-
-        // Mosaic works on screen pixels and lines, before the flip.
-        let mosaic = ppu.regs.bg_mosaic(0);
-        let block = if mosaic {
-            ppu.regs.mosaic_size() as usize
-        } else {
-            1
-        };
+        let (a, b, c, d) = regs.m7_matrix();
+        let (cx, cy) = regs.m7_center();
+        let (h, v) = regs.m7_scroll();
+        let (flip_x, flip_y) = regs.m7_flip();
 
         // The math uses the scanline number, not the framebuffer row.
         let mut line = y as i32 + 1;
-        if mosaic {
+        if regs.bg_mosaic(0) {
             line -= ppu.mosaic_voffset() as i32;
         }
         if flip_y {
@@ -50,34 +78,58 @@ impl Renderer {
         // Map position of screen pixel 0 (8.8 fixed point), low 6 bits of each product removed.
         let hx = Self::m7_clip(h - cx);
         let vy = Self::m7_clip(v - cy);
-        let origin_x = ((a * hx) & !63) + ((b * vy) & !63) + ((b * line) & !63) + (cx << 8);
-        let origin_y = ((c * hx) & !63) + ((d * vy) & !63) + ((d * line) & !63) + (cy << 8);
+        let m7 = M7Line {
+            origin_x: ((a * hx) & !63) + ((b * vy) & !63) + ((b * line) & !63) + (cx << 8),
+            origin_y: ((c * hx) & !63) + ((d * vy) & !63) + ((d * line) & !63) + (cy << 8),
+            a,
+            c,
+            flip_x,
+            outside: regs.m7_outside(),
+        };
 
-        let vram = &ppu.vram.memory;
+        if bg1 != (false, false) {
+            self.render_m7_layer(ppu, &m7, 0, bg1);
+        }
+        if bg2 != (false, false) {
+            self.render_m7_layer(ppu, &m7, 1, bg2);
+        }
+    }
+
+    // Draws BG `bg` (0 = BG1, 1 = BG2) on the screens in `(to_main, to_sub)`.
+    fn render_m7_layer(
+        &mut self,
+        ppu: &PPU,
+        m7: &M7Line,
+        bg: usize,
+        (to_main, to_sub): (bool, bool),
+    ) {
+        // Horizontal mosaic uses the bit of the layer.
+        let block = if ppu.regs.bg_mosaic(bg) {
+            ppu.regs.mosaic_size() as usize
+        } else {
+            1
+        };
+
         for x in 0..SCREEN_WIDTH {
             let src_x = (x - x % block) as i32;
-            let sx = if flip_x { 255 - src_x } else { src_x };
+            let sx = if m7.flip_x { 255 - src_x } else { src_x };
 
-            let map_x = (origin_x + a * sx) >> 8;
-            let map_y = (origin_y + c * sx) >> 8;
-
-            let in_map = (map_x | map_y) & !(MAP_PX - 1) == 0;
-            let tile = match (in_map, outside) {
-                (true, _) | (false, M7Outside::Wrap) => Self::m7_map_tile(vram, map_x, map_y),
-                (false, M7Outside::Tile0) => 0,
-                (false, M7Outside::Transparent) => continue,
+            let Some(index) = m7.color_index(&ppu.vram.memory, sx) else {
+                continue;
             };
 
-            let fine_x = (map_x & 7) as usize;
-            let fine_y = (map_y & 7) as usize;
-            let color_index = (vram[tile * 64 + fine_y * 8 + fine_x] >> 8) as u8;
-
+            let (color_index, z) = if bg == 0 {
+                (index, BG1_Z)
+            } else {
+                let z = if index & 0x80 != 0 { BG2_HIGH } else { BG2_LOW };
+                (index & 0x7F, z)
+            };
             if color_index == 0 {
                 continue;
             }
 
-            // No palette bits in Mode 7.
-            let color = if ppu.regs.direct_color() {
+            // Direct color is for BG1 only, with no palette bits.
+            let color = if bg == 0 && ppu.regs.direct_color() {
                 Self::direct_color(color_index, 0)
             } else {
                 ppu.cgram.read(color_index)
@@ -85,18 +137,12 @@ impl Renderer {
 
             let pixel = LinePixel {
                 color,
-                z: BG1_Z,
-                layer: Layer::Bg1,
+                z,
+                layer: Layer::from_bg(bg),
                 obj_math: false,
             };
-            self.deposit_bg(ppu, 0, x, pixel, to_main, to_sub);
+            self.deposit_bg(ppu, bg, x, pixel, to_main, to_sub);
         }
-    }
-
-    fn m7_map_tile(vram: &RawVRAM, map_x: i32, map_y: i32) -> usize {
-        let tile_x = ((map_x & (MAP_PX - 1)) >> 3) as usize;
-        let tile_y = ((map_y & (MAP_PX - 1)) >> 3) as usize;
-        (vram[tile_y * 128 + tile_x] & 0x00FF) as usize
     }
 
     // (scroll - center) keeps only 10 bits and the sign (bit 13).
@@ -385,6 +431,7 @@ mod tests {
         }
     }
 
+    // Without EXTBG, BG2-BG4 in TM draw nothing.
     #[test]
     fn test_mode7_has_no_other_bg() {
         let mut ppu = make_ppu_mode7();
@@ -395,6 +442,7 @@ mod tests {
         assert_eq!(fb_pixel(&render(&ppu, 0), 0, 0), (0, 0, 0));
     }
 
+    // Window 1 (x 10 to 20) hides BG1 on the main screen.
     #[test]
     fn test_mode7_window() {
         let mut ppu = make_ppu_mode7();
@@ -593,5 +641,129 @@ mod tests {
         let r = render(&ppu, 0);
         assert_eq!(fb_pixel(&r, 3, 0), red());
         assert_eq!(fb_pixel(&r, 4, 0), (0, 0, 0));
+    }
+
+    // ============================================================
+    // EXTBG
+    // ============================================================
+
+    // Mode 7 with EXTBG (SETINI bit 6) and BG2 on the main screen.
+    fn make_ppu_extbg() -> PPU {
+        let mut ppu = make_ppu_mode7();
+        ppu.write(0x2133, 0x40);
+        ppu.write(0x212C, 0x02); // TM: BG2
+        ppu
+    }
+
+    // BG2 uses bits 0-6 for the color: index 0x81 reads CGRAM 1.
+    #[test]
+    fn test_extbg_bg2_color() {
+        let mut ppu = make_ppu_extbg();
+        fill_tile(&mut ppu, 0, 0x81);
+        set_color(&mut ppu, 1, 0x001F);
+        set_color(&mut ppu, 129, 0x7C00);
+
+        assert_eq!(fb_pixel(&render(&ppu, 0), 0, 0), red());
+    }
+
+    // Index 0x80 is transparent for BG2 (color 0), but CGRAM 128 for BG1.
+    #[test]
+    fn test_extbg_index_0x80() {
+        let mut ppu = make_ppu_extbg();
+        fill_tile(&mut ppu, 0, 0x80);
+        set_color(&mut ppu, 128, 0x001F);
+
+        assert_eq!(fb_pixel(&render(&ppu, 0), 0, 0), (0, 0, 0));
+
+        ppu.write(0x212C, 0x01); // TM: BG1
+        assert_eq!(fb_pixel(&render(&ppu, 0), 0, 0), red());
+    }
+
+    // OBJ3 > OBJ2 > BG2.1 > OBJ1 > BG1 > OBJ0 > BG2.0
+    #[test]
+    fn test_extbg_bg2_vs_sprites() {
+        let green = Renderer::apply_brightness(0x03E0, 15);
+
+        // (BG2 index, sprite priority, expected)
+        let cases = [
+            (0x01, 0u8, green), // OBJ0 > BG2.0
+            (0x81, 1, red()),   // BG2.1 > OBJ1
+            (0x81, 2, green),   // OBJ2 > BG2.1
+        ];
+        for (index, prio, expected) in cases {
+            let mut ppu = make_ppu_extbg();
+            ppu.write(0x212C, 0x12); // TM: BG2 + OBJ
+            fill_tile(&mut ppu, 0, index);
+            set_color(&mut ppu, 1, 0x001F);
+
+            // Sprite CHR at word 0x4000, after the Mode 7 data.
+            ppu.write(0x2101, 0x02);
+            for i in 0..128 {
+                write_sprite(&mut ppu, i, 0, 0xF0, 0, 0);
+            }
+            write_sprite(&mut ppu, 0, 0, 0, 0, prio << 4);
+            for row in 0..8 {
+                ppu.vram.memory[0x4000 + row] = 0x00FF;
+            }
+            set_color(&mut ppu, 129, 0x03E0);
+
+            assert_eq!(
+                fb_pixel(&render(&ppu, 0), 0, 0),
+                expected,
+                "index {index:#04X}, OBJ{prio}"
+            );
+        }
+    }
+
+    // BG2.1 > BG1 > BG2.0. Direct color is on, and only BG1 uses it,
+    // so BG1 (R = 4) and BG2 (CGRAM 1) have different colors.
+    #[test]
+    fn test_extbg_bg2_vs_bg1() {
+        let bg1_direct = Renderer::apply_brightness(Renderer::direct_color(0x01, 0), 15);
+
+        // (index, expected)
+        for (index, expected) in [(0x01, bg1_direct), (0x81, red())] {
+            let mut ppu = make_ppu_extbg();
+            ppu.write(0x212C, 0x03); // TM: BG1 + BG2
+            ppu.write(0x2130, 0x01); // CGWSEL: direct color
+            fill_tile(&mut ppu, 0, index);
+            set_color(&mut ppu, 1, 0x001F);
+
+            assert_eq!(
+                fb_pixel(&render(&ppu, 0), 0, 0),
+                expected,
+                "index {index:#04X}"
+            );
+        }
+    }
+
+    // BG2 horizontal mosaic uses the BG2 bit.
+    #[test]
+    fn test_extbg_mosaic_horizontal_uses_bg2_bit() {
+        let mut ppu = make_ppu_extbg();
+        setup_mosaic_column(&mut ppu, 0);
+
+        ppu.write(0x2106, 0x32); // size 4, BG2
+        assert_eq!(fb_pixel(&render(&ppu, 0), 1, 0), red());
+
+        ppu.write(0x2106, 0x31); // size 4, BG1
+        assert_eq!(fb_pixel(&render(&ppu, 0), 1, 0), (0, 0, 0));
+    }
+
+    // BG2 vertical mosaic uses the BG1 bit. Only map row 1 is red.
+    #[test]
+    fn test_extbg_mosaic_vertical_uses_bg1_bit() {
+        let mut ppu = make_ppu_extbg();
+        for x in 0..8 {
+            set_tile_pixel(&mut ppu, 0, x, 1, 1);
+        }
+        set_color(&mut ppu, 1, 0x001F);
+        ppu.mosaic_vcounter = 3;
+
+        ppu.write(0x2106, 0x31); // size 4, BG1
+        assert_eq!(fb_pixel(&render(&ppu, 1), 0, 1), red());
+
+        ppu.write(0x2106, 0x32); // size 4, BG2
+        assert_eq!(fb_pixel(&render(&ppu, 1), 0, 1), (0, 0, 0));
     }
 }
