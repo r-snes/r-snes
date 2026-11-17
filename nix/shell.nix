@@ -19,6 +19,9 @@
   cargo-expand,
   rustfmt,
 
+  # website building
+  mdbook,
+
   pkg-config,
 }:
 
@@ -32,6 +35,8 @@ mkShell {
     cargo-tarpaulin
     cargo-expand
     rustfmt
+
+    mdbook
 
     pkg-config
   ];
