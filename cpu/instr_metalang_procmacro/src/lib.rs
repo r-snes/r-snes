@@ -10,27 +10,22 @@ use quote::{ToTokens, format_ident, quote};
 fn gen_cycle_functions(name: &Ident, instr_body: InstrBody) -> TokenStream {
     let cycles = &instr_body.cycles;
     let post_instr = &instr_body.post_instr;
+    let post_instr_name = format_ident!("{}_post_instr", name);
 
-    cycles
+    let mut registered: Vec<Ident> = Vec::new();
+
+    let mut functions = cycles
         .iter()
         .enumerate()
         .map(|(i, cyc)| {
             let func_name = format_ident!("{}_cyc{}", name, i + 1);
+            registered.push(func_name.clone());
             let next_func_name: TokenStream = if i != cycles.len() - 1 {
                 format_ident!("{}_cyc{}", name, i + 2).into_token_stream()
+            } else if post_instr.is_empty() {
+                quote!(cpu.next_fetch.0)
             } else {
-                if post_instr.is_empty() {
-                    quote!(cpu.next_fetch.0)
-                } else {
-                    // inject the post-instr code in closure before returning to
-                    // the opcode fetch.
-                    quote! {
-                        |cpu, _metalang_private_irqb| {
-                            #post_instr
-                            (cpu.next_fetch.0)(cpu, _metalang_private_irqb)
-                        }
-                    }
-                }
+                post_instr_name.to_token_stream()
             };
 
             let (body, cyc_type) = match cyc {
@@ -47,6 +42,7 @@ fn gen_cycle_functions(name: &Ident, instr_body: InstrBody) -> TokenStream {
             };
 
             quote! {
+                #[inline(never)]
                 pub(crate) fn #func_name(cpu: &mut CPU, _metalang_private_irqb: bool) -> (CycleResult, InstrCycle) {
                     #body
 
@@ -54,7 +50,23 @@ fn gen_cycle_functions(name: &Ident, instr_body: InstrBody) -> TokenStream {
                 }
             }
         })
-        .collect::<TokenStream>()
+        .collect::<TokenStream>();
+
+    if !post_instr.is_empty() {
+        registered.push(post_instr_name.clone());
+        functions.extend(quote! {
+            #[inline(never)]
+            pub(crate) fn #post_instr_name(cpu: &mut CPU, _metalang_private_irqb: bool) -> (CycleResult, InstrCycle) {
+                #post_instr
+                (cpu.next_fetch.0)(cpu, _metalang_private_irqb)
+            }
+        });
+    }
+
+    functions.extend(quote! {
+        crate::instrs::cycle_registry::register_cycles!(#(#registered),*);
+    });
+    functions
 }
 
 /// Function that actually implements all the logic for the proc macro,
@@ -78,6 +90,7 @@ pub(crate) fn cpu_instr2(input: TokenStream, inc_pc: bool) -> TokenStream {
             let first_cyc_name = format_ident!("{}_cyc1", name);
 
             quote! {
+                #[inline(never)]
                 pub(crate) fn #first_cyc_name(cpu: &mut CPU, irqb: bool) -> (CycleResult, InstrCycle) {
                     if #condition {
                         self::_16::#first_cyc_name(cpu, irqb)
@@ -85,6 +98,7 @@ pub(crate) fn cpu_instr2(input: TokenStream, inc_pc: bool) -> TokenStream {
                         self::_8::#first_cyc_name(cpu, irqb)
                     }
                 }
+                crate::instrs::cycle_registry::register_cycles!(#first_cyc_name);
 
                 pub(crate) mod _8 {
                     use super::*;
@@ -212,6 +226,7 @@ mod test {
                     use super::*;
                     use crate::instrs::prelude::*;
 
+                    #[inline(never)]
                     pub(crate) fn instr_inx_cyc1(
                         cpu: &mut CPU,
                         _metalang_private_irqb: bool
@@ -223,6 +238,7 @@ mod test {
 
                         (Internal, InstrCycle(cpu.next_fetch.0))
                     }
+                    crate::instrs::cycle_registry::register_cycles!(instr_inx_cyc1);
                 }
             ),
         );
@@ -248,6 +264,7 @@ mod test {
                     use super::*;
                     use crate::instrs::prelude::*;
 
+                    #[inline(never)]
                     pub(crate) fn some_instr_cyc1(
                         cpu: &mut CPU,
                         _metalang_private_irqb: bool
@@ -256,6 +273,7 @@ mod test {
 
                         (Internal, InstrCycle(some_instr_cyc2))
                     }
+                    #[inline(never)]
                     pub(crate) fn some_instr_cyc2(
                         cpu: &mut CPU,
                         _metalang_private_irqb: bool
@@ -264,6 +282,7 @@ mod test {
 
                         (Read, InstrCycle(some_instr_cyc3))
                     }
+                    #[inline(never)]
                     pub(crate) fn some_instr_cyc3(
                         cpu: &mut CPU,
                         _metalang_private_irqb: bool
@@ -273,6 +292,11 @@ mod test {
 
                         (Write, InstrCycle(cpu.next_fetch.0))
                     }
+                    crate::instrs::cycle_registry::register_cycles!(
+                        some_instr_cyc1,
+                        some_instr_cyc2,
+                        some_instr_cyc3
+                    );
                 }
             ),
         );
@@ -293,6 +317,7 @@ mod test {
                     use super::*;
                     use crate::instrs::prelude::*;
 
+                    #[inline(never)]
                     pub(crate) fn test_instr_cyc1(cpu: &mut CPU, _metalang_private_irqb: bool) -> (CycleResult, InstrCycle) {
                         (
                             if 1 == 0 { Internal } else { Read },
@@ -300,6 +325,7 @@ mod test {
                         )
                     }
 
+                    #[inline(never)]
                     pub(crate) fn test_instr_cyc2(cpu: &mut CPU, _metalang_private_irqb: bool) -> (CycleResult, InstrCycle) {
                         cpu.last_cycle(_metalang_private_irqb);
                         (
@@ -307,6 +333,7 @@ mod test {
                             InstrCycle(cpu.next_fetch.0)
                         )
                     }
+                    crate::instrs::cycle_registry::register_cycles!(test_instr_cyc1, test_instr_cyc2);
                 }
             },
         );
@@ -327,17 +354,18 @@ mod test {
                     use super::*;
                     use crate::instrs::prelude::*;
 
+                    #[inline(never)]
                     pub(crate) fn test_instr_cyc1(cpu: &mut CPU, _metalang_private_irqb: bool) -> (CycleResult, InstrCycle) {
                         cpu.last_cycle(_metalang_private_irqb);
-                        (
-                            Read,
-                            InstrCycle(|cpu, _metalang_private_irqb| {
-                                cpu.registers.X = cpu.data_bus as u16;
-
-                                (cpu.next_fetch.0)(cpu, _metalang_private_irqb)
-                            })
-                        )
+                        (Read, InstrCycle(test_instr_post_instr))
                     }
+                    #[inline(never)]
+                    pub(crate) fn test_instr_post_instr(cpu: &mut CPU, _metalang_private_irqb: bool) -> (CycleResult, InstrCycle) {
+                        cpu.registers.X = cpu.data_bus as u16;
+
+                        (cpu.next_fetch.0)(cpu, _metalang_private_irqb)
+                    }
+                    crate::instrs::cycle_registry::register_cycles!(test_instr_cyc1, test_instr_post_instr);
                 }
             ),
         );
@@ -360,6 +388,7 @@ mod test {
                     use super::*;
                     use crate::instrs::prelude::*;
 
+                    #[inline(never)]
                     pub(crate) fn test_instr_cyc1(
                         cpu: &mut CPU,
                         _metalang_private_irqb: bool
@@ -368,6 +397,7 @@ mod test {
 
                         (Internal, InstrCycle(test_instr_cyc2))
                     }
+                    #[inline(never)]
                     pub(crate) fn test_instr_cyc2(
                         cpu: &mut CPU,
                         _metalang_private_irqb: bool
@@ -378,6 +408,7 @@ mod test {
                         cpu.registers.PC = cpu.registers.PC.wrapping_add(1u16);
                         (Internal, InstrCycle(cpu.next_fetch.0))
                     }
+                    crate::instrs::cycle_registry::register_cycles!(test_instr_cyc1, test_instr_cyc2);
                 }
             ),
         );
@@ -398,6 +429,7 @@ mod test {
                     use super::*;
                     use crate::instrs::prelude::*;
 
+                    #[inline(never)]
                     pub(crate) fn cond_cyc1(
                         cpu: &mut CPU,
                         _metalang_private_irqb: bool
@@ -410,6 +442,7 @@ mod test {
                         (Internal, InstrCycle(cond_cyc2))
                     }
 
+                    #[inline(never)]
                     pub(crate) fn cond_cyc2(
                         cpu: &mut CPU,
                         _metalang_private_irqb: bool
@@ -417,6 +450,7 @@ mod test {
                         cpu.last_cycle(_metalang_private_irqb);
                         (Internal, InstrCycle(cpu.next_fetch.0))
                     }
+                    crate::instrs::cycle_registry::register_cycles!(cond_cyc1, cond_cyc2);
                 }
             ),
         )
@@ -437,6 +471,7 @@ mod test {
                     use super::*;
                     use crate::instrs::prelude::*;
 
+                    #[inline(never)]
                     pub(crate) fn varwidth_cyc1(cpu: &mut CPU, irqb: bool) -> (CycleResult, InstrCycle) {
                         if !cpu.registers.E && !cpu.registers.P.M {
                             self::_16::varwidth_cyc1(cpu, irqb)
@@ -444,44 +479,52 @@ mod test {
                             self::_8::varwidth_cyc1(cpu, irqb)
                         }
                     }
+                    crate::instrs::cycle_registry::register_cycles!(varwidth_cyc1);
 
                     pub(crate) mod _8 {
                         use super::*;
                         use crate::instrs::prelude::*;
+                        #[inline(never)]
                         pub(crate) fn varwidth_cyc1(cpu: &mut CPU, _metalang_private_irqb: bool) -> (CycleResult, InstrCycle) {
                             cpu.last_cycle(_metalang_private_irqb);
                             cpu.addr_bus.addr = cpu.addr_bus.addr.wrapping_add(1u16);
-                            (
-                                Read,
-                                InstrCycle(|cpu, _metalang_private_irqb| {
-                                    *cpu.internal_data_bus.lo_mut() = cpu.data_bus;
-                                    (cpu.next_fetch.0)(cpu, _metalang_private_irqb)
-                                })
-                            )
+                            (Read, InstrCycle(varwidth_post_instr))
                         }
+                        #[inline(never)]
+                        pub(crate) fn varwidth_post_instr(cpu: &mut CPU, _metalang_private_irqb: bool) -> (CycleResult, InstrCycle) {
+                            *cpu.internal_data_bus.lo_mut() = cpu.data_bus;
+                            (cpu.next_fetch.0)(cpu, _metalang_private_irqb)
+                        }
+                        crate::instrs::cycle_registry::register_cycles!(varwidth_cyc1, varwidth_post_instr);
                     }
 
                     pub(crate) mod _16 {
                         use super::*;
                         use crate::instrs::prelude::*;
+                        #[inline(never)]
                         pub(crate) fn varwidth_cyc1(cpu: &mut CPU, _metalang_private_irqb: bool) -> (CycleResult, InstrCycle) {
                             cpu.addr_bus.addr = cpu.addr_bus.addr.wrapping_add(1u16);
                             (Read, InstrCycle(varwidth_cyc2))
                         }
 
+                        #[inline(never)]
                         pub(crate) fn varwidth_cyc2(cpu: &mut CPU, _metalang_private_irqb: bool) -> (CycleResult, InstrCycle) {
                             cpu.last_cycle(_metalang_private_irqb);
                             *cpu.internal_data_bus.lo_mut() = cpu.data_bus;
                             cpu.addr_bus.addr = cpu.addr_bus.addr.wrapping_add(1);
 
-                            (
-                                Read,
-                                InstrCycle(|cpu, _metalang_private_irqb| {
-                                    *cpu.internal_data_bus.hi_mut() = cpu.data_bus;
-                                    (cpu.next_fetch.0)(cpu, _metalang_private_irqb)
-                                })
-                            )
+                            (Read, InstrCycle(varwidth_post_instr))
                         }
+                        #[inline(never)]
+                        pub(crate) fn varwidth_post_instr(cpu: &mut CPU, _metalang_private_irqb: bool) -> (CycleResult, InstrCycle) {
+                            *cpu.internal_data_bus.hi_mut() = cpu.data_bus;
+                            (cpu.next_fetch.0)(cpu, _metalang_private_irqb)
+                        }
+                        crate::instrs::cycle_registry::register_cycles!(
+                            varwidth_cyc1,
+                            varwidth_cyc2,
+                            varwidth_post_instr
+                        );
                     }
                 }
             ),

@@ -8,6 +8,9 @@ use crate::instrs::{
 
 pub(crate) struct InstrCycle(pub fn(&mut CPU, bool) -> (CycleResult, InstrCycle));
 
+crate::instrs::cycle_registry::register_cycles!(opcode_fetch, opcode_dispatch);
+
+#[inline(never)]
 pub(crate) fn opcode_fetch(cpu: &mut CPU, _irqb: bool) -> (CycleResult, InstrCycle) {
     cpu.addr_bus = SnesAddress {
         bank: cpu.registers.PB,
@@ -17,6 +20,7 @@ pub(crate) fn opcode_fetch(cpu: &mut CPU, _irqb: bool) -> (CycleResult, InstrCyc
     (CycleResult::Read, InstrCycle(opcode_dispatch))
 }
 
+#[inline(never)]
 pub(crate) fn opcode_dispatch(cpu: &mut CPU, irqb: bool) -> (CycleResult, InstrCycle) {
     (INSTR_CYC1[cpu.data_bus as usize].0)(cpu, irqb)
 }
