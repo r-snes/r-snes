@@ -22,7 +22,7 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           claude_args: |
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/comments:*)"
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
@@ -31,3 +31,19 @@ jobs:
             performance problems, and adherence to the project's coding conventions.
             Be specific and actionable. Use `gh pr diff` to read the changes, post
             findings as inline review comments on the relevant lines.
+
+            Before writing any comment, read everything already said on this PR,
+            including your own comments from previous runs:
+            - inline review comments and their replies:
+              `gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/comments --paginate`
+            - conversation comments and review summaries:
+              `gh pr view ${{ github.event.pull_request.number }} --comments`
+
+            Don't repeat yourself. Skip any point that was already raised, even
+            with different wording or on a different line, and any point the
+            author already answered, whether they fixed it or explained why they
+            won't change it. Only bring a point up again if the new changes make it
+            worse or you have a concrete fact the earlier discussion missed, and if
+            so, reply in the existing thread instead of starting a new one:
+              `gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/comments/<comment id>/replies -f body="..."`
+            If you have nothing new to say, post no comments.
