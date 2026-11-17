@@ -13,6 +13,17 @@ pub const WINDOW_OBJ: usize = 4;
 /// Window layer index of the color window (used by CGWSEL).
 pub const WINDOW_COLOR: usize = 5;
 
+/// What Mode 7 shows outside the 1024x1024 map (M7SEL bits 6-7).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum M7Outside {
+    /// The map repeats (bit 7 clear).
+    Wrap,
+    /// Nothing is drawn (bits 6-7 = 2).
+    Transparent,
+    /// Tile 0 repeats (bits 6-7 = 3).
+    Tile0,
+}
+
 /// PPU register values and the internal latches used by write-twice registers.
 // Registers without a field here:
 // - $2104 OAMDATA, $2138 RDOAM: OAM ports, see oam.rs
@@ -347,6 +358,60 @@ impl PPURegisters {
     /// Returns true if BG `bg` uses 16x16 tiles (BGMODE bits 4-7).
     pub fn bg_tile16(&self, bg: usize) -> bool {
         self.bgmode & (0x10 << bg) != 0
+    }
+
+    // ============================================================
+    // Mode 7
+    // ============================================================
+
+    /// Returns the Mode 7 matrix (M7A, M7B, M7C, M7D), signed 8.8 fixed point.
+    pub fn m7_matrix(&self) -> (i32, i32, i32, i32) {
+        (
+            self.m7a as i16 as i32,
+            self.m7b as i16 as i32,
+            self.m7c as i16 as i32,
+            self.m7d as i16 as i32,
+        )
+    }
+
+    /// Returns the Mode 7 center (M7X, M7Y), 13-bit signed.
+    pub fn m7_center(&self) -> (i32, i32) {
+        (
+            Self::sign_extend_13(self.m7x),
+            Self::sign_extend_13(self.m7y),
+        )
+    }
+
+    /// Returns the Mode 7 scroll (M7HOFS, M7VOFS), 13-bit signed.
+    pub fn m7_scroll(&self) -> (i32, i32) {
+        (
+            Self::sign_extend_13(self.m7hofs),
+            Self::sign_extend_13(self.m7vofs),
+        )
+    }
+
+    /// Returns true if EXTBG is on (SETINI bit 6)
+    pub fn extbg(&self) -> bool {
+        self.setini & 0x40 != 0
+    }
+
+    /// Returns the Mode 7 screen flips (horizontal, vertical) (M7SEL bits 0-1).
+    pub fn m7_flip(&self) -> (bool, bool) {
+        (self.m7sel & 0x01 != 0, self.m7sel & 0x02 != 0)
+    }
+
+    /// Returns what Mode 7 shows outside the map (M7SEL bits 6-7). Bit 6 only matters when bit 7 is set.
+    pub fn m7_outside(&self) -> M7Outside {
+        match self.m7sel >> 6 {
+            0 | 1 => M7Outside::Wrap,
+            2 => M7Outside::Transparent,
+            _ => M7Outside::Tile0,
+        }
+    }
+
+    // The registers keep the whole high byte: bits 13-15 are ignored, bit 12 is the sign.
+    fn sign_extend_13(value: u16) -> i32 {
+        ((value << 3) as i16 >> 3) as i32
     }
 
     // ============================================================

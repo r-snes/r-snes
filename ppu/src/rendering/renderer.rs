@@ -8,6 +8,7 @@
 
 use crate::constants::*;
 use crate::ppu::PPU;
+use crate::vram::RawVRAM;
 
 /// Raw byte array of the framebuffer in RGB888
 pub type RawFramebuffer = [u8; SCREEN_WIDTH * SCREEN_HEIGHT * 3];
@@ -53,13 +54,18 @@ pub enum BitDepth {
 }
 
 impl BitDepth {
-    // Words per tile in VRAM: 2bpp = 8, 4bpp = 16, 8bpp = 32.
-    fn tile_words(self) -> usize {
+    // Pairs of bitplanes in a tile: 2bpp = 1, 4bpp = 2, 8bpp = 4.
+    fn plane_pairs(self) -> usize {
         match self {
-            BitDepth::Two => 8,
-            BitDepth::Four => 16,
-            BitDepth::Eight => 32,
+            BitDepth::Two => 1,
+            BitDepth::Four => 2,
+            BitDepth::Eight => 4,
         }
+    }
+
+    // Words per tile in VRAM: 8 words per pair of bitplanes (2bpp = 8, 4bpp = 16, 8bpp = 32).
+    fn tile_words(self) -> usize {
+        self.plane_pairs() * 8
     }
 
     // CGRAM offset of tilemap palette `palette_num`: 2bpp = 4 colors per palette, 4bpp = 16.
@@ -246,6 +252,7 @@ impl Renderer {
             0 => self.render_scanline_mode0(ppu, y),
             1 => self.render_scanline_mode1(ppu, y),
             3 => self.render_scanline_mode3(ppu, y),
+            7 => self.render_scanline_mode7(ppu, y),
             _ => self.render_scanline_mode1(ppu, y),
         }
 
@@ -283,10 +290,7 @@ impl Renderer {
             1
         };
 
-        // Windows hide pixels on the screens selected by TMW (main) and TSW (sub).
         let bg = p.layer.bg_index();
-        let win_main = ppu.regs.tmw & (1 << bg) != 0;
-        let win_sub = ppu.regs.tsw & (1 << bg) != 0;
 
         for x in 0..SCREEN_WIDTH {
             // Every pixel of a block shows the first pixel of the block.
@@ -318,26 +322,8 @@ impl Renderer {
             // 16x16 tiles are 2x2 CHR tiles: +1 for the right half, +16 for the bottom half.
             let chr_tile = (tile_index as usize + (fx >> 3) + ((fy >> 3) << 4)) & 0x03FF;
             let tile_word_base = p.tiledata_base as usize + chr_tile * tile_words;
-            let color_index = match p.bpp {
-                BitDepth::Two => Self::decode_2bpp_tile_pixel_from(
-                    &ppu.vram.memory,
-                    tile_word_base,
-                    fx & 7,
-                    fy & 7,
-                ),
-                BitDepth::Four => Self::decode_4bpp_tile_pixel_from(
-                    &ppu.vram.memory,
-                    tile_word_base,
-                    fx & 7,
-                    fy & 7,
-                ),
-                BitDepth::Eight => Self::decode_8bpp_tile_pixel_from(
-                    &ppu.vram.memory,
-                    tile_word_base,
-                    fx & 7,
-                    fy & 7,
-                ),
-            };
+            let color_index =
+                Self::decode_tile_pixel(&ppu.vram.memory, tile_word_base, p.bpp, fx & 7, fy & 7);
 
             // Transparent pixel -> do nothing
             if color_index == 0 {
@@ -360,14 +346,47 @@ impl Renderer {
                 layer: p.layer,
                 obj_math: false,
             };
-            // A masked pixel is hidden on the screens selected by TMW/TSW.
-            let masked = (win_main || win_sub) && ppu.regs.bg_window_masked(bg, x);
-            if p.to_main && !(win_main && masked) {
-                Self::deposit(&mut self.main_line, x, pixel);
-            }
-            if p.to_sub && !(win_sub && masked) {
-                Self::deposit(&mut self.sub_line, x, pixel);
-            }
+            self.deposit_bg(ppu, bg, x, pixel, (p.to_main, p.to_sub));
+        }
+    }
+
+    /// Returns the color index of pixel (`x`, `y`) in the tile at `tile_word_base`.
+    /// Every 8 words hold 2 bitplanes: 1 pair in 2bpp, 2 in 4bpp, 4 in 8bpp.
+    pub(crate) fn decode_tile_pixel(
+        vram: &RawVRAM,
+        tile_word_base: usize,
+        bpp: BitDepth,
+        x: usize,
+        y: usize,
+    ) -> u8 {
+        let bit = 7 - x;
+        let mut index = 0;
+        for pair in 0..bpp.plane_pairs() {
+            let [lo, hi] = vram[(tile_word_base + y + pair * 8) & 0x7FFF].to_le_bytes();
+            index |= ((lo >> bit) & 1) << (pair * 2);
+            index |= ((hi >> bit) & 1) << (pair * 2 + 1);
+        }
+        index
+    }
+
+    /// Deposits a pixel of BG `bg` on the screens it is enabled on (`to_main`, `to_sub`).
+    /// Windows hide it on the screens selected by TMW (main) and TSW (sub).
+    pub(super) fn deposit_bg(
+        &mut self,
+        ppu: &PPU,
+        bg: usize,
+        x: usize,
+        pixel: LinePixel,
+        (to_main, to_sub): (bool, bool),
+    ) {
+        let win_main = ppu.regs.tmw & (1 << bg) != 0;
+        let win_sub = ppu.regs.tsw & (1 << bg) != 0;
+        let masked = (win_main || win_sub) && ppu.regs.bg_window_masked(bg, x);
+        if to_main && !(win_main && masked) {
+            Self::deposit(&mut self.main_line, x, pixel);
+        }
+        if to_sub && !(win_sub && masked) {
+            Self::deposit(&mut self.sub_line, x, pixel);
         }
     }
 
@@ -551,7 +570,7 @@ impl Renderer {
 mod tests {
     use super::*;
     use crate::ppu::PPU;
-    use crate::test_utils::{fb_pixel, set_color};
+    use crate::test_utils::{fb_pixel, fill_tilemap, set_color};
 
     // Mode 1 z-order of low priority BG1 and BG2 tiles.
     const BG1_LOW: Priority = Priority::new(8);
@@ -604,9 +623,7 @@ mod tests {
         ppu.write(0x2108, 0x08); // BG2SC tilemap word 0x0800
         let nba = (ppu.regs.bg12nba & 0x0F) | (0x02 << 4);
         ppu.write(0x210B, nba); // BG2 CHR nibble 2 -> word 0x2000
-        for i in 0..(32 * 32) {
-            ppu.vram.memory[0x0800 + i] = 0x0400; // tile 0, palette 1
-        }
+        fill_tilemap(ppu, 0x0800, 0x0400); // tile 0, palette 1
         for row in 0..8 {
             ppu.vram.memory[0x2000 + row] = 0x00FF;
         }
@@ -618,9 +635,7 @@ mod tests {
     fn setup_bg3_high_prio(ppu: &mut PPU, color: u16) {
         ppu.write(0x2109, 0x0C); // BG3SC tilemap word 0x0C00
         ppu.write(0x210C, 0x03); // BG34NBA: BG3 CHR nibble 3 -> word 0x3000
-        for i in 0..(32 * 32) {
-            ppu.vram.memory[0x0C00 + i] = 0x2800; // tile 0, palette 2, priority bit
-        }
+        fill_tilemap(ppu, 0x0C00, 0x2800); // tile 0, palette 2, priority bit
         for row in 0..8 {
             ppu.vram.memory[0x3000 + row] = 0x00FF; // 2bpp plane 0 -> index 1
         }
@@ -683,6 +698,98 @@ mod tests {
         let right = (3 * SCREEN_WIDTH + 6) * 3;
         assert_eq!(renderer.framebuffer[left], 0);
         assert_eq!(renderer.framebuffer[right], 0);
+    }
+
+    // ============================================================
+    // decode_tile_pixel
+    // ============================================================
+
+    fn empty_vram() -> Box<RawVRAM> {
+        Box::new([0; _])
+    }
+
+    // Each plane gives one bit of the index: plane p is in word (p / 2) * 8,
+    // low byte for even planes, high byte for odd planes.
+    #[test]
+    fn test_decode_tile_planes() {
+        for (bpp, planes) in [
+            (BitDepth::Two, 2),
+            (BitDepth::Four, 4),
+            (BitDepth::Eight, 8),
+        ] {
+            for plane in 0..planes {
+                let mut vram = empty_vram();
+                vram[(plane / 2) * 8] = if plane % 2 == 0 { 0x0080 } else { 0x8000 };
+                assert_eq!(
+                    Renderer::decode_tile_pixel(&vram, 0, bpp, 0, 0),
+                    1 << plane,
+                    "{planes} planes, plane {plane}"
+                );
+                assert_eq!(Renderer::decode_tile_pixel(&vram, 0, bpp, 1, 0), 0);
+            }
+        }
+    }
+
+    // All planes set on row 3 gives the last color: 3, 15 or 255. Row 2 stays empty.
+    #[test]
+    fn test_decode_tile_full_index_and_row() {
+        let mut vram = empty_vram();
+        for pair in 0..4 {
+            vram[3 + pair * 8] = 0xFFFF;
+        }
+        for (bpp, max) in [
+            (BitDepth::Two, 3),
+            (BitDepth::Four, 15),
+            (BitDepth::Eight, 255),
+        ] {
+            assert_eq!(Renderer::decode_tile_pixel(&vram, 0, bpp, 5, 3), max);
+            assert_eq!(Renderer::decode_tile_pixel(&vram, 0, bpp, 5, 2), 0);
+        }
+    }
+
+    // Bit 7 is x = 0, bit 0 is x = 7.
+    #[test]
+    fn test_decode_tile_bit_order() {
+        let mut vram = empty_vram();
+        vram[0] = 0x0001;
+        assert_eq!(
+            Renderer::decode_tile_pixel(&vram, 0, BitDepth::Four, 7, 0),
+            1
+        );
+        assert_eq!(
+            Renderer::decode_tile_pixel(&vram, 0, BitDepth::Four, 6, 0),
+            0
+        );
+    }
+
+    // A tile only reads its own planes: 2bpp ignores words 8-15, 4bpp reads them.
+    #[test]
+    fn test_decode_tile_reads_only_its_planes() {
+        let mut vram = empty_vram();
+        vram[8] = 0xFFFF;
+        assert_eq!(
+            Renderer::decode_tile_pixel(&vram, 0, BitDepth::Two, 0, 0),
+            0
+        );
+        assert_eq!(
+            Renderer::decode_tile_pixel(&vram, 0, BitDepth::Four, 0, 0),
+            12
+        );
+    }
+
+    // tile_word_base moves the whole tile in VRAM.
+    #[test]
+    fn test_decode_tile_base() {
+        let mut vram = empty_vram();
+        vram[64] = 0x00FF;
+        assert_eq!(
+            Renderer::decode_tile_pixel(&vram, 64, BitDepth::Four, 0, 0),
+            1
+        );
+        assert_eq!(
+            Renderer::decode_tile_pixel(&vram, 0, BitDepth::Four, 0, 0),
+            0
+        );
     }
 
     // ============================================================

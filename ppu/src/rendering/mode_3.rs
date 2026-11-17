@@ -9,7 +9,6 @@
 
 use crate::ppu::PPU;
 use crate::rendering::renderer::{BgParams, BitDepth, Layer, Priority, Renderer};
-use crate::vram::RawVRAM;
 
 impl Renderer {
     /// Renders BG1-BG2 in Mode 3 on framebuffer row `y`.
@@ -57,31 +56,13 @@ impl Renderer {
             );
         }
     }
-
-    /// Returns the color index (0-255) of pixel (`x`, `y`) in the 8bpp tile at `tile_word_base`.
-    pub fn decode_8bpp_tile_pixel_from(
-        vram: &RawVRAM,
-        tile_word_base: usize,
-        x: usize,
-        y: usize,
-    ) -> u8 {
-        // Planes 0+1 in words 0-7, 2+3 in words 8-15, 4+5 in words 16-23, 6+7 in words 24-31.
-        let bit = 7 - x;
-        let mut index = 0;
-        for pair in 0..4 {
-            let [lo, hi] = vram[(tile_word_base + y + pair * 8) & 0x7FFF].to_le_bytes();
-            index |= ((lo >> bit) & 1) << (pair * 2);
-            index |= ((hi >> bit) & 1) << (pair * 2 + 1);
-        }
-        index
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::ppu::PPU;
     use crate::rendering::renderer::Renderer;
-    use crate::test_utils::{fb_pixel, set_color, write_sprite};
+    use crate::test_utils::{fb_pixel, fill_tilemap, set_color, setup_sprite_at_origin};
 
     // ============================================================
     // Helpers
@@ -102,43 +83,6 @@ mod tests {
         ppu.write(0x2108, 0x08); // BG2SC: tilemap 0x0800
         ppu.write(0x210B, 0x32); // BG12NBA: BG1 CHR 0x2000, BG2 CHR 0x3000
         ppu
-    }
-
-    // Fills the 32x32 tilemap at `map` with `entry`.
-    fn fill_tilemap(ppu: &mut PPU, map: usize, entry: u16) {
-        for word in map..map + 0x400 {
-            ppu.vram.memory[word] = entry;
-        }
-    }
-
-    // ============================================================
-    // decode_8bpp_tile_pixel_from
-    // ============================================================
-
-    // Each plane gives one bit of the index: planes 0-1 in words 0-7, 2-3 in 8-15, 4-5 in 16-23, 6-7 in 24-31.
-    #[test]
-    fn test_decode_8bpp_planes() {
-        for plane in 0..8 {
-            let mut vram = Box::new([0; _]);
-            vram[(plane / 2) * 8] = if plane % 2 == 0 { 0x0080 } else { 0x8000 };
-            assert_eq!(
-                Renderer::decode_8bpp_tile_pixel_from(&vram, 0, 0, 0),
-                1 << plane,
-                "plane {plane}"
-            );
-            assert_eq!(Renderer::decode_8bpp_tile_pixel_from(&vram, 0, 1, 0), 0);
-        }
-    }
-
-    // y selects the row in each pair of planes; all planes set gives index 255.
-    #[test]
-    fn test_decode_8bpp_row_and_full_index() {
-        let mut vram = Box::new([0; _]);
-        for pair in 0..4 {
-            vram[3 + pair * 8] = 0xFFFF;
-        }
-        assert_eq!(Renderer::decode_8bpp_tile_pixel_from(&vram, 0, 5, 3), 255);
-        assert_eq!(Renderer::decode_8bpp_tile_pixel_from(&vram, 0, 5, 2), 0);
     }
 
     // ============================================================
@@ -253,16 +197,8 @@ mod tests {
             set_color(&mut ppu, 1, 0x001F);
             set_color(&mut ppu, 17, 0x7C00);
 
-            // Sprite 0 at (0, 0): CHR base 0, tile 0, color 1 = green. Other sprites hidden.
-            ppu.write(0x2101, 0x00);
-            for i in 0..128 {
-                write_sprite(&mut ppu, i, 0, 0xF0, 0, 0);
-            }
-            write_sprite(&mut ppu, 0, 0, 0, 0, prio << 4);
-            for row in 0..8 {
-                ppu.vram.memory[row] = 0x00FF;
-            }
-            set_color(&mut ppu, 129, 0x03E0);
+            // Sprite 0 at (0, 0), color 1 = green.
+            setup_sprite_at_origin(&mut ppu, 0x00, prio, 0x03E0);
 
             let mut r = Renderer::new();
             r.render_scanline(&ppu, 0);

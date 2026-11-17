@@ -11,7 +11,7 @@
 use crate::constants::*;
 use crate::oam::OAM;
 use crate::ppu::PPU;
-use crate::rendering::renderer::{Layer, Priority, Renderer};
+use crate::rendering::renderer::{BitDepth, Layer, Priority, Renderer};
 
 // VRAM is 32768 words, sprite CHR addresses wrap within it.
 const VRAM_WORD_MASK: usize = (VRAM_SIZE / 2) - 1;
@@ -126,9 +126,10 @@ impl Renderer {
                     }
 
                     let fine_x = if sprite.flip_x { 7 - px } else { px };
-                    let color_index = Self::decode_4bpp_tile_pixel_from(
+                    let color_index = Self::decode_tile_pixel(
                         &ppu.vram.memory,
                         tile_word_base,
+                        BitDepth::Four,
                         fine_x,
                         fine_y,
                     );

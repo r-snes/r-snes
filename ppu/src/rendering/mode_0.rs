@@ -8,7 +8,6 @@
 
 use crate::ppu::PPU;
 use crate::rendering::renderer::{BgParams, BitDepth, Layer, Priority, Renderer};
-use crate::vram::RawVRAM;
 
 impl Renderer {
     /// Renders BG1-BG4 in Mode 0 on framebuffer row `y`.
@@ -61,30 +60,14 @@ impl Renderer {
             );
         }
     }
-
-    /// Returns the color index (0-3) of pixel (`x`, `y`) in the 2bpp tile at `tile_word_base`.
-    pub fn decode_2bpp_tile_pixel_from(
-        vram: &RawVRAM,
-        tile_word_base: usize,
-        x: usize,
-        y: usize,
-    ) -> u8 {
-        // Planes 0+1: words 0-7
-        let w = vram[(tile_word_base + y) & 0x7FFF];
-        let p0 = (w & 0xFF) as u8;
-        let p1 = (w >> 8) as u8;
-
-        let bit = 7 - x;
-        ((p0 >> bit) & 1) | (((p1 >> bit) & 1) << 1)
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::constants::{SCREEN_WIDTH, VRAM_SIZE};
+    use crate::constants::SCREEN_WIDTH;
     use crate::ppu::PPU;
-    use crate::test_utils::{fb_pixel, set_color, write_sprite};
+    use crate::test_utils::{fb_pixel, set_color, setup_sprite_at_origin};
 
     // ============================================================
     // Helpers
@@ -112,77 +95,6 @@ mod tests {
         ppu.write(0x2121, entry);
         ppu.write(0x2122, 0xFF);
         ppu.write(0x2122, 0x7F);
-    }
-
-    // ============================================================
-    // decode_2bpp_tile_pixel_from
-    // ============================================================
-
-    // plane 0 only -> index 1, plane 1 only -> index 2, both -> index 3, neither -> index 0.
-    #[test]
-    fn test_decode_2bpp_color_indices() {
-        let mut vram = Box::new([0u16; VRAM_SIZE / 2]);
-
-        // All zero -> index 0
-        for x in 0..8 {
-            assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&vram, 0, x, 0), 0);
-        }
-
-        // Plane 0 only -> index 1
-        vram[0] = 0x00FF;
-        for x in 0..8 {
-            assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&vram, 0, x, 0), 1);
-        }
-
-        // Plane 1 only -> index 2
-        vram[0] = 0xFF00;
-        for x in 0..8 {
-            assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&vram, 0, x, 0), 2);
-        }
-
-        // Both planes -> index 3
-        vram[0] = 0xFFFF;
-        for x in 0..8 {
-            assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&vram, 0, x, 0), 3);
-        }
-    }
-
-    // bit 7 = x=0 (leftmost), bit 0 = x=7 (rightmost).
-    #[test]
-    fn test_decode_2bpp_bit_ordering() {
-        let mut vram = Box::new([0u16; VRAM_SIZE / 2]);
-
-        // Bit 7 set -> only x=0 is color 1
-        vram[0] = 0x0080;
-        assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&vram, 0, 0, 0), 1);
-        assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&vram, 0, 1, 0), 0);
-        assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&vram, 0, 7, 0), 0);
-
-        // Bit 0 set -> only x=7 is color 1
-        vram[0] = 0x0001;
-        assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&vram, 0, 7, 0), 1);
-        assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&vram, 0, 0, 0), 0);
-    }
-
-    // y selects the row within the tile; tile_word_base offsets into VRAM.
-    #[test]
-    fn test_decode_2bpp_addressing() {
-        let mut vram = Box::new([0u16; VRAM_SIZE / 2]);
-
-        // Row offset: only row 3 has data
-        vram[3] = 0x00FF;
-        for x in 0..8 {
-            assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&vram, 0, x, 3), 1);
-            assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&vram, 0, x, 0), 0);
-        }
-
-        // tile_word_base offset: data at base 16
-        vram[3] = 0x0000;
-        vram[16] = 0x00FF;
-        for x in 0..8 {
-            assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&vram, 16, x, 0), 1);
-            assert_eq!(Renderer::decode_2bpp_tile_pixel_from(&vram, 0, x, 0), 0);
-        }
     }
 
     // ============================================================
@@ -433,8 +345,8 @@ mod tests {
         let red = Renderer::apply_brightness(0x001F, 15);
         let green = Renderer::apply_brightness(0x03E0, 15);
 
-        // (sprite attributes, expected)
-        for (attr, expected) in [(0x00, red), (0x10, green)] {
+        // (sprite priority, expected)
+        for (prio, expected) in [(0, red), (1, green)] {
             let mut r = make_renderer();
             let mut ppu = make_ppu_mode0();
             ppu.write(0x212C, 0x14); // BG3 + OBJ on main
@@ -448,19 +360,11 @@ mod tests {
             }
             set_color(&mut ppu, 65, 0x001F);
 
-            // Sprite 0 at (0, 0): CHR base 0, tile 0, color 1 = green. Other sprites hidden.
-            ppu.write(0x2101, 0x00);
-            for i in 0..128 {
-                write_sprite(&mut ppu, i, 0, 0xF0, 0, 0);
-            }
-            write_sprite(&mut ppu, 0, 0, 0, 0, attr);
-            for row in 0..8 {
-                ppu.vram.memory[row] = 0x00FF;
-            }
-            set_color(&mut ppu, 129, 0x03E0);
+            // Sprite 0 at (0, 0), color 1 = green.
+            setup_sprite_at_origin(&mut ppu, 0x00, prio, 0x03E0);
 
             r.render_scanline(&ppu, 0);
-            assert_eq!(fb_pixel(&r, 0, 0), expected, "sprite attr {attr:#04X}");
+            assert_eq!(fb_pixel(&r, 0, 0), expected, "OBJ{prio}");
         }
     }
 

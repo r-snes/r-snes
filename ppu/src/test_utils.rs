@@ -15,6 +15,29 @@ pub fn write_sprite(ppu: &mut PPU, i: u16, x: u8, y: u8, tile: u8, attr: u8) {
     ppu.write(0x2104, attr);
 }
 
+// Sprite 0 at (0, 0) with priority `prio`, tile 0 full of color 1 (CGRAM 129 = `color`).
+// The other sprites are hidden. `objsel` sets the sprite CHR base (bits 0-2, 0x2000-word steps).
+pub fn setup_sprite_at_origin(ppu: &mut PPU, objsel: u8, prio: u8, color: u16) {
+    ppu.write(0x2101, objsel);
+    for i in 0..128 {
+        write_sprite(ppu, i, 0, 0xF0, 0, 0);
+    }
+    write_sprite(ppu, 0, 0, 0, 0, prio << 4);
+
+    let chr = ((objsel & 0x07) as usize) << 13;
+    for row in 0..8 {
+        ppu.vram.memory[chr + row] = 0x00FF;
+    }
+    set_color(ppu, 129, color);
+}
+
+// Fills the 32x32 tilemap at word `map` with `entry`.
+pub fn fill_tilemap(ppu: &mut PPU, map: usize, entry: u16) {
+    for word in map..map + 0x400 {
+        ppu.vram.memory[word] = entry;
+    }
+}
+
 // Writes a BGR555 color into CGRAM `entry` through $2121/$2122.
 pub fn set_color(ppu: &mut PPU, entry: u8, color: u16) {
     ppu.write(0x2121, entry);
