@@ -33,7 +33,11 @@ impl M7Line {
         let map_x = (self.origin_x + self.a * sx) >> 8;
         let map_y = (self.origin_y + self.c * sx) >> 8;
 
-        let in_map = (map_x | map_y) & !(MAP_PX - 1) == 0;
+        #[expect(
+            clippy::manual_range_contains,
+            reason = "explicit bounds are clearer here than Range::contains"
+        )]
+        let in_map = 0 <= map_x && map_x < MAP_PX && 0 <= map_y && map_y < MAP_PX;
         let tile = match (in_map, self.outside) {
             (true, _) | (false, M7Outside::Wrap) => {
                 let tile_x = ((map_x & (MAP_PX - 1)) >> 3) as usize;
