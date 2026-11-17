@@ -251,6 +251,7 @@ impl Renderer {
         match ppu.regs.bg_mode() {
             0 => self.render_scanline_mode0(ppu, y),
             1 => self.render_scanline_mode1(ppu, y),
+            2 => self.render_scanline_mode2(ppu, y),
             3 => self.render_scanline_mode3(ppu, y),
             7 => self.render_scanline_mode7(ppu, y),
             _ => self.render_scanline_mode1(ppu, y),
