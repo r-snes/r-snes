@@ -62,7 +62,7 @@ impl Renderer {
 mod tests {
     use crate::ppu::PPU;
     use crate::rendering::renderer::Renderer;
-    use crate::test_utils::{fb_pixel, set_color, write_sprite};
+    use crate::test_utils::{fb_pixel, fill_tilemap, set_color, setup_sprite_at_origin};
 
     // ============================================================
     // Helpers
@@ -83,13 +83,6 @@ mod tests {
         ppu.write(0x2108, 0x08); // BG2SC: tilemap 0x0800
         ppu.write(0x210B, 0x32); // BG12NBA: BG1 CHR 0x2000, BG2 CHR 0x3000
         ppu
-    }
-
-    // Fills the 32x32 tilemap at `map` with `entry`.
-    fn fill_tilemap(ppu: &mut PPU, map: usize, entry: u16) {
-        for word in map..map + 0x400 {
-            ppu.vram.memory[word] = entry;
-        }
     }
 
     // ============================================================
@@ -204,16 +197,8 @@ mod tests {
             set_color(&mut ppu, 1, 0x001F);
             set_color(&mut ppu, 17, 0x7C00);
 
-            // Sprite 0 at (0, 0): CHR base 0, tile 0, color 1 = green. Other sprites hidden.
-            ppu.write(0x2101, 0x00);
-            for i in 0..128 {
-                write_sprite(&mut ppu, i, 0, 0xF0, 0, 0);
-            }
-            write_sprite(&mut ppu, 0, 0, 0, 0, prio << 4);
-            for row in 0..8 {
-                ppu.vram.memory[row] = 0x00FF;
-            }
-            set_color(&mut ppu, 129, 0x03E0);
+            // Sprite 0 at (0, 0), color 1 = green.
+            setup_sprite_at_origin(&mut ppu, 0x00, prio, 0x03E0);
 
             let mut r = Renderer::new();
             r.render_scanline(&ppu, 0);

@@ -31,6 +31,13 @@ pub fn setup_sprite_at_origin(ppu: &mut PPU, objsel: u8, prio: u8, color: u16) {
     set_color(ppu, 129, color);
 }
 
+// Fills the 32x32 tilemap at word `map` with `entry`.
+pub fn fill_tilemap(ppu: &mut PPU, map: usize, entry: u16) {
+    for word in map..map + 0x400 {
+        ppu.vram.memory[word] = entry;
+    }
+}
+
 // Writes a BGR555 color into CGRAM `entry` through $2121/$2122.
 pub fn set_color(ppu: &mut PPU, entry: u8, color: u16) {
     ppu.write(0x2121, entry);

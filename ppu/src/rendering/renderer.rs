@@ -570,7 +570,7 @@ impl Renderer {
 mod tests {
     use super::*;
     use crate::ppu::PPU;
-    use crate::test_utils::{fb_pixel, set_color};
+    use crate::test_utils::{fb_pixel, fill_tilemap, set_color};
 
     // Mode 1 z-order of low priority BG1 and BG2 tiles.
     const BG1_LOW: Priority = Priority::new(8);
@@ -623,9 +623,7 @@ mod tests {
         ppu.write(0x2108, 0x08); // BG2SC tilemap word 0x0800
         let nba = (ppu.regs.bg12nba & 0x0F) | (0x02 << 4);
         ppu.write(0x210B, nba); // BG2 CHR nibble 2 -> word 0x2000
-        for i in 0..(32 * 32) {
-            ppu.vram.memory[0x0800 + i] = 0x0400; // tile 0, palette 1
-        }
+        fill_tilemap(ppu, 0x0800, 0x0400); // tile 0, palette 1
         for row in 0..8 {
             ppu.vram.memory[0x2000 + row] = 0x00FF;
         }
@@ -637,9 +635,7 @@ mod tests {
     fn setup_bg3_high_prio(ppu: &mut PPU, color: u16) {
         ppu.write(0x2109, 0x0C); // BG3SC tilemap word 0x0C00
         ppu.write(0x210C, 0x03); // BG34NBA: BG3 CHR nibble 3 -> word 0x3000
-        for i in 0..(32 * 32) {
-            ppu.vram.memory[0x0C00 + i] = 0x2800; // tile 0, palette 2, priority bit
-        }
+        fill_tilemap(ppu, 0x0C00, 0x2800); // tile 0, palette 2, priority bit
         for row in 0..8 {
             ppu.vram.memory[0x3000 + row] = 0x00FF; // 2bpp plane 0 -> index 1
         }

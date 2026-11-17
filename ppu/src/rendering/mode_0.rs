@@ -67,7 +67,7 @@ mod tests {
     use super::*;
     use crate::constants::SCREEN_WIDTH;
     use crate::ppu::PPU;
-    use crate::test_utils::{fb_pixel, set_color, write_sprite};
+    use crate::test_utils::{fb_pixel, set_color, setup_sprite_at_origin};
 
     // ============================================================
     // Helpers
@@ -345,8 +345,8 @@ mod tests {
         let red = Renderer::apply_brightness(0x001F, 15);
         let green = Renderer::apply_brightness(0x03E0, 15);
 
-        // (sprite attributes, expected)
-        for (attr, expected) in [(0x00, red), (0x10, green)] {
+        // (sprite priority, expected)
+        for (prio, expected) in [(0, red), (1, green)] {
             let mut r = make_renderer();
             let mut ppu = make_ppu_mode0();
             ppu.write(0x212C, 0x14); // BG3 + OBJ on main
@@ -360,19 +360,11 @@ mod tests {
             }
             set_color(&mut ppu, 65, 0x001F);
 
-            // Sprite 0 at (0, 0): CHR base 0, tile 0, color 1 = green. Other sprites hidden.
-            ppu.write(0x2101, 0x00);
-            for i in 0..128 {
-                write_sprite(&mut ppu, i, 0, 0xF0, 0, 0);
-            }
-            write_sprite(&mut ppu, 0, 0, 0, 0, attr);
-            for row in 0..8 {
-                ppu.vram.memory[row] = 0x00FF;
-            }
-            set_color(&mut ppu, 129, 0x03E0);
+            // Sprite 0 at (0, 0), color 1 = green.
+            setup_sprite_at_origin(&mut ppu, 0x00, prio, 0x03E0);
 
             r.render_scanline(&ppu, 0);
-            assert_eq!(fb_pixel(&r, 0, 0), expected, "sprite attr {attr:#04X}");
+            assert_eq!(fb_pixel(&r, 0, 0), expected, "OBJ{prio}");
         }
     }
 

@@ -70,7 +70,7 @@ mod tests {
     use crate::constants::SCREEN_WIDTH;
     use crate::ppu::PPU;
     use crate::rendering::renderer::Renderer;
-    use crate::test_utils::fb_pixel;
+    use crate::test_utils::{fb_pixel, fill_tilemap};
 
     // ============================================================
     // Helpers
@@ -91,9 +91,7 @@ mod tests {
         let mut ppu = make_ppu_mode1();
         ppu.write(0x2100, 0x0F);
         ppu.write(0x2107, 0x04);
-        for word in 0x0400..0x0800 {
-            ppu.vram.memory[word] = entry;
-        }
+        fill_tilemap(&mut ppu, 0x0400, entry);
         ppu.cgram.memory[0x01] = 0x001F;
         ppu
     }
@@ -208,9 +206,7 @@ mod tests {
             ppu.write(0x2100, 0x0F);
             ppu.write(0x212C, 0x04); // BG3 only on main
             ppu.write(0x2109, 0x04); // BG3 tilemap at 0x0400, CHR at 0x0000
-            for word in 0x0400..0x0800 {
-                ppu.vram.memory[word] = palette << 10; // tile 0, palette `palette`
-            }
+            fill_tilemap(&mut ppu, 0x0400, palette << 10); // tile 0, palette `palette`
             for row in 0..8 {
                 ppu.vram.memory[row] = row_data;
             }
