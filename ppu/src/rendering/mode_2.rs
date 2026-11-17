@@ -3,7 +3,7 @@
 //! Each pixel reads a tilemap entry (tile number, palette, priority, flips),
 //! then decodes the tile data from VRAM.
 //! BG1 and BG2 share 8 palettes of 16 colors (CGRAM entries 0-127). Color 0 is transparent.
-//! BG3 is not drawn in this mode.
+//! BG3 is not drawn: its tilemap changes the scroll of each column of BG1 and BG2
 
 use crate::ppu::PPU;
 use crate::rendering::renderer::{BgParams, BitDepth, Layer, Priority, Renderer};
@@ -237,5 +237,148 @@ mod tests {
         setup_bg1_bg2(&mut ppu, 0x0000, 0x0400);
 
         assert_eq!(fb_pixel(&render(&ppu), 0, 0), red());
+    }
+
+    // ============================================================
+    // Offset-per-tile
+    // ============================================================
+
+    const BG3_MAP: usize = 0x0C00;
+
+    // BG1 on main: tile 0 (red) everywhere, tile 1 (blue) on the whole column 4 (BG x 32-39).
+    // BG3 tilemap at 0x0C00, empty.
+    fn make_ppu_opt() -> PPU {
+        let mut ppu = make_ppu_mode2();
+        ppu.write(0x212C, 0x01); // TM: BG1
+        ppu.write(0x2109, 0x0C); // BG3SC: tilemap 0x0C00
+        fill_tilemap(&mut ppu, BG1_MAP, 0x0000);
+        for row in 0..32 {
+            ppu.vram.memory[BG1_MAP + row * 32 + 4] = 0x0001;
+        }
+        for row in 0..8 {
+            ppu.vram.memory[BG1_CHR + row] = 0x00FF; // tile 0: color 1
+            ppu.vram.memory[BG1_CHR + 16 + row] = 0xFF00; // tile 1: color 2
+        }
+        set_color(&mut ppu, 1, 0x001F);
+        set_color(&mut ppu, 2, 0x7C00);
+        ppu
+    }
+
+    fn set_bg3_entry(ppu: &mut PPU, col: usize, row: usize, entry: u16) {
+        ppu.vram.memory[BG3_MAP + row * 32 + col] = entry;
+    }
+
+    // Writes a BG scroll register twice: low byte, then high byte.
+    fn write_scroll(ppu: &mut PPU, addr: u16, value: u16) {
+        ppu.write(addr, (value & 0xFF) as u8);
+        ppu.write(addr, (value >> 8) as u8);
+    }
+
+    // Screen column n reads BG3 column n - 1 on row 0 (horizontal values).
+    #[test]
+    fn test_opt_horizontal() {
+        let mut ppu = make_ppu_opt();
+        set_bg3_entry(&mut ppu, 0, 0, 0x2000 | 24);
+
+        let r = render(&ppu);
+        assert_eq!(fb_pixel(&r, 0, 0), red());
+        assert_eq!(fb_pixel(&r, 8, 0), blue());
+        assert_eq!(fb_pixel(&r, 16, 0), red());
+    }
+
+    // An entry on every BG3 column still leaves column 0 of the screen alone.
+    #[test]
+    fn test_opt_first_column_never_changes() {
+        let mut ppu = make_ppu_opt();
+        for col in 0..32 {
+            set_bg3_entry(&mut ppu, col, 0, 0x2000 | 24);
+        }
+
+        let r = render(&ppu);
+        assert_eq!(fb_pixel(&r, 0, 0), red());
+        assert_eq!(fb_pixel(&r, 7, 0), red());
+        assert_eq!(fb_pixel(&r, 8, 0), blue());
+    }
+
+    // Bit 13 is for BG1, bit 14 for BG2: an entry for BG2 does not move BG1.
+    #[test]
+    fn test_opt_enable_bits() {
+        let mut ppu = make_ppu_opt();
+        set_bg3_entry(&mut ppu, 0, 0, 0x4000 | 24);
+        assert_eq!(fb_pixel(&render(&ppu), 8, 0), red());
+
+        // Same layout on BG2: the entry now moves it.
+        let mut ppu = make_ppu_opt();
+        ppu.write(0x212C, 0x02); // TM: BG2
+        ppu.write(0x2108, 0x04); // BG2SC: same tilemap as BG1
+        ppu.write(0x210B, 0x22); // BG2 CHR 0x2000, same as BG1
+        set_bg3_entry(&mut ppu, 0, 0, 0x4000 | 24);
+        assert_eq!(fb_pixel(&render(&ppu), 8, 0), blue());
+    }
+
+    // HOFS 3 is kept as fine scroll: screen x 5 is already in column 1.
+    #[test]
+    fn test_opt_keeps_fine_scroll() {
+        let mut ppu = make_ppu_opt();
+        write_scroll(&mut ppu, 0x210D, 3);
+        set_bg3_entry(&mut ppu, 0, 0, 0x2000 | 31); // 31 & !7 = 24
+
+        let r = render(&ppu);
+        assert_eq!(fb_pixel(&r, 4, 0), red()); // column 0: BG x 7
+        assert_eq!(fb_pixel(&r, 5, 0), blue()); // column 1: 5 + (24 | 3) = BG x 32
+    }
+
+    // Row 1 holds the vertical values, they replace BG1VOFS.
+    #[test]
+    fn test_opt_vertical() {
+        let mut ppu = make_ppu_opt();
+        ppu.vram.memory[BG1_MAP + 32 + 1] = 0x0001; // BG1 tile (1, 1) is blue
+        write_scroll(&mut ppu, 0x210E, 100); // replaced, not added
+        set_bg3_entry(&mut ppu, 0, 1, 0x2000 | 8);
+
+        let r = render(&ppu);
+        assert_eq!(fb_pixel(&r, 0, 0), red()); // column 0: normal VOFS
+        assert_eq!(fb_pixel(&r, 8, 0), blue());
+    }
+
+    // BG3HOFS 8 starts at column 1, BG3VOFS 21 reads row 2 (low 3 bits ignored).
+    #[test]
+    fn test_opt_bg3_scroll_selects_entries() {
+        let mut ppu = make_ppu_opt();
+        write_scroll(&mut ppu, 0x2111, 8);
+        write_scroll(&mut ppu, 0x2112, 21);
+        set_bg3_entry(&mut ppu, 1, 2, 0x2000 | 24);
+
+        assert_eq!(fb_pixel(&render(&ppu), 8, 0), blue());
+    }
+
+    // With 16x16 BG3 tiles, the same entry is used for both directions and 2 columns.
+    #[test]
+    fn test_opt_bg3_16x16() {
+        let mut ppu = make_ppu_opt();
+        for col in 0..32 {
+            ppu.vram.memory[BG1_MAP + 32 + col] = 0x0001; // BG1 tile row 1 is blue
+        }
+        set_bg3_entry(&mut ppu, 0, 0, 0x2000 | 8);
+
+        // 8x8: only the horizontal value, row 0 stays on BG row 1 (tile row 0).
+        assert_eq!(fb_pixel(&render(&ppu), 8, 0), red());
+
+        // 16x16: VOFS 8 too, so BG row 9 (tile row 1). Column 2 reads the same tile.
+        ppu.write(0x2105, 0x42); // mode 2, BG3 16x16
+        let r = render(&ppu);
+        assert_eq!(fb_pixel(&r, 8, 0), blue());
+        assert_eq!(fb_pixel(&r, 16, 0), blue());
+    }
+
+    // Offset-per-tile only exists in modes 2, 4 and 6: mode 1 ignores BG3 here.
+    #[test]
+    fn test_opt_not_in_mode1() {
+        let mut ppu = make_ppu_opt();
+        set_bg3_entry(&mut ppu, 0, 0, 0x2000 | 24);
+        ppu.write(0x2105, 0x01);
+        ppu.write(0x212C, 0x01); // TM: BG1 only, BG3 is not drawn
+
+        assert_eq!(fb_pixel(&render(&ppu), 8, 0), red());
     }
 }
