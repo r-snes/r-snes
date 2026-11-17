@@ -31,8 +31,6 @@ python3 -m http.server --directory _site
 
 The guides are Markdown files in `site/book/src/`, and `site/book/src/SUMMARY.md` defines the table of contents. To add a page, create the file and add it to `SUMMARY.md`.
 
-The [Plugin API reference](plugin-api.md) isn't copied here: it includes `plugin_api.md` from the repository root, so there's a single file to keep up to date.
-
 Install mdBook (`cargo install mdbook`, or a binary from its [releases page](https://github.com/rust-lang/mdBook/releases)), then preview the book with live reload:
 
 ```sh
