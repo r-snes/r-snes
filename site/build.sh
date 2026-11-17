@@ -31,8 +31,12 @@ echo "==> Building the book"
 "${MDBOOK:-mdbook}" build "$ROOT/site/book" --dest-dir "$OUT/book"
 
 echo "==> Building the API documentation"
-cargo doc --manifest-path "$ROOT/Cargo.toml" --workspace --no-deps
-cp -r "${CARGO_TARGET_DIR:-$ROOT/target}/doc" "$OUT/api"
+DOC="${CARGO_TARGET_DIR:-$ROOT/target}/doc"
+
+rm -rf "$DOC"
+RUSTDOCFLAGS="${RUSTDOCFLAGS:-} -D warnings" \
+    cargo doc --manifest-path "$ROOT/Cargo.toml" --workspace --no-deps
+cp -r "$DOC" "$OUT/api"
 
 if [[ -n "$COVERAGE" ]]; then
     echo "==> Copying coverage reports"

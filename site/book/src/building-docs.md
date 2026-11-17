@@ -56,4 +56,8 @@ cargo doc --workspace --no-deps --open
 - `--no-deps` skips third-party dependencies (SDL2, egui…), which we don't need to publish;
 - the result goes to `target/doc/<crate>/index.html`.
 
-Rustdoc reports broken links and other problems as warnings: please fix them along with the code you change.
+Rustdoc reports broken links and other problems as warnings. `site/build.sh` turns them into errors, so they fail CI. To check locally the same way:
+
+```sh
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+```
