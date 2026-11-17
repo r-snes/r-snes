@@ -371,6 +371,24 @@ mod tests {
         assert_eq!(fb_pixel(&r, 16, 0), blue());
     }
 
+    // BG3 two maps tall: the vertical row after row 31 is row 0 of the map below.
+    #[test]
+    fn test_opt_bg3_tall_map() {
+        let mut ppu = make_ppu_opt();
+        for col in 0..32 {
+            ppu.vram.memory[BG1_MAP + 32 + col] = 0x0001; // BG1 tile row 1 is blue
+        }
+        write_scroll(&mut ppu, 0x2112, 248); // horizontal row 31, vertical row 32
+        ppu.vram.memory[0x1000] = 0x2000 | 8; // map below (0x0C00 + 0x400), row 0
+
+        // 32x32: row 32 goes back to row 0 of the same map, which is empty.
+        assert_eq!(fb_pixel(&render(&ppu), 8, 0), red());
+
+        // 32x64: row 32 is in the map below, VOFS 8.
+        ppu.write(0x2109, 0x0E); // BG3SC: tilemap 0x0C00, 32x64
+        assert_eq!(fb_pixel(&render(&ppu), 8, 0), blue());
+    }
+
     // Offset-per-tile only exists in modes 2, 4 and 6: mode 1 ignores BG3 here.
     #[test]
     fn test_opt_not_in_mode1() {
