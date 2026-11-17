@@ -1,0 +1,21 @@
+/* R-SNES colours on top of the default mdBook themes */
+
+.light,
+.rust {
+    --links: #0a74b8;
+    --sidebar-active: #0a74b8;
+}
+
+.navy,
+.coal,
+.ayu {
+    --links: #4cc2ff;
+    --sidebar-active: #4cc2ff;
+}
+
+/* The four SNES buttons of the logo, as a stripe under the menu bar */
+#mdbook-menu-bar {
+    border-image: linear-gradient(90deg, #12a5e8 0 25%, #13a84a 25% 50%, #e8b800 50% 75%, #e5383b 75%) 1;
+    border-bottom-width: 3px;
+    border-bottom-style: solid;
+}

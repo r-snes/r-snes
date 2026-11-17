@@ -78,38 +78,58 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libsdl2-dev
 
       - name: Run tests with coverage
-        run: cargo tarpaulin --out html --no-fail-fast
+        run: cargo tarpaulin --out html --out lcov --output-dir coverage --no-fail-fast
 
       - name: Upload coverage report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
           name: coverage-report-${{ github.sha }}
-          path: ./tarpaulin-report.html
+          path: |
+            coverage/tarpaulin-report.html
+            coverage/lcov.info
 
   build_site:
     needs: [fmt, clippy, coverage]
-    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
 
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@1.95.0
+
+      - name: Cache cargo registry and build artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install SDL2
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libsdl2-dev
+
+      - name: Install mdBook
+        uses: taiki-e/install-action@v2
+        with:
+          tool: mdbook@0.5.4
+
       - name: Download coverage report
         uses: actions/download-artifact@v8
         with:
           name: coverage-report-${{ github.sha }}
-          path: ./site/
+          path: ./coverage/
+
+      - name: Build website
+        run: bash site/build.sh coverage
 
       - name: Upload Pages artifact
+        if: github.ref == 'refs/heads/main'
         uses: actions/upload-pages-artifact@v5
         with:
-          path: site/
+          path: _site/
 
   deploy_site:
     needs: [build_site]
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

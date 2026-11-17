@@ -1,0 +1,19 @@
+[book]
+title = "R-SNES Documentation"
+description = "Guides for playing games with R-SNES and writing Lua plugins for it."
+authors = ["R-SNES Team"]
+language = "en"
+src = "src"
+
+[output.html]
+default-theme = "light"
+preferred-dark-theme = "navy"
+git-repository-url = "https://github.com/r-snes/r-snes"
+edit-url-template = "https://github.com/r-snes/r-snes/edit/main/site/book/{path}"
+site-url = "/r-snes/book/"
+additional-css = ["theme/rsnes.css"]
+additional-js = ["theme/home-link.js"]
+no-section-label = true
+
+[output.html.search]
+limit-results = 20

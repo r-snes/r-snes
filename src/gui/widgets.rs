@@ -285,7 +285,7 @@ fn show_error(ui: &mut egui::Ui, err: &dyn Error) {
 
 /// Plugin permission prompt. Rendered only while a plugin is awaiting a
 /// decision. Granting moves the plugin into `granted` for the host to inject;
-/// denying (buttons, [x], or Escape) drops it.
+/// denying (buttons, window close button, or Escape) drops it.
 #[cfg(feature = "plugins")]
 pub fn plugin_perm_request(
     ctx: &egui::Context,

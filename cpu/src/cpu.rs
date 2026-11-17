@@ -51,7 +51,7 @@ pub struct CPU {
 }
 
 /// State of the CPU, hinting what may or may not happen
-/// when calling the [`cycle`] function
+/// when calling the [`CPU::cycle`] function
 #[derive(Default, Clone, Copy)]
 pub enum CPUState {
     /// Default state of the CPU: running, executing instructions
@@ -60,8 +60,8 @@ pub enum CPUState {
 
     /// Stopped by a STP instruction
     ///
-    /// In this state, the CPU can only go back to the [`Running`] state
-    /// by calling [`reset`].
+    /// In this state, the CPU can only go back to the [`Running`](CPUState::Running) state
+    /// by calling [`CPU::reset`].
     Stopped,
 
     /// Waiting for an interrupt (in a WAI instruction)

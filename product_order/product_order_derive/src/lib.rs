@@ -29,7 +29,7 @@ use {
 /// - All orderings will be taken into account to determine the resulting ordering.
 ///
 /// Actual logic:
-/// - If any of the fields cannot be ordered (e.g. [`partial_cmp`] returned [`None`]
+/// - If any of the fields cannot be ordered (e.g. [`partial_cmp`](PartialOrd::partial_cmp) returned [`None`]
 ///   at least once), then [`None`] will be returned.
 /// - If a struct is greater than the other in all of its fields,
 ///   it will evaluate greater overall. The same applies the other way around.
