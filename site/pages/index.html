@@ -382,7 +382,7 @@
                     <p class="eyebrow"><span class="dots"><i></i><i></i><i></i><i></i></span>About the project</p>
                     <h2>What R-SNES is about</h2>
                     <p class="lead">R-SNES aims to be a decently fast and very accurate SNES emulator, while staying
-                        easy to understand thanks to modern coding standards.</p>
+                        easy to understand as per modern coding standards.</p>
                     <p>We try to stay performant (low resource usage on your machine) and accurate to our best
                         effort: games should behave exactly as they would on the original console. Each piece of
                         hardware lives in its own Rust crate, documented and tested, so the emulator doubles as a
@@ -402,27 +402,42 @@
                     <h2>Get R-SNES</h2>
                     <p class="lead">Download the latest release for your system, then follow the <a
                             href="book/getting-started.html">getting started guide</a> to launch your first game.</p>
-                    <p class="release-info" id="release-info"><a
-                            href="https://github.com/r-snes/r-snes/releases">All releases and release notes</a></p>
+                    <p class="release-info" id="release-info"><a href="https://github.com/r-snes/r-snes/releases">All
+                            releases and release notes</a></p>
                 </div>
                 <!-- Icons: GitHub Octicons v19.8.0 (copy-16, check-16, download-16), MIT license, https://primer.style/octicons -->
                 <div class="grid downloads">
                     <a class="card" href="https://github.com/r-snes/r-snes/releases/latest" data-asset=".exe">
-                        <span class="card-icon"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z"/><path d="M7.25 7.689V2a.75.75 0 0 1 1.5 0v5.689l1.97-1.969a.749.749 0 1 1 1.06 1.06l-3.25 3.25a.749.749 0 0 1-1.06 0L4.22 6.78a.749.749 0 1 1 1.06-1.06l1.97 1.969Z"/></svg></span>
+                        <span class="card-icon"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                                <path
+                                    d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z" />
+                                <path
+                                    d="M7.25 7.689V2a.75.75 0 0 1 1.5 0v5.689l1.97-1.969a.749.749 0 1 1 1.06 1.06l-3.25 3.25a.749.749 0 0 1-1.06 0L4.22 6.78a.749.749 0 1 1 1.06-1.06l1.97 1.969Z" />
+                            </svg></span>
                         <span class="tag">.exe</span>
                         <h3>Windows</h3>
                         <p>A single executable, nothing to install.</p>
                         <span class="file">r-snes_&lt;version&gt;_x86_64.exe</span>
                     </a>
                     <a class="card" href="https://github.com/r-snes/r-snes/releases/latest" data-asset=".deb">
-                        <span class="card-icon"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z"/><path d="M7.25 7.689V2a.75.75 0 0 1 1.5 0v5.689l1.97-1.969a.749.749 0 1 1 1.06 1.06l-3.25 3.25a.749.749 0 0 1-1.06 0L4.22 6.78a.749.749 0 1 1 1.06-1.06l1.97 1.969Z"/></svg></span>
+                        <span class="card-icon"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                                <path
+                                    d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z" />
+                                <path
+                                    d="M7.25 7.689V2a.75.75 0 0 1 1.5 0v5.689l1.97-1.969a.749.749 0 1 1 1.06 1.06l-3.25 3.25a.749.749 0 0 1-1.06 0L4.22 6.78a.749.749 0 1 1 1.06-1.06l1.97 1.969Z" />
+                            </svg></span>
                         <span class="tag">.deb</span>
                         <h3>Debian, Ubuntu</h3>
                         <p>Package for Debian-based distributions, such as Linux Mint or Pop!_OS.</p>
                         <span class="file">r-snes_&lt;version&gt;_amd64.deb</span>
                     </a>
                     <a class="card" href="https://github.com/r-snes/r-snes/releases/latest" data-asset=".rpm">
-                        <span class="card-icon"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z"/><path d="M7.25 7.689V2a.75.75 0 0 1 1.5 0v5.689l1.97-1.969a.749.749 0 1 1 1.06 1.06l-3.25 3.25a.749.749 0 0 1-1.06 0L4.22 6.78a.749.749 0 1 1 1.06-1.06l1.97 1.969Z"/></svg></span>
+                        <span class="card-icon"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                                <path
+                                    d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z" />
+                                <path
+                                    d="M7.25 7.689V2a.75.75 0 0 1 1.5 0v5.689l1.97-1.969a.749.749 0 1 1 1.06 1.06l-3.25 3.25a.749.749 0 0 1-1.06 0L4.22 6.78a.749.749 0 1 1 1.06-1.06l1.97 1.969Z" />
+                            </svg></span>
                         <span class="tag">.rpm</span>
                         <h3>Fedora</h3>
                         <p>Package for Fedora-based distributions, such as Bazzite.</p>
@@ -432,8 +447,16 @@
                         aria-label="Copy the Nix command">
                         <span class="card-icon">
                             <span class="copied-label" aria-live="polite">Copied</span>
-                            <svg class="icon-copy" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"/><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"/></svg>
-                            <svg class="icon-check" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"/></svg>
+                            <svg class="icon-copy" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                                <path
+                                    d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z" />
+                                <path
+                                    d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z" />
+                            </svg>
+                            <svg class="icon-check" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                                <path
+                                    d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z" />
+                            </svg>
                         </span>
                         <span class="tag">flake</span>
                         <h3>Nix</h3>
