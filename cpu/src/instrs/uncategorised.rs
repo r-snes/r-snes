@@ -142,6 +142,9 @@ pub(crate) use stp::*;
 mod stp {
     use crate::instrs::prelude::*;
 
+    crate::instrs::cycle_registry::register_cycles!(stp_cyc1);
+
+    #[inline(never)]
     pub(crate) fn stp_cyc1(cpu: &mut CPU, _irqb: bool) -> (CycleResult, InstrCycle) {
         cpu.state = crate::cpu::CPUState::Stopped;
 

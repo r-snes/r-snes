@@ -1,3 +1,4 @@
+pub(crate) mod cycle_registry;
 pub(crate) mod instr_tab;
 
 pub(crate) mod prelude;

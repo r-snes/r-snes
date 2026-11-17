@@ -91,6 +91,10 @@ pub(crate) use wai::*;
 pub(crate) mod wai {
     use super::*;
     use crate::instrs::prelude::*;
+
+    crate::instrs::cycle_registry::register_cycles!(wai_cyc1, wai_start_waiting, wai_cyc2);
+
+    #[inline(never)]
     pub(crate) fn wai_cyc1(
         cpu: &mut CPU,
         #[expect(
@@ -101,14 +105,16 @@ pub(crate) mod wai {
     ) -> (CycleResult, InstrCycle) {
         cpu.registers.PC = cpu.registers.PC.wrapping_add(1);
         cpu.next_fetch = InstrCycle(wai_cyc2);
-        (
-            Internal,
-            InstrCycle(|cpu, irqb| {
-                cpu.state = crate::cpu::CPUState::WaitForInterrupt;
-                wai_cyc2(cpu, irqb)
-            }),
-        )
+        (Internal, InstrCycle(wai_start_waiting))
     }
+
+    #[inline(never)]
+    pub(crate) fn wai_start_waiting(cpu: &mut CPU, irqb: bool) -> (CycleResult, InstrCycle) {
+        cpu.state = crate::cpu::CPUState::WaitForInterrupt;
+        wai_cyc2(cpu, irqb)
+    }
+
+    #[inline(never)]
     pub(crate) fn wai_cyc2(cpu: &mut CPU, irqb: bool) -> (CycleResult, InstrCycle) {
         // IRQ triggers when IRQB is low
         if !irqb {

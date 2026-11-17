@@ -8,6 +8,11 @@ common = { version = "0.1.0", path = "../common" }
 instr_metalang_procmacro = { path = "./instr_metalang_procmacro" }
 duplicate.workspace = true
 serde.workspace = true
+linkme.workspace = true
+
+[dev-dependencies]
+postcard.workspace = true
+fastrand = "2.3.0"
 
 [lints]
 workspace = true
