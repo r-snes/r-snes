@@ -9,7 +9,6 @@
 
 use crate::ppu::PPU;
 use crate::rendering::renderer::{BgParams, BitDepth, Layer, Priority, Renderer};
-use crate::vram::RawVRAM;
 
 impl Renderer {
     /// Renders BG1-BG2 in Mode 3 on framebuffer row `y`.
@@ -57,24 +56,6 @@ impl Renderer {
             );
         }
     }
-
-    /// Returns the color index (0-255) of pixel (`x`, `y`) in the 8bpp tile at `tile_word_base`.
-    pub fn decode_8bpp_tile_pixel_from(
-        vram: &RawVRAM,
-        tile_word_base: usize,
-        x: usize,
-        y: usize,
-    ) -> u8 {
-        // Planes 0+1 in words 0-7, 2+3 in words 8-15, 4+5 in words 16-23, 6+7 in words 24-31.
-        let bit = 7 - x;
-        let mut index = 0;
-        for pair in 0..4 {
-            let [lo, hi] = vram[(tile_word_base + y + pair * 8) & 0x7FFF].to_le_bytes();
-            index |= ((lo >> bit) & 1) << (pair * 2);
-            index |= ((hi >> bit) & 1) << (pair * 2 + 1);
-        }
-        index
-    }
 }
 
 #[cfg(test)]
@@ -109,36 +90,6 @@ mod tests {
         for word in map..map + 0x400 {
             ppu.vram.memory[word] = entry;
         }
-    }
-
-    // ============================================================
-    // decode_8bpp_tile_pixel_from
-    // ============================================================
-
-    // Each plane gives one bit of the index: planes 0-1 in words 0-7, 2-3 in 8-15, 4-5 in 16-23, 6-7 in 24-31.
-    #[test]
-    fn test_decode_8bpp_planes() {
-        for plane in 0..8 {
-            let mut vram = Box::new([0; _]);
-            vram[(plane / 2) * 8] = if plane % 2 == 0 { 0x0080 } else { 0x8000 };
-            assert_eq!(
-                Renderer::decode_8bpp_tile_pixel_from(&vram, 0, 0, 0),
-                1 << plane,
-                "plane {plane}"
-            );
-            assert_eq!(Renderer::decode_8bpp_tile_pixel_from(&vram, 0, 1, 0), 0);
-        }
-    }
-
-    // y selects the row in each pair of planes; all planes set gives index 255.
-    #[test]
-    fn test_decode_8bpp_row_and_full_index() {
-        let mut vram = Box::new([0; _]);
-        for pair in 0..4 {
-            vram[3 + pair * 8] = 0xFFFF;
-        }
-        assert_eq!(Renderer::decode_8bpp_tile_pixel_from(&vram, 0, 5, 3), 255);
-        assert_eq!(Renderer::decode_8bpp_tile_pixel_from(&vram, 0, 5, 2), 0);
     }
 
     // ============================================================

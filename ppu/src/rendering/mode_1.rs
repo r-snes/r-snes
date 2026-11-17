@@ -8,7 +8,6 @@
 
 use crate::ppu::PPU;
 use crate::rendering::renderer::{BgParams, BitDepth, Layer, Priority, Renderer};
-use crate::vram::RawVRAM;
 
 impl Renderer {
     /// Renders BG1-BG3 in Mode 1 on framebuffer row `y`.
@@ -64,26 +63,6 @@ impl Renderer {
             );
         }
     }
-
-    /// Returns the color index (0-15) of pixel (`x`, `y`) in the 4bpp tile at `tile_word_base`.
-    pub fn decode_4bpp_tile_pixel_from(
-        vram: &RawVRAM,
-        tile_word_base: usize,
-        x: usize,
-        y: usize,
-    ) -> u8 {
-        // Planes 0+1: p0 = low byte, p1 = high byte
-        let [p0, p1] = vram[(tile_word_base + y) & 0x7FFF].to_le_bytes();
-
-        // Planes 2+3: words 8-15
-        let [p2, p3] = vram[(tile_word_base + y + 8) & 0x7FFF].to_le_bytes();
-
-        let bit = 7 - x;
-        ((p0 >> bit) & 1)
-            | (((p1 >> bit) & 1) << 1)
-            | (((p2 >> bit) & 1) << 2)
-            | (((p3 >> bit) & 1) << 3)
-    }
 }
 
 #[cfg(test)]
@@ -117,130 +96,6 @@ mod tests {
         }
         ppu.cgram.memory[0x01] = 0x001F;
         ppu
-    }
-
-    // ============================================================
-    // decode_4bpp_tile_pixel_from
-    // ============================================================
-
-    /// All-zero tile data must decode to color index 0 (transparent) for every pixel.
-    #[test]
-    fn test_decode_4bpp_all_zero_is_transparent() {
-        let vram = Box::new([0; _]);
-        for y in 0..8 {
-            for x in 0..8 {
-                let idx = Renderer::decode_4bpp_tile_pixel_from(&vram, 0, x, y);
-                assert_eq!(idx, 0, "expected transparent at ({}, {})", x, y);
-            }
-        }
-    }
-
-    /// A tile with all bitplanes set to 0xFF must decode to color index 15 for every pixel.
-    #[test]
-    fn test_decode_4bpp_all_ones_is_color_15() {
-        let mut vram = Box::new([0; _]);
-        // All planes 0xFF for all 8 rows
-        for y in 0..8 {
-            vram[y] = 0xFFFF; // planes 0+1
-            vram[8 + y] = 0xFFFF; // planes 2+3
-        }
-        for y in 0..8 {
-            for x in 0..8 {
-                let idx = Renderer::decode_4bpp_tile_pixel_from(&vram, 0, x, y);
-                assert_eq!(idx, 15, "expected color 15 at ({}, {})", x, y);
-            }
-        }
-    }
-
-    /// Plane 0 only (bit 0 of color index) must be extracted from the low byte of words 0-7.
-    #[test]
-    fn test_decode_4bpp_plane0_only() {
-        let mut vram = Box::new([0; _]);
-        // Row 0: plane 0 lo = 0b10000000 (only leftmost pixel set), plane 1/2/3 = 0
-        vram[0] = 0x0080; // lo=0x80 (plane 0), hi=0x00 (plane 1)
-        let idx_x0 = Renderer::decode_4bpp_tile_pixel_from(&vram, 0, 0, 0);
-        let idx_x1 = Renderer::decode_4bpp_tile_pixel_from(&vram, 0, 1, 0);
-        assert_eq!(idx_x0, 1); // bit 7 of plane 0 set -> color bit 0 = 1
-        assert_eq!(idx_x1, 0); // bit 6 clear -> transparent
-    }
-
-    /// Plane 1 only must contribute bit 1 of the color index.
-    #[test]
-    fn test_decode_4bpp_plane1_only() {
-        let mut vram = Box::new([0; _]);
-        // Row 0: plane 1 hi = 0xFF, plane 0 lo = 0x00
-        vram[0] = 0xFF00; // lo=0x00 (plane 0), hi=0xFF (plane 1)
-        for x in 0..8 {
-            let idx = Renderer::decode_4bpp_tile_pixel_from(&vram, 0, x, 0);
-            assert_eq!(idx, 2, "plane1 only -> color index 2 at x={}", x);
-        }
-    }
-
-    /// Plane 2 only must contribute bit 2 of the color index.
-    #[test]
-    fn test_decode_4bpp_plane2_only() {
-        let mut vram = Box::new([0; _]);
-        vram[8] = 0x00FF; // planes 2+3 row 0: plane 2 lo = 0xFF, plane 3 hi = 0x00
-        for x in 0..8 {
-            let idx = Renderer::decode_4bpp_tile_pixel_from(&vram, 0, x, 0);
-            assert_eq!(idx, 4, "plane2 only -> color index 4 at x={}", x);
-        }
-    }
-
-    /// Plane 3 only must contribute bit 3 of the color index.
-    #[test]
-    fn test_decode_4bpp_plane3_only() {
-        let mut vram = Box::new([0; _]);
-        vram[8] = 0xFF00; // planes 2+3 row 0: plane 2 lo = 0x00, plane 3 hi = 0xFF
-        for x in 0..8 {
-            let idx = Renderer::decode_4bpp_tile_pixel_from(&vram, 0, x, 0);
-            assert_eq!(idx, 8, "plane3 only -> color index 8 at x={}", x);
-        }
-    }
-
-    /// Pixels are addressed right-to-left within a byte (bit 7 = x=0, bit 0 = x=7).
-    #[test]
-    fn test_decode_4bpp_bit_order_right_to_left() {
-        let mut vram = Box::new([0; _]);
-        // Set only bit 0 of plane 0 row 0 -> only x=7 should be set
-        vram[0] = 0x0001;
-        let idx_x7 = Renderer::decode_4bpp_tile_pixel_from(&vram, 0, 7, 0);
-        let idx_x6 = Renderer::decode_4bpp_tile_pixel_from(&vram, 0, 6, 0);
-        assert_eq!(idx_x7, 1);
-        assert_eq!(idx_x6, 0);
-    }
-
-    /// decode_4bpp_tile_pixel_from must use the correct row offset (y selects the word row).
-    #[test]
-    fn test_decode_4bpp_correct_row_selected() {
-        let mut vram = Box::new([0; _]);
-        // Set plane 0 full for row 3 only
-        vram[3] = 0x00FF;
-        for y in 0..8 {
-            let idx = Renderer::decode_4bpp_tile_pixel_from(&vram, 0, 0, y);
-            if y == 3 {
-                assert_eq!(idx, 1, "row 3 should be set");
-            } else {
-                assert_eq!(idx, 0, "row {} should be transparent", y);
-            }
-        }
-    }
-
-    /// tile_word_base offset must correctly index into VRAM (non-zero base).
-    #[test]
-    fn test_decode_4bpp_nonzero_tile_base() {
-        let mut vram = Box::new([0; _]);
-        let base = 64usize;
-        // All planes 0xFF at base
-        for y in 0..8 {
-            vram[base + y] = 0xFFFF;
-            vram[base + 8 + y] = 0xFFFF;
-        }
-        // Base 0 must remain transparent
-        let idx_base0 = Renderer::decode_4bpp_tile_pixel_from(&vram, 0, 0, 0);
-        let idx_base64 = Renderer::decode_4bpp_tile_pixel_from(&vram, base, 0, 0);
-        assert_eq!(idx_base0, 0);
-        assert_eq!(idx_base64, 15);
     }
 
     // ============================================================
