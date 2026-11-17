@@ -294,7 +294,7 @@
         (() => {
             const rows = document.getElementById("rows");
             const fmt = (n) => n.toLocaleString("en");
-            const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+            const esc = RSnesCoverage.esc;
             let cov;
             let sort = "name";
             const expanded = new Set();
@@ -309,7 +309,7 @@
                     const files = open ? c.files.map((f) => `
                         <tr class="file-row">
                             <td>${esc(f.path)}</td>
-                            <td class="meter-cell">${RSnesCoverage.meterHtml(f.pct, esc(f.path))}</td>
+                            <td class="meter-cell">${RSnesCoverage.meterHtml(f.pct, f.path)}</td>
                             <td class="num">${f.pct.toFixed(1)}%</td>
                             <td class="num">${fmt(f.hit)} / ${fmt(f.found)}</td>
                             <td></td>
@@ -317,7 +317,7 @@
                     return `
                         <tr class="crate-row" tabindex="0" data-dir="${esc(c.dir)}" aria-expanded="${open}">
                             <td><span class="chevron">›</span> ${esc(c.name)}</td>
-                            <td class="meter-cell">${RSnesCoverage.meterHtml(c.pct, esc(c.name))}</td>
+                            <td class="meter-cell">${RSnesCoverage.meterHtml(c.pct, c.name)}</td>
                             <td class="num">${c.pct.toFixed(1)}%</td>
                             <td class="num">${fmt(c.hit)} / ${fmt(c.found)}</td>
                             <td>${RSnesCoverage.statusHtml(c.pct)}</td>

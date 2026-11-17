@@ -108,10 +108,17 @@ const RSnesCoverage = (() => {
             : `<span class="status warn" title="Below the ${THRESHOLD}% minimum">${ICON_WARN}<span class="status-label">Below ${THRESHOLD}%</span></span>`;
     }
 
-    function meterHtml(pct, label) {
-        const w = Math.max(0, Math.min(100, pct)).toFixed(1);
-        return `<div class="meter" role="img" aria-label="${label}: ${pct.toFixed(1)}%" title="${label}: ${pct.toFixed(1)}%"><span style="width:${w}%"></span></div>`;
+    // Escapes text before inserting it in HTML (element content or attribute value)
+    function esc(s) {
+        return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
     }
 
-    return { THRESHOLD, load, summarize, statusHtml, meterHtml };
+    // `label` is plain text: it's escaped here, so callers must not escape it themselves
+    function meterHtml(pct, label) {
+        const w = Math.max(0, Math.min(100, pct)).toFixed(1);
+        const text = `${esc(label)}: ${pct.toFixed(1)}%`;
+        return `<div class="meter" role="img" aria-label="${text}" title="${text}"><span style="width:${w}%"></span></div>`;
+    }
+
+    return { THRESHOLD, load, summarize, statusHtml, meterHtml, esc };
 })();

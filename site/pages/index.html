@@ -668,7 +668,7 @@
                     RSnesCoverage.statusHtml(cov.pct);
                 document.getElementById("cov-crates").innerHTML = cov.crates
                     .map((c) =>
-                        `<span class="name">${c.name}</span>` +
+                        `<span class="name">${RSnesCoverage.esc(c.name)}</span>` +
                         RSnesCoverage.meterHtml(c.pct, c.name) +
                         `<span class="num">${c.pct.toFixed(1)}%</span>`)
                     .join("");
