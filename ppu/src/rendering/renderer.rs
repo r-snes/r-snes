@@ -251,6 +251,7 @@ impl Renderer {
         match ppu.regs.bg_mode() {
             0 => self.render_scanline_mode0(ppu, y),
             1 => self.render_scanline_mode1(ppu, y),
+            2 => self.render_scanline_mode2(ppu, y),
             3 => self.render_scanline_mode3(ppu, y),
             7 => self.render_scanline_mode7(ppu, y),
             _ => self.render_scanline_mode1(ppu, y),
@@ -269,7 +270,6 @@ impl Renderer {
         let tile_px = if p.tile16 { 16 } else { 8 };
         let map_w = (if p.w64 { 64 } else { 32 }) * tile_px;
         let map_h = (if p.h64 { 64 } else { 32 }) * tile_px;
-        let screens_wide = if p.w64 { 2 } else { 1 };
 
         let tile_words = p.bpp.tile_words();
 
@@ -279,9 +279,6 @@ impl Renderer {
         if p.mosaic {
             line -= ppu.mosaic_voffset() as isize;
         }
-        let py = (line + p.scroll_y as isize).rem_euclid(map_h as isize) as usize;
-        let tile_row = py / tile_px;
-        let fine_y = py % tile_px;
 
         // Horizontal mosaic: blocks start at screen x = 0, whatever the scroll.
         let block = if p.mosaic {
@@ -292,23 +289,24 @@ impl Renderer {
 
         let bg = p.layer.bg_index();
 
+        // Offset-per-tile: in mode 2, BG3 changes the scroll of BG1 and BG2 for each column.
+        let opt = ppu.regs.bg_mode() == 2 && bg < 2;
+
         for x in 0..SCREEN_WIDTH {
             // Every pixel of a block shows the first pixel of the block.
             let src_x = x - x % block;
-            let px = (src_x + p.scroll_x) & (map_w - 1);
-            let tile_col = px / tile_px;
+            let (scroll_x, scroll_y) = if opt {
+                Self::opt_scroll(ppu, bg, (p.scroll_x, p.scroll_y), src_x)
+            } else {
+                (p.scroll_x, p.scroll_y)
+            };
+
+            let px = (src_x + scroll_x) & (map_w - 1);
+            let py = (line + scroll_y as isize).rem_euclid(map_h as isize) as usize;
             let fine_x = px % tile_px;
+            let fine_y = py % tile_px;
 
-            // Pick the 0x400-word sub-screen for maps larger than 32x32.
-            // The sum wraps within VRAM (32K words).
-            let screen = (tile_row >> 5) * screens_wide + (tile_col >> 5);
-            let map_word_addr = (p.tilemap_base as usize
-                + screen * 0x400
-                + (tile_row & 0x1F) * 32
-                + (tile_col & 0x1F))
-                & 0x7FFF;
-
-            let entry = ppu.vram.memory[map_word_addr];
+            let entry = Self::tilemap_entry(ppu, p.tilemap_base, (p.w64, p.h64), tile_px, px, py);
             let tile_index = entry & 0x03FF; // bits 9:0
             let palette_num = ((entry >> 10) & 0x07) as u8; // bits 12:10
             let priority = (entry & 0x2000) != 0; // bit 13
@@ -348,6 +346,62 @@ impl Renderer {
             };
             self.deposit_bg(ppu, bg, x, pixel, (p.to_main, p.to_sub));
         }
+    }
+
+    // Tilemap entry at map pixel (px, py). Maps bigger than 32x32 tiles are made of
+    // 0x400-word screens. The address wraps within VRAM (32K words).
+    fn tilemap_entry(
+        ppu: &PPU,
+        tilemap_base: u16,
+        (w64, h64): (bool, bool),
+        tile_px: usize,
+        px: usize,
+        py: usize,
+    ) -> u16 {
+        let tile_col = (px / tile_px) % if w64 { 64 } else { 32 };
+        let tile_row = (py / tile_px) % if h64 { 64 } else { 32 };
+        let screens_wide = if w64 { 2 } else { 1 };
+        let screen = (tile_row >> 5) * screens_wide + (tile_col >> 5);
+        let addr =
+            (tilemap_base as usize + screen * 0x400 + (tile_row & 0x1F) * 32 + (tile_col & 0x1F))
+                & 0x7FFF;
+        ppu.vram.memory[addr]
+    }
+
+    // Offset-per-tile: the (horizontal, vertical) scroll of BG `bg` at screen x `x`.
+    // Columns follow the fine scroll of the BG. Column 0 keeps the normal scroll,
+    // column n reads the BG3 entries of column n - 1: one row for the horizontal value,
+    // the next row for the vertical one. Bit 13 enables an entry for BG1, bit 14 for BG2.
+    fn opt_scroll(ppu: &PPU, bg: usize, (hofs, vofs): (usize, usize), x: usize) -> (usize, usize) {
+        let col = (x + (hofs & 7)) >> 3;
+        if col == 0 {
+            return (hofs, vofs);
+        }
+
+        // BG3 scroll picks the column and row of the entries; its low 3 bits are ignored.
+        let (bg3_hofs, bg3_vofs) = ppu.regs.bg_scroll(2);
+        let bx = (bg3_hofs & !7) + (col - 1) * 8;
+        let by = bg3_vofs & !7;
+
+        let base = ppu.regs.bg_tilemap_addr(2);
+        let size = ppu.regs.bg_tilemap_size(2);
+        let tile_px = if ppu.regs.bg_tile16(2) { 16 } else { 8 };
+        let h_entry = Self::tilemap_entry(ppu, base, size, tile_px, bx, by) as usize;
+        let v_entry = Self::tilemap_entry(ppu, base, size, tile_px, bx, by + 8) as usize;
+
+        let enable = 0x2000 << bg;
+        // The horizontal value keeps the fine scroll (low 3 bits) of the BG.
+        let h = if h_entry & enable != 0 {
+            (h_entry & 0x03F8) | (hofs & 7)
+        } else {
+            hofs
+        };
+        let v = if v_entry & enable != 0 {
+            v_entry & 0x03FF
+        } else {
+            vofs
+        };
+        (h, v)
     }
 
     /// Returns the color index of pixel (`x`, `y`) in the tile at `tile_word_base`.

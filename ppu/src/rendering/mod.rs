@@ -4,6 +4,8 @@
 pub mod mode_0;
 /// BG Mode 1 renderer.
 pub mod mode_1;
+/// BG Mode 2 renderer.
+pub mod mode_2;
 /// BG Mode 3 renderer.
 pub mod mode_3;
 /// BG Mode 7 renderer.
