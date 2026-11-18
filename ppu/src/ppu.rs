@@ -575,6 +575,11 @@ impl PPU {
 
             self.update_mosaic_vcounter();
 
+            // At the start of V-Blank, the internal OAM address goes back to OAMADD
+            if kind == ScanlineKind::VBlankStart && !self.force_blank() {
+                self.oam.write_addr(self.regs.oamadd);
+            }
+
             // STAT77 overflow flags: cleared at the end of V-Blank, then accumulated
             // over the visible lines. Force blank disables sprite evaluation: no update, no clear.
             if !self.force_blank() {
@@ -1608,6 +1613,47 @@ mod tests {
         hide_all_sprites(&mut ppu);
         advance_to_scanline_start(&mut ppu, 0);
         assert!(ppu.oam.range_over);
+    }
+
+    // ============================================================
+    // OAM address reload
+    // ============================================================
+
+    // At the start of V-Blank, the internal OAM address goes back to OAMADD (word 0 here).
+    #[test]
+    fn test_oam_address_reloaded_at_vblank() {
+        let mut ppu = PPU::new();
+        ppu.write(0x2102, 0x00);
+        ppu.write(0x2103, 0x00);
+        ppu.write(0x2104, 0x11);
+        ppu.write(0x2104, 0x22); // internal address is now word 1
+
+        advance_to_scanline_start(&mut ppu, VBLANK_START_LINE);
+        ppu.write(0x2104, 0x33);
+        ppu.write(0x2104, 0x44); // written at word 0 again
+
+        ppu.write(0x2102, 0x00);
+        ppu.write(0x2103, 0x00);
+        assert_eq!(ppu.read(0x2138, 0), 0x33);
+    }
+
+    // No reload during force blank: the next write goes on at word 1.
+    #[test]
+    fn test_oam_address_not_reloaded_in_force_blank() {
+        let mut ppu = PPU::new();
+        ppu.write(0x2100, 0x80); // force blank
+        ppu.write(0x2102, 0x00);
+        ppu.write(0x2103, 0x00);
+        ppu.write(0x2104, 0x11);
+        ppu.write(0x2104, 0x22);
+
+        advance_to_scanline_start(&mut ppu, VBLANK_START_LINE);
+        ppu.write(0x2104, 0x33);
+        ppu.write(0x2104, 0x44);
+
+        ppu.write(0x2102, 0x00);
+        ppu.write(0x2103, 0x00);
+        assert_eq!(ppu.read(0x2138, 0), 0x11);
     }
 
     // ============================================================

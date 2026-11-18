@@ -39,6 +39,18 @@ impl Renderer {
         let (sprites, _time_over, _range_over) =
             ppu.oam.eval_sprites_for_scanline(y, objsel, oamadd, obj_interlace);
 
+        // DEBUG
+        if y == 90 && ppu.frame % 60 == 0 {
+            eprintln!("frame {} OBJSEL {:#04X}", ppu.frame, objsel);
+            for &(idx, sprite) in sprites.iter() {
+                eprintln!(
+                    "  sprite {idx}: x {} y {} tile {:#04X} chr_base {:#06X} large {} palette {} prio {}",
+                    sprite.x, sprite.y, sprite.tile, sprite.chr_base, sprite.large,
+                    sprite.palette, sprite.priority
+                );
+            }
+        }
+
         // OBJ line: one pixel per column, before comparison with the backgrounds.
         let mut obj_line: [Option<ObjPixel>; SCREEN_WIDTH] = [None; SCREEN_WIDTH];
 
