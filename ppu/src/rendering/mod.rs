@@ -8,6 +8,8 @@ pub mod mode_1;
 pub mod mode_2;
 /// BG Mode 3 renderer.
 pub mod mode_3;
+/// BG Mode 4 renderer.
+pub mod mode_4;
 /// BG Mode 7 renderer.
 pub mod mode_7;
 /// Scanline composition and framebuffer.
