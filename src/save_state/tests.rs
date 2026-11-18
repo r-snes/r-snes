@@ -77,7 +77,7 @@ const HDMA_TABLE: &[u8] = &[0x10, 0x0F, 0x10, 0x08, 0x00];
 
 /// A LoROM that keeps the console busy: DMA, HDMA, NMI, multiplier, APU
 /// port, CGRAM writes and WAI, every frame.
-fn test_rom() -> Vec<u8> {
+pub(super) fn test_rom() -> Vec<u8> {
     let mut program = [SETUP, LOOP].concat();
     let bra_offset = SETUP.len() as isize - (program.len() as isize + 2);
     program.extend([0x80, i8::try_from(bra_offset).unwrap() as u8]); // BRA loop
@@ -91,12 +91,12 @@ fn test_rom() -> Vec<u8> {
     rom
 }
 
-fn console(rom: &[u8]) -> RSnesCore {
+pub(super) fn console(rom: &[u8]) -> RSnesCore {
     let (path, _dir) = create_temp_rom(rom);
     RSnesCore::load_rom(&path).unwrap()
 }
 
-fn run(core: &mut RSnesCore, master_cycles: u64) {
+pub(super) fn run(core: &mut RSnesCore, master_cycles: u64) {
     for _ in 0..master_cycles {
         core.update();
     }
@@ -120,7 +120,7 @@ fn copy_state(from: &RSnesCore, to: &mut RSnesCore) {
 }
 
 /// The saved part of a console, as written in a file.
-fn saved_part(core: &RSnesCore) -> Vec<u8> {
+pub(super) fn saved_part(core: &RSnesCore) -> Vec<u8> {
     core.encode_core(Vec::new()).unwrap()
 }
 
@@ -181,13 +181,13 @@ fn mid_instruction(core: &RSnesCore) -> bool {
 
 /// An emulator running `core` without a plugin.
 #[cfg(feature = "plugins")]
-fn emu(core: RSnesCore) -> RSnesEmu {
+pub(super) fn emu(core: RSnesCore) -> RSnesEmu {
     RSnesEmu::new_with_plugin(core, None).unwrap()
 }
 
 /// An emulator running `core`.
 #[cfg(not(feature = "plugins"))]
-fn emu(core: RSnesCore) -> RSnesEmu {
+pub(super) fn emu(core: RSnesCore) -> RSnesEmu {
     RSnesEmu::new(core)
 }
 

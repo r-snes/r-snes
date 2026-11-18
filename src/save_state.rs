@@ -43,6 +43,7 @@ use std::fmt;
 use std::io;
 use std::time::SystemTime;
 
+pub mod slots;
 #[cfg(test)]
 mod tests;
 
@@ -123,6 +124,11 @@ impl SaveState {
     /// The frame that was on screen when the state was saved.
     pub fn screen(&self) -> &RawFramebuffer {
         &self.core.renderer.presented
+    }
+
+    /// The frame that was on screen when the state was saved, without copying it.
+    pub fn into_screen(self) -> Box<RawFramebuffer> {
+        self.core.renderer.presented
     }
 
     /// Checks the magic text and the version, and reads the info.
