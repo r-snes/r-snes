@@ -3059,7 +3059,6 @@ dependencies = [
  "crc32fast",
  "duplicate",
  "egui-sdl2",
- "flate2",
  "piccolo",
  "piccolo-util",
  "plugins",
