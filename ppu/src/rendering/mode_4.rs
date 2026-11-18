@@ -265,4 +265,74 @@ mod tests {
             );
         }
     }
+
+    // ============================================================
+    // Offset-per-tile
+    // ============================================================
+
+    const BG3_MAP: usize = 0x0C00;
+
+    // BG1 on main: tile 0 (red) everywhere, tile 1 (blue) on the whole column 4 (BG x 32-39)
+    // and on tile (1, 1). BG3 tilemap at 0x0C00, empty.
+    fn make_ppu_opt() -> PPU {
+        let mut ppu = make_ppu_mode4();
+        ppu.write(0x212C, 0x01); // TM: BG1
+        ppu.write(0x2109, 0x0C); // BG3SC: tilemap 0x0C00
+        fill_tilemap(&mut ppu, BG1_MAP, 0x0000);
+        for row in 0..32 {
+            ppu.vram.memory[BG1_MAP + row * 32 + 4] = 0x0001;
+        }
+        ppu.vram.memory[BG1_MAP + 32 + 1] = 0x0001;
+        for row in 0..8 {
+            ppu.vram.memory[BG1_CHR + row] = 0x00FF; // tile 0: color 1
+            ppu.vram.memory[BG1_CHR + 32 + row] = 0xFF00; // tile 1: color 2
+        }
+        set_color(&mut ppu, 1, 0x001F);
+        set_color(&mut ppu, 2, 0x7C00);
+        ppu
+    }
+
+    fn set_bg3_entry(ppu: &mut PPU, col: usize, row: usize, entry: u16) {
+        ppu.vram.memory[BG3_MAP + row * 32 + col] = entry;
+    }
+
+    // Bit 15 clear: horizontal value. Screen x 8 gets HOFS 24 and shows BG x 32.
+    #[test]
+    fn test_opt_horizontal() {
+        let mut ppu = make_ppu_opt();
+        set_bg3_entry(&mut ppu, 0, 0, 0x2000 | 24);
+
+        let r = render(&ppu);
+        assert_eq!(fb_pixel(&r, 0, 0), red());
+        assert_eq!(fb_pixel(&r, 8, 0), blue());
+    }
+
+    // Bit 15 set: vertical value, read on the same row. Screen x 8 gets VOFS 8 (tile row 1).
+    #[test]
+    fn test_opt_vertical() {
+        let mut ppu = make_ppu_opt();
+        set_bg3_entry(&mut ppu, 0, 0, 0x8000 | 0x2000 | 8);
+
+        let r = render(&ppu);
+        assert_eq!(fb_pixel(&r, 0, 0), red());
+        assert_eq!(fb_pixel(&r, 8, 0), blue());
+    }
+
+    // A vertical entry does not move the column horizontally: VOFS 24 alone shows BG x 8.
+    #[test]
+    fn test_opt_one_direction_per_entry() {
+        let mut ppu = make_ppu_opt();
+        set_bg3_entry(&mut ppu, 0, 0, 0x8000 | 0x2000 | 24);
+
+        assert_eq!(fb_pixel(&render(&ppu), 8, 0), red());
+    }
+
+    // Only one row is read: a vertical value on row 1 is ignored.
+    #[test]
+    fn test_opt_reads_one_row() {
+        let mut ppu = make_ppu_opt();
+        set_bg3_entry(&mut ppu, 0, 1, 0x2000 | 8);
+
+        assert_eq!(fb_pixel(&render(&ppu), 8, 0), red());
+    }
 }
