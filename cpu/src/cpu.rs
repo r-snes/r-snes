@@ -110,6 +110,11 @@ impl CPU {
         &self.registers
     }
 
+    /// Public getter to the CPU state
+    pub fn state(&self) -> CPUState {
+        self.state
+    }
+
     /// Public getter to the address bus, needs to be read by the
     /// code managing the CPU for RAM I/O
     pub fn addr_bus(&self) -> &SnesAddress {

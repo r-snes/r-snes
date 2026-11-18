@@ -49,7 +49,7 @@ impl JoypadState {
 /// without anything else: no GUI handles, no additional resources for
 /// plugin execution; just the hardware components.
 pub struct RSnesCore {
-    pub _rom_path: PathBuf,
+    pub rom_path: PathBuf,
     pub bus: Bus,
     pub cpu: CPU,
     pub ppu: PPU,
@@ -61,6 +61,9 @@ pub struct RSnesCore {
     pub dma: Dma,
     pub nmi_line: bool,
     pub joypads: [JoypadState; 2],
+    /// CRC32 of the ROM (without copier header), computed once at load.
+    /// Identifies the game: a save state is only loaded into the same ROM.
+    pub rom_checksum: u32,
 }
 
 /// Snapshot of the loaded ROM's metadata for display in the GUI.
@@ -80,7 +83,7 @@ impl RSnesCore {
     /// Builds a display snapshot of the loaded ROM's metadata.
     pub fn rom_info(&self) -> RomInfo {
         RomInfo {
-            path: self._rom_path.clone(),
+            path: self.rom_path.clone(),
             file_size_kb: self.bus.cart.rom.len() / 1024,
             header: self.bus.cart.header.clone(),
         }
@@ -104,13 +107,14 @@ impl RSnesCore {
 
     pub fn load_rom<P: AsRef<Path>>(rom_path: &P) -> Result<Self, Box<dyn Error>> {
         let bus = Bus::new(rom_path)?;
+        let rom_checksum = crc32fast::hash(&bus.cart.rom);
         let cpu = CPU::poweron();
         let ppu = PPU::new();
         let ppu_renderer = ppu::Renderer::new();
         let apu = Apu::new();
 
         Ok(Self {
-            _rom_path: rom_path.as_ref().to_path_buf().clone(),
+            rom_path: rom_path.as_ref().to_path_buf().clone(),
             bus,
             cpu,
             ppu,
@@ -122,6 +126,7 @@ impl RSnesCore {
             dma: Dma::default(),
             nmi_line: false,
             joypads: Default::default(),
+            rom_checksum,
         })
     }
 
