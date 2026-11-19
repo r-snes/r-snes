@@ -5,6 +5,8 @@ pub mod error;
 pub mod header;
 pub mod sram;
 
+// Also used by the tests of other crates, which enable `test-utils`.
+#[cfg(any(test, feature = "test-utils"))]
 pub mod test_rom;
 
 use crate::bus::AccessSpeed;

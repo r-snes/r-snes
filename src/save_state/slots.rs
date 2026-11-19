@@ -447,6 +447,7 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
 mod tests {
     use super::*;
     use crate::save_state::test_utils::*;
+    use crate::test_utils::{make_rsnes_from, tick_core};
 
     #[test]
     fn game_folder_names_are_cleaned() {
@@ -525,7 +526,7 @@ mod tests {
     #[test]
     fn a_save_updates_its_slot_in_memory() {
         let (mut snes, mut states, _root) = setup();
-        run(&mut snes.core_mut(), 400_000); // more than a frame, so a frame is presented
+        tick_core(&mut snes.core_mut(), 400_000); // more than a frame, so a frame is presented
 
         let slot = states.save(&mut snes).unwrap();
 
@@ -688,7 +689,7 @@ mod tests {
         let (mut snes, mut states, root) = setup();
         let mut other_rom = test_rom();
         other_rom[0x1000] ^= 0xFF; // unused byte
-        let mut other = emu(console(&other_rom));
+        let mut other = emu(make_rsnes_from(&other_rom));
         states.save(&mut other).unwrap();
 
         let before = state_of(&mut snes);
@@ -705,7 +706,7 @@ mod tests {
     fn reopened_slots_have_their_screen_and_size_or_their_error() {
         let (mut snes, mut states, root) = setup();
         // More than a frame, so that a frame is presented.
-        run(&mut snes.core_mut(), 400_000);
+        tick_core(&mut snes.core_mut(), 400_000);
         states.save(&mut snes).unwrap();
         fs::write(states.slot_path(5), b"damaged").unwrap();
 
