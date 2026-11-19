@@ -305,7 +305,7 @@ pub(crate) enum MetaInstruction {
 
     /// Fetch two bytes from the current address bus
     /// (and the current address bus + 1) into the u16
-    /// contained in <tokstream>
+    /// contained in `<tokstream>`
     Fetch16Into(TokenStream),
 
     /// Fetches the operand of the instruction
@@ -316,11 +316,11 @@ pub(crate) enum MetaInstruction {
     Fetch8Imm,
 
     /// Fetch a byte from the address at PB:PC+1, and conditionally increment PC,
-    /// and assign into <tokstream>, similar to [`Fetch8Into`]
+    /// and assign into `<tokstream>`, similar to [`Fetch8Into`](MetaInstruction::Fetch8Into)
     Fetch8ImmInto(TokenStream),
 
     /// Fetch two bytes at PB:PC+1 (and PB:PC+2) into the u16 contained
-    /// in <tokstream>, and conditionally increment PC by two
+    /// in `<tokstream>`, and conditionally increment PC by two
     Fetch16ImmInto(TokenStream),
 
     /// Read a byte from the top of the stack, and update the stack pointer
@@ -332,21 +332,21 @@ pub(crate) enum MetaInstruction {
     PullN8,
 
     /// Read a u8 from the top of the stack, store it in the token
-    /// stream pointed to by <tokstream>, and update the stack pointer
+    /// stream pointed to by `<tokstream>`, and update the stack pointer
     Pull8Into(TokenStream),
 
     /// Read a u8 from the top of the stack, store it in the token
-    /// stream pointed to by <tokstream>, and update the stack pointer
+    /// stream pointed to by `<tokstream>`, and update the stack pointer
     ///
     /// See note 2 for differences with Pull8Into
     PullN8Into(TokenStream),
 
     /// Read a u16 from the top of the stack, store it in the token
-    /// stream pointed to by <tokstream>, and update the stack pointer
+    /// stream pointed to by `<tokstream>`, and update the stack pointer
     Pull16Into(TokenStream),
 
     /// Read a u16 from the top of the stack, store it in the token
-    /// stream pointed to by <tokstream>, and update the stack pointer
+    /// stream pointed to by `<tokstream>`, and update the stack pointer
     ///
     /// See note 2 for differences with Pull16Into
     PullN16Into(TokenStream),
@@ -354,31 +354,31 @@ pub(crate) enum MetaInstruction {
     /// Generates a Pull8Into or a Pull16Into depending on operand size
     PullOpInto(TokenStream),
 
-    /// Write the u8 stored in <tokstream> at the current address bus
+    /// Write the u8 stored in `<tokstream>` at the current address bus
     Write8(TokenStream),
 
-    /// Write the u16 stored in <tokstream> at the current address bus
+    /// Write the u16 stored in `<tokstream>` at the current address bus
     Write16(TokenStream),
 
     /// Writes the operand of the instruction
     /// (variable width must be set with SetOperandSize)
     WriteOperand(TokenStream),
 
-    /// Write the u8 stored in <tokenstream> at the top of the stack,
+    /// Write the u8 stored in `<tokenstream>` at the top of the stack,
     /// and update the stack pointer
     Push8(TokenStream),
 
-    /// Write the u8 stored in <tokenstream> at the top of the stack,
+    /// Write the u8 stored in `<tokenstream>` at the top of the stack,
     /// and update the stack pointer
     ///
     /// See note 2 for differences with Push8
     PushN8(TokenStream),
 
-    /// Write the u16 stored in <tokenstream> at the top of the stack,
+    /// Write the u16 stored in `<tokenstream>` at the top of the stack,
     /// and update the stack pointer
     Push16(TokenStream),
 
-    /// Write the u16 stored in <tokenstream> at the top of the stack,
+    /// Write the u16 stored in `<tokenstream>` at the top of the stack,
     /// and update the stack pointer
     ///
     /// See note 2 for differences with Push16
@@ -412,7 +412,7 @@ pub(crate) enum MetaInstruction {
 impl MetaInstruction {
     /// Conversion from a Token iterator
     ///
-    /// The input [`value`] contains all tokens between (excluding)
+    /// The input `value` contains all tokens between (excluding)
     /// the `meta` identifier (which indicates the start of a meta-instruction)
     /// and the semicolon (which indicates the end of the meta-instruction)
     ///
@@ -1130,7 +1130,7 @@ where
 type MetaInstrExpansion = VarWidth<InstrBody>;
 
 /// Type resulting from the parsing of the token stream passed
-/// as parameter to the [`cpu_instr`] proc macro.
+/// as parameter to the [`cpu_instr`](crate::cpu_instr) proc macro.
 pub(crate) struct Instr {
     /// Name of the instruction (e.g. clv, inx, ldx_imm, jmp_abs)
     pub name: Ident,
@@ -1270,8 +1270,8 @@ impl AddAssign<TokenTree> for InstrBody {
 
 // impl which allows us to use +=
 impl AddAssign for InstrBody {
-    /// Concatenates an InstrBody to [`self`].
-    /// [`self`] remains first after concatenation. [`self.post_instr`] will be
+    /// Concatenates an InstrBody to `self`.
+    /// `self` remains first after concatenation. `self.post_instr` will be
     /// prepended to the RHS's first cycle, or to the RHS's post_instr
     /// if it doesn't have any cycles.
     fn add_assign(&mut self, mut other: Self) {
