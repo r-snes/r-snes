@@ -777,4 +777,24 @@ mod tests {
         let cartridge = lorom_with_sram(0x03);
         assert_eq!(cartridge.just_read(snes_addr!(0x00:0x6000)), None);
     }
+
+    #[test]
+    fn test_sa1_rom_loads_and_reports_its_chip() {
+        use crate::cartridge::header::cartridge_hardware::Coprocessor;
+        use crate::constants::{
+            HEADER_ROM_HARDWARE_OFFSET, HEADER_SPEED_MAP_OFFSET, LOROM_HEADER_OFFSET,
+        };
+
+        let mut data = create_valid_lorom(0x10000);
+        data[LOROM_HEADER_OFFSET + HEADER_SPEED_MAP_OFFSET] = 0x23;
+        data[LOROM_HEADER_OFFSET + HEADER_ROM_HARDWARE_OFFSET] = 0x35;
+        let (path, _dir) = create_temp_rom(&data);
+
+        let cartridge = Cartridge::load_from_file(path).unwrap();
+        assert_eq!(cartridge.map, MappingMode::LoRom);
+        assert_eq!(
+            cartridge.header.hardware.coprocessor,
+            Some(Coprocessor::SA1)
+        );
+    }
 }
