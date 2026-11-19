@@ -1,6 +1,7 @@
 //! Provides `Cartridge`, which holds the game ROM and the S-RAM, and
 //! decodes the addresses to the chips of the cartridge board
 
+pub mod coprocessor;
 pub mod error;
 pub mod header;
 pub mod sram;
@@ -8,8 +9,10 @@ pub mod sram;
 pub mod test_rom;
 
 use crate::bus::AccessSpeed;
+use crate::cartridge::coprocessor::{CartridgeMemory, CoprocessorChip};
 use crate::cartridge::error::RomError;
 use crate::cartridge::header::RomHeader;
+use crate::cartridge::header::cartridge_hardware::Coprocessor;
 use crate::cartridge::header::mapping_mode::MappingMode;
 use crate::cartridge::sram::Sram;
 use crate::constants::{BANK_SIZE, COPIER_HEADER_SIZE, LOROM_BANK_SIZE};
@@ -30,7 +33,9 @@ use std::path::Path;
 /// Some cartridges may contain a 512-byte copier header at the start of the file,
 /// which is removed on load.
 /// ROM data is read-only and any write attempts are ignored.
-#[derive(PartialEq)]
+///
+/// When the board has an emulated coprocessor, it lives in `chip` and gets the
+/// first chance to answer every access, see `coprocessor::CoprocessorChip`.
 pub struct Cartridge {
     /// ROM data, without the copier header
     pub rom: Vec<u8>,
@@ -40,6 +45,8 @@ pub struct Cartridge {
     pub header: RomHeader,
     /// Static RAM of the cartridge (empty if the cartridge has none)
     pub sram: Sram,
+    /// Emulated coprocessor, `None` if the board has none or it cannot run
+    pub chip: Option<Box<dyn CoprocessorChip>>,
 }
 
 /// Which chip on the cartridge board responds to a given address.
@@ -95,6 +102,7 @@ impl Cartridge {
             rom: rom_data,
             map: map_mode,
             sram: Sram::new(&header),
+            chip: coprocessor::create(&header),
             header,
         })
     }
@@ -213,6 +221,68 @@ impl Cartridge {
 }
 
 impl Cartridge {
+    /// Coprocessor declared in the header that has no emulated chip, if any
+    ///
+    /// A ROM in this case still runs, but every access to the chip
+    /// falls through to the ROM / S-RAM / open bus.
+    pub fn missing_coprocessor(&self) -> Option<Coprocessor> {
+        match self.chip {
+            Some(_) => None,
+            None => self.header.hardware.coprocessor,
+        }
+    }
+
+    /// Lets the coprocessor answer a read, `None` if there is no chip or it does not respond
+    ///
+    /// The bus calls this directly for the I/O range (`$2000-$5FFF`), where
+    /// some chips have their registers; `Cartridge::read` calls it for the rest.
+    pub fn chip_read(&mut self, addr: SnesAddress) -> Option<(u8, AccessSpeed)> {
+        let chip = self.chip.as_mut()?;
+        chip.read(
+            addr,
+            CartridgeMemory {
+                rom: &self.rom,
+                sram: &mut self.sram,
+                map: self.map,
+            },
+        )
+    }
+
+    /// Lets the coprocessor answer a write, `None` if there is no chip or it does not respond
+    pub fn chip_write(&mut self, addr: SnesAddress, value: u8) -> Option<AccessSpeed> {
+        let chip = self.chip.as_mut()?;
+        chip.write(
+            addr,
+            value,
+            CartridgeMemory {
+                rom: &self.rom,
+                sram: &mut self.sram,
+                map: self.map,
+            },
+        )
+    }
+
+    /// Advances the coprocessor (if any) by `master_cycles` master clock cycles
+    pub fn step_chip(&mut self, master_cycles: u32) {
+        if let Some(chip) = self.chip.as_mut() {
+            chip.step(master_cycles);
+        }
+    }
+
+    /// Whether the coprocessor (if any) asserts its IRQ line
+    pub fn chip_irq(&self) -> bool {
+        self.chip.as_ref().is_some_and(|chip| chip.irq())
+    }
+
+    /// Resets the coprocessor (if any)
+    pub fn reset_chip(&mut self) {
+        if let Some(chip) = self.chip.as_mut() {
+            chip.reset();
+        }
+    }
+}
+
+impl Cartridge {
     /// Access speed of the ROM at the given `SnesAddress`
     ///
     /// Banks `0x80–0xFF` are fast when `memsel` (MEMSEL bit 0) is set,
@@ -226,9 +296,14 @@ impl Cartridge {
     }
     /// Reads a byte from the cartridge at the given `SnesAddress`.
     ///
+    /// The coprocessor answers first if it responds at `addr`.
     /// Returns `None` when no chip on the board responds, leaving the caller
     /// to return open bus.
-    pub fn read(&self, addr: SnesAddress, memsel: bool) -> (Option<u8>, AccessSpeed) {
+    pub fn read(&mut self, addr: SnesAddress, memsel: bool) -> (Option<u8>, AccessSpeed) {
+        if let Some((value, speed)) = self.chip_read(addr) {
+            return (Some(value), speed);
+        }
+
         let rom_speed = Self::rom_speed(addr, memsel);
         match self.decode(addr) {
             CartridgeTarget::Rom(offset) => (self.rom.get(offset).copied(), rom_speed),
@@ -238,7 +313,13 @@ impl Cartridge {
     }
 
     /// Writes a byte to the cartridge at the given `SnesAddress`. Writes to the ROM are ignored.
+    ///
+    /// The coprocessor answers first if it responds at `addr`.
     pub fn write(&mut self, addr: SnesAddress, value: u8, memsel: bool) -> AccessSpeed {
+        if let Some(speed) = self.chip_write(addr, value) {
+            return speed;
+        }
+
         match self.decode(addr) {
             CartridgeTarget::Sram(linear) => {
                 self.sram.write(linear, value);
@@ -254,18 +335,21 @@ mod tests {
     use super::*;
     use crate::cartridge::header::mapping_mode::MappingMode;
     use crate::cartridge::test_rom::*;
-    use crate::constants::{COPIER_HEADER_SIZE, HIROM_BANK_SIZE, LOROM_BANK_SIZE};
+    use crate::constants::{
+        COPIER_HEADER_SIZE, HEADER_ROM_HARDWARE_OFFSET, HIROM_BANK_SIZE, LOROM_BANK_SIZE,
+        LOROM_HEADER_OFFSET,
+    };
     use common::snes_address::snes_addr;
 
     /// Helper trait for tests which just want to read/write a byte without caring
     /// about access speeds
     trait TestHelper {
-        fn just_read(&self, addr: SnesAddress) -> Option<u8>;
+        fn just_read(&mut self, addr: SnesAddress) -> Option<u8>;
         fn just_write(&mut self, addr: SnesAddress, value: u8);
     }
 
     impl TestHelper for Cartridge {
-        fn just_read(&self, addr: SnesAddress) -> Option<u8> {
+        fn just_read(&mut self, addr: SnesAddress) -> Option<u8> {
             self.read(addr, false).0
         }
         fn just_write(&mut self, addr: SnesAddress, value: u8) {
@@ -278,7 +362,7 @@ mod tests {
         let data = create_valid_lorom(0x10000);
         let (path, _dir) = create_temp_rom(&data);
 
-        let cartridge = Cartridge::load_from_file(path).unwrap();
+        let mut cartridge = Cartridge::load_from_file(path).unwrap();
         assert_eq!(cartridge.map, MappingMode::LoRom);
         assert_eq!(cartridge.just_read(snes_addr!(0:0x8000)).unwrap(), 0);
     }
@@ -288,7 +372,7 @@ mod tests {
         let data = create_valid_hirom(0x10000);
         let (path, _dir) = create_temp_rom(&data);
 
-        let cartridge = Cartridge::load_from_file(path).unwrap();
+        let mut cartridge = Cartridge::load_from_file(path).unwrap();
         assert_eq!(cartridge.map, MappingMode::HiRom);
         assert_eq!(cartridge.just_read(snes_addr!(0:0x8000)).unwrap(), 0);
     }
@@ -768,14 +852,99 @@ mod tests {
     #[test]
     fn test_sram_powers_up_uninitialized() {
         // Games detect a fresh chip via a magic value or checksum.
-        let cartridge = lorom_with_sram(0x03);
+        let mut cartridge = lorom_with_sram(0x03);
         assert_eq!(cartridge.just_read(snes_addr!(0x70:0x0000)).unwrap(), 0xFF);
     }
 
     #[test]
     fn test_read_unmapped_returns_none() {
-        let cartridge = lorom_with_sram(0x03);
+        let mut cartridge = lorom_with_sram(0x03);
         assert_eq!(cartridge.just_read(snes_addr!(0x00:0x6000)), None);
+    }
+
+    // --- coprocessor plumbing -------------------------------------------------
+
+    use crate::cartridge::coprocessor::test_chip::TestChip;
+
+    fn lorom_with_test_chip(irq_after: u64) -> (Cartridge, std::rc::Rc<std::cell::Cell<u64>>) {
+        let mut cartridge = lorom_with_sram(0x03);
+        let (chip, cycles) = TestChip::new(irq_after);
+        cartridge.chip = Some(Box::new(chip));
+        (cartridge, cycles)
+    }
+
+    #[test]
+    fn test_no_coprocessor_means_nothing_missing() {
+        let cartridge = lorom_with_sram(0x03);
+        assert!(cartridge.chip.is_none());
+        assert_eq!(cartridge.missing_coprocessor(), None);
+    }
+
+    #[test]
+    fn test_unemulated_coprocessor_is_reported_missing() {
+        let mut data = create_valid_lorom(0x10000);
+        data[LOROM_HEADER_OFFSET + HEADER_ROM_HARDWARE_OFFSET] = 0x25; // OBC1 + RAM + battery
+        let (path, _dir) = create_temp_rom(&data);
+        let cartridge = Cartridge::load_from_file(path).unwrap();
+
+        assert!(cartridge.chip.is_none());
+        assert_eq!(cartridge.missing_coprocessor(), Some(Coprocessor::OBC1));
+    }
+
+    #[test]
+    fn test_chip_answers_before_sram() {
+        let (mut cartridge, _) = lorom_with_test_chip(u64::MAX);
+
+        // $6000 is unmapped on a plain LoROM board, the chip claims it
+        assert_eq!(
+            cartridge.read(snes_addr!(0x00:0x6000), false),
+            (Some(0), AccessSpeed::Slow)
+        );
+        // Addresses the chip does not claim still reach the S-RAM / ROM
+        cartridge.just_write(snes_addr!(0x70:0x0000), 0x42);
+        assert_eq!(cartridge.just_read(snes_addr!(0x70:0x0000)), Some(0x42));
+        assert_eq!(cartridge.just_read(snes_addr!(0x00:0x8000)), Some(0));
+    }
+
+    #[test]
+    fn test_chip_sees_rom() {
+        let (mut cartridge, _) = lorom_with_test_chip(u64::MAX);
+        cartridge.rom[0] = 0x5A;
+
+        assert_eq!(
+            cartridge.chip_write(snes_addr!(0x80:0x2800), 0xFF),
+            Some(AccessSpeed::Fast)
+        );
+        assert_eq!(
+            cartridge.chip_read(snes_addr!(0x80:0x2800)),
+            Some((0x5A, AccessSpeed::Fast))
+        );
+    }
+
+    #[test]
+    fn test_chip_step_irq_and_reset() {
+        let (mut cartridge, cycles) = lorom_with_test_chip(10);
+
+        cartridge.step_chip(9);
+        assert!(!cartridge.chip_irq());
+        cartridge.step_chip(1);
+        assert!(cartridge.chip_irq());
+        assert_eq!(cycles.get(), 10);
+
+        cartridge.reset_chip();
+        assert!(!cartridge.chip_irq());
+        assert_eq!(cycles.get(), 0);
+    }
+
+    #[test]
+    fn test_chip_helpers_without_chip() {
+        let mut cartridge = lorom_with_sram(0x03);
+
+        assert_eq!(cartridge.chip_read(snes_addr!(0:0x2800)), None);
+        assert_eq!(cartridge.chip_write(snes_addr!(0:0x2800), 1), None);
+        cartridge.step_chip(100);
+        cartridge.reset_chip();
+        assert!(!cartridge.chip_irq());
     }
 
     #[test]

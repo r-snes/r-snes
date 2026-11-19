@@ -63,16 +63,21 @@ impl Bus {
 
     duplicate! {
         [
-            DUP_method DUP_parameters                            DUP_return_t        DUP_method_param DUP_cart                                                                                                        DUP_doc;
-            [read]     [&mut self, addr: SnesAddress]            [(u8, AccessSpeed)] [addr]           [(|(b, s): (Option<_>, _)|(b.unwrap_or(self.io.open_bus), s))(self.cart.read(addr, self.io.memsel & 1 != 0))]   ["Reads a byte at the given `SnesAddress`, along with the access speed.\n\nReturns open bus if no cartridge chip responds."];
-            [write]    [&mut self, addr: SnesAddress, value: u8] [AccessSpeed]       [addr, value]    [self.cart.write(addr, value, self.io.memsel & 1 != 0)]                                                         ["Writes a byte at the given `SnesAddress`, and returns the access speed."];
+            DUP_method DUP_parameters                            DUP_return_t        DUP_method_param DUP_chip                               DUP_cart                                                                                                        DUP_doc;
+            [read]     [&mut self, addr: SnesAddress]            [(u8, AccessSpeed)] [addr]           [self.cart.chip_read(addr)]            [(|(b, s): (Option<_>, _)|(b.unwrap_or(self.io.open_bus), s))(self.cart.read(addr, self.io.memsel & 1 != 0))]   ["Reads a byte at the given `SnesAddress`, along with the access speed.\n\nReturns open bus if no cartridge chip responds."];
+            [write]    [&mut self, addr: SnesAddress, value: u8] [AccessSpeed]       [addr, value]    [self.cart.chip_write(addr, value)]    [self.cart.write(addr, value, self.io.memsel & 1 != 0)]                                                         ["Writes a byte at the given `SnesAddress`, and returns the access speed."];
         ]
         #[doc = DUP_doc]
         pub fn DUP_method(DUP_parameters, ppu: &mut PPU, apu: &mut Apu) -> DUP_return_t {
             match addr.bank {
                 0x00..=0x3F | 0x80..=0xBF => match addr.addr {
                     0x0000..0x2000 => self.wram.DUP_method(DUP_method_param),
-                    0x2000..0x6000 => self.io.DUP_method(DUP_method_param, &mut self.wram, ppu, apu),
+                    // Some coprocessors map their registers here (e.g. S-RTC at $2800,
+                    // SA-1 at $2200), so the cartridge chip gets the first chance
+                    0x2000..0x6000 => match DUP_chip {
+                        Some(result) => result,
+                        None => self.io.DUP_method(DUP_method_param, &mut self.wram, ppu, apu),
+                    },
                     0x6000..=0xFFFF => DUP_cart,
                 },
                 0x7E..=0x7F => self.wram.DUP_method(DUP_method_param),
@@ -238,5 +243,60 @@ mod tests {
             "write went to the DMA register"
         );
         assert_eq!(apu.memory.port_in[0], 0x99, "port write stayed in the APU");
+    }
+
+    // --- coprocessor routing --------------------------------------------------
+
+    use crate::cartridge::coprocessor::test_chip::TestChip;
+
+    fn bus_with_test_chip() -> Bus {
+        let rom_data = create_valid_lorom(0x20000);
+        let (rom_path, _dir) = create_temp_rom(&rom_data);
+        let mut bus = Bus::new(&rom_path).unwrap();
+        bus.cart.chip = Some(Box::new(TestChip::new(u64::MAX).0));
+        bus
+    }
+
+    #[test]
+    fn test_chip_register_in_io_range_shadows_io() {
+        let (mut ppu, mut apu) = init_extern_components();
+        let mut bus = bus_with_test_chip();
+        let addr = snes_addr!(0x00:0x2800);
+
+        assert_eq!(bus.write(addr, 0x42, &mut ppu, &mut apu), AccessSpeed::Fast);
+        assert_eq!(
+            bus.read(addr, &mut ppu, &mut apu),
+            (0x42, AccessSpeed::Fast)
+        );
+        // mirrored in the high banks like the real I/O range
+        assert_eq!(
+            bus.read(snes_addr!(0xBF:0x2800), &mut ppu, &mut apu).0,
+            0x42
+        );
+    }
+
+    #[test]
+    fn test_chip_register_in_cart_range() {
+        let (mut ppu, mut apu) = init_extern_components();
+        let mut bus = bus_with_test_chip();
+        bus.cart.step_chip(7);
+
+        assert_eq!(
+            bus.read(snes_addr!(0x00:0x6000), &mut ppu, &mut apu),
+            (7, AccessSpeed::Slow)
+        );
+    }
+
+    #[test]
+    fn test_io_unaffected_where_chip_does_not_respond() {
+        let (mut ppu, mut apu) = init_extern_components();
+        let mut bus = bus_with_test_chip();
+
+        // Same check as `test_io_read_write_through_bus`, with a chip present
+        bus.io.open_bus = 0x20;
+        let addr = snes_addr!(0:0x5000);
+        assert_eq!(bus.read(addr, &mut ppu, &mut apu).0, 0x20);
+        bus.write(addr, 0x40, &mut ppu, &mut apu);
+        assert_eq!(bus.read(addr, &mut ppu, &mut apu).0, 0x40);
     }
 }
