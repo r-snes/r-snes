@@ -61,9 +61,14 @@ impl SpeedAndMappingMode {
     ///     A SpeedAndMappingMode struct which contains the rom speed and the mapping mode,
     ///     or `None` if the mapping mode is unknown
     pub fn from_byte(byte: u8) -> Option<SpeedAndMappingMode> {
+        // Coprocessor boards use their own map modes. Until their chip
+        // brings its own memory map, they are mapped like the closest
+        // standard layout, so the ROM loads and the chip can be detected.
         let mapping_mode = match byte & 0x0F {
-            0x0 => MappingMode::LoRom,
-            0x1 => MappingMode::HiRom,
+            // $x2: S-DD1, $x3: SA-1
+            0x0 | 0x2 | 0x3 => MappingMode::LoRom,
+            // $xA: SPC7110 ($x5, ExHiROM, is not supported: it needs its own layout)
+            0x1 | 0xA => MappingMode::HiRom,
             _ => return None,
         };
 
@@ -95,11 +100,16 @@ impl MappingMode {
         // Try HiROM header
         let hirom_score = Self::score_header(rom_data, HIROM_HEADER_OFFSET);
 
-        match lorom_score.cmp(&hirom_score) {
-            Ordering::Greater => Some(MappingMode::LoRom),
-            Ordering::Less => Some(MappingMode::HiRom),
-            Ordering::Equal => None,
-        }
+        let mode = match lorom_score.cmp(&hirom_score) {
+            Ordering::Greater => MappingMode::LoRom,
+            Ordering::Less => MappingMode::HiRom,
+            Ordering::Equal => return None,
+        };
+
+        // The header found must also declare a supported map mode
+        // (e.g. ExHiROM is not), otherwise the ROM can't be loaded
+        let map_byte = rom_data[mode.get_corresponding_header_offset() + HEADER_SPEED_MAP_OFFSET];
+        SpeedAndMappingMode::from_byte(map_byte).map(|_| mode)
     }
 
     /// Returns the offset in the ROM where the header for this mapping mode is stored.
@@ -213,8 +223,46 @@ mod tests {
     }
 
     #[test]
+    fn test_from_byte_coprocessor_mapping_modes() {
+        let mappings = [
+            (0x32, MappingMode::LoRom), // S-DD1
+            (0x23, MappingMode::LoRom), // SA-1
+            (0x3A, MappingMode::HiRom), // SPC7110
+        ];
+        for (byte, expected) in mappings {
+            assert_eq!(
+                SpeedAndMappingMode::from_byte(byte).unwrap().mapping_mode,
+                expected
+            );
+        }
+    }
+
+    #[test]
     fn test_from_byte_invalid_mapping_mode() {
-        assert!(SpeedAndMappingMode::from_byte(0x02).is_none());
+        for byte in [0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0B, 0x0F] {
+            assert!(
+                SpeedAndMappingMode::from_byte(byte).is_none(),
+                "{byte:#04X}"
+            );
+        }
+    }
+
+    #[test]
+    fn exhirom_is_not_detected() {
+        // a HiROM header that declares ExHiROM ($35)
+        let mut rom = create_valid_hirom(HIROM_BANK_SIZE);
+        rom[HIROM_HEADER_OFFSET + HEADER_SPEED_MAP_OFFSET] = 0x35;
+        assert_eq!(MappingMode::detect_rom_mapping(&rom), None);
+    }
+
+    #[test]
+    fn detect_sa1_rom() {
+        let mut rom = create_valid_lorom(HIROM_BANK_SIZE);
+        rom[LOROM_HEADER_OFFSET + HEADER_SPEED_MAP_OFFSET] = 0x23;
+        assert_eq!(
+            MappingMode::detect_rom_mapping(&rom),
+            Some(MappingMode::LoRom)
+        );
     }
 
     #[test]

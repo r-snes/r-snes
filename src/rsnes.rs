@@ -104,6 +104,12 @@ impl RSnesCore {
 
     pub fn load_rom<P: AsRef<Path>>(rom_path: &P) -> Result<Self, Box<dyn Error>> {
         let bus = Bus::new(rom_path)?;
+        if let Some(warning) = &bus.cart.chip_warning {
+            eprintln!("warning: {warning}");
+        }
+        if let Some(note) = &bus.cart.chip_note {
+            eprintln!("note: {note}");
+        }
         let cpu = CPU::poweron();
         let ppu = PPU::new();
         let ppu_renderer = ppu::Renderer::new();
@@ -132,6 +138,8 @@ impl RSnesCore {
 
         self.apu.reset();
         self.apu_cycle_debt = 0;
+
+        self.bus.cart.reset_chip();
     }
 
     /// This function will be called every master cycle, it will update the
@@ -140,6 +148,7 @@ impl RSnesCore {
         self.sync_controllers();
         self.update_ppu_cycles();
         self.update_apu_cycles();
+        self.bus.cart.step_chip(1);
 
         self.bus.io.step_auto_joypad();
         self.poll_hdma_start();
@@ -173,7 +182,9 @@ impl RSnesCore {
             return;
         }
 
-        match self.cpu.cycle_with_irqb(!self.bus.io.timeup_flag()) {
+        // IRQB is active low: the H/V timer and the cartridge chip share the line
+        let irq = self.bus.io.timeup_flag() || self.bus.cart.chip_irq();
+        match self.cpu.cycle_with_irqb(!irq) {
             CycleResult::Internal => {
                 self.cpu_master_cycles_to_wait = 6; // TODO : Confirm internal cpu cycle is 6 master cycles
             }
@@ -509,6 +520,21 @@ mod tests {
         rsnes.cpu_master_cycles_to_wait = 0;
 
         assert_eq!(rsnes.bus.wram.read(snes_addr!(0:0x1234)).0, 0x42);
+    }
+
+    #[test]
+    fn update_steps_the_coprocessor_once_per_master_cycle() {
+        let mut rsnes = TestRsnesCore::new();
+        let (chip, cycles) = bus::cartridge::coprocessor::test_chip::TestChip::new(u64::MAX);
+        rsnes.bus.cart.chip = Some(Box::new(chip));
+
+        for _ in 0..100 {
+            rsnes.update();
+        }
+        assert_eq!(cycles.get(), 100);
+
+        rsnes.reset();
+        assert_eq!(cycles.get(), 0);
     }
 
     #[test]

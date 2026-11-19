@@ -119,6 +119,7 @@ pub fn rom_info(ctx: &egui::Context, area: egui::Rect, open: &mut bool, info: Op
                 rom_speed,
                 mapping_mode,
                 hardware,
+                chipset_subtype: _,
                 rom_size,
                 ram_size,
                 country,
@@ -267,6 +268,27 @@ pub fn error_box(ctx: &egui::Context, area: egui::Rect, error: &mut Option<Box<d
 
     if !open {
         *error = None;
+    }
+}
+
+/// Warning window, e.g. when the loaded ROM needs an unsupported coprocessor
+pub fn warning_box(ctx: &egui::Context, area: egui::Rect, warning: &mut Option<String>) {
+    let Some(message) = warning else {
+        return;
+    };
+    let mut open = true;
+    egui::Window::new("Warning")
+        .constrain_to(area)
+        .open(&mut open)
+        .resizable(false)
+        .collapsible(false)
+        .default_width(280.0)
+        .show(ctx, |ui| {
+            ui.label(message.as_str());
+        });
+
+    if !open {
+        *warning = None;
     }
 }
 
