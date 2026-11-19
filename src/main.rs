@@ -18,7 +18,7 @@ mod test_utils;
 
 use crate::{
     audio::GameAudio,
-    gui::{Gui, GuiFrameData, RSnesEvent, SnesButton},
+    gui::{Gui, GuiFrameData, RSnesEvent, SlotAction, SnesButton},
     rsnes::{RSnesCore, RSnesEmu},
     save_state::{SaveStateError, slots::GameSaveStates},
 };
@@ -29,6 +29,7 @@ use clap::Parser;
 #[cfg(feature = "plugins")]
 use plugins::plugin::Plugin;
 use std::{
+    fs, io,
     path::PathBuf,
     time::{Duration, Instant},
 };
@@ -60,11 +61,54 @@ fn with_save_states<T>(
 fn report(gui: &mut Gui, result: Result<String, SaveStateError>) {
     match result {
         Ok(text) => gui.notify(text),
-        Err(error @ (SaveStateError::NoSaveState | SaveStateError::NothingToUndo)) => {
+        Err(
+            error @ (SaveStateError::NoSaveState
+            | SaveStateError::NothingToUndo
+            | SaveStateError::SlotLocked
+            | SaveStateError::AllSlotsLocked),
+        ) => {
             gui.notify(error.to_string());
         }
         Err(error) => gui.pass_error(Box::new(error)),
     }
+}
+
+/// Runs an action chosen in the save state window. Returns the message to
+/// show.
+fn run_slot_action(
+    states: &mut GameSaveStates,
+    emu: &mut RSnesEmu,
+    action: &SlotAction,
+) -> Result<String, SaveStateError> {
+    Ok(match *action {
+        SlotAction::Load(slot) => {
+            states.load_slot(emu, slot)?;
+            format!("Loaded slot {slot}")
+        }
+        SlotAction::Save(slot) => {
+            states.save_to(emu, slot)?;
+            format!("Saved to slot {slot}")
+        }
+        SlotAction::Delete(slot) => {
+            states.delete(slot)?;
+            format!("Deleted slot {slot}")
+        }
+        SlotAction::Rename(slot, ref name) => {
+            states.rename(slot, name)?;
+            format!("Renamed slot {slot}")
+        }
+        SlotAction::SetLocked(slot, locked) => {
+            states.set_locked(slot, locked)?;
+            let done = if locked { "Locked" } else { "Unlocked" };
+            format!("{done} slot {slot}")
+        }
+        SlotAction::OpenFolder => {
+            // The folder only exists after the first save.
+            fs::create_dir_all(states.folder())?;
+            opener::open(states.folder()).map_err(io::Error::other)?;
+            "Opened the save state folder".to_owned()
+        }
+    })
 }
 
 fn gui_emu_loop(
@@ -139,6 +183,8 @@ fn gui_emu_loop(
         );
         drop(emu_mut);
 
+        // Whether the save state window must show the slots again.
+        let mut slots_changed = false;
         for state_event in events {
             match state_event {
                 RSnesEvent::Quit => break 'emu_loop Some(RSnesEvent::Quit),
@@ -161,6 +207,7 @@ fn gui_emu_loop(
                 RSnesEvent::SaveState => {
                     let result = with_save_states(&mut save_states, |states| states.save(&mut emu));
                     report(gui, result.map(|slot| format!("Saved to slot {slot}")));
+                    slots_changed = true;
                 }
                 RSnesEvent::LoadLatestState => {
                     let result =
@@ -169,15 +216,17 @@ fn gui_emu_loop(
                         audio.reset(gui);
                     }
                     report(gui, result.map(|slot| format!("Loaded slot {slot}")));
+                    slots_changed = true;
                 }
-                RSnesEvent::LoadStateSlot(slot) => {
+                RSnesEvent::SlotAction(action) => {
                     let result = with_save_states(&mut save_states, |states| {
-                        states.load_slot(&mut emu, slot)
+                        run_slot_action(states, &mut emu, &action)
                     });
-                    if result.is_ok() {
+                    if result.is_ok() && matches!(action, SlotAction::Load(_)) {
                         audio.reset(gui);
                     }
-                    report(gui, result.map(|()| format!("Loaded slot {slot}")));
+                    report(gui, result);
+                    slots_changed = true;
                 }
                 RSnesEvent::UndoLoadState => {
                     let result =
@@ -191,11 +240,7 @@ fn gui_emu_loop(
                     let result = with_save_states(&mut save_states, |states| {
                         // The picker shows the folder as it is now.
                         states.refresh();
-                        let used = states.used_slots();
-                        if used.is_empty() {
-                            return Err(SaveStateError::NoSaveState);
-                        }
-                        gui.open_slot_picker(&used);
+                        gui.open_slot_picker(states);
                         Ok(())
                     });
                     if let Err(error) = result {
@@ -210,6 +255,10 @@ fn gui_emu_loop(
                     }
                 }
             }
+        }
+
+        if slots_changed && let Ok(states) = &save_states {
+            gui.refresh_slot_picker(states);
         }
 
         let sleep = audio.pacing_sleep(gui, running, frame_start);

@@ -6,51 +6,120 @@ use egui_sdl2::egui;
 #[cfg(feature = "plugins")]
 use plugins::plugin::Plugin;
 
-/// One used save slot, as the slot picker shows it.
+use super::SlotAction;
+
+/// What a slot of the picker holds.
+pub enum PickerContent {
+    /// No save state.
+    Empty,
+    /// A save state that can be loaded.
+    Saved {
+        created_at: SystemTime,
+        /// Size of the file, in bytes.
+        file_size: u64,
+        /// The saved screen.
+        screen: egui::TextureHandle,
+    },
+    /// A file that can't be loaded.
+    Unreadable {
+        modified_at: SystemTime,
+        /// Why the file can't be loaded.
+        reason: String,
+    },
+}
+
+/// One save slot, as the slot picker shows it.
 pub struct PickerEntry {
     /// Slot number, from 1 to `SLOT_COUNT`.
     pub slot: usize,
-    /// When the slot was written.
-    pub time: SystemTime,
-    /// The saved screen, or why the slot can't be loaded.
-    pub screen: Result<egui::TextureHandle, String>,
+    pub content: PickerContent,
+    /// The slot's name, empty if none.
+    pub name: String,
+    pub locked: bool,
+    /// Whether this is the most recent save.
+    pub latest: bool,
 }
 
-/// The save state picker, open while the user chooses a slot to load.
+impl PickerEntry {
+    /// When the slot was written, `None` if it is empty.
+    pub fn time(&self) -> Option<SystemTime> {
+        match &self.content {
+            PickerContent::Empty => None,
+            PickerContent::Saved { created_at, .. } => Some(*created_at),
+            PickerContent::Unreadable { modified_at, .. } => Some(*modified_at),
+        }
+    }
+}
+
+/// An action of the picker that waits for the user to confirm it.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Confirmation {
+    /// Save over the selected slot.
+    Overwrite,
+    /// Delete the selected slot.
+    Delete,
+}
+
+/// The save state window: every slot of the game, and what the user is
+/// doing with the selected one.
 pub struct SlotPicker {
-    /// The used slots, the most recent first.
+    /// Every slot, by number.
     pub entries: Vec<PickerEntry>,
-    /// Index in `entries` of the entry the keyboard moves.
+    /// Index in `entries` of the selected slot.
     pub selected: usize,
-    /// The slot the user chose, picked up after the egui pass.
-    pub chosen: Option<usize>,
+    /// An action on the selected slot waiting for confirmation.
+    pub confirming: Option<Confirmation>,
+    /// The name being typed for the selected slot.
+    pub new_name: Option<String>,
+    /// The action the user chose, picked up after the egui pass.
+    pub action: Option<SlotAction>,
 }
 
 impl SlotPicker {
     /// Entries per row.
     pub const COLUMNS: usize = 5;
 
-    pub fn new(entries: Vec<PickerEntry>) -> Self {
+    /// A picker on `entries` (which must not be empty), with `selected`
+    /// selected.
+    pub fn new(entries: Vec<PickerEntry>, selected: usize) -> Self {
+        assert!(!entries.is_empty(), "a picker needs slots");
+        let selected = selected.min(entries.len() - 1);
         Self {
             entries,
-            selected: 0,
-            chosen: None,
+            selected,
+            confirming: None,
+            new_name: None,
+            action: None,
+        }
+    }
+
+    pub fn selected_entry(&self) -> &PickerEntry {
+        &self.entries[self.selected]
+    }
+
+    /// Selects an entry, stopping at the last one. Selecting another slot
+    /// cancels a confirmation or a name being typed.
+    pub fn select(&mut self, index: usize) {
+        let index = index.min(self.entries.len() - 1);
+        if index != self.selected {
+            self.selected = index;
+            self.confirming = None;
+            self.new_name = None;
         }
     }
 
     /// Moves the selection by `delta` entries (+1 for a column, +`COLUMNS`
     /// for a row), stopping at the first and last entries.
     pub fn move_selection(&mut self, delta: isize) {
-        let last = self.entries.len().saturating_sub(1);
-        self.selected = self.selected.saturating_add_signed(delta).min(last);
+        self.select(self.selected.saturating_add_signed(delta));
     }
 
-    /// Chooses the selected entry, unless its slot can't be loaded.
-    pub fn choose_selected(&mut self) {
-        if let Some(entry) = self.entries.get(self.selected)
-            && entry.screen.is_ok()
-        {
-            self.chosen = Some(entry.slot);
+    /// Loads the selected slot, if it holds a loadable state and nothing is
+    /// waiting for confirmation.
+    pub fn load_selected(&mut self) {
+        let entry = self.selected_entry();
+        if self.confirming.is_none() && matches!(entry.content, PickerContent::Saved { .. }) {
+            self.action = Some(SlotAction::Load(entry.slot));
         }
     }
 }
@@ -59,6 +128,8 @@ impl SlotPicker {
 pub struct Notification {
     pub text: String,
     pub shown_at: Instant,
+    /// Whether it was laid out once, andatory for widget size recomputing.
+    pub sized: bool,
 }
 
 impl Notification {
@@ -69,6 +140,7 @@ impl Notification {
         Self {
             text,
             shown_at: Instant::now(),
+            sized: false,
         }
     }
 
