@@ -1,13 +1,15 @@
 use std::error::Error;
+use std::time::SystemTime;
 
 use bus::cartridge::header::RomHeader;
 use egui_sdl2::egui::{self, RichText};
+use ppu::constants::{SCREEN_HEIGHT, SCREEN_WIDTH};
 
 use crate::rsnes::RomInfo;
 
 use super::GuiFrameData;
 use super::command::Command;
-use super::state::GuiState;
+use super::state::{GuiState, Notification, SlotPicker};
 
 #[cfg(feature = "plugins")]
 use plugins::plugin::{Plugin, gui::PermOutcome};
@@ -42,12 +44,12 @@ pub fn menu_bar(
         .show(ui, |ui| {
             egui::MenuBar::new().ui(ui, |ui| {
                 ui.menu_button("File", |ui| {
-                    item(ui, Command::OpenRom, "Open ROM…", false);
+                    item(ui, Command::OpenRom, "Open ROM...", false);
                     item(ui, Command::CloseRom, "Close ROM", false);
                     #[cfg(feature = "plugins")]
                     {
                         ui.separator();
-                        item(ui, Command::LoadPlugin, "Load plugin…", false);
+                        item(ui, Command::LoadPlugin, "Load plugin...", false);
                     }
                     ui.separator();
                     item(ui, Command::Quit, "Quit", false);
@@ -59,6 +61,11 @@ pub fn menu_bar(
                     item(ui, Command::Reset, "Reset", false);
                     #[cfg(feature = "plugins")]
                     item(ui, Command::RunPluginDefault, "Run plugin action", false);
+                    ui.separator();
+                    item(ui, Command::SaveState, "Save state", false);
+                    item(ui, Command::LoadLatestState, "Load latest state", false);
+                    item(ui, Command::ChooseSaveState, "Load state...", false);
+                    item(ui, Command::UndoLoadState, "Undo load", false);
                 });
 
                 ui.menu_button("View", |ui| {
@@ -270,6 +277,123 @@ pub fn error_box(ctx: &egui::Context, area: egui::Rect, error: &mut Option<Box<d
     }
 }
 
+/// How long ago `time` was, in words (e.g. "5 minutes ago").
+fn time_ago(now: SystemTime, time: SystemTime) -> String {
+    const MINUTE: u64 = 60;
+    const HOUR: u64 = 60 * MINUTE;
+    const DAY: u64 = 24 * HOUR;
+
+    // A time in the future (the clock went back) counts as now.
+    let seconds = now.duration_since(time).map_or(0, |elapsed| elapsed.as_secs());
+    let (count, unit) = match seconds {
+        0..MINUTE => return "just now".to_owned(),
+        MINUTE..HOUR => (seconds / MINUTE, "minute"),
+        HOUR..DAY => (seconds / HOUR, "hour"),
+        _ => (seconds / DAY, "day"),
+    };
+    let plural = if count == 1 { "" } else { "s" };
+    format!("{count} {unit}{plural} ago")
+}
+
+/// The save state picker: the used slots, the most recent first, each with
+/// its saved screen, number and age. Selection of the slot is possible with
+/// the mouse or the keyboard arrows and Enter.
+pub fn slot_picker(ctx: &egui::Context, area: egui::Rect, picker: &mut Option<SlotPicker>) {
+    let Some(picker_state) = picker else {
+        return;
+    };
+
+    let columns = SlotPicker::COLUMNS as f32;
+    let width = ((area.width() - 40.0) / columns - 16.0).clamp(32.0, SCREEN_WIDTH as f32 / 2.0);
+    let thumbnail = egui::vec2(width, width * SCREEN_HEIGHT as f32 / SCREEN_WIDTH as f32);
+
+    let now = SystemTime::now();
+    let mut open = true;
+    let mut clicked = None;
+
+    egui::Window::new("Load state")
+        .constrain_to(area)
+        .open(&mut open)
+        .collapsible(false)
+        .resizable(false)
+        .vscroll(true)
+        .show(ctx, |ui| {
+            if picker_state.entries.is_empty() {
+                ui.label("No save state for this game yet.");
+                return;
+            }
+
+            egui::Grid::new("slot_picker")
+                .num_columns(SlotPicker::COLUMNS)
+                .spacing([8.0, 8.0])
+                .show(ui, |ui| {
+                    for (index, entry) in picker_state.entries.iter().enumerate() {
+                        ui.vertical(|ui| {
+                            let selected = index == picker_state.selected;
+                            let response = match &entry.screen {
+                                Ok(texture) => {
+                                    let image = egui::Image::from_texture(texture)
+                                        .fit_to_exact_size(thumbnail);
+                                    ui.add(egui::Button::image(image).selected(selected))
+                                }
+                                Err(reason) => ui
+                                    .add_enabled(
+                                        false,
+                                        egui::Button::new("Unreadable")
+                                            .min_size(thumbnail)
+                                            .selected(selected),
+                                    )
+                                    .on_disabled_hover_text(reason),
+                            };
+                            if response.clicked() {
+                                clicked = Some(index);
+                            }
+                            ui.label(format!("Slot {}", entry.slot));
+                            ui.label(RichText::new(time_ago(now, entry.time)).weak().small());
+                        });
+
+                        if (index + 1) % SlotPicker::COLUMNS == 0 {
+                            ui.end_row();
+                        }
+                    }
+                });
+        });
+
+    if let Some(index) = clicked {
+        picker_state.selected = index;
+        picker_state.choose_selected();
+    }
+    if !open {
+        *picker = None;
+    }
+}
+
+/// The notification at the bottom-left of the game, until it expires.
+pub fn notification(
+    ctx: &egui::Context,
+    area: egui::Rect,
+    notification: &mut Option<Notification>,
+) {
+    let Some(shown) = notification else {
+        return;
+    };
+    if shown.expired() {
+        *notification = None;
+        return;
+    }
+
+    egui::Area::new(egui::Id::new("notification"))
+        .order(egui::Order::Foreground)
+        .interactable(false)
+        .pivot(egui::Align2::LEFT_BOTTOM)
+        .fixed_pos(area.left_bottom() + egui::vec2(8.0, -8.0))
+        .show(ctx, |ui| {
+            egui::Frame::popup(ui.style()).show(ui, |ui| {
+                ui.label(&shown.text);
+            });
+        });
+}
+
 /// Recursively show errors and their sources
 fn show_error(ui: &mut egui::Ui, err: &dyn Error) {
     ui.label(err.to_string());
@@ -345,5 +469,27 @@ pub fn plugin_perm_request(
                 *pending = None;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[test]
+    fn ages_are_written_in_words() {
+        let now = SystemTime::now();
+        let ago = |seconds| time_ago(now, now - Duration::from_secs(seconds));
+
+        assert_eq!(ago(0), "just now");
+        assert_eq!(ago(59), "just now");
+        assert_eq!(ago(60), "1 minute ago");
+        assert_eq!(ago(5 * 60 + 30), "5 minutes ago");
+        assert_eq!(ago(3600), "1 hour ago");
+        assert_eq!(ago(23 * 3600), "23 hours ago");
+        assert_eq!(ago(24 * 3600), "1 day ago");
+        assert_eq!(ago(40 * 24 * 3600), "40 days ago");
+        assert_eq!(time_ago(now, now + Duration::from_secs(90)), "just now");
     }
 }

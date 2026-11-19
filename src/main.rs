@@ -13,7 +13,6 @@ mod dma;
 mod gui;
 mod rsnes;
 mod save_state;
-
 #[cfg(test)]
 mod test_utils;
 
@@ -21,6 +20,7 @@ use crate::{
     audio::GameAudio,
     gui::{Gui, GuiFrameData, RSnesEvent, SnesButton},
     rsnes::{RSnesCore, RSnesEmu},
+    save_state::{SaveStateError, slots::GameSaveStates},
 };
 
 #[cfg(feature = "cli")]
@@ -46,6 +46,27 @@ fn set_button(emu: &mut RSnesEmu, button: SnesButton, pressed: bool) {
     emu.core_mut().joypads[0].set(button, pressed);
 }
 
+/// Runs `action` on the game's save states, or gives the error that made them
+/// unavailable when the game started.
+fn with_save_states<T>(
+    save_states: &mut Result<GameSaveStates, SaveStateError>,
+    action: impl FnOnce(&mut GameSaveStates) -> Result<T, SaveStateError>,
+) -> Result<T, SaveStateError> {
+    save_states.as_mut().map_err(|error| error.clone()).and_then(action)
+}
+
+/// Shows how a save state action went: a notification for a success or when
+/// there is nothing to do, the error popup for a real failure.
+fn report(gui: &mut Gui, result: Result<String, SaveStateError>) {
+    match result {
+        Ok(text) => gui.notify(text),
+        Err(error @ (SaveStateError::NoSaveState | SaveStateError::NothingToUndo)) => {
+            gui.notify(error.to_string());
+        }
+        Err(error) => gui.pass_error(Box::new(error)),
+    }
+}
+
 fn gui_emu_loop(
     gui: &mut gui::Gui,
     rsnes: RSnesCore,
@@ -63,6 +84,8 @@ fn gui_emu_loop(
     let rom_info = rsnes.rom_info();
     let title = rom_info.header.title.trim();
     gui.set_rom_title(if title.is_empty() { None } else { Some(title) });
+
+    let mut save_states = GameSaveStates::for_rom(&rom_info.header.title, rsnes.rom_checksum);
 
     let mut emu = cfg_select! {
         feature = "plugins" => match RSnesEmu::new_with_plugin(rsnes, plugin) {
@@ -131,6 +154,53 @@ fn gui_emu_loop(
                 }
                 RSnesEvent::ButtonUp(button) => {
                     set_button(&mut emu, button, false);
+                }
+
+                // Loads keep the paused/running state; the queued sound
+                // belongs to the old state, so it is dropped.
+                RSnesEvent::SaveState => {
+                    let result = with_save_states(&mut save_states, |states| states.save(&mut emu));
+                    report(gui, result.map(|slot| format!("Saved to slot {slot}")));
+                }
+                RSnesEvent::LoadLatestState => {
+                    let result =
+                        with_save_states(&mut save_states, |states| states.load_latest(&mut emu));
+                    if result.is_ok() {
+                        audio.reset(gui);
+                    }
+                    report(gui, result.map(|slot| format!("Loaded slot {slot}")));
+                }
+                RSnesEvent::LoadStateSlot(slot) => {
+                    let result = with_save_states(&mut save_states, |states| {
+                        states.load_slot(&mut emu, slot)
+                    });
+                    if result.is_ok() {
+                        audio.reset(gui);
+                    }
+                    report(gui, result.map(|()| format!("Loaded slot {slot}")));
+                }
+                RSnesEvent::UndoLoadState => {
+                    let result =
+                        with_save_states(&mut save_states, |states| states.undo_load(&mut emu));
+                    if result.is_ok() {
+                        audio.reset(gui);
+                    }
+                    report(gui, result.map(|()| "Load undone".to_owned()));
+                }
+                RSnesEvent::ChooseSaveState => {
+                    let result = with_save_states(&mut save_states, |states| {
+                        // The picker shows the folder as it is now.
+                        states.refresh();
+                        let used = states.used_slots();
+                        if used.is_empty() {
+                            return Err(SaveStateError::NoSaveState);
+                        }
+                        gui.open_slot_picker(&used);
+                        Ok(())
+                    });
+                    if let Err(error) = result {
+                        report(gui, Err(error));
+                    }
                 }
 
                 #[cfg(feature = "plugins")]

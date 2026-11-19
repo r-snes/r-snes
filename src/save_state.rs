@@ -41,6 +41,7 @@ use ppu::ppu::PPU;
 use ppu::rendering::{RawFramebuffer, Renderer};
 use std::fmt;
 use std::io;
+use std::sync::Arc;
 use std::time::SystemTime;
 
 pub mod slots;
@@ -119,11 +120,6 @@ impl SaveState {
     /// Reads only the header of a save state file, without decoding the console state.
     pub fn read_info(bytes: &[u8]) -> Result<SaveStateInfo, SaveStateError> {
         Self::read_header(bytes).map(|(info, _)| info)
-    }
-
-    /// The frame that was on screen when the state was saved.
-    pub fn screen(&self) -> &RawFramebuffer {
-        &self.core.renderer.presented
     }
 
     /// The frame that was on screen when the state was saved, without copying it.
@@ -266,7 +262,7 @@ impl RSnesCore {
 }
 
 /// Why a save state couldn't be saved, found or loaded.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum SaveStateError {
     /// The file doesn't start with [`MAGIC`].
     NotASaveState,
@@ -281,8 +277,9 @@ pub enum SaveStateError {
     Corrupted(String),
     /// The console couldn't be serialized.
     Encoding(String),
-    /// A file couldn't be read or written.
-    Io(io::Error),
+    /// A file couldn't be read or written. Shared, since `io::Error` can't
+    /// be cloned.
+    Io(Arc<io::Error>),
     /// There is no save state to load.
     NoSaveState,
     /// There is no load to undo.
@@ -332,7 +329,7 @@ impl fmt::Display for SaveStateError {
 impl std::error::Error for SaveStateError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Self::Io(error) => Some(error),
+            Self::Io(error) => Some(error.as_ref()),
             _ => None,
         }
     }
@@ -340,6 +337,6 @@ impl std::error::Error for SaveStateError {
 
 impl From<io::Error> for SaveStateError {
     fn from(error: io::Error) -> Self {
-        Self::Io(error)
+        Self::Io(Arc::new(error))
     }
 }

@@ -22,6 +22,14 @@ pub enum Command {
     TogglePause,
     /// Show or hide the ROM information window.
     ToggleRomInfo,
+    /// Save the game to the first free save slot, or over the oldest one.
+    SaveState,
+    /// Load the most recent save slot.
+    LoadLatestState,
+    /// Open the save slot picker.
+    ChooseSaveState,
+    /// Go back to the state before the last load.
+    UndoLoadState,
     /// Pick a Lua plugin with a file dialog. Only possible with no game running,
     /// since the plugin is injected when the next ROM starts.
     #[cfg(feature = "plugins")]
@@ -78,6 +86,10 @@ impl Command {
         Command::Reset,
         Command::TogglePause,
         Command::ToggleRomInfo,
+        Command::SaveState,
+        Command::LoadLatestState,
+        Command::ChooseSaveState,
+        Command::UndoLoadState,
         #[cfg(feature = "plugins")]
         Command::LoadPlugin,
         #[cfg(feature = "plugins")]
@@ -92,6 +104,10 @@ impl Command {
             Command::Reset => Shortcut::ctrl(Keycode::R),
             Command::TogglePause => Shortcut::plain(Keycode::P),
             Command::ToggleRomInfo => Shortcut::plain(Keycode::F1),
+            Command::SaveState => Shortcut::plain(Keycode::F2),
+            Command::LoadLatestState => Shortcut::plain(Keycode::F3),
+            Command::ChooseSaveState => Shortcut::plain(Keycode::F4),
+            Command::UndoLoadState => Shortcut::ctrl(Keycode::F3),
             #[cfg(feature = "plugins")]
             Command::LoadPlugin => Shortcut::ctrl(Keycode::P),
             #[cfg(feature = "plugins")]
@@ -113,9 +129,14 @@ impl Command {
         let rom_loaded = data.rom_info.is_some();
         match self {
             Command::OpenRom | Command::Quit => true,
-            Command::CloseRom | Command::Reset | Command::TogglePause | Command::ToggleRomInfo => {
-                rom_loaded
-            }
+            Command::CloseRom
+            | Command::Reset
+            | Command::TogglePause
+            | Command::ToggleRomInfo
+            | Command::SaveState
+            | Command::LoadLatestState
+            | Command::ChooseSaveState
+            | Command::UndoLoadState => rom_loaded,
             #[cfg(feature = "plugins")]
             Command::LoadPlugin => !rom_loaded,
             #[cfg(feature = "plugins")]
@@ -198,6 +219,22 @@ mod tests {
         assert!(!Command::Reset.is_enabled(&idle));
         assert!(!Command::TogglePause.is_enabled(&idle));
         assert!(!Command::ToggleRomInfo.is_enabled(&idle));
+        assert!(!Command::SaveState.is_enabled(&idle));
+        assert!(!Command::LoadLatestState.is_enabled(&idle));
+        assert!(!Command::ChooseSaveState.is_enabled(&idle));
+        assert!(!Command::UndoLoadState.is_enabled(&idle));
         assert!(Command::OpenRom.is_enabled(&idle));
+    }
+
+    #[test]
+    fn f3_loads_the_latest_state_and_ctrl_f3_undoes_a_load() {
+        assert_eq!(
+            Command::from_key(Keycode::F3, Mod::NOMOD),
+            Some(Command::LoadLatestState)
+        );
+        assert_eq!(
+            Command::from_key(Keycode::F3, Mod::RCTRLMOD),
+            Some(Command::UndoLoadState)
+        );
     }
 }

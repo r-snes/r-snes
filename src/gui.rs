@@ -19,8 +19,9 @@ use sdl2::video::Window;
 use ppu::constants::{SCREEN_HEIGHT, SCREEN_WIDTH};
 
 use crate::rsnes::RomInfo;
+use crate::save_state::slots::Slot;
 use command::Command;
-use state::GuiState;
+use state::{GuiState, Notification, PickerEntry, SlotPicker};
 
 #[cfg(feature = "plugins")]
 use plugins::plugin::Plugin;
@@ -48,10 +49,6 @@ pub struct Gui {
     controller: Option<GameController>,
     /// Which stick directions are currently held past the deadzone.
     stick_dirs: StickDirs,
-
-    /// Whether a menu (or any other egui popup) was open last frame.
-    /// Emulation pauses meanwhile, and Escape closes it rather than the game.
-    menu_open: bool,
 }
 
 /// Everything the GUI might need to display, handed in fresh each frame.
@@ -137,6 +134,21 @@ pub enum RSnesEvent {
 
     /// A key mapped to an emulated button has been released
     ButtonUp(SnesButton),
+
+    /// Save the game to the first free save slot, or over the oldest one
+    SaveState,
+
+    /// Load the most recent save slot
+    LoadLatestState,
+
+    /// Open the save slot picker
+    ChooseSaveState,
+
+    /// Load a save slot chosen in the picker (numbered from 1)
+    LoadStateSlot(usize),
+
+    /// Go back to the state before the last load
+    UndoLoadState,
 
     /// Run the `default` action of a plugin (if a plugin is loaded, and if it defines one)
     #[cfg(feature = "plugins")]
@@ -231,13 +243,48 @@ impl Gui {
             _controller_subsystem: controller_subsystem,
             controller,
             stick_dirs: StickDirs::default(),
-            menu_open: false,
         })
     }
 
-    /// Whether a menu is open.
+    /// Whether a menu (or any other egui popup) is open.
+    fn popup_open(&self) -> bool {
+        egui::Popup::is_any_open(&self.egui_canvas.ctx)
+    }
+
+    /// Whether a menu or a window is open.
     pub fn menu_open(&self) -> bool {
-        self.menu_open
+        self.popup_open() || self.state.any_open()
+    }
+
+    /// Opens the save state picker on `slots`, the used slots, the most
+    /// recent first. The saved screens are turned into textures once, here.
+    pub fn open_slot_picker(&mut self, slots: &[(usize, &Slot)]) {
+        let ctx = &self.egui_canvas.ctx;
+        let entries = slots
+            .iter()
+            .filter_map(|&(slot, content)| {
+                let screen = match content {
+                    Slot::Empty => return None,
+                    Slot::Saved { screen, .. } => Ok(ctx.load_texture(
+                        format!("save state slot {slot}"),
+                        egui::ColorImage::from_rgb([SCREEN_WIDTH, SCREEN_HEIGHT], &screen[..]),
+                        egui::TextureOptions::LINEAR,
+                    )),
+                    Slot::Unreadable { reason, .. } => Err(reason.clone()),
+                };
+                Some(PickerEntry {
+                    slot,
+                    time: content.time()?,
+                    screen,
+                })
+            })
+            .collect();
+        self.state.slot_picker = Some(SlotPicker::new(entries));
+    }
+
+    /// Shows a short message over the game for a moment.
+    pub fn notify(&mut self, text: impl Into<String>) {
+        self.state.notification = Some(Notification::new(text.into()));
     }
 
     /// Sets the SDL2 window title. Pass `None` to reset to the default.
@@ -301,6 +348,10 @@ impl Gui {
             Command::Reset => out.push(RSnesEvent::Reset),
             Command::TogglePause => out.push(RSnesEvent::TogglePause),
             Command::ToggleRomInfo => self.state.show_rom_info = !self.state.show_rom_info,
+            Command::SaveState => out.push(RSnesEvent::SaveState),
+            Command::LoadLatestState => out.push(RSnesEvent::LoadLatestState),
+            Command::ChooseSaveState => out.push(RSnesEvent::ChooseSaveState),
+            Command::UndoLoadState => out.push(RSnesEvent::UndoLoadState),
             #[cfg(feature = "plugins")]
             Command::LoadPlugin => self.load_plugin_dialog(),
             #[cfg(feature = "plugins")]
@@ -477,6 +528,21 @@ impl Gui {
         self.audio_queue.size() / 4
     }
 
+    /// Moves the picker's selection with the arrows and chooses with Enter.
+    /// Returns whether the key was used.
+    fn drive_slot_picker(picker: &mut SlotPicker, key: Keycode) -> bool {
+        let row = SlotPicker::COLUMNS as isize;
+        match key {
+            Keycode::Left => picker.move_selection(-1),
+            Keycode::Right => picker.move_selection(1),
+            Keycode::Up => picker.move_selection(-row),
+            Keycode::Down => picker.move_selection(row),
+            Keycode::Return | Keycode::KpEnter => picker.choose_selected(),
+            _ => return false,
+        }
+        true
+    }
+
     /// Polls SDL, feeds everything to egui, then routes what egui didn't
     /// consume: first to GUI actions (handled here), then to emulator events
     /// (returned to the caller).
@@ -491,6 +557,16 @@ impl Gui {
                 win_event: WindowEvent::Minimized,
                 ..
             } = event
+            {
+                continue;
+            }
+
+            // While the slot picker is open, arrows and Enter drive are conssumed by it.
+            if let Some(picker) = &mut self.state.slot_picker
+                && let SdlEvent::KeyDown {
+                    keycode: Some(key), ..
+                } = &event
+                && Self::drive_slot_picker(picker, *key)
             {
                 continue;
             }
@@ -535,7 +611,7 @@ impl Gui {
             {
                 // Escape close opened overlays first before closing the ROM or quitting.
                 let closed_menu =
-                    cmd == Command::CloseRom && (self.menu_open || self.state.close_all());
+                    cmd == Command::CloseRom && (self.popup_open() || self.state.close_all());
                 if !closed_menu {
                     commands.push(cmd);
                 }
@@ -593,6 +669,8 @@ impl Gui {
     ) {
         widgets::rom_info(ctx, area, &mut state.show_rom_info, data.rom_info);
         widgets::error_box(ctx, area, &mut state.error_popup);
+        widgets::slot_picker(ctx, area, &mut state.slot_picker);
+        widgets::notification(ctx, area, &mut state.notification);
         #[cfg(feature = "plugins")]
         widgets::plugin_perm_request(
             ctx,
@@ -623,8 +701,13 @@ impl Gui {
             Self::draw_overlays(&mut self.state, &data, ui.ctx(), area);
         });
 
+        // A slot chosen in the picker (by click or by Enter) closes it.
+        if let Some(slot) = self.state.slot_picker.as_ref().and_then(|p| p.chosen) {
+            self.state.slot_picker = None;
+            events.push(RSnesEvent::LoadStateSlot(slot));
+        }
+
         let ctx = &self.egui_canvas.ctx;
-        self.menu_open = egui::Popup::is_any_open(ctx);
         // How far down the bar is actually painted, in pixels. egui
         // anti-aliases shape edges by feathering half of `feathering_size`
         // outside them, so the bar's fill bleeds that far past its rect.
