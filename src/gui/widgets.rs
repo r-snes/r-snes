@@ -271,6 +271,27 @@ pub fn error_box(ctx: &egui::Context, area: egui::Rect, error: &mut Option<Box<d
     }
 }
 
+/// Warning window, e.g. when the loaded ROM needs an unsupported coprocessor
+pub fn warning_box(ctx: &egui::Context, area: egui::Rect, warning: &mut Option<String>) {
+    let Some(message) = warning else {
+        return;
+    };
+    let mut open = true;
+    egui::Window::new("Warning")
+        .constrain_to(area)
+        .open(&mut open)
+        .resizable(false)
+        .collapsible(false)
+        .default_width(280.0)
+        .show(ctx, |ui| {
+            ui.label(message.as_str());
+        });
+
+    if !open {
+        *warning = None;
+    }
+}
+
 /// Recursively show errors and their sources
 fn show_error(ui: &mut egui::Ui, err: &dyn Error) {
     ui.label(err.to_string());

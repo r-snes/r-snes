@@ -9,7 +9,7 @@ pub mod sram;
 pub mod test_rom;
 
 use crate::bus::AccessSpeed;
-use crate::cartridge::coprocessor::{CartridgeMemory, CoprocessorChip};
+use crate::cartridge::coprocessor::{CartridgeMemory, ChipSetup, CoprocessorChip};
 use crate::cartridge::error::RomError;
 use crate::cartridge::header::RomHeader;
 use crate::cartridge::header::cartridge_hardware::Coprocessor;
@@ -47,6 +47,12 @@ pub struct Cartridge {
     pub sram: Sram,
     /// Emulated coprocessor, `None` if the board has none or it cannot run
     pub chip: Option<Box<dyn CoprocessorChip>>,
+    /// Set when the ROM needs a coprocessor that is not emulated: the
+    /// "unsupported coprocessor" warning to show to the user
+    pub chip_warning: Option<String>,
+    /// Caveat about how the coprocessor is emulated, if any (less serious
+    /// than a warning, e.g. approximate emulation)
+    pub chip_note: Option<String>,
 }
 
 /// Which chip on the cartridge board responds to a given address.
@@ -98,11 +104,19 @@ impl Cartridge {
             return Err(RomError::IncorrectMapping);
         }
 
+        let (chip, chip_warning, chip_note) = match coprocessor::create(&header) {
+            ChipSetup::NoChip => (None, None, None),
+            ChipSetup::Ready { chip, note } => (Some(chip), None, note),
+            ChipSetup::Unsupported(warning) => (None, Some(warning), None),
+        };
+
         Ok(Cartridge {
             rom: rom_data,
             map: map_mode,
             sram: Sram::new(&header),
-            chip: coprocessor::create(&header),
+            chip,
+            chip_warning,
+            chip_note,
             header,
         })
     }
@@ -878,6 +892,8 @@ mod tests {
         let cartridge = lorom_with_sram(0x03);
         assert!(cartridge.chip.is_none());
         assert_eq!(cartridge.missing_coprocessor(), None);
+        assert_eq!(cartridge.chip_warning, None);
+        assert_eq!(cartridge.chip_note, None);
     }
 
     #[test]
@@ -889,6 +905,11 @@ mod tests {
 
         assert!(cartridge.chip.is_none());
         assert_eq!(cartridge.missing_coprocessor(), Some(Coprocessor::OBC1));
+        let warning = cartridge.chip_warning.unwrap();
+        assert!(
+            warning.contains("OBC1") && warning.contains("not emulated"),
+            "{warning}"
+        );
     }
 
     #[test]

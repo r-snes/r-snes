@@ -104,6 +104,12 @@ impl RSnesCore {
 
     pub fn load_rom<P: AsRef<Path>>(rom_path: &P) -> Result<Self, Box<dyn Error>> {
         let bus = Bus::new(rom_path)?;
+        if let Some(warning) = &bus.cart.chip_warning {
+            eprintln!("warning: {warning}");
+        }
+        if let Some(note) = &bus.cart.chip_note {
+            eprintln!("note: {note}");
+        }
         let cpu = CPU::poweron();
         let ppu = PPU::new();
         let ppu_renderer = ppu::Renderer::new();

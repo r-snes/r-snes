@@ -8,6 +8,7 @@ pub mod test_chip;
 
 use crate::bus::AccessSpeed;
 use crate::cartridge::header::RomHeader;
+use crate::cartridge::header::cartridge_hardware::Coprocessor;
 use crate::cartridge::header::mapping_mode::MappingMode;
 use crate::cartridge::sram::Sram;
 use common::snes_address::SnesAddress;
@@ -54,15 +55,35 @@ pub trait CoprocessorChip {
     fn reset(&mut self) {}
 }
 
-/// Creates the emulated chip for the coprocessor declared in the ROM header
-///
-/// Returns `None` when the cartridge has no coprocessor, or when its
-/// coprocessor is not emulated yet (see `Cartridge::missing_coprocessor`).
-pub fn create(header: &RomHeader) -> Option<Box<dyn CoprocessorChip>> {
+/// Result of setting up the coprocessor declared in the ROM header
+pub enum ChipSetup {
+    /// The cartridge has no coprocessor
+    NoChip,
+    /// The coprocessor is emulated and ready
+    Ready {
+        /// The emulated chip
+        chip: Box<dyn CoprocessorChip>,
+        /// Caveat about how it is emulated, for the user (e.g. approximate emulation)
+        note: Option<String>,
+    },
+    /// The coprocessor is not emulated: the message explains it to the user
+    Unsupported(String),
+}
+
+/// Sets up the emulated chip for the coprocessor declared in the ROM header
+pub fn create(header: &RomHeader) -> ChipSetup {
     match header.hardware.coprocessor {
-        None => None,
+        None => ChipSetup::NoChip,
         // Add one arm per emulated chip above this one, e.g.
-        // Some(Coprocessor::OBC1) => Some(Box::new(obc1::Obc1::new())),
-        Some(_not_emulated) => None,
+        // Some(Coprocessor::OBC1) => ChipSetup::Ready { chip: Box::new(obc1::Obc1::new()), note: None },
+        Some(chip) => ChipSetup::Unsupported(unsupported_message(chip)),
     }
+}
+
+/// Message shown when a ROM needs a coprocessor that is not emulated
+pub fn unsupported_message(chip: Coprocessor) -> String {
+    format!(
+        "This ROM needs the {chip} coprocessor, which is not emulated yet. \
+         It may not run correctly."
+    )
 }
