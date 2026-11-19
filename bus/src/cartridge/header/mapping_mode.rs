@@ -67,8 +67,8 @@ impl SpeedAndMappingMode {
         let mapping_mode = match byte & 0x0F {
             // $x2: S-DD1, $x3: SA-1
             0x0 | 0x2 | 0x3 => MappingMode::LoRom,
-            // $x5: ExHiROM, $xA: SPC7110
-            0x1 | 0x5 | 0xA => MappingMode::HiRom,
+            // $xA: SPC7110 ($x5, ExHiROM, is not supported: it needs its own layout)
+            0x1 | 0xA => MappingMode::HiRom,
             _ => return None,
         };
 
@@ -100,11 +100,16 @@ impl MappingMode {
         // Try HiROM header
         let hirom_score = Self::score_header(rom_data, HIROM_HEADER_OFFSET);
 
-        match lorom_score.cmp(&hirom_score) {
-            Ordering::Greater => Some(MappingMode::LoRom),
-            Ordering::Less => Some(MappingMode::HiRom),
-            Ordering::Equal => None,
-        }
+        let mode = match lorom_score.cmp(&hirom_score) {
+            Ordering::Greater => MappingMode::LoRom,
+            Ordering::Less => MappingMode::HiRom,
+            Ordering::Equal => return None,
+        };
+
+        // The header found must also declare a supported map mode
+        // (e.g. ExHiROM is not), otherwise the ROM can't be loaded
+        let map_byte = rom_data[mode.get_corresponding_header_offset() + HEADER_SPEED_MAP_OFFSET];
+        SpeedAndMappingMode::from_byte(map_byte).map(|_| mode)
     }
 
     /// Returns the offset in the ROM where the header for this mapping mode is stored.
@@ -222,7 +227,6 @@ mod tests {
         let mappings = [
             (0x32, MappingMode::LoRom), // S-DD1
             (0x23, MappingMode::LoRom), // SA-1
-            (0x35, MappingMode::HiRom), // ExHiROM
             (0x3A, MappingMode::HiRom), // SPC7110
         ];
         for (byte, expected) in mappings {
@@ -235,12 +239,20 @@ mod tests {
 
     #[test]
     fn test_from_byte_invalid_mapping_mode() {
-        for byte in [0x04, 0x06, 0x07, 0x08, 0x09, 0x0B, 0x0F] {
+        for byte in [0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0B, 0x0F] {
             assert!(
                 SpeedAndMappingMode::from_byte(byte).is_none(),
                 "{byte:#04X}"
             );
         }
+    }
+
+    #[test]
+    fn exhirom_is_not_detected() {
+        // a HiROM header that declares ExHiROM ($35)
+        let mut rom = create_valid_hirom(HIROM_BANK_SIZE);
+        rom[HIROM_HEADER_OFFSET + HEADER_SPEED_MAP_OFFSET] = 0x35;
+        assert_eq!(MappingMode::detect_rom_mapping(&rom), None);
     }
 
     #[test]

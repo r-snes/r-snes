@@ -1007,4 +1007,18 @@ mod tests {
             Some(Coprocessor::SA1)
         );
     }
+
+    #[test]
+    fn test_exhirom_is_an_error_not_a_panic() {
+        use crate::constants::{HEADER_SPEED_MAP_OFFSET, HIROM_HEADER_OFFSET};
+
+        let mut data = create_valid_hirom(0x10000);
+        data[HIROM_HEADER_OFFSET + HEADER_SPEED_MAP_OFFSET] = 0x35;
+        let (path, _dir) = create_temp_rom(&data);
+
+        assert!(matches!(
+            Cartridge::load_from_file(path),
+            Err(RomError::IncorrectMapping)
+        ));
+    }
 }
