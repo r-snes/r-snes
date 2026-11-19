@@ -52,7 +52,7 @@ pub trait PermTreeNode: Sized {
 /// the tree should do.
 /// By default, lua values other than these two strings will fail to
 /// build the permission node, additional cases can be added by overriding
-/// the default implementation of [`from_lua_leaf`].
+/// the default implementation of [`from_lua_leaf`](PermTreeLeafNode::from_lua_leaf).
 trait PermTreeLeafNode: Permission {
     /// Fallback method for when the leaf node is constructed with something
     /// other than `"all"` and `"none"`.

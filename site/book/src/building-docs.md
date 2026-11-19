@@ -49,15 +49,16 @@ Doc comments are written in Markdown. You can link to other items by name, like 
 To build and open the documentation of the whole workspace:
 
 ```sh
-cargo doc --workspace --no-deps --open
+cargo doc --workspace --no-deps --document-private-items --open
 ```
 
 - `--workspace` documents every crate of the workspace together, so they link to each other and share one search index;
 - `--no-deps` skips third-party dependencies (SDL2, egui…), which we don't need to publish;
+- `--document-private-items` also documents private and `pub(crate)` items;
 - the result goes to `target/doc/<crate>/index.html`.
 
 Rustdoc reports broken links and other problems as warnings. `site/build.sh` turns them into errors, so they fail CI. To check locally the same way:
 
 ```sh
-RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --document-private-items
 ```

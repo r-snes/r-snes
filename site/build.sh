@@ -35,7 +35,8 @@ DOC_TARGET="$ROOT/target/site-doc"
 
 rm -rf "$DOC_TARGET/doc"
 RUSTDOCFLAGS="${RUSTDOCFLAGS:-} -D warnings" \
-    cargo doc --manifest-path "$ROOT/Cargo.toml" --workspace --no-deps --target-dir "$DOC_TARGET"
+    cargo doc --manifest-path "$ROOT/Cargo.toml" --workspace --no-deps \
+    --document-private-items --target-dir "$DOC_TARGET"
 cp -r "$DOC_TARGET/doc" "$OUT/api"
 
 if [[ -n "$COVERAGE" ]]; then

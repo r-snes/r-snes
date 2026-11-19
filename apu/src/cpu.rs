@@ -1349,7 +1349,7 @@ impl Spc700 {
         self.cycles += 6;
     }
 
-    /// MOV A,[dp]+Y — load A from address stored at dp, indexed by Y (indirect indexed).
+    /// `MOV A,[dp]+Y` — load A from address stored at dp, indexed by Y (indirect indexed).
     /// Reads 16-bit pointer from dp, adds Y, then loads A from that address.
     /// Sets N and Z. 6 cycles.
     fn inst_mov_a_dp_ind_y(&mut self, mem: &mut Memory) {
@@ -1404,7 +1404,7 @@ impl Spc700 {
         self.cycles += 7;
     }
 
-    /// MOV [dp]+Y,A — store A to address stored at dp, indexed by Y (indirect indexed).
+    /// `MOV [dp]+Y,A` — store A to address stored at dp, indexed by Y (indirect indexed).
     /// Reads 16-bit pointer from dp, adds Y, then stores A at that address.
     /// No flags affected. 7 cycles.
     fn inst_mov_dp_ind_y_a(&mut self, mem: &mut Memory) {
