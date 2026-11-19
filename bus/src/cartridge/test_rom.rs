@@ -1,6 +1,9 @@
 //! Module which contains utility functions for
 //! writing unit tests needing ROM objects
 
+// Test helpers: left out of the coverage report.
+#![cfg(not(tarpaulin_include))]
+
 use crate::cartridge::Cartridge;
 use crate::cartridge::header::mapping_mode::MappingMode;
 use crate::constants::{
@@ -15,7 +18,6 @@ use tempfile::tempdir;
 ///
 /// The header describes a 256 KiB FastROM USA cartridge without
 /// S-RAM or coprocessor.
-#[cfg(not(tarpaulin_include))]
 pub fn create_valid_header(map: MappingMode) -> Vec<u8> {
     let mut header = vec![0u8; HEADER_SIZE];
 
@@ -54,7 +56,6 @@ pub fn create_valid_header(map: MappingMode) -> Vec<u8> {
 ///
 /// # Panics
 /// Panics if `size` is smaller than a LoROM bank (32 KiB)
-#[cfg(not(tarpaulin_include))]
 pub fn create_valid_lorom(size: usize) -> Vec<u8> {
     assert!(size >= LOROM_BANK_SIZE, "ROM must be at least 32KiB");
     let mut rom = vec![0; size];
@@ -69,7 +70,6 @@ pub fn create_valid_lorom(size: usize) -> Vec<u8> {
 ///
 /// # Panics
 /// Panics if `size` is smaller than a HiROM bank (64 KiB)
-#[cfg(not(tarpaulin_include))]
 pub fn create_valid_hirom(size: usize) -> Vec<u8> {
     assert!(size >= HIROM_BANK_SIZE, "ROM must be at least 64KiB");
     let mut rom = vec![0; size];
@@ -84,7 +84,6 @@ pub fn create_valid_hirom(size: usize) -> Vec<u8> {
 ///
 /// Returns the path of the file and the directory, which is deleted when dropped,
 /// so it must be kept alive as long as the file is used.
-#[cfg(not(tarpaulin_include))]
 pub fn create_temp_rom(data: &[u8]) -> (std::path::PathBuf, tempfile::TempDir) {
     let dir = tempdir().unwrap();
     let rom_path = dir.path().join("test_rom.sfc");
@@ -96,7 +95,6 @@ pub fn create_temp_rom(data: &[u8]) -> (std::path::PathBuf, tempfile::TempDir) {
 
 /// Patches the header located at `header_offset` in `data` to declare a
 /// battery-backed S-RAM of `1024 << size_exp` bytes
-#[cfg(not(tarpaulin_include))]
 pub fn with_sram(mut data: Vec<u8>, header_offset: usize, size_exp: u8) -> Vec<u8> {
     data[header_offset + HEADER_ROM_HARDWARE_OFFSET] = 0x02; // ROM + RAM + battery
     data[header_offset + HEADER_RAM_SIZE_OFFSET] = size_exp;
@@ -104,7 +102,6 @@ pub fn with_sram(mut data: Vec<u8>, header_offset: usize, size_exp: u8) -> Vec<u
 }
 
 /// Creates a 64 KiB LoROM cartridge with an S-RAM of `1024 << size_exp` bytes
-#[cfg(not(tarpaulin_include))]
 pub fn lorom_with_sram(size_exp: u8) -> Cartridge {
     let data = with_sram(create_valid_lorom(0x10000), LOROM_HEADER_OFFSET, size_exp);
     let (path, _dir) = create_temp_rom(&data);
@@ -112,7 +109,6 @@ pub fn lorom_with_sram(size_exp: u8) -> Cartridge {
 }
 
 /// Creates a 64 KiB HiROM cartridge with an S-RAM of `1024 << size_exp` bytes
-#[cfg(not(tarpaulin_include))]
 pub fn hirom_with_sram(size_exp: u8) -> Cartridge {
     let data = with_sram(create_valid_hirom(0x10000), HIROM_HEADER_OFFSET, size_exp);
     let (path, _dir) = create_temp_rom(&data);
