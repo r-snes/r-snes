@@ -46,7 +46,7 @@ use std::time::SystemTime;
 
 pub mod slots;
 #[cfg(test)]
-mod test_utils;
+pub(crate) mod test_utils;
 
 /// Text every save state file starts with.
 pub const MAGIC: &[u8] = b"R-SNES save state\n";
@@ -578,5 +578,22 @@ mod tests {
         }
         let io_error = SaveStateError::from(io::Error::other("disk on fire"));
         assert!(std::error::Error::source(&io_error).is_some());
+    }
+
+    #[test]
+    fn only_io_errors_have_a_source() {
+        let io_error = SaveStateError::from(io::Error::other("disk on fire"));
+        let source = std::error::Error::source(&io_error).expect("an I/O error has a source");
+        assert_eq!(source.to_string(), "disk on fire");
+
+        for error in [
+            SaveStateError::NotASaveState,
+            SaveStateError::WrongRom,
+            SaveStateError::Corrupted("detail".into()),
+            SaveStateError::NoSaveState,
+            SaveStateError::SlotLocked,
+        ] {
+            assert!(std::error::Error::source(&error).is_none(), "{error}");
+        }
     }
 }
