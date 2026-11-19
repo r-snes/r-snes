@@ -242,6 +242,12 @@ impl Gui {
     pub const FRAME_DURATION: f64 = 1.0 / Self::FRAME_RATE as f64;
     const STICK_DEADZONE: i16 = 13_000; // Deadzone for the analog stick, ~40% of the i16 range
     const MENU_BAR_HEIGHT: u32 = 23; // Height of the menu bar with egui's default style (22), plus 1 for its anti-aliased bottom edge, in window coordinates.
+    /// Size of the game area when R-SNES opens: the SNES screen at twice
+    /// its size. In window coordinates, which egui uses as points.
+    pub const START_GAME_AREA: egui::Vec2 =
+        egui::vec2(SCREEN_WIDTH as f32 * 2.0, SCREEN_HEIGHT as f32 * 2.0);
+    /// Size of the game area in the smallest window: the SNES screen.
+    pub const MIN_GAME_AREA: egui::Vec2 = egui::vec2(SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32);
 
     pub fn new() -> Result<Self, String> {
         let sdl_ctx = sdl2::init()?;
@@ -251,8 +257,8 @@ impl Gui {
         let mut window = video_subsystem
             .window(
                 "R-SNES",
-                SCREEN_WIDTH as u32 * 2,
-                SCREEN_HEIGHT as u32 * 2 + Self::MENU_BAR_HEIGHT,
+                Self::START_GAME_AREA.x as u32,
+                Self::START_GAME_AREA.y as u32 + Self::MENU_BAR_HEIGHT,
             )
             .position_centered()
             .resizable()
@@ -260,8 +266,8 @@ impl Gui {
             .map_err(|e| e.to_string())?;
         window
             .set_minimum_size(
-                SCREEN_WIDTH as u32,
-                SCREEN_HEIGHT as u32 + Self::MENU_BAR_HEIGHT,
+                Self::MIN_GAME_AREA.x as u32,
+                Self::MIN_GAME_AREA.y as u32 + Self::MENU_BAR_HEIGHT,
             )
             .map_err(|e| e.to_string())?;
 
