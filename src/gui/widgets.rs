@@ -119,6 +119,7 @@ pub fn rom_info(ctx: &egui::Context, area: egui::Rect, open: &mut bool, info: Op
                 rom_speed,
                 mapping_mode,
                 hardware,
+                chipset_subtype: _,
                 rom_size,
                 ram_size,
                 country,

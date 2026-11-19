@@ -27,6 +27,8 @@ pub struct RomHeader {
     pub mapping_mode: MappingMode,
     /// Type of hardware in cartridge (Coprocessor, RAM, etc...)
     pub hardware: CartridgeHardware,
+    /// Chipset subtype (`$FFBF`, the byte just before the header), meaningful when the chipset is `$Fx`
+    pub chipset_subtype: u8,
     /// ROM size exponent: the ROM is `1024 << rom_size` bytes
     pub rom_size: u8,
     /// S-RAM size exponent, see `RomHeader::ram_size_bytes`
@@ -61,6 +63,8 @@ impl RomHeader {
         let header_bytes: [u8; HEADER_SIZE] = slice
             .try_into()
             .expect("ERROR: Couldn't extract the header from the ROM"); // Should be safe since multiple verification before
+        // Header offsets are $7FC0 / $FFC0, so the byte before is always in range
+        let chipset_subtype = rom_data[h_offset - 1];
         let country = Country::from_byte(header_bytes[HEADER_COUNTRY_OFFSET]);
         let SpeedAndMappingMode {
             rom_speed,
@@ -72,7 +76,11 @@ impl RomHeader {
             title: String::from_utf8_lossy(&header_bytes[0..HEADER_TITLE_LEN]).to_string(),
             rom_speed,
             mapping_mode,
-            hardware: CartridgeHardware::from_byte(header_bytes[HEADER_ROM_HARDWARE_OFFSET]),
+            hardware: CartridgeHardware::from_bytes(
+                header_bytes[HEADER_ROM_HARDWARE_OFFSET],
+                chipset_subtype,
+            ),
+            chipset_subtype,
             rom_size: header_bytes[HEADER_ROM_SIZE_OFFSET],
             ram_size: header_bytes[HEADER_RAM_SIZE_OFFSET],
             country,
@@ -202,6 +210,7 @@ mod tests {
         assert_eq!(rom_header.mapping_mode, MappingMode::LoRom);
         assert_eq!(rom_header.hardware.layout, HardwareLayout::RomCoprocessor);
         assert_eq!(rom_header.hardware.coprocessor, Some(Coprocessor::OBC1));
+        assert_eq!(rom_header.chipset_subtype, 0);
         assert_eq!(rom_header.rom_size, 8);
         assert_eq!(rom_header.ram_size, 0);
         assert_eq!(rom_header.country, Country::France);
@@ -209,5 +218,19 @@ mod tests {
         assert_eq!(rom_header.developer_id, 1);
         assert_eq!(rom_header.checksum_complement, 0xFFFF);
         assert_eq!(rom_header.checksum, 0x0000);
+    }
+
+    #[test]
+    fn test_rom_header_reads_chipset_subtype() {
+        for map in [MappingMode::LoRom, MappingMode::HiRom] {
+            let mut fake_rom = create_minimalist_rom(map);
+            let offset = map.get_corresponding_header_offset();
+            fake_rom[offset + HEADER_ROM_HARDWARE_OFFSET] = 0xF3; // custom chip
+            fake_rom[offset - 1] = 0x10; // $FFBF subtype: CX4
+
+            let rom_header = RomHeader::load_header(&fake_rom, map);
+            assert_eq!(rom_header.chipset_subtype, 0x10);
+            assert_eq!(rom_header.hardware.coprocessor, Some(Coprocessor::CX4));
+        }
     }
 }

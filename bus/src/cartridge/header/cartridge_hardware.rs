@@ -46,6 +46,11 @@ pub enum HardwareLayout {
     /// ROM, coprocessor and battery
     #[strum(serialize = "Rom + Coprocessor + Battery")]
     RomCoprocessorBattery,
+
+    /// Low nibble of the chipset byte is not a documented layout
+    /// (e.g. `$x9`/`$xA` used by a few coprocessor boards).
+    #[strum(serialize = "Unknown")]
+    Unknown,
 }
 
 /// Represents optional coprocessors present in a SNES cartridge.
@@ -65,10 +70,20 @@ pub enum Coprocessor {
     SDD1,
     /// S-RTC real-time clock
     SRTC,
-    /// Other coprocessor (header code `0xE`)
+    /// Other coprocessor (header code `0xE`, e.g. Super Game Boy, Satellaview)
     Other,
-    /// Custom coprocessor (header code `0xF`)
-    Custom,
+    /// SPC7110 decompression chip (header code `0xF`, subtype `$00`)
+    SPC7110,
+    /// ST010 / ST011 (header code `0xF`, subtype `$01`)
+    ST010,
+    /// ST018 (header code `0xF`, subtype `$02`)
+    ST018,
+    /// CX4 (header code `0xF`, subtype `$10`)
+    CX4,
+    /// Custom coprocessor (header code `0xF`) with an unknown subtype at `$FFBF`
+    Custom(u8),
+    /// Undocumented chipset high nibble
+    Unknown(u8),
 }
 
 impl HardwareLayout {
@@ -106,14 +121,16 @@ impl HardwareLayout {
 }
 
 impl CartridgeHardware {
-    /// Creates a `CartridgeHardware` value from a byte extracted from the ROM header.
+    /// Creates a `CartridgeHardware` value from the chipset bytes of the ROM header.
     ///
     /// Args:
-    ///     byte: Byte from the ROM header representing hardware configuration.
+    ///     byte: Chipset byte (`$FFD6`) representing the hardware configuration.
+    ///     subtype: Chipset subtype (`$FFBF`), only used when the chipset is `$Fx`.
     ///
     /// Returns:
-    ///     A `CartridgeHardware` struct containing the ROM layout and an `Option<Coprocessor>`
-    pub fn from_byte(byte: u8) -> CartridgeHardware {
+    ///     A `CartridgeHardware` struct containing the ROM layout and an `Option<Coprocessor>`.
+    ///     Never panics: undocumented values map to `Unknown` variants.
+    pub fn from_bytes(byte: u8, subtype: u8) -> CartridgeHardware {
         let layout = match byte & 0x0F {
             0x0 => HardwareLayout::RomOnly,
             0x1 => HardwareLayout::RomRam,
@@ -122,21 +139,36 @@ impl CartridgeHardware {
             0x4 => HardwareLayout::RomCoprocessorRam,
             0x5 => HardwareLayout::RomCoprocessorRamBattery,
             0x6 => HardwareLayout::RomCoprocessorBattery,
-            _ => panic!("ERROR: Could not identify hardware of ROM"),
+            _ => HardwareLayout::Unknown,
         };
 
-        let coprocessor = if layout.has_coprocessor() {
-            match (byte & 0xF0) >> 4 {
-                0x0 => Some(Coprocessor::DSP(1)),
-                0x1 => Some(Coprocessor::GSU),
-                0x2 => Some(Coprocessor::OBC1),
-                0x3 => Some(Coprocessor::SA1),
-                0x4 => Some(Coprocessor::SDD1),
-                0x5 => Some(Coprocessor::SRTC),
-                0xE => Some(Coprocessor::Other),
-                0xF => Some(Coprocessor::Custom),
-                _ => None,
-            }
+        let chip_nibble = (byte & 0xF0) >> 4;
+        // An undocumented layout still signals a coprocessor when the
+        // high nibble names one, since that nibble is only meaningful with a chip.
+        let has_coprocessor = match layout {
+            HardwareLayout::Unknown => chip_nibble != 0,
+            _ => layout.has_coprocessor(),
+        };
+
+        let coprocessor = if has_coprocessor {
+            Some(match chip_nibble {
+                // DSP-1 to DSP-4 share this code; DSP-1 is by far the most common.
+                0x0 => Coprocessor::DSP(1),
+                0x1 => Coprocessor::GSU,
+                0x2 => Coprocessor::OBC1,
+                0x3 => Coprocessor::SA1,
+                0x4 => Coprocessor::SDD1,
+                0x5 => Coprocessor::SRTC,
+                0xE => Coprocessor::Other,
+                0xF => match subtype {
+                    0x00 => Coprocessor::SPC7110,
+                    0x01 => Coprocessor::ST010,
+                    0x02 => Coprocessor::ST018,
+                    0x10 => Coprocessor::CX4,
+                    other => Coprocessor::Custom(other),
+                },
+                other => Coprocessor::Unknown(other),
+            })
         } else {
             None
         };
@@ -159,7 +191,7 @@ impl CartridgeHardware {
 
     /// Returns true if this cartridge contains a coprocessor
     pub fn has_coprocessor(&self) -> bool {
-        self.layout.has_coprocessor()
+        self.coprocessor.is_some()
     }
 }
 
@@ -174,7 +206,12 @@ impl fmt::Display for Coprocessor {
             Coprocessor::SDD1 => write!(f, "SDD1"),
             Coprocessor::SRTC => write!(f, "SRTC"),
             Coprocessor::Other => write!(f, "Other"),
-            Coprocessor::Custom => write!(f, "Custom"),
+            Coprocessor::SPC7110 => write!(f, "SPC7110"),
+            Coprocessor::ST010 => write!(f, "ST010/ST011"),
+            Coprocessor::ST018 => write!(f, "ST018"),
+            Coprocessor::CX4 => write!(f, "CX4"),
+            Coprocessor::Custom(sub) => write!(f, "Custom (subtype ${:02X})", sub),
+            Coprocessor::Unknown(code) => write!(f, "Unknown (code ${:X})", code),
         }
     }
 }
@@ -196,7 +233,7 @@ mod tests {
         ];
 
         for (byte, expected) in mappings {
-            assert_eq!(CartridgeHardware::from_byte(byte).layout, expected);
+            assert_eq!(CartridgeHardware::from_bytes(byte, 0).layout, expected);
         }
     }
 
@@ -204,21 +241,21 @@ mod tests {
     #[test]
     fn test_cartridge_components_availability() {
         let mappings = [
-            (CartridgeHardware::from_byte(0x00), false, false, false),
-            (CartridgeHardware::from_byte(0x01), true, false, false),
-            (CartridgeHardware::from_byte(0x02), true, true, false),
-            (CartridgeHardware::from_byte(0x03), false, false, true),
-            (CartridgeHardware::from_byte(0x04), true, false, true),
-            (CartridgeHardware::from_byte(0x05), true, true, true),
-            (CartridgeHardware::from_byte(0x06), false, true, true),
+            (CartridgeHardware::from_bytes(0x00, 0), false, false, false),
+            (CartridgeHardware::from_bytes(0x01, 0), true, false, false),
+            (CartridgeHardware::from_bytes(0x02, 0), true, true, false),
+            (CartridgeHardware::from_bytes(0x03, 0), false, false, true),
+            (CartridgeHardware::from_bytes(0x04, 0), true, false, true),
+            (CartridgeHardware::from_bytes(0x05, 0), true, true, true),
+            (CartridgeHardware::from_bytes(0x06, 0), false, true, true),
             // Tens digit changed
-            (CartridgeHardware::from_byte(0x10), false, false, false),
-            (CartridgeHardware::from_byte(0x11), true, false, false),
-            (CartridgeHardware::from_byte(0x12), true, true, false),
-            (CartridgeHardware::from_byte(0x13), false, false, true),
-            (CartridgeHardware::from_byte(0x14), true, false, true),
-            (CartridgeHardware::from_byte(0x15), true, true, true),
-            (CartridgeHardware::from_byte(0x16), false, true, true),
+            (CartridgeHardware::from_bytes(0x10, 0), false, false, false),
+            (CartridgeHardware::from_bytes(0x11, 0), true, false, false),
+            (CartridgeHardware::from_bytes(0x12, 0), true, true, false),
+            (CartridgeHardware::from_bytes(0x13, 0), false, false, true),
+            (CartridgeHardware::from_bytes(0x14, 0), true, false, true),
+            (CartridgeHardware::from_bytes(0x15, 0), true, true, true),
+            (CartridgeHardware::from_bytes(0x16, 0), false, true, true),
         ];
 
         for (hardware, has_ram, has_battery, has_coprocessor) in mappings {
@@ -229,9 +266,41 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "ERROR: Could not identify hardware of ROM")]
-    fn test_cartridge_hardware_from_byte_invalid() {
-        CartridgeHardware::from_byte(0x07);
+    fn test_cartridge_hardware_from_byte_unknown_layout_does_not_panic() {
+        let hw = CartridgeHardware::from_bytes(0x07, 0);
+        assert_eq!(hw.layout, HardwareLayout::Unknown);
+        assert_eq!(hw.coprocessor, None);
+
+        // e.g. SPC7110 + RTC boards use $F9
+        let hw = CartridgeHardware::from_bytes(0xF9, 0x00);
+        assert_eq!(hw.layout, HardwareLayout::Unknown);
+        assert_eq!(hw.coprocessor, Some(Coprocessor::SPC7110));
+    }
+
+    #[test]
+    fn test_custom_coprocessor_subtypes() {
+        let mappings = [
+            (0x00, Coprocessor::SPC7110),
+            (0x01, Coprocessor::ST010),
+            (0x02, Coprocessor::ST018),
+            (0x10, Coprocessor::CX4),
+            (0x42, Coprocessor::Custom(0x42)),
+        ];
+
+        for (subtype, expected) in mappings {
+            assert_eq!(
+                CartridgeHardware::from_bytes(0xF5, subtype).coprocessor,
+                Some(expected)
+            );
+        }
+    }
+
+    #[test]
+    fn test_subtype_ignored_outside_fx() {
+        assert_eq!(
+            CartridgeHardware::from_bytes(0x35, 0x10).coprocessor,
+            Some(Coprocessor::SA1)
+        );
     }
 
     #[test]
@@ -253,19 +322,30 @@ mod tests {
             (0x44, Some(Coprocessor::SDD1)),
             (0x54, Some(Coprocessor::SRTC)),
             (0xE4, Some(Coprocessor::Other)),
-            (0xF4, Some(Coprocessor::Custom)),
+            (0xF4, Some(Coprocessor::SPC7110)),
         ];
 
         for (byte, expected) in mappings {
-            assert_eq!(CartridgeHardware::from_byte(byte).coprocessor, expected);
+            assert_eq!(CartridgeHardware::from_bytes(byte, 0).coprocessor, expected);
         }
     }
 
     #[test]
     fn test_coprocessor_from_byte_none() {
-        let invalid_bytes = [0x60, 0x70, 0x80, 0x90, 0xA0, 0xB0, 0xC0, 0xD0];
-        for &byte in &invalid_bytes {
-            assert_eq!(CartridgeHardware::from_byte(byte).coprocessor, None);
+        let no_chip_bytes = [0x60, 0x70, 0x80, 0x90, 0xA0, 0xB0, 0xC0, 0xD0];
+        for &byte in &no_chip_bytes {
+            assert_eq!(CartridgeHardware::from_bytes(byte, 0).coprocessor, None);
+        }
+    }
+
+    #[test]
+    fn test_coprocessor_from_byte_unknown_code() {
+        for code in 0x6..=0xD {
+            let byte = (code << 4) | 0x3;
+            assert_eq!(
+                CartridgeHardware::from_bytes(byte, 0).coprocessor,
+                Some(Coprocessor::Unknown(code))
+            );
         }
     }
 
@@ -297,7 +377,12 @@ mod tests {
             (Coprocessor::SDD1, "SDD1"),
             (Coprocessor::SRTC, "SRTC"),
             (Coprocessor::Other, "Other"),
-            (Coprocessor::Custom, "Custom"),
+            (Coprocessor::SPC7110, "SPC7110"),
+            (Coprocessor::ST010, "ST010/ST011"),
+            (Coprocessor::ST018, "ST018"),
+            (Coprocessor::CX4, "CX4"),
+            (Coprocessor::Custom(0x42), "Custom (subtype $42)"),
+            (Coprocessor::Unknown(0x7), "Unknown (code $7)"),
         ];
 
         for (coproc, expected) in mappings {
