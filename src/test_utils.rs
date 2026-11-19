@@ -1,3 +1,6 @@
+// Test helpers: left out of the coverage report.
+#![cfg(not(tarpaulin_include))]
+
 use std::ops::{Deref, DerefMut};
 
 use super::*;

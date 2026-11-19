@@ -46,7 +46,7 @@ use std::time::SystemTime;
 
 pub mod slots;
 #[cfg(test)]
-mod tests;
+mod test_utils;
 
 /// Text every save state file starts with.
 pub const MAGIC: &[u8] = b"R-SNES save state\n";
@@ -344,5 +344,238 @@ impl std::error::Error for SaveStateError {
 impl From<io::Error> for SaveStateError {
     fn from(error: io::Error) -> Self {
         Self::Io(Arc::new(error))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::test_utils::*;
+    use super::*;
+    use crate::dma::DmaState;
+    use cpu::cpu::CPUState;
+
+    #[test]
+    fn the_test_rom_runs() {
+        let mut core = console(&test_rom());
+        run(&mut core, 3 * MASTER_CYCLES_PER_FRAME);
+
+        let loops = core.bus.wram.data[0x0000];
+        let nmis = core.bus.wram.data[0x0010];
+        assert!(loops >= 2, "the main loop ran {loops} times");
+        assert!(nmis >= 2, "the NMI handler ran {nmis} times");
+        assert!(
+            core.ppu.vram.memory.iter().any(|&word| word != 0),
+            "the DMA never wrote to VRAM"
+        );
+    }
+
+    #[test]
+    fn a_loaded_state_runs_exactly_like_the_original() {
+        let rom = test_rom();
+        let mut original = console(&rom);
+        let mut copy = console(&rom);
+        run(&mut copy, 12_345);
+
+        type Condition = fn(&RSnesCore) -> bool;
+        let save_points: [(&str, Condition, u64); 6] = [
+            ("during a DMA", |c| c.dma.state == DmaState::Dma, 30_000),
+            ("during HDMA", |c| c.dma.state == DmaState::Hdma, 30_000),
+            ("mid-instruction", mid_instruction, 30_000),
+            // Run a whole frame after this one, so the copy wakes up on an NMI.
+            (
+                "in WAI",
+                |c| c.cpu.state() == CPUState::WaitForInterrupt,
+                MASTER_CYCLES_PER_FRAME + 1_000,
+            ),
+            ("mid-instruction again", mid_instruction, 30_000),
+            (
+                "at an instruction start",
+                |c| c.cpu.is_instr_start() && c.cpu_master_cycles_to_wait == 0,
+                30_000,
+            ),
+        ];
+
+        for (when, condition, run_after) in save_points {
+            run_until(&mut original, when, condition);
+            assert!(
+                saved_part(&original) != saved_part(&copy),
+                "{when}: the copy must start from another state"
+            );
+
+            copy_state(&original, &mut copy);
+            assert_same_state(&original, &copy, when);
+
+            run(&mut original, run_after);
+            run(&mut copy, run_after);
+            assert_same_state(&original, &copy, &format!("{when}, then running"));
+
+            // Move the copy away, so the next load starts from another state,
+            // even if the next save point is already reached.
+            run(&mut copy, 777);
+        }
+    }
+
+    #[test]
+    fn info_records_the_rom_and_the_version() {
+        let core = console(&test_rom());
+
+        let before = SystemTime::now();
+        let bytes = core.save_state().unwrap();
+        let after = SystemTime::now();
+
+        let info = SaveState::read_info(&bytes).unwrap();
+        assert_eq!(info.rom_checksum, core.rom_checksum);
+        assert_eq!(info.emulator_version, env!("CARGO_PKG_VERSION"));
+        assert!((before..=after).contains(&info.created_at));
+        assert_eq!(SaveState::decode(&bytes).unwrap().info, info);
+    }
+
+    #[test]
+    fn the_emulator_loads_its_own_state_back() {
+        let mut emu = emu(console(&test_rom()));
+        run(&mut emu.core_mut(), 50_000);
+        let bytes = emu.save_state().unwrap();
+        let saved = saved_part(&emu.core_mut());
+
+        run(&mut emu.core_mut(), 50_000);
+        emu.load_state(SaveState::decode(&bytes).unwrap()).unwrap();
+
+        assert!(
+            saved_part(&emu.core_mut()) == saved,
+            "the state wasn't restored"
+        );
+    }
+
+    #[cfg(feature = "plugins")]
+    #[test]
+    fn loading_restarts_the_plugin_interval() {
+        let plugin = plugins::plugin::Plugin::load_from_raw(b"return { permissions = {} }", None);
+        let mut emu =
+            RSnesEmu::new_with_plugin(console(&test_rom()), Some(plugin.unwrap())).unwrap();
+        let bytes = emu.save_state().unwrap();
+
+        emu.plugin_mut().unwrap().next_interval_master_cycle = Some(123_456);
+        emu.load_state(SaveState::decode(&bytes).unwrap()).unwrap();
+
+        assert_eq!(emu.plugin_mut().unwrap().next_interval_master_cycle, None);
+    }
+
+    #[test]
+    fn the_screen_is_the_presented_frame() {
+        let mut core = console(&test_rom());
+        run(&mut core, 2 * MASTER_CYCLES_PER_FRAME + 5_000);
+
+        let state = SaveState::decode(&core.save_state().unwrap()).unwrap();
+
+        assert!(*state.into_screen() == *core.ppu_renderer.presented());
+    }
+
+    #[test]
+    fn a_state_of_another_rom_is_refused_and_changes_nothing() {
+        let rom = test_rom();
+        let mut other_rom = rom.clone();
+        other_rom[0x1000] ^= 0xFF; // unused byte
+
+        let mut other = console(&other_rom);
+        run(&mut other, 10_000);
+        let mut core = console(&rom);
+        run(&mut core, 20_000);
+        let before = saved_part(&core);
+
+        let state = SaveState::decode(&other.save_state().unwrap()).unwrap();
+        let result = core.load_state(state);
+
+        assert!(matches!(result, Err(SaveStateError::WrongRom)));
+        assert!(saved_part(&core) == before, "the console changed");
+    }
+
+    #[test]
+    fn garbage_is_not_a_save_state() {
+        let garbage = b"definitely not a save state";
+
+        assert!(matches!(
+            decode_error(garbage),
+            SaveStateError::NotASaveState
+        ));
+        assert!(matches!(
+            SaveState::read_info(garbage),
+            Err(SaveStateError::NotASaveState)
+        ));
+    }
+
+    #[test]
+    fn a_state_of_another_emulator_version_is_refused() {
+        let core = console(&test_rom());
+        let info = SaveState::read_info(&core.save_state().unwrap()).unwrap();
+        let older = SaveStateInfo {
+            emulator_version: "0.0.1".into(),
+            ..info
+        };
+        let file = postcard::to_extend(&older, MAGIC.to_vec()).unwrap();
+        let bytes = core.encode_core(file).unwrap();
+
+        assert!(matches!(
+            decode_error(&bytes),
+            SaveStateError::UnsupportedVersion { found } if found == "0.0.1"
+        ));
+        assert!(matches!(
+            SaveState::read_info(&bytes),
+            Err(SaveStateError::UnsupportedVersion { .. })
+        ));
+    }
+
+    #[test]
+    fn a_truncated_file_is_corrupted() {
+        let bytes = console(&test_rom()).save_state().unwrap();
+
+        // Without the version, inside it, inside the rest of the info, then
+        // inside the console state.
+        for length in [
+            MAGIC.len(),
+            MAGIC.len() + 2,
+            MAGIC.len() + 1 + EMULATOR_VERSION.len() + 1,
+            bytes.len() / 2,
+            bytes.len() - 1,
+        ] {
+            let result = SaveState::decode(&bytes[..length]);
+            assert!(
+                matches!(result, Err(SaveStateError::Corrupted(_))),
+                "truncated to {length} of {} bytes",
+                bytes.len()
+            );
+        }
+    }
+
+    #[test]
+    fn bytes_after_the_state_are_corrupted() {
+        let mut bytes = console(&test_rom()).save_state().unwrap();
+        bytes.extend_from_slice(b"extra");
+
+        assert!(matches!(decode_error(&bytes), SaveStateError::Corrupted(_)));
+    }
+
+    #[test]
+    fn every_error_has_a_message() {
+        let errors = [
+            SaveStateError::NotASaveState,
+            SaveStateError::UnsupportedVersion {
+                found: "0.0.1".into(),
+            },
+            SaveStateError::WrongRom,
+            SaveStateError::Corrupted("detail".into()),
+            SaveStateError::Encoding("detail".into()),
+            SaveStateError::from(io::Error::other("disk on fire")),
+            SaveStateError::NoSaveState,
+            SaveStateError::NothingToUndo,
+            SaveStateError::SlotLocked,
+            SaveStateError::AllSlotsLocked,
+            SaveStateError::NoHomeFolder,
+        ];
+
+        for error in errors {
+            assert!(error.to_string().ends_with('.'), "{error}");
+        }
+        let io_error = SaveStateError::from(io::Error::other("disk on fire"));
+        assert!(std::error::Error::source(&io_error).is_some());
     }
 }
