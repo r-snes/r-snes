@@ -284,6 +284,10 @@ pub enum SaveStateError {
     NoSaveState,
     /// There is no load to undo.
     NothingToUndo,
+    /// The slot is locked: it can't be saved over or deleted.
+    SlotLocked,
+    /// Every slot is locked, so a save has nowhere to go.
+    AllSlotsLocked,
     /// The home folder, where save states are stored, can't be found.
     NoHomeFolder,
 }
@@ -318,6 +322,8 @@ impl fmt::Display for SaveStateError {
             Self::Io(error) => write!(f, "Save state file error: {error}."),
             Self::NoSaveState => write!(f, "No save state for this game yet."),
             Self::NothingToUndo => write!(f, "There is no load to undo."),
+            Self::SlotLocked => write!(f, "This slot is locked. Unlock it first."),
+            Self::AllSlotsLocked => write!(f, "Every slot is locked. Unlock one to save."),
             Self::NoHomeFolder => write!(
                 f,
                 "Save states are stored in the home folder, which can't be found."

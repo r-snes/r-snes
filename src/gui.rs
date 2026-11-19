@@ -19,9 +19,9 @@ use sdl2::video::Window;
 use ppu::constants::{SCREEN_HEIGHT, SCREEN_WIDTH};
 
 use crate::rsnes::RomInfo;
-use crate::save_state::slots::Slot;
+use crate::save_state::slots::{GameSaveStates, SLOT_COUNT, Slot};
 use command::Command;
-use state::{GuiState, Notification, PickerEntry, SlotPicker};
+use state::{GuiState, Notification, PickerContent, PickerEntry, SlotPicker};
 
 #[cfg(feature = "plugins")]
 use plugins::plugin::Plugin;
@@ -141,11 +141,11 @@ pub enum RSnesEvent {
     /// Load the most recent save slot
     LoadLatestState,
 
-    /// Open the save slot picker
+    /// Open the save state window
     ChooseSaveState,
 
-    /// Load a save slot chosen in the picker (numbered from 1)
-    LoadStateSlot(usize),
+    /// An action chosen in the save state window
+    SlotAction(SlotAction),
 
     /// Go back to the state before the last load
     UndoLoadState,
@@ -153,6 +153,64 @@ pub enum RSnesEvent {
     /// Run the `default` action of a plugin (if a plugin is loaded, and if it defines one)
     #[cfg(feature = "plugins")]
     RunPluginDefault,
+}
+
+/// An action chosen in the save state window. Slots are numbered from 1.
+#[derive(PartialEq, Eq, Debug, Clone)]
+pub enum SlotAction {
+    /// Load a slot.
+    Load(usize),
+    /// Save the console to a slot, over what it holds.
+    Save(usize),
+    /// Delete a slot.
+    Delete(usize),
+    /// Name a slot (an empty name removes it).
+    Rename(usize, String),
+    /// Lock or unlock a slot.
+    SetLocked(usize, bool),
+    /// Open the game's save state folder in the file manager.
+    OpenFolder,
+}
+
+/// One slot of `states`, as the save state window shows it. The saved
+/// screen is turned into a texture here.
+fn picker_entry(ctx: &egui::Context, states: &GameSaveStates, slot: usize) -> PickerEntry {
+    let content = match states.slot(slot) {
+        Slot::Empty => PickerContent::Empty,
+        Slot::Saved {
+            created_at,
+            screen,
+            file_size,
+        } => PickerContent::Saved {
+            created_at: *created_at,
+            file_size: *file_size,
+            screen: ctx.load_texture(
+                format!("save state slot {slot}"),
+                egui::ColorImage::from_rgb([SCREEN_WIDTH, SCREEN_HEIGHT], &screen[..]),
+                // Sharp pixels when the thumbnail is larger than the SNES
+                // screen, smooth ones when it is smaller.
+                egui::TextureOptions {
+                    magnification: egui::TextureFilter::Nearest,
+                    ..egui::TextureOptions::LINEAR
+                },
+            ),
+        },
+        Slot::Unreadable {
+            modified_at,
+            reason,
+        } => PickerContent::Unreadable {
+            modified_at: *modified_at,
+            reason: reason.clone(),
+        },
+    };
+    let settings = states.settings(slot);
+    PickerEntry {
+        slot,
+        content,
+        name: settings.name.clone(),
+        locked: settings.locked,
+        latest: states.latest_slot() == Some(slot),
+    }
 }
 
 /// Where to draw the game in a `width` x `height` drawable whose top
@@ -256,30 +314,23 @@ impl Gui {
         self.popup_open() || self.state.any_open()
     }
 
-    /// Opens the save state picker on `slots`, the used slots, the most
-    /// recent first. The saved screens are turned into textures once, here.
-    pub fn open_slot_picker(&mut self, slots: &[(usize, &Slot)]) {
+    /// Opens the save state window.
+    pub fn open_slot_picker(&mut self, states: &GameSaveStates) {
         let ctx = &self.egui_canvas.ctx;
-        let entries = slots
-            .iter()
-            .filter_map(|&(slot, content)| {
-                let screen = match content {
-                    Slot::Empty => return None,
-                    Slot::Saved { screen, .. } => Ok(ctx.load_texture(
-                        format!("save state slot {slot}"),
-                        egui::ColorImage::from_rgb([SCREEN_WIDTH, SCREEN_HEIGHT], &screen[..]),
-                        egui::TextureOptions::LINEAR,
-                    )),
-                    Slot::Unreadable { reason, .. } => Err(reason.clone()),
-                };
-                Some(PickerEntry {
-                    slot,
-                    time: content.time()?,
-                    screen,
-                })
-            })
-            .collect();
-        self.state.slot_picker = Some(SlotPicker::new(entries));
+        let entries = (1..=SLOT_COUNT).map(|slot| picker_entry(ctx, states, slot)).collect();
+        let selected = match &self.state.slot_picker {
+            Some(picker) => picker.selected,
+            None => states.latest_slot().map_or(0, |slot| slot - 1),
+        };
+        self.state.slot_picker = Some(SlotPicker::new(entries, selected));
+    }
+
+    /// Shows the slots of `states` again in the save state window, if it is
+    /// open.
+    pub fn refresh_slot_picker(&mut self, states: &GameSaveStates) {
+        if self.state.slot_picker.is_some() {
+            self.open_slot_picker(states);
+        }
     }
 
     /// Shows a short message over the game for a moment.
@@ -350,6 +401,9 @@ impl Gui {
             Command::ToggleRomInfo => self.state.show_rom_info = !self.state.show_rom_info,
             Command::SaveState => out.push(RSnesEvent::SaveState),
             Command::LoadLatestState => out.push(RSnesEvent::LoadLatestState),
+            Command::ChooseSaveState if self.state.slot_picker.is_some() => {
+                self.state.slot_picker = None;
+            }
             Command::ChooseSaveState => out.push(RSnesEvent::ChooseSaveState),
             Command::UndoLoadState => out.push(RSnesEvent::UndoLoadState),
             #[cfg(feature = "plugins")]
@@ -528,7 +582,7 @@ impl Gui {
         self.audio_queue.size() / 4
     }
 
-    /// Moves the picker's selection with the arrows and chooses with Enter.
+    /// Moves the picker's selection with the arrows and load with Enter.
     /// Returns whether the key was used.
     fn drive_slot_picker(picker: &mut SlotPicker, key: Keycode) -> bool {
         let row = SlotPicker::COLUMNS as isize;
@@ -537,7 +591,7 @@ impl Gui {
             Keycode::Right => picker.move_selection(1),
             Keycode::Up => picker.move_selection(-row),
             Keycode::Down => picker.move_selection(row),
-            Keycode::Return | Keycode::KpEnter => picker.choose_selected(),
+            Keycode::Return | Keycode::KpEnter => picker.load_selected(),
             _ => return false,
         }
         true
@@ -561,8 +615,10 @@ impl Gui {
                 continue;
             }
 
-            // While the slot picker is open, arrows and Enter drive are conssumed by it.
+            // While the slot picker is open, arrows and Enter drive it,
+            // unless a name is being typed.
             if let Some(picker) = &mut self.state.slot_picker
+                && !self.egui_canvas.ctx.egui_wants_keyboard_input()
                 && let SdlEvent::KeyDown {
                     keycode: Some(key), ..
                 } = &event
@@ -701,10 +757,14 @@ impl Gui {
             Self::draw_overlays(&mut self.state, &data, ui.ctx(), area);
         });
 
-        // A slot chosen in the picker (by click or by Enter) closes it.
-        if let Some(slot) = self.state.slot_picker.as_ref().and_then(|p| p.chosen) {
-            self.state.slot_picker = None;
-            events.push(RSnesEvent::LoadStateSlot(slot));
+        // An action chosen in the save state window. A load closes it.
+        if let Some(picker) = &mut self.state.slot_picker
+            && let Some(action) = picker.action.take()
+        {
+            if matches!(action, SlotAction::Load(_)) {
+                self.state.slot_picker = None;
+            }
+            events.push(RSnesEvent::SlotAction(action));
         }
 
         let ctx = &self.egui_canvas.ctx;

@@ -407,6 +407,8 @@ fn every_error_has_a_message() {
         SaveStateError::from(io::Error::other("disk on fire")),
         SaveStateError::NoSaveState,
         SaveStateError::NothingToUndo,
+        SaveStateError::SlotLocked,
+        SaveStateError::AllSlotsLocked,
         SaveStateError::NoHomeFolder,
     ];
 

@@ -26,7 +26,7 @@ pub enum Command {
     SaveState,
     /// Load the most recent save slot.
     LoadLatestState,
-    /// Open the save slot picker.
+    /// Open the save state window, or close it if it is open.
     ChooseSaveState,
     /// Go back to the state before the last load.
     UndoLoadState,

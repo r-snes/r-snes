@@ -6,10 +6,11 @@ use egui_sdl2::egui::{self, RichText};
 use ppu::constants::{SCREEN_HEIGHT, SCREEN_WIDTH};
 
 use crate::rsnes::RomInfo;
+use crate::save_state::slots::MAX_NAME_LENGTH;
 
-use super::GuiFrameData;
 use super::command::Command;
-use super::state::{GuiState, Notification, SlotPicker};
+use super::state::{Confirmation, GuiState, Notification, PickerContent, PickerEntry, SlotPicker};
+use super::{GuiFrameData, SlotAction};
 
 #[cfg(feature = "plugins")]
 use plugins::plugin::{Plugin, gui::PermOutcome};
@@ -64,7 +65,12 @@ pub fn menu_bar(
                     ui.separator();
                     item(ui, Command::SaveState, "Save state", false);
                     item(ui, Command::LoadLatestState, "Load latest state", false);
-                    item(ui, Command::ChooseSaveState, "Load state...", false);
+                    item(
+                        ui,
+                        Command::ChooseSaveState,
+                        "Save states...",
+                        state.slot_picker.is_some(),
+                    );
                     item(ui, Command::UndoLoadState, "Undo load", false);
                 });
 
@@ -295,6 +301,85 @@ fn time_ago(now: SystemTime, time: SystemTime) -> String {
     format!("{count} {unit}{plural} ago")
 }
 
+/// The date and time of `time` on the local clock, e.g. "2026-11-19 14:32:07".
+fn local_date(time: SystemTime) -> String {
+    jiff::Zoned::try_from(time).map_or_else(
+        |_| "unknown date".to_owned(),
+        |date| date.strftime("%Y-%m-%d %H:%M:%S").to_string(),
+    )
+}
+
+/// A file size in words, e.g. "575 KB".
+fn file_size_text(bytes: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = 1024 * KB;
+    match bytes {
+        0..KB => format!("{bytes} bytes"),
+        KB..MB => format!("{} KB", (bytes + KB / 2) / KB),
+        _ => format!("{:.1} MB", bytes as f64 / MB as f64),
+    }
+}
+
+// Sizes of the save state window in points, with egui's default style and a
+// little to spare, used to size the thumbnails so that the window fits the
+// game area.
+/// The window's margins and border, left and right.
+const PICKER_SIDE_SPACE: f32 = 24.0;
+/// The title bar and the window's margins, top and bottom.
+const PICKER_TOP_SPACE: f32 = 48.0;
+/// The details of the selected slot and its buttons, under the grid.
+const PICKER_DETAILS_HEIGHT: f32 = 70.0;
+/// The two lines under a thumbnail.
+const PICKER_CAPTION_HEIGHT: f32 = 40.0;
+/// Space between two cells of the grid.
+const PICKER_GAP: f32 = 8.0;
+/// Width taken by the scroll bar, when the window is too low for the grid.
+const PICKER_SCROLL_BAR_SPACE: f32 = 20.0;
+/// Thumbnail width under which the window scrolls rather than shrinking them.
+const PICKER_MIN_THUMBNAIL_WIDTH: f32 = 32.0;
+/// Share of a large game area the window may take, so that some of the game
+/// stays visible around it.
+const PICKER_AREA_SHARE: f32 = 0.8;
+/// Up to this size, the window may take the whole game area: the size of
+/// R-SNES's window when it opens.
+const PICKER_FULL_AREA: egui::Vec2 =
+    egui::vec2(SCREEN_WIDTH as f32 * 2.0, SCREEN_HEIGHT as f32 * 2.0);
+
+/// Id of the save state window.
+const PICKER_WINDOW_ID: &str = "save_state_window";
+
+/// Id of the field where a slot name is typed.
+const NAME_FIELD_ID: &str = "slot_name_field";
+
+/// Size of a thumbnail, so that a grid of `rows` rows fits `area`, and
+/// whether the window must scroll. The thumbnails grow with the game area;
+/// past the size of R-SNES's opening window, the window only takes
+/// [`PICKER_AREA_SHARE`] of it. In a game area too low for even small
+/// thumbnails, the width alone counts and the window scrolls.
+fn thumbnail_size(ctx: &egui::Context, area: egui::Rect, rows: usize) -> (egui::Vec2, bool) {
+    let padding = ctx.global_style().spacing.button_padding * 2.0;
+    let (columns, rows) = (SlotPicker::COLUMNS as f32, rows as f32);
+    let aspect = SCREEN_WIDTH as f32 / SCREEN_HEIGHT as f32;
+    let room = (area.size() * PICKER_AREA_SHARE).max(area.size().min(PICKER_FULL_AREA));
+
+    let by_width =
+        (room.x - PICKER_SIDE_SPACE - PICKER_GAP * (columns - 1.0)) / columns - padding.x;
+    let free_height = room.y - PICKER_TOP_SPACE - PICKER_DETAILS_HEIGHT;
+    let by_height =
+        ((free_height - PICKER_GAP * (rows - 1.0)) / rows - PICKER_CAPTION_HEIGHT - padding.y)
+            * aspect;
+
+    let scrolls = by_height < PICKER_MIN_THUMBNAIL_WIDTH;
+    let width = if scrolls {
+        // The scroll bar takes some of the width.
+        (by_width - PICKER_SCROLL_BAR_SPACE / columns).min(PICKER_MIN_THUMBNAIL_WIDTH)
+    } else {
+        by_width.min(by_height)
+    };
+    let width = width.max(16.0);
+    (egui::vec2(width, width / aspect), scrolls)
+}
+
 /// The save state picker: the used slots, the most recent first, each with
 /// its saved screen, number and age. Selection of the slot is possible with
 /// the mouse or the keyboard arrows and Enter.
@@ -303,69 +388,281 @@ pub fn slot_picker(ctx: &egui::Context, area: egui::Rect, picker: &mut Option<Sl
         return;
     };
 
+    let rows = picker_state.entries.len().div_ceil(SlotPicker::COLUMNS);
+    let (thumbnail, scrolls) = thumbnail_size(ctx, area, rows);
+    let cell_width = thumbnail.x + ctx.global_style().spacing.button_padding.x * 2.0;
     let columns = SlotPicker::COLUMNS as f32;
-    let width = ((area.width() - 40.0) / columns - 16.0).clamp(32.0, SCREEN_WIDTH as f32 / 2.0);
-    let thumbnail = egui::vec2(width, width * SCREEN_HEIGHT as f32 / SCREEN_WIDTH as f32);
+    let grid_width = columns * cell_width + (columns - 1.0) * PICKER_GAP;
 
     let now = SystemTime::now();
+    // egui sets it to false when [x] is clicked.
     let mut open = true;
-    let mut clicked = None;
 
-    egui::Window::new("Load state")
+    egui::Window::new("Save states")
+        .id(egui::Id::new(PICKER_WINDOW_ID))
         .constrain_to(area)
+        .pivot(egui::Align2::CENTER_CENTER)
+        .default_pos(area.center())
         .open(&mut open)
         .collapsible(false)
-        .resizable(false)
-        .vscroll(true)
+        .auto_sized()
         .show(ctx, |ui| {
-            if picker_state.entries.is_empty() {
-                ui.label("No save state for this game yet.");
-                return;
-            }
+            let mut contents = |ui: &mut egui::Ui| {
+                // The details below are cut to the grid's width.
+                ui.set_max_width(grid_width);
 
-            egui::Grid::new("slot_picker")
-                .num_columns(SlotPicker::COLUMNS)
-                .spacing([8.0, 8.0])
-                .show(ui, |ui| {
-                    for (index, entry) in picker_state.entries.iter().enumerate() {
-                        ui.vertical(|ui| {
+                egui::Grid::new("slot_picker")
+                    .num_columns(SlotPicker::COLUMNS)
+                    .spacing([PICKER_GAP, PICKER_GAP])
+                    .show(ui, |ui| {
+                        for index in 0..picker_state.entries.len() {
+                            let entry = &picker_state.entries[index];
                             let selected = index == picker_state.selected;
-                            let response = match &entry.screen {
-                                Ok(texture) => {
-                                    let image = egui::Image::from_texture(texture)
-                                        .fit_to_exact_size(thumbnail);
-                                    ui.add(egui::Button::image(image).selected(selected))
-                                }
-                                Err(reason) => ui
-                                    .add_enabled(
-                                        false,
-                                        egui::Button::new("Unreadable")
-                                            .min_size(thumbnail)
-                                            .selected(selected),
-                                    )
-                                    .on_disabled_hover_text(reason),
-                            };
+                            let response = slot_cell(ui, entry, selected, thumbnail, now);
                             if response.clicked() {
-                                clicked = Some(index);
+                                picker_state.select(index);
                             }
-                            ui.label(format!("Slot {}", entry.slot));
-                            ui.label(RichText::new(time_ago(now, entry.time)).weak().small());
-                        });
+                            if response.double_clicked() {
+                                picker_state.load_selected();
+                            }
 
-                        if (index + 1) % SlotPicker::COLUMNS == 0 {
-                            ui.end_row();
+                            if (index + 1) % SlotPicker::COLUMNS == 0 {
+                                ui.end_row();
+                            }
                         }
-                    }
-                });
+                    });
+
+                ui.separator();
+                slot_details(ui, picker_state, now);
+            };
+            // Only when needed: a scroll area takes the height the window
+            // remembers, and egui never lets that height grow back after
+            // the game area was small.
+            if scrolls {
+                egui::ScrollArea::vertical().show(ui, contents);
+            } else {
+                contents(ui);
+            }
         });
 
-    if let Some(index) = clicked {
-        picker_state.selected = index;
-        picker_state.choose_selected();
-    }
     if !open {
         *picker = None;
     }
+}
+
+/// One slot of the grid: its thumbnail, as a button, then its number and
+/// its name (or age). Returns the button's response.
+fn slot_cell(
+    ui: &mut egui::Ui,
+    entry: &PickerEntry,
+    selected: bool,
+    thumbnail: egui::Vec2,
+    now: SystemTime,
+) -> egui::Response {
+    ui.vertical(|ui| {
+        let button_size = thumbnail + ui.spacing().button_padding * 2.0;
+        ui.set_width(button_size.x);
+
+        let response = match &entry.content {
+            PickerContent::Saved { screen, .. } => {
+                let image = egui::Image::from_texture(screen).fit_to_exact_size(thumbnail);
+                ui.add(egui::Button::image(image).selected(selected))
+            }
+            PickerContent::Empty => ui.add(
+                egui::Button::new(RichText::new("Empty").weak())
+                    .min_size(button_size)
+                    .selected(selected),
+            ),
+            PickerContent::Unreadable { reason, .. } => ui
+                .add(
+                    egui::Button::new(RichText::new("Unreadable").weak())
+                        .min_size(button_size)
+                        .selected(selected),
+                )
+                .on_hover_text(reason),
+        };
+        if entry.latest {
+            badge(ui, response.rect, egui::Align2::LEFT_TOP, "Latest");
+        }
+        if entry.locked {
+            badge(ui, response.rect, egui::Align2::RIGHT_TOP, "Locked");
+        }
+
+        ui.label(format!("Slot {}", entry.slot));
+        let caption = match entry.time() {
+            _ if !entry.name.is_empty() => entry.name.clone(),
+            Some(time) => time_ago(now, time),
+            None => String::new(),
+        };
+        ui.add(egui::Label::new(RichText::new(caption).weak().small()).truncate());
+        response
+    })
+    .inner
+}
+
+/// A small label drawn over a corner of `rect`.
+fn badge(ui: &egui::Ui, rect: egui::Rect, corner: egui::Align2, text: &str) {
+    let painter = ui.painter();
+    let color = ui.visuals().strong_text_color();
+    let galley = painter.layout_no_wrap(text.to_owned(), egui::FontId::proportional(10.0), color);
+    let text_rect = corner.align_size_within_rect(galley.size(), rect.shrink(6.0));
+    painter.rect_filled(text_rect.expand(2.0), 3.0, ui.visuals().window_fill);
+    painter.galley(text_rect.min, galley, color);
+}
+
+/// The details of the selected slot, then its actions. An action that needs
+/// confirming, or a name being typed, takes the place of the action buttons.
+fn slot_details(ui: &mut egui::Ui, picker: &mut SlotPicker, now: SystemTime) {
+    const UNLOCK_FIRST: &str = "The slot is locked. Unlock it first.";
+
+    let entry = picker.selected_entry();
+    let slot = entry.slot;
+    let used = !matches!(entry.content, PickerContent::Empty);
+    let loadable = matches!(entry.content, PickerContent::Saved { .. });
+    let locked = entry.locked;
+    let name = entry.name.clone();
+
+    let title = if name.is_empty() {
+        format!("Slot {slot}")
+    } else {
+        format!("Slot {slot}: {name}")
+    };
+    ui.add(egui::Label::new(RichText::new(title).strong()).truncate());
+
+    let info = match &entry.content {
+        PickerContent::Empty => "Empty".to_owned(),
+        PickerContent::Saved {
+            created_at,
+            file_size,
+            ..
+        } => format!(
+            "Saved {} ({}), {}",
+            local_date(*created_at),
+            time_ago(now, *created_at),
+            file_size_text(*file_size)
+        ),
+        PickerContent::Unreadable {
+            modified_at,
+            reason,
+        } => format!(
+            "Unreadable, written {} ({}): {reason}",
+            local_date(*modified_at),
+            time_ago(now, *modified_at)
+        ),
+    };
+    ui.add(egui::Label::new(&info).truncate());
+
+    let name_field = egui::Id::new(NAME_FIELD_ID);
+    if let Some(new_name) = &mut picker.new_name {
+        let (mut done, mut cancel) = (false, false);
+        ui.horizontal(|ui| {
+            // Leaves room for the two buttons.
+            let field_width = (ui.available_width() - 100.0).clamp(40.0, 160.0);
+            let field = ui.add(
+                egui::TextEdit::singleline(new_name)
+                    .id(name_field)
+                    .char_limit(MAX_NAME_LENGTH)
+                    .hint_text("Slot name")
+                    // No taller than the buttons it replaces.
+                    .margin(egui::vec2(4.0, 1.0))
+                    .desired_width(field_width),
+            );
+            done = field.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter));
+            done |= ui.button("OK").clicked();
+            cancel = ui.button("Cancel").clicked();
+        });
+        if done {
+            let new_name = picker.new_name.take().unwrap_or_default();
+            picker.action = Some(SlotAction::Rename(slot, new_name));
+        } else if cancel {
+            picker.new_name = None;
+        }
+        return;
+    }
+
+    if let Some(confirmation) = picker.confirming {
+        let (question, verb, action) = match confirmation {
+            Confirmation::Overwrite => (
+                format!("Save over slot {slot}?"),
+                "Save over",
+                SlotAction::Save(slot),
+            ),
+            Confirmation::Delete => (
+                format!("Delete slot {slot}?"),
+                "Delete",
+                SlotAction::Delete(slot),
+            ),
+        };
+        ui.horizontal(|ui| {
+            ui.label(question);
+            if ui.button(verb).clicked() {
+                picker.action = Some(action);
+                picker.confirming = None;
+            }
+            if ui.button("Cancel").clicked() {
+                picker.confirming = None;
+            }
+        });
+        return;
+    }
+
+    ui.horizontal_wrapped(|ui| {
+        if ui.add_enabled(loadable, egui::Button::new("Load")).clicked() {
+            picker.action = Some(SlotAction::Load(slot));
+        }
+
+        let save = ui
+            .add_enabled(!locked, egui::Button::new("Save here"))
+            .on_disabled_hover_text(UNLOCK_FIRST);
+        if save.clicked() {
+            if used {
+                picker.confirming = Some(Confirmation::Overwrite);
+            } else {
+                picker.action = Some(SlotAction::Save(slot));
+            }
+        }
+
+        if ui.add_enabled(used, egui::Button::new("Rename")).clicked() {
+            picker.new_name = Some(name);
+            ui.memory_mut(|memory| memory.request_focus(name_field));
+        }
+
+        let mut delete = ui.add_enabled(used && !locked, egui::Button::new("Delete"));
+        if locked {
+            delete = delete.on_disabled_hover_text(UNLOCK_FIRST);
+        }
+        if delete.clicked() {
+            picker.confirming = Some(Confirmation::Delete);
+        }
+
+        let lock = if locked { "Unlock" } else { "Lock" };
+        let lock = ui
+            .add_enabled(used, egui::Button::new(lock))
+            .on_hover_text("A locked slot is never saved over nor deleted.");
+        if lock.clicked() {
+            picker.action = Some(SlotAction::SetLocked(slot, !locked));
+        }
+
+        let open_folder = "Open folder";
+        let open_folder_width = egui::WidgetText::from(open_folder)
+            .into_galley(
+                ui,
+                Some(egui::TextWrapMode::Extend),
+                f32::INFINITY,
+                egui::TextStyle::Button,
+            )
+            .size()
+            .x
+            + ui.spacing().button_padding.x * 2.0;
+        // In a wrapping row, `available_width` is the whole row's width.
+        let spare = ui.max_rect().right() - ui.cursor().left() - open_folder_width;
+        if spare > 0.0 {
+            ui.add_space(spare);
+        }
+        if ui.button(open_folder).clicked() {
+            picker.action = Some(SlotAction::OpenFolder);
+        }
+    });
 }
 
 /// The notification at the bottom-left of the game, until it expires.
@@ -382,11 +679,24 @@ pub fn notification(
         return;
     }
 
+    // Longer texts wrap onto more lines.
+    const MAX_WIDTH: f32 = 480.0;
+    const MARGIN: f32 = 8.0;
+
+    // The area keeps its size from frame to frame, and the text wraps at
+    // it: a new notification needs a sizing pass, where it may take up to
+    // its default width.
+    let sizing_pass = !shown.sized;
+    shown.sized = true;
+
     egui::Area::new(egui::Id::new("notification"))
         .order(egui::Order::Foreground)
         .interactable(false)
+        .constrain_to(area)
+        .sizing_pass(sizing_pass)
+        .default_width(MAX_WIDTH.min(area.width() - MARGIN * 2.0))
         .pivot(egui::Align2::LEFT_BOTTOM)
-        .fixed_pos(area.left_bottom() + egui::vec2(8.0, -8.0))
+        .fixed_pos(area.left_bottom() + egui::vec2(MARGIN, -MARGIN))
         .show(ctx, |ui| {
             egui::Frame::popup(ui.style()).show(ui, |ui| {
                 ui.label(&shown.text);
@@ -469,27 +779,5 @@ pub fn plugin_perm_request(
                 *pending = None;
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::time::Duration;
-
-    #[test]
-    fn ages_are_written_in_words() {
-        let now = SystemTime::now();
-        let ago = |seconds| time_ago(now, now - Duration::from_secs(seconds));
-
-        assert_eq!(ago(0), "just now");
-        assert_eq!(ago(59), "just now");
-        assert_eq!(ago(60), "1 minute ago");
-        assert_eq!(ago(5 * 60 + 30), "5 minutes ago");
-        assert_eq!(ago(3600), "1 hour ago");
-        assert_eq!(ago(23 * 3600), "23 hours ago");
-        assert_eq!(ago(24 * 3600), "1 day ago");
-        assert_eq!(ago(40 * 24 * 3600), "40 days ago");
-        assert_eq!(time_ago(now, now + Duration::from_secs(90)), "just now");
     }
 }
