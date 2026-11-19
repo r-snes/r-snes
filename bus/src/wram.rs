@@ -15,8 +15,10 @@ use common::snes_address::SnesAddress;
 /// the same memory location.
 ///
 /// Warning: bank 0x7F is not mirrored, so `0x7F1000` is independent.
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct Wram {
     /// Raw WRAM contents: bank 0x7E followed by bank 0x7F
+    #[serde(with = "common::serde_arrays::boxed_array")]
     pub data: Box<[u8; WRAM_SIZE]>,
 }
 

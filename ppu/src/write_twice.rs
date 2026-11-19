@@ -4,6 +4,7 @@
 //! Used by CGDATA/RDCGRAM and OPHCT/OPVCT.
 
 /// Two-step latch: first access = low byte, second = high byte.
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct WriteTwice {
     latch: u8,
     /// Next byte to access.
@@ -11,7 +12,7 @@ pub struct WriteTwice {
 }
 
 /// Helper enum to keep track of the byte phase
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum BytePhase {
     /// Next read/write affects the low byte of the addressed word
     Low,

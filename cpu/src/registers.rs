@@ -4,7 +4,7 @@ use std::fmt;
 
 /// A struct which represents the WDC 65C816's registers
 #[expect(non_snake_case, reason = "We are naming register in all caps")]
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Registers {
     /// The accumulator register: stores the result of most operations
     pub A: u16,
@@ -38,7 +38,7 @@ pub struct Registers {
 }
 
 #[expect(non_snake_case, reason = "We are naming register in all caps")]
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 /// Processor status register: holds 8 status flags
 pub struct RegisterP {
     /// Carry flag: typically set when an arithmetic operation "carries out"

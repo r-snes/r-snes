@@ -44,8 +44,10 @@ pub struct Sprite {
 }
 
 /// Sprite attribute memory, its internal address and the STAT77 flags.
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct OAM {
     /// Raw OAM data: 512 bytes table 1 + 32 bytes table 2.
+    #[serde(with = "common::serde_arrays::array")]
     data: [u8; OAM_SIZE],
 
     /// Internal 10-bit byte pointer into OAM. OAMADD ($2102/$2103) holds a

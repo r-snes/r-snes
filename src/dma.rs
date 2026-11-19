@@ -19,7 +19,7 @@ pub const HDMA_INIT_DIRECT_COST: u32 = 8;
 /// Frame-start init, per indirect channel.
 pub const HDMA_INIT_INDIRECT_COST: u32 = 24;
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub enum DmaState {
     /// The CPU has the bus.
     #[default]
@@ -37,7 +37,7 @@ pub enum DmaState {
 /// The byte count and source address live in the channel's DAS/A1T
 /// registers and are decremented in place, exactly as hardware does —
 /// so a ROM reading them mid-transfer sees live values.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub struct DmaProgress {
     pub channel: u8,
     /// Position in the DMAP transfer pattern; survives preemption.
@@ -45,7 +45,7 @@ pub struct DmaProgress {
 }
 
 /// Per-channel HDMA state for the current frame.
-#[derive(Clone, Copy, Default, Debug)]
+#[derive(Clone, Copy, Default, Debug, serde::Serialize, serde::Deserialize)]
 pub struct HdmaChannelState {
     /// Live NLTR: bit 7 = repeat, bits 6-0 = scanlines remaining.
     pub line_counter: u8,
@@ -56,7 +56,7 @@ pub struct HdmaChannelState {
     pub finished: bool,
 }
 
-#[derive(Default)]
+#[derive(Default, serde::Serialize, serde::Deserialize)]
 pub struct Dma {
     pub state: DmaState,
     /// Cycles still to burn before the next action.
