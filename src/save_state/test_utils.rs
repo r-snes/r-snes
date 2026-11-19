@@ -9,7 +9,8 @@ use super::slots::{GameSaveStates, Slot};
 use super::{SaveState, SaveStateError};
 use crate::dma::DmaState;
 use crate::rsnes::{RSnesCore, RSnesEmu};
-use bus::cartridge::test_rom::{create_temp_rom, create_valid_lorom};
+use crate::test_utils::{make_rsnes_from, tick_core};
+use bus::cartridge::test_rom::create_valid_lorom;
 use cpu::cpu::CPUState;
 use ppu::constants::{MASTER_CYCLES_PER_SCANLINE, SCANLINES_PER_FRAME};
 use ppu::rendering::RawFramebuffer;
@@ -104,19 +105,6 @@ pub fn test_rom() -> Vec<u8> {
     rom[0x7FEA..0x7FEC].copy_from_slice(&[0x00, 0x81]); // native NMI vector: $8100
     rom[0x7FFC..0x7FFE].copy_from_slice(&[0x00, 0x80]); // reset vector: $8000
     rom
-}
-
-/// A console running `rom`.
-pub fn console(rom: &[u8]) -> RSnesCore {
-    let (path, _dir) = create_temp_rom(rom);
-    RSnesCore::load_rom(&path).unwrap()
-}
-
-/// Runs the console for `master_cycles` master cycles.
-pub fn run(core: &mut RSnesCore, master_cycles: u64) {
-    for _ in 0..master_cycles {
-        core.update();
-    }
 }
 
 /// Runs the console until `condition` holds, at most two frames.
@@ -222,7 +210,7 @@ pub const TITLE: &str = "TEST GAME";
 /// An emulator running the test ROM, and its save states in a temporary
 /// folder, deleted when the returned `TempDir` is dropped.
 pub fn setup() -> (RSnesEmu, GameSaveStates, TempDir) {
-    let core = console(&test_rom());
+    let core = make_rsnes_from(&test_rom());
     let root = tempfile::tempdir().unwrap();
     let states = GameSaveStates::in_folder(root.path(), TITLE, core.rom_checksum);
     (emu(core), states, root)
@@ -245,7 +233,7 @@ pub fn screen_of(snes: &mut RSnesEmu) -> Box<RawFramebuffer> {
 
 /// Runs the emulator for a moment, so that its state changes.
 pub fn advance(snes: &mut RSnesEmu) {
-    run(&mut snes.core_mut(), 20_000);
+    tick_core(&mut snes.core_mut(), 20_000);
 }
 
 /// Leaves time between two writes, so that their times differ.

@@ -352,12 +352,13 @@ mod tests {
     use super::test_utils::*;
     use super::*;
     use crate::dma::DmaState;
+    use crate::test_utils::{make_rsnes_from, tick_core};
     use cpu::cpu::CPUState;
 
     #[test]
     fn the_test_rom_runs() {
-        let mut core = console(&test_rom());
-        run(&mut core, 3 * MASTER_CYCLES_PER_FRAME);
+        let mut core = make_rsnes_from(&test_rom());
+        tick_core(&mut core, 3 * MASTER_CYCLES_PER_FRAME);
 
         let loops = core.bus.wram.data[0x0000];
         let nmis = core.bus.wram.data[0x0010];
@@ -372,9 +373,9 @@ mod tests {
     #[test]
     fn a_loaded_state_runs_exactly_like_the_original() {
         let rom = test_rom();
-        let mut original = console(&rom);
-        let mut copy = console(&rom);
-        run(&mut copy, 12_345);
+        let mut original = make_rsnes_from(&rom);
+        let mut copy = make_rsnes_from(&rom);
+        tick_core(&mut copy, 12_345);
 
         type Condition = fn(&RSnesCore) -> bool;
         let save_points: [(&str, Condition, u64); 6] = [
@@ -405,19 +406,19 @@ mod tests {
             copy_state(&original, &mut copy);
             assert_same_state(&original, &copy, when);
 
-            run(&mut original, run_after);
-            run(&mut copy, run_after);
+            tick_core(&mut original, run_after);
+            tick_core(&mut copy, run_after);
             assert_same_state(&original, &copy, &format!("{when}, then running"));
 
             // Move the copy away, so the next load starts from another state,
             // even if the next save point is already reached.
-            run(&mut copy, 777);
+            tick_core(&mut copy, 777);
         }
     }
 
     #[test]
     fn info_records_the_rom_and_the_version() {
-        let core = console(&test_rom());
+        let core = make_rsnes_from(&test_rom());
 
         let before = SystemTime::now();
         let bytes = core.save_state().unwrap();
@@ -432,12 +433,12 @@ mod tests {
 
     #[test]
     fn the_emulator_loads_its_own_state_back() {
-        let mut emu = emu(console(&test_rom()));
-        run(&mut emu.core_mut(), 50_000);
+        let mut emu = emu(make_rsnes_from(&test_rom()));
+        tick_core(&mut emu.core_mut(), 50_000);
         let bytes = emu.save_state().unwrap();
         let saved = saved_part(&emu.core_mut());
 
-        run(&mut emu.core_mut(), 50_000);
+        tick_core(&mut emu.core_mut(), 50_000);
         emu.load_state(SaveState::decode(&bytes).unwrap()).unwrap();
 
         assert!(
@@ -451,7 +452,7 @@ mod tests {
     fn loading_restarts_the_plugin_interval() {
         let plugin = plugins::plugin::Plugin::load_from_raw(b"return { permissions = {} }", None);
         let mut emu =
-            RSnesEmu::new_with_plugin(console(&test_rom()), Some(plugin.unwrap())).unwrap();
+            RSnesEmu::new_with_plugin(make_rsnes_from(&test_rom()), Some(plugin.unwrap())).unwrap();
         let bytes = emu.save_state().unwrap();
 
         emu.plugin_mut().unwrap().next_interval_master_cycle = Some(123_456);
@@ -462,8 +463,8 @@ mod tests {
 
     #[test]
     fn the_screen_is_the_presented_frame() {
-        let mut core = console(&test_rom());
-        run(&mut core, 2 * MASTER_CYCLES_PER_FRAME + 5_000);
+        let mut core = make_rsnes_from(&test_rom());
+        tick_core(&mut core, 2 * MASTER_CYCLES_PER_FRAME + 5_000);
 
         let state = SaveState::decode(&core.save_state().unwrap()).unwrap();
 
@@ -476,10 +477,10 @@ mod tests {
         let mut other_rom = rom.clone();
         other_rom[0x1000] ^= 0xFF; // unused byte
 
-        let mut other = console(&other_rom);
-        run(&mut other, 10_000);
-        let mut core = console(&rom);
-        run(&mut core, 20_000);
+        let mut other = make_rsnes_from(&other_rom);
+        tick_core(&mut other, 10_000);
+        let mut core = make_rsnes_from(&rom);
+        tick_core(&mut core, 20_000);
         let before = saved_part(&core);
 
         let state = SaveState::decode(&other.save_state().unwrap()).unwrap();
@@ -505,7 +506,7 @@ mod tests {
 
     #[test]
     fn a_state_of_another_emulator_version_is_refused() {
-        let core = console(&test_rom());
+        let core = make_rsnes_from(&test_rom());
         let info = SaveState::read_info(&core.save_state().unwrap()).unwrap();
         let older = SaveStateInfo {
             emulator_version: "0.0.1".into(),
@@ -526,7 +527,7 @@ mod tests {
 
     #[test]
     fn a_truncated_file_is_corrupted() {
-        let bytes = console(&test_rom()).save_state().unwrap();
+        let bytes = make_rsnes_from(&test_rom()).save_state().unwrap();
 
         // Without the version, inside it, inside the rest of the info, then
         // inside the console state.
@@ -548,7 +549,7 @@ mod tests {
 
     #[test]
     fn bytes_after_the_state_are_corrupted() {
-        let mut bytes = console(&test_rom()).save_state().unwrap();
+        let mut bytes = make_rsnes_from(&test_rom()).save_state().unwrap();
         bytes.extend_from_slice(b"extra");
 
         assert!(matches!(decode_error(&bytes), SaveStateError::Corrupted(_)));

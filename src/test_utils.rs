@@ -12,9 +12,14 @@ use cpu::registers::RegisterP;
 use duplicate::duplicate_item;
 use ppu::constants::{MASTER_CYCLES_PER_SCANLINE, SCANLINES_PER_FRAME};
 
+/// A console running a valid, empty LoROM.
 pub fn make_rsnes() -> RSnesCore {
-    let rom_data = create_valid_lorom(0x20000);
-    let (rom_path, _dir) = create_temp_rom(&rom_data);
+    make_rsnes_from(&create_valid_lorom(0x20000))
+}
+
+/// A console running `rom`.
+pub fn make_rsnes_from(rom: &[u8]) -> RSnesCore {
+    let (rom_path, _dir) = create_temp_rom(rom);
     RSnesCore::load_rom(&rom_path).unwrap()
 }
 
