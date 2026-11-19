@@ -350,8 +350,8 @@ mod tests {
     use crate::cartridge::header::mapping_mode::MappingMode;
     use crate::cartridge::test_rom::*;
     use crate::constants::{
-        COPIER_HEADER_SIZE, HEADER_ROM_HARDWARE_OFFSET, HIROM_BANK_SIZE, LOROM_BANK_SIZE,
-        LOROM_HEADER_OFFSET,
+        COPIER_HEADER_SIZE, HEADER_RAM_SIZE_OFFSET, HEADER_ROM_HARDWARE_OFFSET, HIROM_BANK_SIZE,
+        LOROM_BANK_SIZE, LOROM_HEADER_OFFSET,
     };
     use common::snes_address::snes_addr;
 
@@ -899,17 +899,37 @@ mod tests {
     #[test]
     fn test_unemulated_coprocessor_is_reported_missing() {
         let mut data = create_valid_lorom(0x10000);
-        data[LOROM_HEADER_OFFSET + HEADER_ROM_HARDWARE_OFFSET] = 0x25; // OBC1 + RAM + battery
+        data[LOROM_HEADER_OFFSET + HEADER_ROM_HARDWARE_OFFSET] = 0x13; // GSU (Super FX)
         let (path, _dir) = create_temp_rom(&data);
         let cartridge = Cartridge::load_from_file(path).unwrap();
 
         assert!(cartridge.chip.is_none());
-        assert_eq!(cartridge.missing_coprocessor(), Some(Coprocessor::OBC1));
+        assert_eq!(cartridge.missing_coprocessor(), Some(Coprocessor::GSU));
         let warning = cartridge.chip_warning.unwrap();
         assert!(
-            warning.contains("OBC1") && warning.contains("not emulated"),
+            warning.contains("GSU") && warning.contains("not emulated"),
             "{warning}"
         );
+    }
+
+    #[test]
+    fn test_obc1_cartridge_gets_its_chip() {
+        let mut data = create_valid_lorom(0x10000);
+        data[LOROM_HEADER_OFFSET + HEADER_ROM_HARDWARE_OFFSET] = 0x25; // OBC1 + RAM + battery
+        data[LOROM_HEADER_OFFSET + HEADER_RAM_SIZE_OFFSET] = 0x03; // 8 KiB
+        let (path, _dir) = create_temp_rom(&data);
+        let mut cartridge = Cartridge::load_from_file(path).unwrap();
+
+        assert!(cartridge.chip.is_some());
+        assert_eq!(cartridge.chip_warning, None);
+        assert_eq!(cartridge.missing_coprocessor(), None);
+
+        // sprite 2 of the $1C00 table, through the chip
+        cartridge.just_write(snes_addr!(0x00:0x7FF5), 0x00);
+        cartridge.just_write(snes_addr!(0x00:0x7FF6), 2);
+        cartridge.just_write(snes_addr!(0x00:0x7FF1), 0x77);
+        // the same byte through the plain S-RAM mapping (bank $70)
+        assert_eq!(cartridge.just_read(snes_addr!(0x70:0x1C09)), Some(0x77));
     }
 
     #[test]

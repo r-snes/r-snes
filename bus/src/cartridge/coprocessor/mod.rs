@@ -4,6 +4,7 @@
 //! [`create`]. The cartridge owns the chip, gives it the first chance to answer
 //! every bus access, and the core steps it with the master clock.
 
+pub mod obc1;
 pub mod test_chip;
 
 use crate::bus::AccessSpeed;
@@ -74,8 +75,11 @@ pub enum ChipSetup {
 pub fn create(header: &RomHeader) -> ChipSetup {
     match header.hardware.coprocessor {
         None => ChipSetup::NoChip,
-        // Add one arm per emulated chip above this one, e.g.
-        // Some(Coprocessor::OBC1) => ChipSetup::Ready { chip: Box::new(obc1::Obc1::new()), note: None },
+        // One arm per emulated chip
+        Some(Coprocessor::OBC1) => ChipSetup::Ready {
+            chip: Box::new(obc1::Obc1::new()),
+            note: None,
+        },
         Some(chip) => ChipSetup::Unsupported(unsupported_message(chip)),
     }
 }
