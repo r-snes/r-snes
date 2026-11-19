@@ -427,3 +427,64 @@ fn main() -> Result<(), String> {
         _ => gui_loop(emu),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::save_state::test_utils::*;
+
+    #[test]
+    fn with_save_states_runs_the_action_on_the_states() {
+        let (mut snes, states, _root) = setup();
+        let mut save_states = Ok(states);
+
+        let slot = with_save_states(&mut save_states, |states| states.save(&mut snes));
+
+        assert_eq!(slot.unwrap(), 1);
+        assert_eq!(save_states.unwrap().latest_slot(), Some(1));
+    }
+
+    #[test]
+    fn with_save_states_reports_why_there_are_none() {
+        let mut save_states = Err(SaveStateError::NoHomeFolder);
+
+        let result = with_save_states(&mut save_states, |_| -> Result<(), _> {
+            panic!("the action must not run without save states")
+        });
+
+        assert!(matches!(result, Err(SaveStateError::NoHomeFolder)));
+        // The error stays, for the next action.
+        assert!(matches!(save_states, Err(SaveStateError::NoHomeFolder)));
+    }
+
+    #[test]
+    fn slot_actions_change_the_slot_and_say_what_they_did() {
+        let (mut snes, mut states, _root) = setup();
+        let mut run = |action| run_slot_action(&mut states, &mut snes, &action).unwrap();
+
+        assert_eq!(run(SlotAction::Save(3)), "Saved to slot 3");
+        assert_eq!(run(SlotAction::Load(3)), "Loaded slot 3");
+        assert_eq!(run(SlotAction::Rename(3, "boss".into())), "Renamed slot 3");
+        assert_eq!(run(SlotAction::SetLocked(3, true)), "Locked slot 3");
+        assert_eq!(run(SlotAction::SetLocked(3, false)), "Unlocked slot 3");
+        assert_eq!(run(SlotAction::Delete(3)), "Deleted slot 3");
+
+        assert!(is_empty(states.slot(3)));
+        assert_eq!(states.settings(3).name, "");
+    }
+
+    #[test]
+    fn a_refused_slot_action_returns_its_error() {
+        let (mut snes, mut states, _root) = setup();
+        states.save_to(&mut snes, 2).unwrap();
+        states.set_locked(2, true).unwrap();
+
+        let result = run_slot_action(&mut states, &mut snes, &SlotAction::Delete(2));
+
+        assert!(matches!(result, Err(SaveStateError::SlotLocked)));
+        assert!(matches!(
+            run_slot_action(&mut states, &mut snes, &SlotAction::Load(5)),
+            Err(SaveStateError::NoSaveState)
+        ));
+    }
+}

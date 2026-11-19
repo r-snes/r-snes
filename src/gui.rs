@@ -1,5 +1,7 @@
 pub mod command;
 pub mod state;
+#[cfg(test)]
+mod test_utils;
 pub mod widgets;
 
 use std::error::Error;
@@ -808,5 +810,90 @@ impl Gui {
                 Default::default()
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::save_state::SaveStateError;
+    use crate::save_state::test_utils::{setup, tick};
+    use test_utils::test_picker;
+
+    #[test]
+    fn arrows_move_the_selection_and_enter_loads() {
+        let mut picker = test_picker(&egui::Context::default());
+
+        for (key, selected) in [
+            (Keycode::Right, 1),
+            (Keycode::Down, 6),
+            (Keycode::Left, 5),
+            (Keycode::Up, 0),
+        ] {
+            assert!(Gui::drive_slot_picker(&mut picker, key), "{key}");
+            assert_eq!(picker.selected, selected, "after {key}");
+        }
+        assert!(Gui::drive_slot_picker(&mut picker, Keycode::Return));
+        assert_eq!(picker.action, Some(SlotAction::Load(1)));
+
+        picker.action = None;
+        assert!(Gui::drive_slot_picker(&mut picker, Keycode::KpEnter));
+        assert_eq!(picker.action, Some(SlotAction::Load(1)));
+    }
+
+    #[test]
+    fn other_keys_are_left_to_the_game() {
+        let mut picker = test_picker(&egui::Context::default());
+
+        for key in [Keycode::Z, Keycode::Space, Keycode::Escape, Keycode::F4] {
+            assert!(!Gui::drive_slot_picker(&mut picker, key), "{key}");
+        }
+        assert_eq!(picker.selected, 0);
+        assert_eq!(picker.action, None);
+    }
+
+    #[test]
+    fn picker_entries_show_the_slots_and_their_settings() {
+        let (mut snes, mut states, _root) = setup();
+        states.save(&mut snes).unwrap();
+        tick();
+        states.save(&mut snes).unwrap();
+        states.rename(2, "boss").unwrap();
+        states.set_locked(2, true).unwrap();
+        std::fs::write(states.slot_path(5), b"damaged").unwrap();
+        states.refresh();
+        let ctx = egui::Context::default();
+
+        let first = picker_entry(&ctx, &states, 1);
+        let PickerContent::Saved {
+            created_at,
+            file_size,
+            screen,
+        } = &first.content
+        else {
+            panic!("slot 1 holds a save state");
+        };
+        assert_eq!(Some(*created_at), states.slot(1).time());
+        assert_eq!(
+            *file_size,
+            std::fs::metadata(states.slot_path(1)).unwrap().len()
+        );
+        assert_eq!(screen.size(), [SCREEN_WIDTH, SCREEN_HEIGHT]);
+        assert_eq!((first.slot, first.name.as_str()), (1, ""));
+        assert!(!first.locked && !first.latest);
+
+        let second = picker_entry(&ctx, &states, 2);
+        assert_eq!(second.name, "boss");
+        assert!(second.locked && second.latest);
+
+        let PickerContent::Unreadable { reason, .. } = picker_entry(&ctx, &states, 5).content
+        else {
+            panic!("slot 5 is damaged");
+        };
+        assert_eq!(reason, SaveStateError::NotASaveState.to_string());
+        assert!(matches!(
+            picker_entry(&ctx, &states, 9).content,
+            PickerContent::Empty
+        ));
     }
 }

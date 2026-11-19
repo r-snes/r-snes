@@ -223,3 +223,133 @@ impl GuiState {
         open
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::gui::test_utils::test_picker;
+
+    fn picker() -> SlotPicker {
+        test_picker(&egui::Context::default())
+    }
+
+    #[test]
+    fn a_new_picker_selects_at_most_the_last_slot() {
+        let ctx = egui::Context::default();
+        assert_eq!(SlotPicker::new(test_picker(&ctx).entries, 4).selected, 4);
+        assert_eq!(SlotPicker::new(test_picker(&ctx).entries, 99).selected, 9);
+    }
+
+    #[test]
+    #[should_panic(expected = "a picker needs slots")]
+    fn a_picker_needs_slots() {
+        SlotPicker::new(Vec::new(), 0);
+    }
+
+    #[test]
+    fn selecting_another_slot_cancels_what_was_going_on() {
+        let mut picker = picker();
+        picker.confirming = Some(Confirmation::Delete);
+        picker.new_name = Some("boss".into());
+
+        picker.select(0);
+        assert_eq!(picker.confirming, Some(Confirmation::Delete), "same slot");
+        assert!(picker.new_name.is_some(), "same slot");
+
+        picker.select(3);
+        assert_eq!(picker.selected_entry().slot, 4);
+        assert_eq!(picker.confirming, None);
+        assert_eq!(picker.new_name, None);
+
+        picker.select(99);
+        assert_eq!(picker.selected, 9, "stops at the last slot");
+    }
+
+    #[test]
+    fn the_selection_moves_by_columns_and_rows_and_stops_at_the_ends() {
+        let mut picker = picker();
+        let row = SlotPicker::COLUMNS as isize;
+
+        picker.move_selection(1);
+        assert_eq!(picker.selected, 1);
+        picker.move_selection(row);
+        assert_eq!(picker.selected, 6);
+        picker.move_selection(row);
+        assert_eq!(picker.selected, 9, "stops at the last slot");
+        picker.move_selection(-row);
+        assert_eq!(picker.selected, 4);
+        picker.move_selection(-row);
+        assert_eq!(picker.selected, 0, "stops at the first slot");
+        picker.move_selection(-1);
+        assert_eq!(picker.selected, 0);
+    }
+
+    #[test]
+    fn only_a_saved_slot_is_loaded() {
+        let mut picker = picker();
+
+        picker.load_selected();
+        assert_eq!(picker.action, Some(SlotAction::Load(1)));
+
+        for unreadable_or_empty in [5, 9] {
+            let mut picker = self::picker();
+            picker.select(unreadable_or_empty);
+            picker.load_selected();
+            assert_eq!(picker.action, None, "index {unreadable_or_empty}");
+        }
+    }
+
+    #[test]
+    fn nothing_is_loaded_while_an_action_waits_for_confirmation() {
+        let mut picker = picker();
+        picker.confirming = Some(Confirmation::Overwrite);
+
+        picker.load_selected();
+
+        assert_eq!(picker.action, None);
+    }
+
+    #[test]
+    fn an_entry_is_dated_by_its_save_or_its_file() {
+        let picker = picker();
+
+        assert!(picker.entries[0].time().is_some(), "saved");
+        assert!(picker.entries[5].time().is_some(), "unreadable");
+        assert_eq!(picker.entries[9].time(), None, "empty");
+    }
+
+    #[test]
+    fn the_save_state_window_counts_as_open_and_escape_closes_it() {
+        let mut state = GuiState::default();
+        assert!(!state.any_open());
+
+        state.slot_picker = Some(picker());
+        assert!(state.any_open());
+
+        assert!(state.close_all());
+        assert!(state.slot_picker.is_none());
+        assert!(!state.close_all(), "nothing left to close");
+    }
+
+    #[test]
+    fn a_notification_is_not_an_open_window() {
+        let mut state = GuiState {
+            notification: Some(Notification::new("Saved to slot 1".into())),
+            ..Default::default()
+        };
+
+        assert!(!state.any_open());
+        assert!(!state.close_all());
+        assert!(state.notification.is_none(), "Escape clears it too");
+    }
+
+    #[test]
+    fn a_notification_expires() {
+        let mut notification = Notification::new("Saved to slot 1".into());
+        assert!(!notification.expired());
+        assert!(!notification.sized);
+
+        notification.shown_at = Instant::now() - Notification::DURATION;
+        assert!(notification.expired());
+    }
+}

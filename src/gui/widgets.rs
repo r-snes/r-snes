@@ -781,3 +781,44 @@ pub fn plugin_perm_request(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[test]
+    fn ages_are_written_in_words() {
+        let now = SystemTime::now();
+        let ago = |seconds| time_ago(now, now - Duration::from_secs(seconds));
+
+        assert_eq!(ago(0), "just now");
+        assert_eq!(ago(59), "just now");
+        assert_eq!(ago(60), "1 minute ago");
+        assert_eq!(ago(59 * 60), "59 minutes ago");
+        assert_eq!(ago(3600), "1 hour ago");
+        assert_eq!(ago(23 * 3600), "23 hours ago");
+        assert_eq!(ago(86_400), "1 day ago");
+        assert_eq!(ago(3 * 86_400), "3 days ago");
+        // A clock set back: the save looks like it is from the future.
+        assert_eq!(time_ago(now, now + Duration::from_secs(90)), "just now");
+    }
+
+    #[test]
+    fn file_sizes_are_written_in_words() {
+        assert_eq!(file_size_text(0), "0 bytes");
+        assert_eq!(file_size_text(1023), "1023 bytes");
+        assert_eq!(file_size_text(1024), "1 KB");
+        assert_eq!(file_size_text(588_800), "575 KB");
+        assert_eq!(file_size_text(3 * 1024 * 1024 / 2), "1.5 MB");
+    }
+
+    #[test]
+    fn local_dates_have_the_day_and_the_second() {
+        let shape: String = local_date(SystemTime::now())
+            .chars()
+            .map(|c| if c.is_ascii_digit() { '0' } else { c })
+            .collect();
+        assert_eq!(shape, "0000-00-00 00:00:00");
+    }
+}

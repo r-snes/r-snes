@@ -511,6 +511,55 @@ mod tests {
     }
 
     #[test]
+    fn a_failed_atomic_write_leaves_no_temporary_file() {
+        let folder = tempfile::tempdir().unwrap();
+        // A folder can't be replaced by a file: the rename fails.
+        let path = folder.path().join("file.rsnes-state");
+        fs::create_dir(&path).unwrap();
+        fs::write(path.join("inside"), b"kept").unwrap();
+
+        assert!(write_atomic(&path, b"new").is_err());
+
+        let names: Vec<String> = fs::read_dir(folder.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+            .collect();
+        assert_eq!(names, ["file.rsnes-state"]);
+        assert_eq!(fs::read(path.join("inside")).unwrap(), b"kept");
+    }
+
+    #[test]
+    fn the_folder_is_named_after_the_game() {
+        let root = Path::new("root");
+        let states = GameSaveStates::in_folder(root, "GAME", 0x1234_5678);
+
+        assert_eq!(states.folder(), root.join("GAME-12345678"));
+        assert_eq!(states.slot_path(1).parent(), Some(states.folder()));
+        assert_eq!(states.settings_path().parent(), Some(states.folder()));
+    }
+
+    #[test]
+    fn a_slot_that_cannot_be_read_or_deleted_reports_it() {
+        let (mut snes, mut states, _root) = setup();
+        states.save(&mut snes).unwrap();
+        // A folder in place of the file: reading and deleting it fail.
+        fs::create_dir(states.slot_path(4)).unwrap();
+        states.refresh();
+        assert!(is_unreadable(states.slot(4)));
+
+        let before = state_of(&mut snes);
+        assert!(matches!(
+            states.load_slot(&mut snes, 4),
+            Err(SaveStateError::Io(_))
+        ));
+        assert!(matches!(states.delete(4), Err(SaveStateError::Io(_))));
+
+        assert!(state_of(&mut snes) == before, "the console changed");
+        assert!(is_unreadable(states.slot(4)), "the slot was forgotten");
+        assert!(states.slot_path(4).is_dir());
+    }
+
+    #[test]
     fn a_new_folder_has_only_empty_slots() {
         let (_snes, states, root) = setup();
 

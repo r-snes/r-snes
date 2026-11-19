@@ -283,4 +283,19 @@ mod tests {
 
         assert!(matches!(error, postcard::Error::SerdeDeCustom), "{error:?}");
     }
+
+    /// A cycle function missing from `register_cycles!`.
+    fn unregistered_cyc1(_cpu: &mut CPU, _irqb: bool) -> (CycleResult, InstrCycle) {
+        (CycleResult::Internal, InstrCycle(unregistered_cyc1))
+    }
+
+    #[test]
+    fn an_unregistered_function_is_not_saved() {
+        assert!(name_of(unregistered_cyc1).is_none());
+
+        let error = postcard::to_stdvec(&InstrCycle(unregistered_cyc1))
+            .expect_err("an unregistered function must not serialize");
+
+        assert!(matches!(error, postcard::Error::SerdeSerCustom));
+    }
 }
