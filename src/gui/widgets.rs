@@ -65,13 +65,13 @@ pub fn menu_bar(
                     ui.separator();
                     item(ui, Command::SaveState, "Save state", false);
                     item(ui, Command::LoadLatestState, "Load latest state", false);
+                    item(ui, Command::UndoLoadState, "Undo load", false);
                     item(
                         ui,
                         Command::ChooseSaveState,
                         "Save states...",
                         state.slot_picker.is_some(),
                     );
-                    item(ui, Command::UndoLoadState, "Undo load", false);
                 });
 
                 ui.menu_button("View", |ui| {

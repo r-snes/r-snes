@@ -26,10 +26,10 @@ pub enum Command {
     SaveState,
     /// Load the most recent save slot.
     LoadLatestState,
-    /// Open the save state window, or close it if it is open.
-    ChooseSaveState,
     /// Go back to the state before the last load.
     UndoLoadState,
+    /// Open the save state window, or close it if it is open.
+    ChooseSaveState,
     /// Pick a Lua plugin with a file dialog. Only possible with no game running,
     /// since the plugin is injected when the next ROM starts.
     #[cfg(feature = "plugins")]
@@ -88,8 +88,8 @@ impl Command {
         Command::ToggleRomInfo,
         Command::SaveState,
         Command::LoadLatestState,
-        Command::ChooseSaveState,
         Command::UndoLoadState,
+        Command::ChooseSaveState,
         #[cfg(feature = "plugins")]
         Command::LoadPlugin,
         #[cfg(feature = "plugins")]
@@ -106,8 +106,8 @@ impl Command {
             Command::ToggleRomInfo => Shortcut::plain(Keycode::F1),
             Command::SaveState => Shortcut::plain(Keycode::F2),
             Command::LoadLatestState => Shortcut::plain(Keycode::F3),
-            Command::ChooseSaveState => Shortcut::plain(Keycode::F4),
             Command::UndoLoadState => Shortcut::ctrl(Keycode::F3),
+            Command::ChooseSaveState => Shortcut::plain(Keycode::F4),
             #[cfg(feature = "plugins")]
             Command::LoadPlugin => Shortcut::ctrl(Keycode::P),
             #[cfg(feature = "plugins")]
@@ -135,8 +135,8 @@ impl Command {
             | Command::ToggleRomInfo
             | Command::SaveState
             | Command::LoadLatestState
-            | Command::ChooseSaveState
-            | Command::UndoLoadState => rom_loaded,
+            | Command::UndoLoadState
+            | Command::ChooseSaveState => rom_loaded,
             #[cfg(feature = "plugins")]
             Command::LoadPlugin => !rom_loaded,
             #[cfg(feature = "plugins")]
@@ -221,8 +221,8 @@ mod tests {
         assert!(!Command::ToggleRomInfo.is_enabled(&idle));
         assert!(!Command::SaveState.is_enabled(&idle));
         assert!(!Command::LoadLatestState.is_enabled(&idle));
-        assert!(!Command::ChooseSaveState.is_enabled(&idle));
         assert!(!Command::UndoLoadState.is_enabled(&idle));
+        assert!(!Command::ChooseSaveState.is_enabled(&idle));
         assert!(Command::OpenRom.is_enabled(&idle));
     }
 
