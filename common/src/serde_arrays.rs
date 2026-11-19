@@ -5,7 +5,7 @@
 //! CGRAM, OAM, framebuffers...). These modules are meant for
 //! `#[serde(with = "...")]`:
 //!
-//! - [`array`] for `[T; N]` fields,
+//! - [`array`](mod@array) for `[T; N]` fields,
 //! - [`boxed_array`] for `Box<[T; N]>` fields.
 //!
 //! Both serialize the array as a slice (a length followed by the elements) and
