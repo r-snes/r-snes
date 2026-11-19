@@ -307,7 +307,7 @@ fn the_screen_is_the_presented_frame() {
 
     let state = SaveState::decode(&core.save_state().unwrap()).unwrap();
 
-    assert!(state.screen() == core.ppu_renderer.presented());
+    assert!(*state.into_screen() == *core.ppu_renderer.presented());
 }
 
 #[test]

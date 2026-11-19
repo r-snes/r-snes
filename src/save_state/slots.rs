@@ -5,7 +5,7 @@
 //! ```text
 //! <home>/rsnes-save-states/
 //! └── <cleaned ROM title>-<ROM CRC32>/      e.g. "SUPER GAME-1A2B3C4D/"
-//!     ├── slot-01.rsnes-state
+//!     ├── slot-1.rsnes-state
 //!     ├── ...
 //!     ├── slot-10.rsnes-state
 //!     └── undo-load.rsnes-state

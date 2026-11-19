@@ -77,7 +77,7 @@ fn slot_files_are_named_after_their_number() {
     let states = GameSaveStates::in_folder(root, "GAME", 0x1234_5678);
     let folder = root.join("GAME-12345678");
 
-    assert_eq!(states.slot_path(1), folder.join("slot-01.rsnes-state"));
+    assert_eq!(states.slot_path(1), folder.join("slot-1.rsnes-state"));
     assert_eq!(states.slot_path(10), folder.join("slot-10.rsnes-state"));
     assert_eq!(states.undo_path(), folder.join("undo-load.rsnes-state"));
 }
@@ -94,7 +94,7 @@ fn save_states_are_in_the_home_folder() {
         states.slot_path(1),
         home.join(ROOT_FOLDER_NAME)
             .join("GAME-12345678")
-            .join("slot-01.rsnes-state")
+            .join("slot-1.rsnes-state")
     );
 }
 
