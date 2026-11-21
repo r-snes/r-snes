@@ -65,7 +65,7 @@ enum IplHle {
     /// right at a 256-byte boundary needs that byte treated as a
     /// command, not swallowed by a zero-wait it isn't subject to.
     /// `settle` counts down real cycles, for every byte, between port0
-    /// matching the expected index and port_in[1] being trusted as that
+    /// matching the expected index and `port_in[1]` being trusted as that
     /// byte's data — see IPL_FIRST_BYTE_SETTLE_CYCLES.
     Transfer {
         addr: u16,
@@ -85,11 +85,11 @@ enum IplHle {
 }
 
 /// Real cycles to wait, after port0 first reads 0 for a block's first
-/// byte, before trusting port_in[1] — see the `settle` field on
+/// byte, before trusting `port_in[1]` — see the `settle` field on
 /// IplHle::Transfer. Real hardware separates detecting port0==0 from
 /// actually reading port1 by a couple more instructions (~8 cycles);
 /// our HLE collapses that gap to zero, so without this delay we can
-/// read port_in[1] a tick before the main CPU has written the real
+/// read `port_in[1]` a tick before the main CPU has written the real
 /// byte there, capturing leftover data from the command that started
 /// the block instead. Covers the real BNE+CMP+MOV preamble with a
 /// little headroom.
