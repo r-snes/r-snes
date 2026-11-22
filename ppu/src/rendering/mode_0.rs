@@ -8,10 +8,11 @@
 
 use crate::ppu::PPU;
 use crate::rendering::renderer::{BgParams, BitDepth, Layer, Priority, Renderer};
+use std::ops::Range;
 
 impl Renderer {
-    /// Renders BG1-BG4 in Mode 0 on framebuffer row `y`.
-    pub fn render_scanline_mode0(&mut self, ppu: &PPU, y: usize) {
+    /// Renders BG1-BG4 in Mode 0 on pixels `x_range` of framebuffer row `y`.
+    pub fn render_scanline_mode0(&mut self, ppu: &PPU, y: usize, x_range: Range<usize>) {
         // Mode 0: BG1-BG4, all 2bpp. Each BG owns a separate 32-colour region:
         // BG1 -> 0, BG2 -> 32, BG3 -> 64, BG4 -> 96.
         const PALETTE_BASE: [u8; 4] = [0, 32, 64, 96];
@@ -40,6 +41,7 @@ impl Renderer {
             self.render_bg_scanline(
                 ppu,
                 y,
+                x_range.clone(),
                 &BgParams {
                     tilemap_base: ppu.regs.bg_tilemap_addr(bg),
                     tiledata_base: ppu.regs.bg_tiledata_addr(bg),

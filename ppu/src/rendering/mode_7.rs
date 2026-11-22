@@ -4,11 +4,11 @@
 //! - low byte of word `ty * 128 + tx` = tile number of map tile (tx, ty)
 //! - high byte of word `tile * 64 + y * 8 + x` = color index of pixel (x, y) of `tile`
 
-use crate::constants::SCREEN_WIDTH;
 use crate::ppu::PPU;
 use crate::registers::M7Outside;
 use crate::rendering::renderer::{Layer, LinePixel, Priority, Renderer};
 use crate::vram::RawVRAM;
+use std::ops::Range;
 
 // OBJ3 > OBJ2 > BG2.1 > OBJ1 > BG1 > OBJ0 > BG2.0 (sprites are 3, 6, 9, 12)
 const BG1_Z: Priority = Priority::new(5);
@@ -33,11 +33,7 @@ impl M7Line {
         let map_x = (self.origin_x + self.a * sx) >> 8;
         let map_y = (self.origin_y + self.c * sx) >> 8;
 
-        #[expect(
-            clippy::manual_range_contains,
-            reason = "explicit bounds are clearer here than Range::contains"
-        )]
-        let in_map = 0 <= map_x && map_x < MAP_PX && 0 <= map_y && map_y < MAP_PX;
+        let in_map = (map_x | map_y) & !(MAP_PX - 1) == 0;
         let tile = match (in_map, self.outside) {
             (true, _) | (false, M7Outside::Wrap) => {
                 let tile_x = ((map_x & (MAP_PX - 1)) >> 3) as usize;
@@ -55,8 +51,8 @@ impl M7Line {
 }
 
 impl Renderer {
-    /// Renders BG1 (and BG2 with EXTBG) in Mode 7 on framebuffer row `y`.
-    pub fn render_scanline_mode7(&mut self, ppu: &PPU, y: usize) {
+    /// Renders BG1 (and BG2 with EXTBG) in Mode 7 on pixels `x_range` of framebuffer row `y`.
+    pub fn render_scanline_mode7(&mut self, ppu: &PPU, y: usize, x_range: Range<usize>) {
         let regs = &ppu.regs;
         let extbg = regs.extbg();
         let bg1 = (regs.tm & 0x01 != 0, regs.ts & 0x01 != 0);
@@ -92,15 +88,22 @@ impl Renderer {
         };
 
         if bg1 != (false, false) {
-            self.render_m7_layer(ppu, &m7, 0, bg1);
+            self.render_m7_layer(ppu, &m7, 0, x_range.clone(), bg1);
         }
         if bg2 != (false, false) {
-            self.render_m7_layer(ppu, &m7, 1, bg2);
+            self.render_m7_layer(ppu, &m7, 1, x_range, bg2);
         }
     }
 
     // Draws BG `bg` (0 = BG1, 1 = BG2) on the screens in `screens` (main, sub).
-    fn render_m7_layer(&mut self, ppu: &PPU, m7: &M7Line, bg: usize, screens: (bool, bool)) {
+    fn render_m7_layer(
+        &mut self,
+        ppu: &PPU,
+        m7: &M7Line,
+        bg: usize,
+        x_range: Range<usize>,
+        screens: (bool, bool),
+    ) {
         // Horizontal mosaic uses the bit of the layer.
         let block = if ppu.regs.bg_mosaic(bg) {
             ppu.regs.mosaic_size() as usize
@@ -108,7 +111,7 @@ impl Renderer {
             1
         };
 
-        for x in 0..SCREEN_WIDTH {
+        for x in x_range {
             // Mosaic works on screen pixels, before the flip.
             let src_x = (x - x % block) as i32;
             let sx = if m7.flip_x { 255 - src_x } else { src_x };
