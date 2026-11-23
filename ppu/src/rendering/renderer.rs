@@ -205,6 +205,9 @@ pub struct Renderer {
 
     // Pixels 0..rendered_x of the current line are already drawn.
     rendered_x: usize,
+
+    // Fine scroll (low 3 bits of HOFS) of BG1-BG4, read at the start of the line.
+    fine_hofs: [usize; 4],
 }
 
 impl Default for Renderer {
@@ -223,6 +226,7 @@ impl Renderer {
             sub_line: Box::new([LinePixel::BACKDROP; SCREEN_WIDTH]),
             obj_line: Box::new([None; SCREEN_WIDTH]),
             rendered_x: 0,
+            fine_hofs: [0; 4],
         }
     }
 
@@ -242,9 +246,10 @@ impl Renderer {
         self.render_until(ppu, y, SCREEN_WIDTH);
     }
 
-    /// Starts framebuffer row `y`: builds the OBJ line, no pixel is drawn yet.
+    /// Starts framebuffer row `y`: builds the OBJ line and reads the fine scroll of each BG.
     pub fn start_line(&mut self, ppu: &PPU, y: usize) {
         self.build_obj_line(ppu, y);
+        self.fine_hofs = std::array::from_fn(|bg| ppu.regs.bg_scroll(bg).0 & 7);
         self.rendered_x = 0;
     }
 
@@ -320,6 +325,9 @@ impl Renderer {
 
         let bg = p.layer.bg_index();
 
+        // The fine scroll comes from the start of the line.
+        let hofs = (p.scroll_x & !7) | self.fine_hofs[bg];
+
         // Offset-per-tile: in modes 2 and 4, BG3 changes the scroll of BG1 and BG2 for each column.
         let opt = matches!(ppu.regs.bg_mode(), 2 | 4) && bg < 2;
 
@@ -327,9 +335,9 @@ impl Renderer {
             // Every pixel of a block shows the first pixel of the block.
             let src_x = x - x % block;
             let (scroll_x, scroll_y) = if opt {
-                Self::opt_scroll(ppu, bg, (p.scroll_x, p.scroll_y), src_x)
+                Self::opt_scroll(ppu, bg, (hofs, p.scroll_y), src_x)
             } else {
-                (p.scroll_x, p.scroll_y)
+                (hofs, p.scroll_y)
             };
 
             let px = (src_x + scroll_x) & (map_w - 1);
@@ -1950,7 +1958,7 @@ mod tests {
         whole.render_scanline(&ppu, 0);
 
         let mut parts = make_renderer();
-        parts.build_obj_line(&ppu, 0);
+        parts.start_line(&ppu, 0);
         parts.render_pixels(&ppu, 0, 0..103);
         parts.render_pixels(&ppu, 0, 103..SCREEN_WIDTH);
 
@@ -2010,5 +2018,52 @@ mod tests {
         assert_eq!(fb_pixel(&r, 0, 1), white);
         assert_eq!(fb_pixel(&r, 9, 1), white);
         assert_eq!(fb_pixel(&r, 10, 1), (0, 0, 0));
+    }
+
+    // ============================================================
+    // Fine scroll
+    // ============================================================
+
+    // The fine scroll (HOFS bits 0-2) is read by start_line: a write in the middle
+    // of the line only changes the coarse scroll (bits 3-9).
+    #[test]
+    fn test_fine_hofs_read_at_line_start() {
+        let red = Renderer::apply_brightness(0x001F, 15);
+        let black = (0, 0, 0);
+        let mut ppu = make_ppu();
+        setup_bg1_mosaic(&mut ppu, [0x0080; 8]); // only x = 0 of each tile is opaque
+
+        let mut r = make_renderer();
+        r.start_line(&ppu, 0); // HOFS = 0: fine scroll 0
+        ppu.write(0x210D, 0x0B); // HOFS = 11: coarse 8, fine 3
+        ppu.write(0x210D, 0x00);
+        r.render_until(&ppu, 0, SCREEN_WIDTH);
+
+        // Scroll 8 (coarse 8, fine 0): BG x 8 is on screen x 0.
+        // With the new fine scroll (11), BG x 16 would be on screen x 5.
+        assert_eq!(fb_pixel(&r, 0, 0), red);
+        assert_eq!(fb_pixel(&r, 8, 0), red);
+        assert_eq!(fb_pixel(&r, 5, 0), black);
+    }
+
+    // The next line reads the new fine scroll.
+    #[test]
+    fn test_fine_hofs_used_on_next_line() {
+        let red = Renderer::apply_brightness(0x001F, 15);
+        let black = (0, 0, 0);
+        let mut ppu = make_ppu();
+        setup_bg1_mosaic(&mut ppu, [0x0080; 8]);
+
+        let mut r = make_renderer();
+        r.start_line(&ppu, 0);
+        ppu.write(0x210D, 0x0B); // HOFS = 11
+        ppu.write(0x210D, 0x00);
+        r.render_until(&ppu, 0, SCREEN_WIDTH);
+        r.start_line(&ppu, 1);
+        r.render_until(&ppu, 1, SCREEN_WIDTH);
+
+        // Scroll 11: BG x 16 is on screen x 5.
+        assert_eq!(fb_pixel(&r, 0, 1), black);
+        assert_eq!(fb_pixel(&r, 5, 1), red);
     }
 }
