@@ -94,7 +94,7 @@ pub fn menu_bar(
     panel.response.rect.bottom()
 }
 
-/// Decodes a SNES header size exponent into KB. `0` means "none".
+/// Decodes a SNES header size exponent into KiB. `0` means "none".
 fn decode_size_kb(exponent: u8) -> Option<usize> {
     if exponent == 0 {
         None
@@ -162,7 +162,7 @@ pub fn rom_info(ctx: &egui::Context, area: egui::Rect, open: &mut bool, info: Op
                     ui.end_row();
 
                     ui.label("File size");
-                    ui.label(format!("{file_size_kb} KB"));
+                    ui.label(format!("{file_size_kb} KiB"));
                     ui.end_row();
 
                     ui.label("Region");
@@ -198,14 +198,14 @@ pub fn rom_info(ctx: &egui::Context, area: egui::Rect, open: &mut bool, info: Op
 
                             ui.label("ROM size (header)");
                             ui.label(match decode_size_kb(*rom_size) {
-                                Some(kb) => format!("{kb} KB (exp. {rom_size})"),
+                                Some(kb) => format!("{kb} KiB (exp. {rom_size})"),
                                 None => format!("none (exp. {rom_size})",),
                             });
                             ui.end_row();
 
-                            ui.label("SRAM size");
+                            ui.label("SRAM size (header)");
                             ui.label(match decode_size_kb(*ram_size) {
-                                Some(kb) => format!("{kb} KB (exp. {ram_size})"),
+                                Some(kb) => format!("{kb} KiB (exp. {ram_size})"),
                                 None => "None".to_owned(),
                             });
                             ui.end_row();
@@ -309,14 +309,14 @@ fn local_date(time: SystemTime) -> String {
     )
 }
 
-/// A file size in words, e.g. "575 KB".
+/// A file size in words, in binary units, e.g. "575 KiB".
 fn file_size_text(bytes: u64) -> String {
-    const KB: u64 = 1024;
-    const MB: u64 = 1024 * KB;
+    const KIB: u64 = 1024;
+    const MIB: u64 = 1024 * KIB;
     match bytes {
-        0..KB => format!("{bytes} bytes"),
-        KB..MB => format!("{} KB", (bytes + KB / 2) / KB),
-        _ => format!("{:.1} MB", bytes as f64 / MB as f64),
+        0..KIB => format!("{bytes} bytes"),
+        KIB..MIB => format!("{} KiB", (bytes + KIB / 2) / KIB),
+        _ => format!("{:.1} MiB", bytes as f64 / MIB as f64),
     }
 }
 
@@ -834,9 +834,9 @@ mod tests {
     fn file_sizes_are_written_in_words() {
         assert_eq!(file_size_text(0), "0 bytes");
         assert_eq!(file_size_text(1023), "1023 bytes");
-        assert_eq!(file_size_text(1024), "1 KB");
-        assert_eq!(file_size_text(588_800), "575 KB");
-        assert_eq!(file_size_text(3 * 1024 * 1024 / 2), "1.5 MB");
+        assert_eq!(file_size_text(1024), "1 KiB");
+        assert_eq!(file_size_text(588_800), "575 KiB");
+        assert_eq!(file_size_text(3 * 1024 * 1024 / 2), "1.5 MiB");
     }
 
     #[test]
@@ -1092,7 +1092,7 @@ mod tests {
     fn the_details_show_the_selected_slot() {
         let harness = picker_harness(GAME_AREA, |picker| picker.select(1));
         harness.get_by_label(&format!("Slot 2: {}", "W".repeat(MAX_NAME_LENGTH)));
-        harness.get_by_label_contains("575 KB");
+        harness.get_by_label_contains("575 KiB");
 
         let harness = picker_harness(GAME_AREA, |picker| picker.select(5));
         harness.get_by_label_contains("Unreadable, written");
