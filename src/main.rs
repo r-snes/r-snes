@@ -9,17 +9,18 @@
 //! emulation updates, and audio output.
 
 mod audio;
+mod config;
 mod dma;
 mod gui;
 mod rsnes;
 mod save_state;
-mod config;
 
 #[cfg(test)]
 mod test_utils;
 
 use crate::{
     audio::GameAudio,
+    config::{ConfigLoadError, RSnesConfig},
     gui::{Gui, GuiFrameData, RSnesEvent, SlotAction, SnesButton},
     rsnes::{RSnesCore, RSnesEmu},
     save_state::{SaveStateError, slots::GameSaveStates},
@@ -31,6 +32,8 @@ use clap::Parser;
 #[cfg(feature = "plugins")]
 use plugins::plugin::Plugin;
 use std::{
+    error::Error,
+    ffi::OsString,
     fs, io,
     path::PathBuf,
     time::{Duration, Instant},
@@ -334,10 +337,18 @@ fn gui_idle_loop(gui: &mut Gui, default_framebuffer: &ppu::rendering::RawFramebu
 
 fn gui_loop(
     mut rsnes_core: Option<RSnesCore>,
+    config_load: Result<RSnesConfig, ConfigLoadError>,
 
     #[cfg(feature = "plugins")] mut plugin: Option<Plugin>,
 ) -> Result<(), String> {
     let mut gui = gui::Gui::new()?;
+    let config = match config_load {
+        Ok(c) => c,
+        Err(err) => {
+            gui.pass_error(Box::new(err));
+            Default::default()
+        }
+    };
     const DEFAULT_FRAMEBUFFER: &ppu::rendering::RawFramebuffer =
         include_bytes!("../assets/logo_framebuffer.raw");
 
@@ -401,6 +412,40 @@ struct Cli {
     #[cfg(feature = "plugins")]
     #[arg(long, value_name = "PLUGIN.lua")]
     pub load_plugin_noconfirm: Option<PathBuf>,
+
+    /// A custom config file path to use instead of the system default
+    #[arg(long, short = 'c', value_name = "path/to/config.toml", default_value_t)]
+    pub config_file: ConfigPath,
+
+    /// Don't start the emulator, just check that the config file loads
+    /// properly. Prints an error messages to the terminal in case of
+    /// failure (the error would otherwise be shown in the graphical window)
+    ///
+    /// Use together with `-c` to check a config file for correctness
+    #[arg(long, default_value_t = false)]
+    pub verify_config: bool,
+}
+
+#[derive(Clone)]
+struct ConfigPath(Option<PathBuf>);
+impl Default for ConfigPath {
+    fn default() -> Self {
+        Self(config::config_path())
+    }
+}
+impl ToString for ConfigPath {
+    fn to_string(&self) -> String {
+        match &self.0 {
+            // will be printed if [`config::config_path()`] fails to get the config directory
+            None => "None (couldn't resolve a default config directory)".to_owned(),
+            Some(p) => p.to_string_lossy().into_owned(),
+        }
+    }
+}
+impl From<OsString> for ConfigPath {
+    fn from(value: OsString) -> Self {
+        Self(Some(PathBuf::from(value)))
+    }
 }
 
 fn main() -> Result<(), String> {
@@ -418,6 +463,28 @@ fn main() -> Result<(), String> {
         }
     };
 
+    let config = config::read_config(cli.config_file.0.as_ref());
+    if cli.verify_config {
+        if let Some(path) = &cli.config_file.0 {
+            print!("{path:?}: ")
+        }
+        match &config {
+            Err(load_error) => {
+                println!("Config file error: {load_error}");
+                let mut rec_err: &dyn Error = &load_error;
+                while let Some(err) = rec_err.source() {
+                    println!("Caused by: {err}");
+                    rec_err = err;
+                }
+                std::process::exit(1)
+            }
+            Ok(_) => {
+                println!("Config file OK");
+                std::process::exit(0)
+            }
+        }
+    };
+
     let emu = match cli.rom {
         None => None,
         Some(rom_path) => Some(RSnesCore::load_rom(&rom_path).map_err(|e| e.to_string())?),
@@ -426,10 +493,11 @@ fn main() -> Result<(), String> {
     cfg_select! {
         feature = "plugins" => gui_loop(
             emu,
+            config,
             cli.load_plugin_noconfirm
                 .map(|p| Plugin::load_from_file(&p).unwrap()),
         ),
-        _ => gui_loop(emu),
+        _ => gui_loop(emu, config),
     }
 }
 

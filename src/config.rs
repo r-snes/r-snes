@@ -1,8 +1,8 @@
-use std::path::PathBuf;
 use serde::Deserialize;
+use std::path::{Path, PathBuf};
 
 #[derive(Default, Deserialize)]
-pub struct Config {
+pub struct RSnesConfig {
     /// simpler general options
     pub general: GeneralConfig,
 
@@ -39,19 +39,39 @@ pub enum GuiContext {
     Menu,
 }
 
+#[derive(Debug)]
 pub enum ConfigLoadError {
     NoConfigPath,
     IoError(std::io::Error),
     TomlError(toml::de::Error),
 }
 
-fn config_path() -> Option<PathBuf> {
+impl std::fmt::Display for ConfigLoadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NoConfigPath => write!(f, "Failed to resolve a system-specific config folder"),
+            Self::IoError(_) => write!(f, "Failed to open config file for reading"),
+            Self::TomlError(_) => write!(f, "Failed to deserialize config file as an RSnesConfig"),
+        }
+    }
+}
+impl std::error::Error for ConfigLoadError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::NoConfigPath => None,
+            Self::IoError(e) => Some(e),
+            Self::TomlError(e) => Some(e),
+        }
+    }
+}
+
+pub fn config_path() -> Option<PathBuf> {
     directories::ProjectDirs::from("", "R-SNES", "R-SNES")
         .map(|d| d.config_dir().to_owned().join("r-snes_config.toml"))
 }
 
-pub fn read_config() -> Result<Config, ConfigLoadError> {
-    let path = config_path().ok_or(ConfigLoadError::NoConfigPath)?;
+pub fn read_config(path: Option<impl AsRef<Path>>) -> Result<RSnesConfig, ConfigLoadError> {
+    let path = path.ok_or(ConfigLoadError::NoConfigPath)?;
     let contents = std::fs::read(path).map_err(ConfigLoadError::IoError)?;
     let cfg = toml::de::from_slice(&contents).map_err(ConfigLoadError::TomlError)?;
 
