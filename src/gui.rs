@@ -860,10 +860,10 @@ mod tests {
 
     #[test]
     fn picker_entries_show_the_slots_and_their_settings() {
-        let (mut snes, mut states, _root) = setup();
-        states.save(&mut snes).unwrap();
+        let (snes, mut states, _root) = setup();
+        states.save(&snes).unwrap();
         tick();
-        states.save(&mut snes).unwrap();
+        states.save(&snes).unwrap();
         states.rename(2, "boss").unwrap();
         states.set_locked(2, true).unwrap();
         std::fs::write(states.slot_path(5), b"damaged").unwrap();

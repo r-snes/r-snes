@@ -221,7 +221,7 @@ impl GameSaveStates {
 
     /// Saves the console to the first empty slot, or over the oldest one,
     /// skipping locked slots. Returns the slot number.
-    pub fn save(&mut self, emu: &mut RSnesEmu) -> Result<usize, SaveStateError> {
+    pub fn save(&mut self, emu: &RSnesEmu) -> Result<usize, SaveStateError> {
         let slot = self.slot_to_write().ok_or(SaveStateError::AllSlotsLocked)?;
         self.save_to(emu, slot)?;
         Ok(slot)
@@ -229,7 +229,7 @@ impl GameSaveStates {
 
     /// Saves the console to a slot, `slot` going from 1 to [`SLOT_COUNT`],
     /// over what it holds unless it is locked. The slot loses its name.
-    pub fn save_to(&mut self, emu: &mut RSnesEmu, slot: usize) -> Result<(), SaveStateError> {
+    pub fn save_to(&mut self, emu: &RSnesEmu, slot: usize) -> Result<(), SaveStateError> {
         if self.settings(slot).locked {
             return Err(SaveStateError::SlotLocked);
         }
@@ -240,7 +240,7 @@ impl GameSaveStates {
 
         self.slots[slot - 1] = Slot::Saved {
             created_at: SaveState::read_info(&bytes)?.created_at,
-            screen: emu.core_mut().ppu_renderer.presented.clone(),
+            screen: emu.core().ppu_renderer.presented.clone(),
             file_size: bytes.len() as u64,
         };
         self.change_settings(slot, |settings| settings.name.clear())
@@ -345,7 +345,7 @@ impl GameSaveStates {
     /// undo file, then loads `bytes`. Nothing is written if the state is refused,
     /// and nothing is loaded if the undo file can't be written.
     fn load_with_undo(&self, emu: &mut RSnesEmu, bytes: &[u8]) -> Result<(), SaveStateError> {
-        let rom_checksum = emu.core_mut().rom_checksum;
+        let rom_checksum = emu.core().rom_checksum;
         let state = decode_for_rom(bytes, rom_checksum)?;
 
         let current = emu.save_state()?;
@@ -541,20 +541,20 @@ mod tests {
     #[test]
     fn a_slot_that_cannot_be_read_or_deleted_reports_it() {
         let (mut snes, mut states, _root) = setup();
-        states.save(&mut snes).unwrap();
+        states.save(&snes).unwrap();
         // A folder in place of the file: reading and deleting it fail.
         fs::create_dir(states.slot_path(4)).unwrap();
         states.refresh();
         assert!(is_unreadable(states.slot(4)));
 
-        let before = state_of(&mut snes);
+        let before = state_of(&snes);
         assert!(matches!(
             states.load_slot(&mut snes, 4),
             Err(SaveStateError::Io(_))
         ));
         assert!(matches!(states.delete(4), Err(SaveStateError::Io(_))));
 
-        assert!(state_of(&mut snes) == before, "the console changed");
+        assert!(state_of(&snes) == before, "the console changed");
         assert!(is_unreadable(states.slot(4)), "the slot was forgotten");
         assert!(states.slot_path(4).is_dir());
     }
@@ -577,7 +577,7 @@ mod tests {
         let (mut snes, mut states, _root) = setup();
         tick_core(&mut snes.core_mut(), 400_000); // more than a frame, so a frame is presented
 
-        let slot = states.save(&mut snes).unwrap();
+        let slot = states.save(&snes).unwrap();
 
         let Slot::Saved {
             created_at,
@@ -589,19 +589,19 @@ mod tests {
         };
         let file = fs::read(states.slot_path(slot)).unwrap();
         assert_eq!(*created_at, SaveState::read_info(&file).unwrap().created_at);
-        assert!(*screen == screen_of(&mut snes));
+        assert!(*screen == screen_of(&snes));
         assert_eq!(*file_size, file.len() as u64);
     }
 
     #[test]
     fn opening_the_folder_reads_the_slots_on_disk() {
-        let (mut snes, mut states, root) = setup();
-        states.save(&mut snes).unwrap();
+        let (snes, mut states, root) = setup();
+        states.save(&snes).unwrap();
         tick();
-        states.save(&mut snes).unwrap();
+        states.save(&snes).unwrap();
         fs::write(states.slot_path(5), b"damaged").unwrap();
 
-        let reopened = reopen(&root, &mut snes);
+        let reopened = reopen(&root, &snes);
 
         assert!(*saved_screen(reopened.slot(1)) == *saved_screen(states.slot(1)));
         assert_eq!(reopened.slot(2).time(), states.slot(2).time());
@@ -616,29 +616,29 @@ mod tests {
 
     #[test]
     fn saves_fill_the_slots_then_overwrite_the_oldest() {
-        let (mut snes, mut states, _root) = setup();
+        let (snes, mut states, _root) = setup();
 
         for expected in 1..=SLOT_COUNT {
-            assert_eq!(states.save(&mut snes).unwrap(), expected);
+            assert_eq!(states.save(&snes).unwrap(), expected);
             tick();
         }
-        assert_eq!(states.save(&mut snes).unwrap(), 1);
+        assert_eq!(states.save(&snes).unwrap(), 1);
         assert_eq!(
             states.latest_slot(),
             Some(1),
             "the latest isn't the highest"
         );
         tick();
-        assert_eq!(states.save(&mut snes).unwrap(), 2);
+        assert_eq!(states.save(&snes).unwrap(), 2);
 
         assert!((1..=SLOT_COUNT).all(|slot| !is_empty(states.slot(slot))));
     }
 
     #[test]
     fn a_slot_deleted_by_hand_is_reused_after_a_refresh() {
-        let (mut snes, mut states, _root) = setup();
+        let (snes, mut states, _root) = setup();
         for _ in 1..=3 {
-            states.save(&mut snes).unwrap();
+            states.save(&snes).unwrap();
             tick();
         }
 
@@ -646,14 +646,14 @@ mod tests {
         states.refresh();
 
         assert!(is_empty(states.slot(2)));
-        assert_eq!(states.save(&mut snes).unwrap(), 2);
-        assert_eq!(states.save(&mut snes).unwrap(), 4);
+        assert_eq!(states.save(&snes).unwrap(), 2);
+        assert_eq!(states.save(&snes).unwrap(), 4);
     }
 
     #[test]
     fn a_slot_deleted_by_hand_is_noticed_on_load() {
         let (mut snes, mut states, _root) = setup();
-        states.save(&mut snes).unwrap();
+        states.save(&snes).unwrap();
 
         fs::remove_file(states.slot_path(1)).unwrap();
 
@@ -669,23 +669,23 @@ mod tests {
     fn load_latest_restores_the_latest_save() {
         let (mut snes, mut states, _root) = setup();
         advance(&mut snes);
-        states.save(&mut snes).unwrap();
+        states.save(&snes).unwrap();
         tick();
         advance(&mut snes);
-        states.save(&mut snes).unwrap();
-        let saved = state_of(&mut snes);
+        states.save(&snes).unwrap();
+        let saved = state_of(&snes);
 
         advance(&mut snes);
         assert_eq!(states.load_latest(&mut snes).unwrap(), 2);
 
-        assert!(state_of(&mut snes) == saved, "the save wasn't restored");
+        assert!(state_of(&snes) == saved, "the save wasn't restored");
     }
 
     #[test]
     fn load_latest_skips_unreadable_slots() {
         let (mut snes, mut states, _root) = setup();
-        states.save(&mut snes).unwrap();
-        let saved = state_of(&mut snes);
+        states.save(&snes).unwrap();
+        let saved = state_of(&snes);
         tick();
         fs::write(states.slot_path(2), b"damaged").unwrap();
         states.refresh();
@@ -693,26 +693,26 @@ mod tests {
         advance(&mut snes);
         assert_eq!(states.load_latest(&mut snes).unwrap(), 1);
 
-        assert!(state_of(&mut snes) == saved, "the save wasn't restored");
+        assert!(state_of(&snes) == saved, "the save wasn't restored");
     }
 
     #[test]
     fn undo_restores_the_state_before_the_load_and_undoing_again_redoes_it() {
         let (mut snes, mut states, _root) = setup();
         advance(&mut snes);
-        states.save(&mut snes).unwrap();
-        let saved = state_of(&mut snes);
+        states.save(&snes).unwrap();
+        let saved = state_of(&snes);
         advance(&mut snes);
-        let before_load = state_of(&mut snes);
+        let before_load = state_of(&snes);
 
         states.load_latest(&mut snes).unwrap();
-        assert!(state_of(&mut snes) == saved, "the save wasn't loaded");
+        assert!(state_of(&snes) == saved, "the save wasn't loaded");
 
         states.undo_load(&mut snes).unwrap();
-        assert!(state_of(&mut snes) == before_load, "the load wasn't undone");
+        assert!(state_of(&snes) == before_load, "the load wasn't undone");
 
         states.undo_load(&mut snes).unwrap();
-        assert!(state_of(&mut snes) == saved, "the load wasn't redone");
+        assert!(state_of(&snes) == saved, "the load wasn't redone");
     }
 
     #[test]
@@ -738,17 +738,17 @@ mod tests {
         let (mut snes, mut states, root) = setup();
         let mut other_rom = test_rom();
         other_rom[0x1000] ^= 0xFF; // unused byte
-        let mut other = emu(make_rsnes_from(&other_rom));
-        states.save(&mut other).unwrap();
+        let other = emu(make_rsnes_from(&other_rom));
+        states.save(&other).unwrap();
 
-        let before = state_of(&mut snes);
+        let before = state_of(&snes);
         let result = states.load_slot(&mut snes, 1);
 
         assert!(matches!(result, Err(SaveStateError::WrongRom)));
-        assert!(state_of(&mut snes) == before, "the console changed");
+        assert!(state_of(&snes) == before, "the console changed");
         assert!(!states.undo_path().exists(), "an undo file was written");
         assert!(is_unreadable(states.slot(1)));
-        assert!(is_unreadable(reopen(&root, &mut snes).slot(1)));
+        assert!(is_unreadable(reopen(&root, &snes).slot(1)));
     }
 
     #[test]
@@ -756,10 +756,10 @@ mod tests {
         let (mut snes, mut states, root) = setup();
         // More than a frame, so that a frame is presented.
         tick_core(&mut snes.core_mut(), 400_000);
-        states.save(&mut snes).unwrap();
+        states.save(&snes).unwrap();
         fs::write(states.slot_path(5), b"damaged").unwrap();
 
-        let reopened = reopen(&root, &mut snes);
+        let reopened = reopen(&root, &snes);
 
         let Slot::Saved {
             screen, file_size, ..
@@ -767,7 +767,7 @@ mod tests {
         else {
             panic!("slot 1 holds no save state");
         };
-        assert!(*screen == screen_of(&mut snes));
+        assert!(*screen == screen_of(&snes));
         assert_eq!(*file_size, fs::metadata(states.slot_path(1)).unwrap().len());
         let Slot::Unreadable { reason, .. } = reopened.slot(5) else {
             panic!("the damaged slot is readable");
@@ -777,56 +777,52 @@ mod tests {
 
     #[test]
     fn saving_to_a_chosen_slot_overwrites_it_and_clears_its_name() {
-        let (mut snes, mut states, root) = setup();
-        states.save(&mut snes).unwrap();
+        let (snes, mut states, root) = setup();
+        states.save(&snes).unwrap();
         states.rename(1, "before the boss").unwrap();
         let first = states.slot(1).time();
         tick();
 
-        states.save_to(&mut snes, 1).unwrap();
-        states.save_to(&mut snes, 7).unwrap();
+        states.save_to(&snes, 1).unwrap();
+        states.save_to(&snes, 7).unwrap();
 
         assert!(states.slot(1).time() > first, "slot 1 wasn't saved over");
         assert_eq!(states.settings(1).name, "");
-        assert_eq!(reopen(&root, &mut snes).settings(1).name, "");
+        assert_eq!(reopen(&root, &snes).settings(1).name, "");
         assert!(matches!(states.slot(7), Slot::Saved { .. }));
         assert!(is_empty(states.slot(2)));
     }
 
     #[test]
     fn locked_slots_are_skipped_by_saves() {
-        let (mut snes, mut states, _root) = setup();
+        let (snes, mut states, _root) = setup();
         for _ in 1..=SLOT_COUNT {
-            states.save(&mut snes).unwrap();
+            states.save(&snes).unwrap();
             tick();
         }
         states.set_locked(1, true).unwrap();
         states.set_locked(2, true).unwrap();
 
-        assert_eq!(
-            states.save(&mut snes).unwrap(),
-            3,
-            "the oldest unlocked slot"
-        );
+        assert_eq!(states.save(&snes).unwrap(), 3, "the oldest unlocked slot");
 
         for slot in 3..=SLOT_COUNT {
             states.set_locked(slot, true).unwrap();
         }
         assert!(matches!(
-            states.save(&mut snes),
+            states.save(&snes),
             Err(SaveStateError::AllSlotsLocked)
         ));
     }
 
     #[test]
     fn a_locked_slot_is_neither_saved_over_nor_deleted() {
-        let (mut snes, mut states, _root) = setup();
-        states.save(&mut snes).unwrap();
+        let (snes, mut states, _root) = setup();
+        states.save(&snes).unwrap();
         states.set_locked(1, true).unwrap();
         let file = fs::read(states.slot_path(1)).unwrap();
 
         assert!(matches!(
-            states.save_to(&mut snes, 1),
+            states.save_to(&snes, 1),
             Err(SaveStateError::SlotLocked)
         ));
         assert!(matches!(states.delete(1), Err(SaveStateError::SlotLocked)));
@@ -839,8 +835,8 @@ mod tests {
 
     #[test]
     fn delete_removes_the_file_and_the_settings() {
-        let (mut snes, mut states, root) = setup();
-        states.save(&mut snes).unwrap();
+        let (snes, mut states, root) = setup();
+        states.save(&snes).unwrap();
         states.rename(1, "old").unwrap();
 
         states.delete(1).unwrap();
@@ -849,23 +845,20 @@ mod tests {
         assert!(!states.slot_path(1).exists());
         assert!(is_empty(states.slot(1)));
         assert_eq!(*states.settings(1), SlotSettings::default());
-        assert_eq!(
-            *reopen(&root, &mut snes).settings(1),
-            SlotSettings::default()
-        );
+        assert_eq!(*reopen(&root, &snes).settings(1), SlotSettings::default());
     }
 
     #[test]
     fn names_and_locks_are_kept_on_disk() {
-        let (mut snes, mut states, root) = setup();
-        states.save(&mut snes).unwrap();
-        states.save(&mut snes).unwrap();
+        let (snes, mut states, root) = setup();
+        states.save(&snes).unwrap();
+        states.save(&snes).unwrap();
         states
             .rename(1, "  a name that is much too long to be kept whole  ")
             .unwrap();
         states.set_locked(2, true).unwrap();
 
-        let reopened = reopen(&root, &mut snes);
+        let reopened = reopen(&root, &snes);
 
         assert_eq!(
             reopened.settings(1).name,
@@ -879,8 +872,8 @@ mod tests {
 
     #[test]
     fn a_slot_deleted_by_hand_loses_its_settings() {
-        let (mut snes, mut states, _root) = setup();
-        states.save(&mut snes).unwrap();
+        let (snes, mut states, _root) = setup();
+        states.save(&snes).unwrap();
         states.rename(1, "gone").unwrap();
         states.set_locked(1, true).unwrap();
 
@@ -888,7 +881,7 @@ mod tests {
         states.refresh();
 
         assert_eq!(*states.settings(1), SlotSettings::default());
-        assert_eq!(states.save(&mut snes).unwrap(), 1);
+        assert_eq!(states.save(&snes).unwrap(), 1);
     }
 
     #[test]
@@ -908,9 +901,9 @@ mod tests {
 
     #[test]
     fn the_settings_file_is_only_written_when_settings_change() {
-        let (mut snes, mut states, _root) = setup();
+        let (snes, mut states, _root) = setup();
 
-        states.save(&mut snes).unwrap();
+        states.save(&snes).unwrap();
         states.rename(1, "").unwrap();
         states.set_locked(1, false).unwrap();
         assert!(!states.settings_path().exists());
@@ -921,12 +914,12 @@ mod tests {
 
     #[test]
     fn a_damaged_settings_file_counts_as_no_settings() {
-        let (mut snes, mut states, root) = setup();
-        states.save(&mut snes).unwrap();
+        let (snes, mut states, root) = setup();
+        states.save(&snes).unwrap();
         states.set_locked(1, true).unwrap();
         fs::write(states.settings_path(), b"damaged").unwrap();
 
-        let reopened = reopen(&root, &mut snes);
+        let reopened = reopen(&root, &snes);
 
         assert_eq!(*reopened.settings(1), SlotSettings::default());
         assert!(matches!(reopened.slot(1), Slot::Saved { .. }));

@@ -157,8 +157,8 @@ fn gui_emu_loop(
         audio.set_running(gui, running);
 
         // run master cycles until the PPU completes a frame
-        let curr_frame = emu.core_mut().ppu.frame;
-        while running && emu.core_mut().ppu.frame == curr_frame {
+        let curr_frame = emu.core().ppu.frame;
+        while running && emu.core().ppu.frame == curr_frame {
             cfg_select! {
                 feature = "plugins" => gui.unwrap_result(emu.update()),
                 _ => emu.update(),
@@ -171,9 +171,9 @@ fn gui_emu_loop(
 
         #[cfg(feature = "plugins")]
         let plugin_loaded = emu.plugin_mut().is_some();
-        let emu_mut = emu.core_mut();
+        let core = emu.core();
         let events = gui.update(
-            emu_mut.ppu_renderer.presented(),
+            core.ppu_renderer.presented(),
             GuiFrameData {
                 rom_info: Some(&rom_info),
                 paused,
@@ -181,7 +181,7 @@ fn gui_emu_loop(
                 plugin_loaded,
             },
         );
-        drop(emu_mut);
+        drop(core);
 
         // Whether the save state window must show the slots again.
         let mut slots_changed = false;
@@ -205,7 +205,7 @@ fn gui_emu_loop(
                 // Loads keep the paused/running state; the queued sound
                 // belongs to the old state, so it is dropped.
                 RSnesEvent::SaveState => {
-                    let result = with_save_states(&mut save_states, |states| states.save(&mut emu));
+                    let result = with_save_states(&mut save_states, |states| states.save(&emu));
                     report(gui, result.map(|slot| format!("Saved to slot {slot}")));
                     slots_changed = true;
                 }
@@ -435,10 +435,10 @@ mod tests {
 
     #[test]
     fn with_save_states_runs_the_action_on_the_states() {
-        let (mut snes, states, _root) = setup();
+        let (snes, states, _root) = setup();
         let mut save_states = Ok(states);
 
-        let slot = with_save_states(&mut save_states, |states| states.save(&mut snes));
+        let slot = with_save_states(&mut save_states, |states| states.save(&snes));
 
         assert_eq!(slot.unwrap(), 1);
         assert_eq!(save_states.unwrap().latest_slot(), Some(1));
@@ -476,7 +476,7 @@ mod tests {
     #[test]
     fn a_refused_slot_action_returns_its_error() {
         let (mut snes, mut states, _root) = setup();
-        states.save_to(&mut snes, 2).unwrap();
+        states.save_to(&snes, 2).unwrap();
         states.set_locked(2, true).unwrap();
 
         let result = run_slot_action(&mut states, &mut snes, &SlotAction::Delete(2));

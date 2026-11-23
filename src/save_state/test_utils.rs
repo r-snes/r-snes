@@ -213,18 +213,18 @@ pub fn setup() -> (RSnesEmu, GameSaveStates, TempDir) {
 }
 
 /// The save states of the test ROM in `root`, read from the disk.
-pub fn reopen(root: &TempDir, snes: &mut RSnesEmu) -> GameSaveStates {
-    GameSaveStates::in_folder(root.path(), TITLE, snes.core_mut().rom_checksum)
+pub fn reopen(root: &TempDir, snes: &RSnesEmu) -> GameSaveStates {
+    GameSaveStates::in_folder(root.path(), TITLE, snes.core().rom_checksum)
 }
 
 /// The saved part of the emulator's console.
-pub fn state_of(snes: &mut RSnesEmu) -> Vec<u8> {
-    saved_part(&snes.core_mut())
+pub fn state_of(snes: &RSnesEmu) -> Vec<u8> {
+    saved_part(&snes.core())
 }
 
 /// The last frame the emulator presented.
-pub fn screen_of(snes: &mut RSnesEmu) -> Box<RawFramebuffer> {
-    snes.core_mut().ppu_renderer.presented.clone()
+pub fn screen_of(snes: &RSnesEmu) -> Box<RawFramebuffer> {
+    snes.core().ppu_renderer.presented.clone()
 }
 
 /// Runs the emulator for a moment, so that its state changes.

@@ -16,7 +16,7 @@ use ppu::ppu::PPU;
 use ppu::ppu::PpuEvent;
 use ppu::ppu::ScanlineKind;
 use std::error::Error;
-use std::ops::DerefMut;
+use std::ops::{Deref, DerefMut};
 use std::path::Path;
 use std::path::PathBuf;
 #[cfg(feature = "plugins")]
@@ -371,6 +371,16 @@ impl RSnesEmu {
         Ok(Self { core: rc, plugin })
     }
 
+    /// The console, to read it.
+    pub fn core(&self) -> impl Deref<Target = RSnesCore> {
+        #[cfg(feature = "plugins")]
+        return self.core.borrow();
+
+        #[cfg(not(feature = "plugins"))]
+        return &self.core;
+    }
+
+    /// The console, to change it.
     pub fn core_mut(&mut self) -> impl DerefMut<Target = RSnesCore> {
         #[cfg(feature = "plugins")]
         return self.core.borrow_mut();

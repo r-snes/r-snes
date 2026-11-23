@@ -146,8 +146,8 @@ impl SaveState {
 
 impl RSnesEmu {
     /// Saves the console. The plugin isn't saved.
-    pub fn save_state(&mut self) -> Result<Vec<u8>, SaveStateError> {
-        self.core_mut().save_state()
+    pub fn save_state(&self) -> Result<Vec<u8>, SaveStateError> {
+        self.core().save_state()
     }
 
     /// Loads a save state. The plugin keeps running, but its emulated-time interval
@@ -436,13 +436,13 @@ mod tests {
         let mut emu = emu(make_rsnes_from(&test_rom()));
         tick_core(&mut emu.core_mut(), 50_000);
         let bytes = emu.save_state().unwrap();
-        let saved = saved_part(&emu.core_mut());
+        let saved = saved_part(&emu.core());
 
         tick_core(&mut emu.core_mut(), 50_000);
         emu.load_state(SaveState::decode(&bytes).unwrap()).unwrap();
 
         assert!(
-            saved_part(&emu.core_mut()) == saved,
+            saved_part(&emu.core()) == saved,
             "the state wasn't restored"
         );
     }
