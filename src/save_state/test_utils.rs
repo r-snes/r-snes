@@ -119,6 +119,7 @@ pub fn run_until(core: &mut RSnesCore, what: &str, condition: fn(&RSnesCore) -> 
 }
 
 /// Saves `from` and loads the state into `to`.
+#[track_caller]
 pub fn copy_state(from: &RSnesCore, to: &mut RSnesCore) {
     let bytes = from.save_state().unwrap();
     to.load_state(SaveState::decode(&bytes).unwrap()).unwrap();
@@ -132,6 +133,7 @@ pub fn saved_part(core: &RSnesCore) -> Vec<u8> {
 /// Checks that the saved parts of two consoles are identical, naming the
 /// first component that differs. Uses `assert!`, not `assert_eq!`: printing
 /// these large byte vectors would be useless.
+#[track_caller]
 pub fn assert_same_state(a: &RSnesCore, b: &RSnesCore, when: &str) {
     fn components(core: &RSnesCore) -> [(&'static str, Vec<u8>); 9] {
         let encode = |value: &dyn erased::Encode| value.encode();
@@ -191,6 +193,7 @@ pub fn emu(core: RSnesCore) -> RSnesEmu {
 }
 
 /// The error of decoding `bytes`, which must fail.
+#[track_caller]
 pub fn decode_error(bytes: &[u8]) -> SaveStateError {
     SaveState::decode(bytes).err().expect("decoding must fail")
 }
