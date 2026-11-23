@@ -224,11 +224,24 @@ impl RSnesCore {
         postcard::to_extend(&core, out).map_err(SaveStateError::encoding)
     }
 
-    /// Loads a save state into this console.
-    pub fn load_state(&mut self, state: SaveState) -> Result<(), SaveStateError> {
+    /// Checks that a save state can be loaded into this console: made with
+    /// the same ROM, and with an S-RAM of the cartridge's size.
+    pub fn check_state(&self, state: &SaveState) -> Result<(), SaveStateError> {
         if state.info.rom_checksum != self.rom_checksum {
             return Err(SaveStateError::WrongRom);
         }
+        if !self.bus.cart.sram.same_layout(&state.core.sram) {
+            return Err(SaveStateError::Corrupted(
+                "its S-RAM doesn't match the cartridge's".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Loads a save state into this console. A state refused by
+    /// [`RSnesCore::check_state`] do not load the save state.
+    pub fn load_state(&mut self, state: SaveState) -> Result<(), SaveStateError> {
+        self.check_state(&state)?;
 
         let CoreState {
             wram,
@@ -487,6 +500,21 @@ mod tests {
         let result = core.load_state(state);
 
         assert!(matches!(result, Err(SaveStateError::WrongRom)));
+        assert!(saved_part(&core) == before, "the console changed");
+    }
+
+    #[test]
+    fn a_state_whose_sram_does_not_match_the_cartridge_is_refused_and_changes_nothing() {
+        let mut damaged = make_rsnes_from(&test_rom_with_sram());
+        damaged.bus.cart.sram = damaged_sram();
+        let mut core = make_rsnes_from(&test_rom_with_sram());
+        tick_core(&mut core, 20_000);
+        let before = saved_part(&core);
+
+        let state = SaveState::decode(&damaged.save_state().unwrap()).unwrap();
+        let result = core.load_state(state);
+
+        assert!(matches!(result, Err(SaveStateError::Corrupted(_))));
         assert!(saved_part(&core) == before, "the console changed");
     }
 

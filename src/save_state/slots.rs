@@ -345,8 +345,8 @@ impl GameSaveStates {
     /// undo file, then loads `bytes`. Nothing is written if the state is refused,
     /// and nothing is loaded if the undo file can't be written.
     fn load_with_undo(&self, emu: &mut RSnesEmu, bytes: &[u8]) -> Result<(), SaveStateError> {
-        let rom_checksum = emu.core().rom_checksum;
-        let state = decode_for_rom(bytes, rom_checksum)?;
+        let state = SaveState::decode(bytes)?;
+        emu.core().check_state(&state)?;
 
         let current = emu.save_state()?;
         write_atomic(&self.undo_path(), &current)?;
@@ -749,6 +749,24 @@ mod tests {
         assert!(!states.undo_path().exists(), "an undo file was written");
         assert!(is_unreadable(states.slot(1)));
         assert!(is_unreadable(reopen(&root, &snes).slot(1)));
+    }
+
+    #[test]
+    fn a_state_with_a_damaged_sram_is_not_loaded_and_writes_no_undo_file() {
+        let mut damaged = make_rsnes_from(&test_rom_with_sram());
+        damaged.bus.cart.sram = damaged_sram();
+        let root = tempfile::tempdir().unwrap();
+        let mut states = GameSaveStates::in_folder(root.path(), TITLE, damaged.rom_checksum);
+        states.save(&emu(damaged)).unwrap();
+        let mut snes = emu(make_rsnes_from(&test_rom_with_sram()));
+
+        let before = state_of(&snes);
+        let result = states.load_slot(&mut snes, 1);
+
+        assert!(matches!(result, Err(SaveStateError::Corrupted(_))));
+        assert!(state_of(&snes) == before, "the console changed");
+        assert!(!states.undo_path().exists(), "an undo file was written");
+        assert!(is_unreadable(states.slot(1)));
     }
 
     #[test]

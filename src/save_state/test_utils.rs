@@ -10,7 +10,9 @@ use super::{SaveState, SaveStateError};
 use crate::dma::DmaState;
 use crate::rsnes::{RSnesCore, RSnesEmu};
 use crate::test_utils::{make_rsnes_from, tick_core};
-use bus::cartridge::test_rom::create_valid_lorom;
+use bus::cartridge::sram::Sram;
+use bus::cartridge::test_rom::{create_valid_lorom, with_sram};
+use bus::constants::LOROM_HEADER_OFFSET;
 use cpu::cpu::CPUState;
 use ppu::constants::{MASTER_CYCLES_PER_SCANLINE, SCANLINES_PER_FRAME};
 use ppu::rendering::RawFramebuffer;
@@ -105,6 +107,18 @@ pub fn test_rom() -> Vec<u8> {
     rom[0x7FEA..0x7FEC].copy_from_slice(&[0x00, 0x81]); // native NMI vector: $8100
     rom[0x7FFC..0x7FFE].copy_from_slice(&[0x00, 0x80]); // reset vector: $8000
     rom
+}
+
+/// [`test_rom`] with an 8 KiB S-RAM.
+pub fn test_rom_with_sram() -> Vec<u8> {
+    with_sram(test_rom(), LOROM_HEADER_OFFSET, 3)
+}
+
+/// An S-RAM as a damaged file could hold: 2 KiB of data behind the mask of
+/// 8 KiB, so reading past 2 KiB would panic. Decoded the way a file is.
+pub fn damaged_sram() -> Sram {
+    let bytes = postcard::to_stdvec(&(vec![0u8; 0x800], 0x1FFF_usize)).unwrap();
+    postcard::from_bytes(&bytes).unwrap()
 }
 
 /// Runs the console until `condition` holds, at most two frames.
