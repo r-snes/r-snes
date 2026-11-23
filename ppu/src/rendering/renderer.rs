@@ -253,6 +253,7 @@ impl Renderer {
             1 => self.render_scanline_mode1(ppu, y),
             2 => self.render_scanline_mode2(ppu, y),
             3 => self.render_scanline_mode3(ppu, y),
+            4 => self.render_scanline_mode4(ppu, y),
             7 => self.render_scanline_mode7(ppu, y),
             _ => self.render_scanline_mode1(ppu, y),
         }
@@ -289,8 +290,8 @@ impl Renderer {
 
         let bg = p.layer.bg_index();
 
-        // Offset-per-tile: in mode 2, BG3 changes the scroll of BG1 and BG2 for each column.
-        let opt = ppu.regs.bg_mode() == 2 && bg < 2;
+        // Offset-per-tile: in modes 2 and 4, BG3 changes the scroll of BG1 and BG2 for each column.
+        let opt = matches!(ppu.regs.bg_mode(), 2 | 4) && bg < 2;
 
         for x in 0..SCREEN_WIDTH {
             // Every pixel of a block shows the first pixel of the block.
@@ -372,6 +373,7 @@ impl Renderer {
     // Columns follow the fine scroll of the BG. Column 0 keeps the normal scroll,
     // column n reads the BG3 entries of column n - 1: one row for the horizontal value,
     // the next row for the vertical one. Bit 13 enables an entry for BG1, bit 14 for BG2.
+    // Mode 4 reads only one row: bit 15 says if the entry is vertical (1) or horizontal (0).
     fn opt_scroll(ppu: &PPU, bg: usize, (hofs, vofs): (usize, usize), x: usize) -> (usize, usize) {
         let col = (x + (hofs & 7)) >> 3;
         if col == 0 {
@@ -386,8 +388,17 @@ impl Renderer {
         let base = ppu.regs.bg_tilemap_addr(2);
         let size = ppu.regs.bg_tilemap_size(2);
         let tile_px = if ppu.regs.bg_tile16(2) { 16 } else { 8 };
-        let h_entry = Self::tilemap_entry(ppu, base, size, tile_px, bx, by) as usize;
-        let v_entry = Self::tilemap_entry(ppu, base, size, tile_px, bx, by + 8) as usize;
+        let first = Self::tilemap_entry(ppu, base, size, tile_px, bx, by) as usize;
+        let (h_entry, v_entry) = if ppu.regs.bg_mode() == 4 {
+            if first & 0x8000 != 0 {
+                (0, first)
+            } else {
+                (first, 0)
+            }
+        } else {
+            let second = Self::tilemap_entry(ppu, base, size, tile_px, bx, by + 8) as usize;
+            (first, second)
+        };
 
         let enable = 0x2000 << bg;
         // The horizontal value keeps the fine scroll (low 3 bits) of the BG.
