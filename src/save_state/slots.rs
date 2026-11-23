@@ -2,8 +2,14 @@
 //!
 //! # Folders
 //!
+//! Save states are in R-SNES's data folder, found with [`ProjectDirs`]:
+//! - Linux: `$XDG_DATA_HOME/r-snes/save-states/`, by default
+//!   `~/.local/share/r-snes/save-states/`;
+//! - Windows: `%APPDATA%\r-snes\data\save-states\`;
+//! - macOS: `~/Library/Application Support/r-snes/save-states/`.
+//!
 //! ```text
-//! <home>/rsnes-save-states/
+//! save-states/
 //! └── <cleaned ROM title>-<ROM CRC32>/      e.g. "SUPER GAME-1A2B3C4D/"
 //!     ├── slot-1.rsnes-state
 //!     ├── ...
@@ -52,6 +58,7 @@
 
 use super::{SaveState, SaveStateError};
 use crate::rsnes::RSnesEmu;
+use directories::ProjectDirs;
 use ppu::rendering::RawFramebuffer;
 use std::fs::{self, File};
 use std::io::{self, Write};
@@ -61,8 +68,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// Number of save slots of each game.
 pub const SLOT_COUNT: usize = 10;
 
-/// Name of the folder, in the home folder, holding the save states of every game.
-pub const ROOT_FOLDER_NAME: &str = "rsnes-save-states";
+/// Name of R-SNES's folder in the platform's data folder.
+pub const APP_FOLDER_NAME: &str = "r-snes";
+
+/// Name of the folder, in R-SNES's data folder, holding the save states of every game.
+pub const ROOT_FOLDER_NAME: &str = "save-states";
 
 /// Extension of save state files.
 pub const FILE_EXTENSION: &str = "rsnes-state";
@@ -127,16 +137,10 @@ pub struct GameSaveStates {
 }
 
 impl GameSaveStates {
-    /// The save states of a game, in the home folder.
+    /// The save states of a game, in R-SNES's data folder.
     pub fn for_rom(title: &str, rom_checksum: u32) -> Result<Self, SaveStateError> {
-        let home = std::env::home_dir()
-            .filter(|home| !home.as_os_str().is_empty())
-            .ok_or(SaveStateError::NoHomeFolder)?;
-        Ok(Self::in_folder(
-            &home.join(ROOT_FOLDER_NAME),
-            title,
-            rom_checksum,
-        ))
+        let root = save_states_root().ok_or(SaveStateError::NoDataFolder)?;
+        Ok(Self::in_folder(&root, title, rom_checksum))
     }
 
     /// The save states of a game, in the game folder inside `root`.
@@ -354,6 +358,13 @@ impl GameSaveStates {
     }
 }
 
+/// The folder holding the save states of every game, in R-SNES's data
+/// folder. `None` if the platform's data folder can't be found.
+fn save_states_root() -> Option<PathBuf> {
+    let dirs = ProjectDirs::from("", "", APP_FOLDER_NAME)?;
+    Some(dirs.data_dir().join(ROOT_FOLDER_NAME))
+}
+
 /// Name of the folder of a game: its title, made safe for file names, and its
 /// ROM checksum.
 fn game_folder_name(title: &str, rom_checksum: u32) -> String {
@@ -479,16 +490,17 @@ mod tests {
     }
 
     #[test]
-    fn save_states_are_in_the_home_folder() {
+    fn save_states_are_in_the_data_folder() {
         // Only reads: nothing is created.
-        let Some(home) = std::env::home_dir() else {
+        let Some(dirs) = ProjectDirs::from("", "", "r-snes") else {
             return;
         };
         let states = GameSaveStates::for_rom("GAME", 0x1234_5678).unwrap();
 
         assert_eq!(
             states.slot_path(1),
-            home.join(ROOT_FOLDER_NAME)
+            dirs.data_dir()
+                .join("save-states")
                 .join("GAME-12345678")
                 .join("slot-1.rsnes-state")
         );

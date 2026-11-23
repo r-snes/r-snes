@@ -301,8 +301,8 @@ pub enum SaveStateError {
     SlotLocked,
     /// Every slot is locked, so a save has nowhere to go.
     AllSlotsLocked,
-    /// The home folder, where save states are stored, can't be found.
-    NoHomeFolder,
+    /// R-SNES's data folder, where save states are stored, can't be found.
+    NoDataFolder,
 }
 
 impl SaveStateError {
@@ -337,9 +337,9 @@ impl fmt::Display for SaveStateError {
             Self::NothingToUndo => write!(f, "There is no load to undo."),
             Self::SlotLocked => write!(f, "This slot is locked. Unlock it first."),
             Self::AllSlotsLocked => write!(f, "Every slot is locked. Unlock one to save."),
-            Self::NoHomeFolder => write!(
+            Self::NoDataFolder => write!(
                 f,
-                "Save states are stored in the home folder, which can't be found."
+                "Save states are stored in R-SNES's data folder, which can't be found."
             ),
         }
     }
@@ -598,7 +598,7 @@ mod tests {
             SaveStateError::NothingToUndo,
             SaveStateError::SlotLocked,
             SaveStateError::AllSlotsLocked,
-            SaveStateError::NoHomeFolder,
+            SaveStateError::NoDataFolder,
         ];
 
         for error in errors {

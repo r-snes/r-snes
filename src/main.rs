@@ -446,15 +446,15 @@ mod tests {
 
     #[test]
     fn with_save_states_reports_why_there_are_none() {
-        let mut save_states = Err(SaveStateError::NoHomeFolder);
+        let mut save_states = Err(SaveStateError::NoDataFolder);
 
         let result = with_save_states(&mut save_states, |_| -> Result<(), _> {
             panic!("the action must not run without save states")
         });
 
-        assert!(matches!(result, Err(SaveStateError::NoHomeFolder)));
+        assert!(matches!(result, Err(SaveStateError::NoDataFolder)));
         // The error stays, for the next action.
-        assert!(matches!(save_states, Err(SaveStateError::NoHomeFolder)));
+        assert!(matches!(save_states, Err(SaveStateError::NoDataFolder)));
     }
 
     #[test]
