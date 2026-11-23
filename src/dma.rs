@@ -217,7 +217,7 @@ impl RSnesCore {
             (a_addr, b_addr)
         };
         let byte = self.bus.read(src, &mut self.ppu, &mut self.apu).0;
-        self.bus.write(dst, byte, &mut self.ppu, &mut self.apu);
+        self.bus_write(dst, byte);
 
         // The A-bus address wraps inside its bank; A1B never increments.
         if !fixed {
@@ -371,7 +371,7 @@ impl RSnesCore {
                 (a_addr, b_addr)
             };
             let byte = self.bus.read(src, &mut self.ppu, &mut self.apu).0;
-            self.bus.write(dst, byte, &mut self.ppu, &mut self.apu);
+            self.bus_write(dst, byte);
 
             addr = addr.wrapping_add(1);
             cost += BYTE_COST;

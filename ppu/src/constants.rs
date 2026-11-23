@@ -10,6 +10,9 @@ pub const SCREEN_WIDTH: usize = 256;
 /// Screen height in pixels (without overscan).
 pub const SCREEN_HEIGHT: usize = 224;
 
+/// Dot where pixel 0 is output (pixel x is output at dot 22 + x).
+pub const FIRST_PIXEL_DOT: u16 = 22;
+
 /// Master cycles per scanline (NTSC).
 pub const MASTER_CYCLES_PER_SCANLINE: u32 = 1364;
 /// Master cycles in the short scanline.

@@ -202,6 +202,9 @@ pub struct Renderer {
 
     // Sprite pixel of each column for the scanline being rendered.
     pub(crate) obj_line: Box<[Option<LinePixel>; SCREEN_WIDTH]>,
+
+    // Pixels 0..rendered_x of the current line are already drawn.
+    rendered_x: usize,
 }
 
 impl Default for Renderer {
@@ -219,6 +222,7 @@ impl Renderer {
             main_line: Box::new([LinePixel::BACKDROP; SCREEN_WIDTH]),
             sub_line: Box::new([LinePixel::BACKDROP; SCREEN_WIDTH]),
             obj_line: Box::new([None; SCREEN_WIDTH]),
+            rendered_x: 0,
         }
     }
 
@@ -234,8 +238,23 @@ impl Renderer {
 
     /// Renders the whole framebuffer row `y`.
     pub fn render_scanline(&mut self, ppu: &PPU, y: usize) {
+        self.start_line(ppu, y);
+        self.render_until(ppu, y, SCREEN_WIDTH);
+    }
+
+    /// Starts framebuffer row `y`: builds the OBJ line, no pixel is drawn yet.
+    pub fn start_line(&mut self, ppu: &PPU, y: usize) {
         self.build_obj_line(ppu, y);
-        self.render_pixels(ppu, y, 0..SCREEN_WIDTH);
+        self.rendered_x = 0;
+    }
+
+    /// Draws row `y` up to pixel `x_end` (not included), with the current registers.
+    pub fn render_until(&mut self, ppu: &PPU, y: usize, x_end: usize) {
+        let x_end = x_end.min(SCREEN_WIDTH);
+        if x_end > self.rendered_x {
+            self.render_pixels(ppu, y, self.rendered_x..x_end);
+            self.rendered_x = x_end;
+        }
     }
 
     /// Renders pixels `x_range` of framebuffer row `y`: backdrop, BG layers, then sprites.
@@ -1953,5 +1972,43 @@ mod tests {
 
         assert_eq!(fb_pixel(&r, 127, 0), red);
         assert_eq!(fb_pixel(&r, 128, 0), blue);
+    }
+
+    // render_until only draws the pixels not drawn yet, and never goes back.
+    #[test]
+    fn test_render_until_draws_each_pixel_once() {
+        let red = Renderer::apply_brightness(0x001F, 15);
+        let blue = Renderer::apply_brightness(0x7C00, 15);
+        let mut ppu = make_ppu();
+
+        let mut r = make_renderer();
+        set_color(&mut ppu, 0, 0x001F); // red backdrop
+        r.start_line(&ppu, 0);
+        r.render_until(&ppu, 0, 100);
+        set_color(&mut ppu, 0, 0x7C00); // blue backdrop
+        r.render_until(&ppu, 0, 50); // already drawn: nothing to do
+        r.render_until(&ppu, 0, SCREEN_WIDTH);
+
+        assert_eq!(fb_pixel(&r, 49, 0), red);
+        assert_eq!(fb_pixel(&r, 99, 0), red);
+        assert_eq!(fb_pixel(&r, 100, 0), blue);
+    }
+
+    // start_line starts a new line from pixel 0.
+    #[test]
+    fn test_start_line_restarts_at_pixel_0() {
+        let white = Renderer::apply_brightness(0x7FFF, 15);
+        let mut ppu = make_ppu();
+        set_color(&mut ppu, 0, 0x7FFF); // white backdrop
+
+        let mut r = make_renderer();
+        r.start_line(&ppu, 0);
+        r.render_until(&ppu, 0, SCREEN_WIDTH);
+        r.start_line(&ppu, 1);
+        r.render_until(&ppu, 1, 10);
+
+        assert_eq!(fb_pixel(&r, 0, 1), white);
+        assert_eq!(fb_pixel(&r, 9, 1), white);
+        assert_eq!(fb_pixel(&r, 10, 1), (0, 0, 0));
     }
 }
