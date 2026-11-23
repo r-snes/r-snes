@@ -344,7 +344,7 @@ impl RSnesEmu {
     const REAL_TIME_CHECK_PERIOD_CYCLES: u64 = 16384;
 
     #[cfg_attr(
-        feature = "plugins",
+        all(feature = "plugins", not(test)),
         expect(unused, reason = "unused for now, but makes sense to have")
     )]
     pub fn new(core: RSnesCore) -> Self {

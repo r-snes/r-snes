@@ -185,14 +185,7 @@ pub fn mid_instruction(core: &RSnesCore) -> bool {
         && !core.cpu.is_instr_start()
 }
 
-/// An emulator running `core` without a plugin.
-#[cfg(feature = "plugins")]
-pub fn emu(core: RSnesCore) -> RSnesEmu {
-    RSnesEmu::new_with_plugin(core, None).unwrap()
-}
-
 /// An emulator running `core`.
-#[cfg(not(feature = "plugins"))]
 pub fn emu(core: RSnesCore) -> RSnesEmu {
     RSnesEmu::new(core)
 }
