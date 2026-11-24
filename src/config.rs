@@ -21,7 +21,7 @@ pub struct RSnesConfig {
 #[derive(Default, Deserialize)]
 #[cfg_attr(test, derive(PartialEq, Eq, Debug))]
 pub struct GeneralConfig {
-    pause_when: PauseWhen,
+    pub pause_when: PauseWhen,
 }
 
 #[derive(Default, Deserialize)]
@@ -37,7 +37,7 @@ pub struct PauseWhen(pub EnumSet<GuiContext>);
 
 impl Default for PauseWhen {
     fn default() -> Self {
-        Self(enum_set![GuiContext::Navbar | GuiContext::Menu])
+        Self(enum_set![GuiContext::Navbar | GuiContext::PermRequest | GuiContext::ErrorPopup])
     }
 }
 
@@ -46,7 +46,9 @@ impl Default for PauseWhen {
 #[enumset(serialize_repr = "list")]
 pub enum GuiContext {
     Navbar,
-    Menu,
+    PermRequest,
+    ErrorPopup,
+    RomInfo,
 }
 
 #[derive(Debug)]
@@ -76,8 +78,11 @@ impl std::error::Error for ConfigLoadError {
 }
 
 pub fn config_path() -> Option<PathBuf> {
-    directories::ProjectDirs::from("", "R-SNES", "R-SNES")
-        .map(|d| d.config_dir().to_owned().join("r-snes_config.toml"))
+    Some(
+        directories::ProjectDirs::from("", "R-SNES", "R-SNES")?
+            .config_dir()
+            .join("r-snes_config.toml"),
+    )
 }
 
 pub fn read_config(path: Option<impl AsRef<Path>>) -> Result<RSnesConfig, ConfigLoadError> {
@@ -103,10 +108,10 @@ mod test {
     #[test]
     fn parse_pause_when() {
         assert_eq!(
-            toml::de::from_str::<RSnesConfig>("general.pause_when = [\"menu\"]"),
+            toml::de::from_str::<RSnesConfig>("general.pause_when = [\"navbar\"]"),
             Ok(RSnesConfig {
                 general: GeneralConfig {
-                    pause_when: PauseWhen(enum_set![GuiContext::Menu]),
+                    pause_when: PauseWhen(enum_set![GuiContext::Navbar]),
                     ..Default::default()
                 },
                 ..Default::default()
@@ -123,10 +128,10 @@ mod test {
             })
         );
         assert_eq!(
-            toml::de::from_str::<RSnesConfig>("general.pause_when = [\"navbar\", \"menu\"]"),
+            toml::de::from_str::<RSnesConfig>("general.pause_when = [\"navbar\", \"error_popup\"]"),
             Ok(RSnesConfig {
                 general: GeneralConfig {
-                    pause_when: PauseWhen(enum_set![GuiContext::Navbar | GuiContext::Menu]),
+                    pause_when: PauseWhen(enum_set![GuiContext::Navbar | GuiContext::ErrorPopup]),
                     ..Default::default()
                 },
                 ..Default::default()
