@@ -119,14 +119,12 @@ fn run_slot_action(
 fn gui_emu_loop(
     gui: &mut gui::Gui,
     rsnes: RSnesCore,
+    config: &RSnesConfig,
 
     #[cfg(feature = "plugins")] plugin: Option<Plugin>,
 ) -> Option<RSnesEvent> {
     let mut frame_nb = 0_u64;
     let exec_start = Instant::now();
-
-    // Close any overlays that might have been left open from the previous window.
-    gui.close_overlays();
 
     // Snapshot the ROM header once — it never changes while the ROM is loaded,
     // so there's no reason to rebuild it every frame.
@@ -154,11 +152,16 @@ fn gui_emu_loop(
     let closing_ev = 'emu_loop: loop {
         let frame_start = Instant::now();
 
-        // Emulation also stands still while a menu is open, so the game
-        // doesn't carry on unattended. The last frame stays on screen, and
-        // the device is paused with its queue intact, so resuming picks up
-        // exactly where the sound left off.
-        let running = !paused && !gui.menu_open();
+        let paus_when = &config.general.pause_when.0;
+        // Emulation stands still while a pause condition is met.
+        // The last frame stays on screen, and the device is paused with its
+        // queue intact, so resuming picks up exactly where the sound left off.
+        let running = !(paused
+            || (gui.menu_open() && paus_when.contains(config::GuiContext::Navbar))
+            || (gui.pending_perm_request() && paus_when.contains(config::GuiContext::PermRequest))
+            || (gui.rom_info_open() && paus_when.contains(config::GuiContext::RomInfo))
+            || (gui.pending_error_popup() && paus_when.contains(config::GuiContext::ErrorPopup)));
+
         audio.set_running(gui, running);
 
         // run master cycles until the PPU completes a frame
@@ -299,7 +302,11 @@ fn gui_emu_loop(
 /// Returns the first event the outer loop cares about. Input-only events
 /// (buttons, plugin actions) are meaningless without a game and are
 /// swallowed here.
-fn gui_idle_loop(gui: &mut Gui, default_framebuffer: &ppu::rendering::RawFramebuffer) -> IdleExit {
+fn gui_idle_loop(
+    gui: &mut Gui,
+    #[expect(unused, reason = "unused for now")] config: &RSnesConfig,
+    default_framebuffer: &ppu::rendering::RawFramebuffer,
+) -> IdleExit {
     gui.set_rom_title(None);
 
     let ev = loop {
@@ -359,7 +366,7 @@ fn gui_loop(
         // we leave the loop
         let ev = match rsnes_core.take() {
             None => {
-                let idle_exit = gui_idle_loop(&mut gui, DEFAULT_FRAMEBUFFER);
+                let idle_exit = gui_idle_loop(&mut gui, &config, DEFAULT_FRAMEBUFFER);
                 cfg_select! {
                     feature = "plugins" => {
                         let (ev, new_plugin) = idle_exit;
@@ -376,8 +383,8 @@ fn gui_loop(
 
             Some(emu) => {
                 let ret_ev = cfg_select! {
-                    feature = "plugins" => gui_emu_loop(&mut gui, emu, plugin.take()),
-                    _ => gui_emu_loop(&mut gui, emu),
+                    feature = "plugins" => gui_emu_loop(&mut gui, emu, &config, plugin.take()),
+                    _ => gui_emu_loop(&mut gui, emu, &config),
                 };
 
                 match ret_ev {

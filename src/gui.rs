@@ -346,6 +346,21 @@ impl Gui {
         self.state.notification = Some(Notification::new(text.into()));
     }
 
+    /// Returns whether theres is a perm request open
+    pub fn pending_perm_request(&self) -> bool {
+        self.state.pending_plugin.is_some()
+    }
+
+    /// Returns whether theres is an error popup open
+    pub fn pending_error_popup(&self) -> bool {
+        self.state.error_popup.is_some()
+    }
+
+    /// Whether the ROM info window is open
+    pub fn rom_info_open(&self) -> bool {
+        self.state.show_rom_info
+    }
+
     /// Sets the SDL2 window title. Pass `None` to reset to the default.
     pub fn set_rom_title(&mut self, title: Option<&str>) {
         let window_title = match title {
