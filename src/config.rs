@@ -1,4 +1,5 @@
-use serde::Deserialize;
+use enumset::{EnumSet, EnumSetType, enum_set};
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 #[derive(Default, Deserialize)]
@@ -32,16 +33,17 @@ pub struct InputConfig {}
 pub struct ConfigConfig {}
 #[derive(Deserialize)]
 #[cfg_attr(test, derive(PartialEq, Eq, Debug))]
-pub struct PauseWhen(pub Vec<GuiContext>);
+pub struct PauseWhen(pub EnumSet<GuiContext>);
 
 impl Default for PauseWhen {
     fn default() -> Self {
-        Self(vec![GuiContext::Navbar, GuiContext::Menu])
+        Self(enum_set![GuiContext::Navbar | GuiContext::Menu])
     }
 }
 
-#[derive(Deserialize, Copy, Clone, Eq, PartialEq, Debug)]
+#[derive(Deserialize, Serialize, EnumSetType, Debug)]
 #[serde(rename_all = "snake_case")]
+#[enumset(serialize_repr = "list")]
 pub enum GuiContext {
     Navbar,
     Menu,
@@ -92,6 +94,43 @@ mod test {
 
     #[test]
     fn empty_config_parses_default_values() {
-        assert_eq!(toml::de::from_str::<RSnesConfig>(""), Ok(Default::default()))
+        assert_eq!(
+            toml::de::from_str::<RSnesConfig>(""),
+            Ok(Default::default())
+        )
+    }
+
+    #[test]
+    fn parse_pause_when() {
+        assert_eq!(
+            toml::de::from_str::<RSnesConfig>("general.pause_when = [\"menu\"]"),
+            Ok(RSnesConfig {
+                general: GeneralConfig {
+                    pause_when: PauseWhen(enum_set![GuiContext::Menu]),
+                    ..Default::default()
+                },
+                ..Default::default()
+            })
+        );
+        assert_eq!(
+            toml::de::from_str::<RSnesConfig>("general.pause_when = []"),
+            Ok(RSnesConfig {
+                general: GeneralConfig {
+                    pause_when: PauseWhen(enum_set![]),
+                    ..Default::default()
+                },
+                ..Default::default()
+            })
+        );
+        assert_eq!(
+            toml::de::from_str::<RSnesConfig>("general.pause_when = [\"navbar\", \"menu\"]"),
+            Ok(RSnesConfig {
+                general: GeneralConfig {
+                    pause_when: PauseWhen(enum_set![GuiContext::Navbar | GuiContext::Menu]),
+                    ..Default::default()
+                },
+                ..Default::default()
+            })
+        );
     }
 }
