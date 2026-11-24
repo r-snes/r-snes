@@ -2,28 +2,36 @@ use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
 #[derive(Default, Deserialize)]
+#[cfg_attr(test, derive(PartialEq, Eq, Debug))]
 pub struct RSnesConfig {
     /// simpler general options
+    #[serde(default)]
     pub general: GeneralConfig,
 
     /// keybinds, controller options etc.
+    #[serde(default)]
     pub input: InputConfig,
 
     /// options about how we should handle the config file
+    #[serde(default)]
     pub config: ConfigConfig,
 }
 
 #[derive(Default, Deserialize)]
+#[cfg_attr(test, derive(PartialEq, Eq, Debug))]
 pub struct GeneralConfig {
     pause_when: PauseWhen,
 }
 
 #[derive(Default, Deserialize)]
+#[cfg_attr(test, derive(PartialEq, Eq, Debug))]
 pub struct InputConfig {}
 
 #[derive(Default, Deserialize)]
+#[cfg_attr(test, derive(PartialEq, Eq, Debug))]
 pub struct ConfigConfig {}
 #[derive(Deserialize)]
+#[cfg_attr(test, derive(PartialEq, Eq, Debug))]
 pub struct PauseWhen(pub Vec<GuiContext>);
 
 impl Default for PauseWhen {
@@ -81,4 +89,9 @@ pub fn read_config(path: Option<impl AsRef<Path>>) -> Result<RSnesConfig, Config
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[test]
+    fn empty_config_parses_default_values() {
+        assert_eq!(toml::de::from_str::<RSnesConfig>(""), Ok(Default::default()))
+    }
 }
