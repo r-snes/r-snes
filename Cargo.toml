@@ -89,6 +89,7 @@ duplicate.workspace = true
 toml = { version = "1.2.2", features = ["serde"] }
 serde = { version = "1.0.229", features = ["derive"] }
 directories = "6.0.0"
+enumset = { version = "1.1.15", features = ["serde"] }
 
 [target.'cfg(windows)'.dependencies]
 sdl2 = { workspace = true, features = ["bundled", "static-link"] }
