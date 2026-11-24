@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 #[derive(Default, Deserialize)]
 #[cfg_attr(test, derive(PartialEq, Eq, Debug))]
+#[serde(deny_unknown_fields)]
 pub struct RSnesConfig {
     /// simpler general options
     #[serde(default)]
@@ -20,16 +21,19 @@ pub struct RSnesConfig {
 
 #[derive(Default, Deserialize)]
 #[cfg_attr(test, derive(PartialEq, Eq, Debug))]
+#[serde(deny_unknown_fields)]
 pub struct GeneralConfig {
     pub pause_when: PauseWhen,
 }
 
 #[derive(Default, Deserialize)]
 #[cfg_attr(test, derive(PartialEq, Eq, Debug))]
+#[serde(deny_unknown_fields)]
 pub struct InputConfig {}
 
 #[derive(Default, Deserialize)]
 #[cfg_attr(test, derive(PartialEq, Eq, Debug))]
+#[serde(deny_unknown_fields)]
 pub struct ConfigConfig {}
 #[derive(Deserialize)]
 #[cfg_attr(test, derive(PartialEq, Eq, Debug))]
@@ -137,5 +141,10 @@ mod test {
                 ..Default::default()
             })
         );
+    }
+
+    #[test]
+    fn fail_on_unexpected_field() {
+        assert!(toml::de::from_str::<RSnesConfig>("non_existent_option = 3").is_err())
     }
 }
