@@ -1,6 +1,6 @@
 [package]
 name = "r-snes"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 description = "Cycle-accurate Super Nintendo emulator with sandboxed plugins"
 license = "MIT"
