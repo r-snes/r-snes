@@ -18,6 +18,8 @@ use sdl2::video::Window;
 
 use ppu::constants::{SCREEN_HEIGHT, SCREEN_WIDTH};
 
+#[cfg(not(tarpaulin_include))]
+use crate::config::{ConfigLoadError, RSnesConfig};
 use crate::rsnes::RomInfo;
 use command::Command;
 use state::GuiState;
@@ -50,7 +52,7 @@ pub struct Gui {
     stick_dirs: StickDirs,
 
     /// Whether a menu (or any other egui popup) was open last frame.
-    /// Emulation pauses meanwhile, and Escape closes it rather than the game.
+    /// Escape closes it rather than the game, and depending on config, emulation may pause meanwhile
     menu_open: bool,
 }
 
@@ -171,7 +173,7 @@ impl Gui {
     const STICK_DEADZONE: i16 = 13_000; // Deadzone for the analog stick, ~40% of the i16 range
     const MENU_BAR_HEIGHT: u32 = 23; // Height of the menu bar with egui's default style (22), plus 1 for its anti-aliased bottom edge, in window coordinates.
 
-    pub fn new() -> Result<Self, String> {
+    pub fn new(config_load: Result<RSnesConfig, ConfigLoadError>) -> Result<Self, String> {
         let sdl_ctx = sdl2::init()?;
         let video_subsystem = sdl_ctx.video()?;
 
@@ -227,12 +229,16 @@ impl Gui {
             event_pump,
             audio_queue,
             framebuffer_texture: None,
-            state: GuiState::default(),
+            state: GuiState::new(config_load),
             _controller_subsystem: controller_subsystem,
             controller,
             stick_dirs: StickDirs::default(),
             menu_open: false,
         })
+    }
+
+    pub fn config(&self) -> &RSnesConfig {
+        &self.state.config
     }
 
     /// Whether a menu is open.
@@ -608,6 +614,7 @@ impl Gui {
     ) {
         widgets::rom_info(ctx, area, &mut state.show_rom_info, data.rom_info);
         widgets::error_box(ctx, area, &mut state.error_popup);
+        widgets::config_error_box(ctx, area, &mut state.show_config_error, &state.config_error);
         #[cfg(feature = "plugins")]
         widgets::plugin_perm_request(
             ctx,

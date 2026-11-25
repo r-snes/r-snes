@@ -3,6 +3,8 @@ use std::error::Error;
 #[cfg(feature = "plugins")]
 use plugins::plugin::Plugin;
 
+use crate::config::{ConfigLoadError, RSnesConfig};
+
 /// A plugin loaded and awaiting the user's grant/deny decision, plus the
 /// transient UI state of its permission window (persisted across frames).
 #[cfg(feature = "plugins")]
@@ -39,6 +41,10 @@ pub struct GuiState {
     /// when the idle loop exits.
     #[cfg(feature = "plugins")]
     pub granted_plugin: Option<Plugin>,
+
+    pub config: RSnesConfig,
+    pub config_error: Option<ConfigLoadError>,
+    pub show_config_error: bool,
 }
 
 impl GuiState {
@@ -56,6 +62,22 @@ impl GuiState {
             self.pending_plugin = None;
         }
         was_open
+    }
+
+    /// aaa
+    pub fn new(config_load: Result<RSnesConfig, ConfigLoadError>) -> Self {
+        let (config, config_error) = match config_load {
+            Ok(c) => (c, None),
+            Err(e) => (Default::default(), Some(e)),
+        };
+        let show_config_error = config_error.is_some();
+
+        Self {
+            config,
+            config_error,
+            show_config_error,
+            ..Default::default()
+        }
     }
 
     pub fn any_open(&self) -> bool {

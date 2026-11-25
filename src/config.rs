@@ -1,6 +1,6 @@
 use enumset::{EnumSet, EnumSetType, enum_set};
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
+use std::{fmt::Debug, path::PathBuf};
 
 #[derive(Default, Deserialize)]
 #[cfg_attr(test, derive(PartialEq, Eq, Debug))]
@@ -41,7 +41,9 @@ pub struct PauseWhen(pub EnumSet<GuiContext>);
 
 impl Default for PauseWhen {
     fn default() -> Self {
-        Self(enum_set![GuiContext::Navbar | GuiContext::PermRequest | GuiContext::ErrorPopup])
+        Self(enum_set![
+            GuiContext::Navbar | GuiContext::PermRequest | GuiContext::ErrorPopup
+        ])
     }
 }
 
@@ -58,16 +60,19 @@ pub enum GuiContext {
 #[derive(Debug)]
 pub enum ConfigLoadError {
     NoConfigPath,
-    IoError(std::io::Error),
-    TomlError(toml::de::Error),
+    IoError(std::io::Error, PathBuf),
+    TomlError(toml::de::Error, PathBuf),
 }
 
 impl std::fmt::Display for ConfigLoadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::NoConfigPath => write!(f, "Failed to resolve a system-specific config folder"),
-            Self::IoError(_) => write!(f, "Failed to open config file for reading"),
-            Self::TomlError(_) => write!(f, "Failed to deserialize config file as an RSnesConfig"),
+            Self::IoError(_, path) => write!(f, "Failed to open config file {path:?} for reading"),
+            Self::TomlError(_, path) => write!(
+                f,
+                "Failed to deserialize config file {path:?} as an RSnesConfig"
+            ),
         }
     }
 }
@@ -75,8 +80,8 @@ impl std::error::Error for ConfigLoadError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::NoConfigPath => None,
-            Self::IoError(e) => Some(e),
-            Self::TomlError(e) => Some(e),
+            Self::IoError(e, _) => Some(e),
+            Self::TomlError(e, _) => Some(e),
         }
     }
 }
@@ -89,10 +94,13 @@ pub fn config_path() -> Option<PathBuf> {
     )
 }
 
-pub fn read_config(path: Option<impl AsRef<Path>>) -> Result<RSnesConfig, ConfigLoadError> {
+pub fn read_config(path: Option<PathBuf>) -> Result<RSnesConfig, ConfigLoadError> {
     let path = path.ok_or(ConfigLoadError::NoConfigPath)?;
-    let contents = std::fs::read(path).map_err(ConfigLoadError::IoError)?;
-    let cfg = toml::de::from_slice(&contents).map_err(ConfigLoadError::TomlError)?;
+    let contents = match std::fs::read(&path) {
+        Err(e) => return Err(ConfigLoadError::IoError(e, path)),
+        Ok(c) => c,
+    };
+    let cfg = toml::de::from_slice(&contents).map_err(|e| ConfigLoadError::TomlError(e, path))?;
 
     Ok(cfg)
 }

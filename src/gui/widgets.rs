@@ -1,9 +1,9 @@
-use std::error::Error;
+use std::{error::Error, io::ErrorKind::NotFound};
 
 use bus::cartridge::header::RomHeader;
 use egui_sdl2::egui::{self, RichText};
 
-use crate::rsnes::RomInfo;
+use crate::{config::ConfigLoadError, rsnes::RomInfo};
 
 use super::GuiFrameData;
 use super::command::Command;
@@ -267,6 +267,55 @@ pub fn error_box(ctx: &egui::Context, area: egui::Rect, error: &mut Option<Box<d
 
     if !open {
         *error = None;
+    }
+}
+
+pub fn config_error_box(
+    ctx: &egui::Context,
+    area: egui::Rect,
+    mut open: &mut bool,
+    config_err: &Option<ConfigLoadError>,
+) {
+    let window = egui::Window::new("Configuration file error")
+        .constrain_to(area)
+        .resizable(true)
+        .collapsible(false)
+        .vscroll(true);
+
+    match config_err {
+        None => {
+            window.open(&mut open).show(ctx, |ui| {
+                ui.label("Config file OK!");
+
+                if ui.button("OK").clicked() {
+                    ui.close();
+                }
+            });
+        }
+        Some(error) => {
+            window
+                .default_width(400.0)
+                .default_height(300.0)
+                .show(ctx, |ui| {
+                    ui.label("Error loading the R-SNES configuration file");
+                    match error {
+                        ConfigLoadError::NoConfigPath => {
+                            ui.label("We don't even know where to look for a config file on your system");
+                        }
+                        ConfigLoadError::IoError(io_err, path) if matches!(io_err.kind(), NotFound) => {
+                            ui.label(format!("It seems like you have no config file at {path:?}"));
+                            ui.label("Using the default config for now, please create an empty file at that path to silence this error");
+                        }
+                        ConfigLoadError::IoError(io_err, _) => {
+                            ui.label(io_err.to_string());
+                        }
+                        ConfigLoadError::TomlError(toml_err, path) => {
+                            ui.label(format!("Your config file at {path:?} isn't a valid R-SNES configuration file, see the error below:"));
+                            ui.code(toml_err.to_string());
+                        }
+                    }
+                });
+        }
     }
 }
 
