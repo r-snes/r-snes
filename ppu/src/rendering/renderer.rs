@@ -9,6 +9,7 @@
 use crate::constants::*;
 use crate::ppu::PPU;
 use crate::vram::RawVRAM;
+use std::ops::Range;
 
 /// Raw byte array of the framebuffer in RGB888
 pub type RawFramebuffer = [u8; SCREEN_WIDTH * SCREEN_HEIGHT * 3];
@@ -198,6 +199,15 @@ pub struct Renderer {
     // Per-column top pixel of each screen for the scanline being rendered.
     main_line: Box<[LinePixel; SCREEN_WIDTH]>,
     sub_line: Box<[LinePixel; SCREEN_WIDTH]>,
+
+    // Sprite pixel of each column for the scanline being rendered.
+    pub(crate) obj_line: Box<[Option<LinePixel>; SCREEN_WIDTH]>,
+
+    // Pixels 0..rendered_x of the current line are already drawn.
+    rendered_x: usize,
+
+    // Fine scroll (low 3 bits of HOFS) of BG1-BG4, read at the start of the line.
+    fine_hofs: [usize; 4],
 }
 
 impl Default for Renderer {
@@ -214,6 +224,9 @@ impl Renderer {
             presented: Box::new([0; SCREEN_WIDTH * SCREEN_HEIGHT * 3]),
             main_line: Box::new([LinePixel::BACKDROP; SCREEN_WIDTH]),
             sub_line: Box::new([LinePixel::BACKDROP; SCREEN_WIDTH]),
+            obj_line: Box::new([None; SCREEN_WIDTH]),
+            rendered_x: 0,
+            fine_hofs: [0; 4],
         }
     }
 
@@ -227,11 +240,33 @@ impl Renderer {
         &self.presented
     }
 
-    /// Renders framebuffer row `y`: backdrop, BG layers, then sprites.
+    /// Renders the whole framebuffer row `y`.
     pub fn render_scanline(&mut self, ppu: &PPU, y: usize) {
-        // Hardware force blank: output black
+        self.start_line(ppu, y);
+        self.render_until(ppu, y, SCREEN_WIDTH);
+    }
+
+    /// Starts framebuffer row `y`: builds the OBJ line and reads the fine scroll of each BG.
+    pub fn start_line(&mut self, ppu: &PPU, y: usize) {
+        self.build_obj_line(ppu, y);
+        self.fine_hofs = std::array::from_fn(|bg| ppu.regs.bg_scroll(bg).0 & 7);
+        self.rendered_x = 0;
+    }
+
+    /// Draws row `y` up to pixel `x_end` (not included), with the current registers.
+    pub fn render_until(&mut self, ppu: &PPU, y: usize, x_end: usize) {
+        let x_end = x_end.min(SCREEN_WIDTH);
+        if x_end > self.rendered_x {
+            self.render_pixels(ppu, y, self.rendered_x..x_end);
+            self.rendered_x = x_end;
+        }
+    }
+
+    /// Renders pixels `x_range` of framebuffer row `y`: backdrop, BG layers, then sprites.
+    pub fn render_pixels(&mut self, ppu: &PPU, y: usize, x_range: Range<usize>) {
+        // Force blank: output black
         if ppu.force_blank() {
-            self.render_full_black(y);
+            self.render_full_black(y, x_range);
             return;
         }
 
@@ -244,29 +279,29 @@ impl Renderer {
             color: ppu.regs.coldata,
             ..LinePixel::BACKDROP
         };
-        self.main_line.fill(main_bd);
-        self.sub_line.fill(sub_bd);
+        self.main_line[x_range.clone()].fill(main_bd);
+        self.sub_line[x_range.clone()].fill(sub_bd);
 
         // Background layers -> deposit into main_line / sub_line
         match ppu.regs.bg_mode() {
-            0 => self.render_scanline_mode0(ppu, y),
-            1 => self.render_scanline_mode1(ppu, y),
-            2 => self.render_scanline_mode2(ppu, y),
-            3 => self.render_scanline_mode3(ppu, y),
-            4 => self.render_scanline_mode4(ppu, y),
-            7 => self.render_scanline_mode7(ppu, y),
-            _ => self.render_scanline_mode1(ppu, y),
+            0 => self.render_scanline_mode0(ppu, y, x_range.clone()),
+            1 => self.render_scanline_mode1(ppu, y, x_range.clone()),
+            2 => self.render_scanline_mode2(ppu, y, x_range.clone()),
+            3 => self.render_scanline_mode3(ppu, y, x_range.clone()),
+            4 => self.render_scanline_mode4(ppu, y, x_range.clone()),
+            7 => self.render_scanline_mode7(ppu, y, x_range.clone()),
+            _ => self.render_scanline_mode1(ppu, y, x_range.clone()),
         }
 
         // Sprites deposit into main_line / sub_line too (gated on TM/TS bit 4).
-        self.render_sprites(ppu, y);
+        self.render_sprites(ppu, x_range.clone());
 
         // Final pass: main + sub -> color math -> brightness -> framebuffer.
-        self.composite_line(ppu, y);
+        self.composite_line(ppu, y, x_range);
     }
 
-    /// Render one BG layer for one scanline into the main and/or sub screen.
-    pub fn render_bg_scanline(&mut self, ppu: &PPU, y: usize, p: &BgParams) {
+    /// Render one BG layer on pixels `x_range` of one scanline into the main and/or sub screen.
+    pub fn render_bg_scanline(&mut self, ppu: &PPU, y: usize, x_range: Range<usize>, p: &BgParams) {
         // Tile size and map size in pixels.
         let tile_px = if p.tile16 { 16 } else { 8 };
         let map_w = (if p.w64 { 64 } else { 32 }) * tile_px;
@@ -290,16 +325,19 @@ impl Renderer {
 
         let bg = p.layer.bg_index();
 
+        // The fine scroll comes from the start of the line.
+        let hofs = (p.scroll_x & !7) | self.fine_hofs[bg];
+
         // Offset-per-tile: in modes 2 and 4, BG3 changes the scroll of BG1 and BG2 for each column.
         let opt = matches!(ppu.regs.bg_mode(), 2 | 4) && bg < 2;
 
-        for x in 0..SCREEN_WIDTH {
+        for x in x_range {
             // Every pixel of a block shows the first pixel of the block.
             let src_x = x - x % block;
             let (scroll_x, scroll_y) = if opt {
-                Self::opt_scroll(ppu, bg, (p.scroll_x, p.scroll_y), src_x)
+                Self::opt_scroll(ppu, bg, (hofs, p.scroll_y), src_x)
             } else {
-                (p.scroll_x, p.scroll_y)
+                (hofs, p.scroll_y)
             };
 
             let px = (src_x + scroll_x) & (map_w - 1);
@@ -504,8 +542,8 @@ impl Renderer {
         }
     }
 
-    /// Combine main + sub per pixel, apply color math and brightness.
-    fn composite_line(&mut self, ppu: &PPU, y: usize) {
+    /// Combine main + sub on pixels `x_range`, apply color math and brightness.
+    fn composite_line(&mut self, ppu: &PPU, y: usize, x_range: Range<usize>) {
         let cgwsel = ppu.regs.cgwsel;
         let cgadsub = ppu.regs.cgadsub;
 
@@ -526,7 +564,7 @@ impl Renderer {
             _ => false,
         };
 
-        for x in 0..SCREEN_WIDTH {
+        for x in x_range {
             let main = self.main_line[x];
             let inside = ppu.regs.in_color_window(x);
 
@@ -624,8 +662,8 @@ impl Renderer {
         self.framebuffer[index + 2] = b;
     }
 
-    fn render_full_black(&mut self, y: usize) {
-        for x in 0..SCREEN_WIDTH {
+    fn render_full_black(&mut self, y: usize, x_range: Range<usize>) {
+        for x in x_range {
             self.set_pixel(x, y, 0, 0, 0);
         }
     }
@@ -1093,7 +1131,7 @@ mod tests {
         ppu.write(0x2130, 0x00); // CGWSEL bit1=0 -> fixed colour operand
         ppu.write(0x2131, cgadsub);
         r.deposit_main(0, main, BG1_LOW, Layer::Bg1, false);
-        r.composite_line(&ppu, 0);
+        r.composite_line(&ppu, 0, 0..SCREEN_WIDTH);
         fb_pixel(&r, 0, 0)
     }
 
@@ -1139,7 +1177,7 @@ mod tests {
         ppu.write(0x2130, 0xC0); // CGWSEL bits7-6 = 11 -> clip main to black always
         ppu.write(0x2131, 0x00); // no math
         r.deposit_main(0, 0x7FFF, BG1_LOW, Layer::Bg1, false);
-        r.composite_line(&ppu, 0);
+        r.composite_line(&ppu, 0, 0..SCREEN_WIDTH);
         assert_eq!(fb_pixel(&r, 0, 0), (0, 0, 0));
     }
 
@@ -1153,13 +1191,13 @@ mod tests {
         // Palette 0-3 sprite (obj_math=false): no math, main passes through.
         let mut r = make_renderer();
         r.deposit_main(0, 0x0008, Priority::obj(2), Layer::Obj, false);
-        r.composite_line(&ppu, 0);
+        r.composite_line(&ppu, 0, 0..SCREEN_WIDTH);
         assert_eq!(fb_pixel(&r, 0, 0), Renderer::apply_brightness(0x0008, 15));
 
         // Palette 4-7 sprite (obj_math=true): math applies -> R=12.
         let mut r = make_renderer();
         r.deposit_main(0, 0x0008, Priority::obj(2), Layer::Obj, true);
-        r.composite_line(&ppu, 0);
+        r.composite_line(&ppu, 0, 0..SCREEN_WIDTH);
         assert_eq!(fb_pixel(&r, 0, 0), Renderer::apply_brightness(0x000C, 15));
     }
 
@@ -1174,7 +1212,7 @@ mod tests {
         ppu.write(0x2131, 0x01); // BG1 math, add
         r.deposit_main(0, 0x0008, BG1_LOW, Layer::Bg1, false);
         r.deposit_sub(0, 0x0002, BG2_LOW, Layer::Bg2, false);
-        r.composite_line(&ppu, 0);
+        r.composite_line(&ppu, 0, 0..SCREEN_WIDTH);
         assert_eq!(fb_pixel(&r, 0, 0), Renderer::apply_brightness(0x000A, 15));
 
         // CGWSEL bit1=0 -> operand is fixed colour (R=4) -> R=12.
@@ -1182,7 +1220,7 @@ mod tests {
         ppu.write(0x2130, 0x00);
         r.deposit_main(0, 0x0008, BG1_LOW, Layer::Bg1, false);
         r.deposit_sub(0, 0x0002, BG2_LOW, Layer::Bg2, false);
-        r.composite_line(&ppu, 0);
+        r.composite_line(&ppu, 0, 0..SCREEN_WIDTH);
         assert_eq!(fb_pixel(&r, 0, 0), Renderer::apply_brightness(0x000C, 15));
     }
 
@@ -1214,13 +1252,13 @@ mod tests {
         let mut r = make_renderer();
         r.deposit_main(0, 0x0008, BG1_LOW, Layer::Bg1, false);
         r.deposit_sub(0, 0x0004, BG2_LOW, Layer::Bg2, false);
-        r.composite_line(&ppu, 0);
+        r.composite_line(&ppu, 0, 0..SCREEN_WIDTH);
         assert_eq!(fb_pixel(&r, 0, 0), Renderer::apply_brightness(0x0006, 15));
 
         // Transparent sub -> fixed R=4, not divided -> 8 + 4 = 12
         let mut r = make_renderer();
         r.deposit_main(0, 0x0008, BG1_LOW, Layer::Bg1, false);
-        r.composite_line(&ppu, 0);
+        r.composite_line(&ppu, 0, 0..SCREEN_WIDTH);
         assert_eq!(fb_pixel(&r, 0, 0), Renderer::apply_brightness(0x000C, 15));
     }
 
@@ -1234,7 +1272,7 @@ mod tests {
         ppu.write(0x2130, 0xC0); // clip main to black always
         ppu.write(0x2131, 0x41); // BG1 math, half add
         r.deposit_main(0, 0x001F, BG1_LOW, Layer::Bg1, false);
-        r.composite_line(&ppu, 0);
+        r.composite_line(&ppu, 0, 0..SCREEN_WIDTH);
         assert_eq!(fb_pixel(&r, 0, 0), Renderer::apply_brightness(0x0008, 15));
     }
 
@@ -1249,7 +1287,7 @@ mod tests {
         setup_bg1_uniform(&mut ppu, 0x1234);
         ppu.write(0x212C, 0x01); // TM: BG1 on main
         ppu.write(0x212D, 0x00);
-        r.render_scanline_mode1(&ppu, 0);
+        r.render_scanline_mode1(&ppu, 0, 0..SCREEN_WIDTH);
         assert!(r.main_line[0].layer == Layer::Bg1);
         assert_eq!(r.main_line[0].color, 0x1234);
         assert!(r.sub_line[0].layer == Layer::Backdrop);
@@ -1262,7 +1300,7 @@ mod tests {
         setup_bg1_uniform(&mut ppu, 0x1234);
         ppu.write(0x212C, 0x00);
         ppu.write(0x212D, 0x01); // TS: BG1 on sub
-        r.render_scanline_mode1(&ppu, 0);
+        r.render_scanline_mode1(&ppu, 0, 0..SCREEN_WIDTH);
         assert!(r.main_line[0].layer == Layer::Backdrop);
         assert!(r.sub_line[0].layer == Layer::Bg1);
         assert_eq!(r.sub_line[0].color, 0x1234);
@@ -1275,7 +1313,7 @@ mod tests {
         setup_bg1_uniform(&mut ppu, 0x1234);
         ppu.write(0x212C, 0x01);
         ppu.write(0x212D, 0x01);
-        r.render_scanline_mode1(&ppu, 0);
+        r.render_scanline_mode1(&ppu, 0, 0..SCREEN_WIDTH);
         assert!(r.main_line[0].layer == Layer::Bg1);
         assert!(r.sub_line[0].layer == Layer::Bg1);
     }
@@ -1287,7 +1325,7 @@ mod tests {
         setup_bg1_uniform(&mut ppu, 0x1234);
         ppu.write(0x212C, 0x00); // BG1 disabled on main
         ppu.write(0x212D, 0x00);
-        r.render_scanline_mode1(&ppu, 0);
+        r.render_scanline_mode1(&ppu, 0, 0..SCREEN_WIDTH);
         assert!(r.main_line[0].layer == Layer::Backdrop);
     }
 
@@ -1684,7 +1722,7 @@ mod tests {
         ppu.write(0x212F, 0x01); // TSW: BG1
 
         let mut r = make_renderer();
-        r.render_scanline_mode1(&ppu, 0);
+        r.render_scanline_mode1(&ppu, 0, 0..SCREEN_WIDTH);
         assert!(r.main_line[15].layer == Layer::Bg1);
         assert!(r.sub_line[15].layer == Layer::Backdrop);
         assert!(r.sub_line[9].layer == Layer::Bg1);
@@ -1858,7 +1896,7 @@ mod tests {
             for x in [5, 15] {
                 r.deposit_main(x, 0x0008, BG1_LOW, Layer::Bg1, false);
             }
-            r.composite_line(&ppu, 0);
+            r.composite_line(&ppu, 0, 0..SCREEN_WIDTH);
             for (x, want) in [5, 15].into_iter().zip(expected) {
                 assert_eq!(fb_pixel(&r, x, 0), want, "CGWSEL {cgwsel:#04X}, x={x}");
             }
@@ -1885,5 +1923,147 @@ mod tests {
         ppu.write(0x2125, 0x30); // color: window 1 enable + invert
         assert!(ppu.regs.in_color_window(5));
         assert!(!ppu.regs.in_color_window(15));
+    }
+
+    // ============================================================
+    // Pixel ranges
+    // ============================================================
+
+    // render_pixels only writes the pixels of its range.
+    #[test]
+    fn test_render_pixels_only_writes_its_range() {
+        let white = Renderer::apply_brightness(0x7FFF, 15);
+        let mut ppu = make_ppu();
+        set_color(&mut ppu, 0, 0x7FFF); // white backdrop
+
+        let mut r = make_renderer();
+        r.render_pixels(&ppu, 0, 10..20);
+        assert_eq!(fb_pixel(&r, 9, 0), (0, 0, 0));
+        assert_eq!(fb_pixel(&r, 10, 0), white);
+        assert_eq!(fb_pixel(&r, 19, 0), white);
+        assert_eq!(fb_pixel(&r, 20, 0), (0, 0, 0));
+    }
+
+    // A line drawn in two parts is the same as a line drawn in one go.
+    // The cut is in the middle of a tile and of a mosaic block.
+    #[test]
+    fn test_render_pixels_in_two_parts() {
+        let mut ppu = make_ppu();
+        setup_bg1_mosaic(&mut ppu, [0x00F0; 8]); // x 0-3 of each tile are opaque
+        ppu.write(0x210D, 0x03); // HOFS = 3
+        ppu.write(0x210D, 0x00);
+        ppu.write(0x2106, 0x11); // mosaic size 2 on BG1
+
+        let mut whole = make_renderer();
+        whole.render_scanline(&ppu, 0);
+
+        let mut parts = make_renderer();
+        parts.start_line(&ppu, 0);
+        parts.render_pixels(&ppu, 0, 0..103);
+        parts.render_pixels(&ppu, 0, 103..SCREEN_WIDTH);
+
+        assert!(whole.framebuffer == parts.framebuffer);
+    }
+
+    // Each part uses the registers of the moment it is drawn.
+    #[test]
+    fn test_render_pixels_uses_current_registers() {
+        let red = Renderer::apply_brightness(0x001F, 15);
+        let blue = Renderer::apply_brightness(0x7C00, 15);
+        let mut ppu = make_ppu();
+
+        let mut r = make_renderer();
+        set_color(&mut ppu, 0, 0x001F); // red backdrop
+        r.render_pixels(&ppu, 0, 0..128);
+        set_color(&mut ppu, 0, 0x7C00); // blue backdrop
+        r.render_pixels(&ppu, 0, 128..SCREEN_WIDTH);
+
+        assert_eq!(fb_pixel(&r, 127, 0), red);
+        assert_eq!(fb_pixel(&r, 128, 0), blue);
+    }
+
+    // render_until only draws the pixels not drawn yet, and never goes back.
+    #[test]
+    fn test_render_until_draws_each_pixel_once() {
+        let red = Renderer::apply_brightness(0x001F, 15);
+        let blue = Renderer::apply_brightness(0x7C00, 15);
+        let mut ppu = make_ppu();
+
+        let mut r = make_renderer();
+        set_color(&mut ppu, 0, 0x001F); // red backdrop
+        r.start_line(&ppu, 0);
+        r.render_until(&ppu, 0, 100);
+        set_color(&mut ppu, 0, 0x7C00); // blue backdrop
+        r.render_until(&ppu, 0, 50); // already drawn: nothing to do
+        r.render_until(&ppu, 0, SCREEN_WIDTH);
+
+        assert_eq!(fb_pixel(&r, 49, 0), red);
+        assert_eq!(fb_pixel(&r, 99, 0), red);
+        assert_eq!(fb_pixel(&r, 100, 0), blue);
+    }
+
+    // start_line starts a new line from pixel 0.
+    #[test]
+    fn test_start_line_restarts_at_pixel_0() {
+        let white = Renderer::apply_brightness(0x7FFF, 15);
+        let mut ppu = make_ppu();
+        set_color(&mut ppu, 0, 0x7FFF); // white backdrop
+
+        let mut r = make_renderer();
+        r.start_line(&ppu, 0);
+        r.render_until(&ppu, 0, SCREEN_WIDTH);
+        r.start_line(&ppu, 1);
+        r.render_until(&ppu, 1, 10);
+
+        assert_eq!(fb_pixel(&r, 0, 1), white);
+        assert_eq!(fb_pixel(&r, 9, 1), white);
+        assert_eq!(fb_pixel(&r, 10, 1), (0, 0, 0));
+    }
+
+    // ============================================================
+    // Fine scroll
+    // ============================================================
+
+    // The fine scroll (HOFS bits 0-2) is read by start_line: a write in the middle
+    // of the line only changes the coarse scroll (bits 3-9).
+    #[test]
+    fn test_fine_hofs_read_at_line_start() {
+        let red = Renderer::apply_brightness(0x001F, 15);
+        let black = (0, 0, 0);
+        let mut ppu = make_ppu();
+        setup_bg1_mosaic(&mut ppu, [0x0080; 8]); // only x = 0 of each tile is opaque
+
+        let mut r = make_renderer();
+        r.start_line(&ppu, 0); // HOFS = 0: fine scroll 0
+        ppu.write(0x210D, 0x0B); // HOFS = 11: coarse 8, fine 3
+        ppu.write(0x210D, 0x00);
+        r.render_until(&ppu, 0, SCREEN_WIDTH);
+
+        // Scroll 8 (coarse 8, fine 0): BG x 8 is on screen x 0.
+        // With the new fine scroll (11), BG x 16 would be on screen x 5.
+        assert_eq!(fb_pixel(&r, 0, 0), red);
+        assert_eq!(fb_pixel(&r, 8, 0), red);
+        assert_eq!(fb_pixel(&r, 5, 0), black);
+    }
+
+    // The next line reads the new fine scroll.
+    #[test]
+    fn test_fine_hofs_used_on_next_line() {
+        let red = Renderer::apply_brightness(0x001F, 15);
+        let black = (0, 0, 0);
+        let mut ppu = make_ppu();
+        setup_bg1_mosaic(&mut ppu, [0x0080; 8]);
+
+        let mut r = make_renderer();
+        r.start_line(&ppu, 0);
+        ppu.write(0x210D, 0x0B); // HOFS = 11
+        ppu.write(0x210D, 0x00);
+        r.render_until(&ppu, 0, SCREEN_WIDTH);
+        r.start_line(&ppu, 1);
+        r.render_until(&ppu, 1, SCREEN_WIDTH);
+
+        // Scroll 11: BG x 16 is on screen x 5.
+        assert_eq!(fb_pixel(&r, 0, 1), black);
+        assert_eq!(fb_pixel(&r, 5, 1), red);
     }
 }

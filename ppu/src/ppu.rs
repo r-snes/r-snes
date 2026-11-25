@@ -478,6 +478,11 @@ impl PPU {
         dot as u16
     }
 
+    /// Number of pixels of the current line already output (0-256).
+    pub fn output_x(&self) -> usize {
+        (self.dot().saturating_sub(FIRST_PIXEL_DOT) as usize).min(SCREEN_WIDTH)
+    }
+
     /// Returns true if screen interlace is on (SETINI bit 0).
     pub fn interlace(&self) -> bool {
         self.regs.setini & 0x01 != 0
@@ -1314,6 +1319,24 @@ mod tests {
                     assert_eq!(ppu.dot(), dot - 1);
                 }
             }
+        }
+    }
+
+    // Pixel x is output at dot 22 + x: nothing before dot 23, the whole line from dot 278.
+    #[test]
+    fn test_output_x() {
+        let mut ppu = PPU::new();
+        for (dot, x) in [
+            (0, 0),
+            (22, 0),
+            (23, 1),
+            (122, 100),
+            (277, 255),
+            (278, 256),
+            (339, 256),
+        ] {
+            ppu.h_cycles = ppu.dot_start_cycle(dot);
+            assert_eq!(ppu.output_x(), x, "dot {dot}");
         }
     }
 

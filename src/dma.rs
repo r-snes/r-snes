@@ -45,14 +45,15 @@ pub struct DmaProgress {
 }
 
 /// Per-channel HDMA state for the current frame.
+///
+/// The line counter is the NLTR register itself ($43nA) and the table position
+/// is A2A ($43n8-9), so a game can set them to start a channel mid-frame.
 #[derive(Clone, Copy, Default, Debug)]
 pub struct HdmaChannelState {
-    /// Live NLTR: bit 7 = repeat, bits 6-0 = scanlines remaining.
-    pub line_counter: u8,
     /// Whether this channel transfers on the current scanline.
     pub do_transfer: bool,
     /// Set when the table hit its `0` terminator; stays set until the
-    /// next frame's init.
+    /// next frame starts.
     pub finished: bool,
 }
 
@@ -217,7 +218,7 @@ impl RSnesCore {
             (a_addr, b_addr)
         };
         let byte = self.bus.read(src, &mut self.ppu, &mut self.apu).0;
-        self.bus.write(dst, byte, &mut self.ppu, &mut self.apu);
+        self.bus_write(dst, byte);
 
         // The A-bus address wraps inside its bank; A1B never increments.
         if !fixed {
@@ -256,28 +257,28 @@ impl RSnesCore {
 
     /// Once per frame: rewind the table pointer and load the first entry.
     fn hdma_init_channel(&mut self, channel: u8) {
-        self.dma.channels[channel as usize] = HdmaChannelState::default();
+        let c = channel as usize;
+        self.dma.channels[c] = HdmaChannelState::default();
 
-        let ch = &mut self.bus.io.dma_channels[channel as usize];
+        let ch = &mut self.bus.io.dma_channels[c];
         ch.a2a = ch.a1t.addr;
         let indirect = ch.dmap & 0x40 != 0;
 
         let counter = self.hdma_read_table(channel);
-        let state = &mut self.dma.channels[channel as usize];
+        self.bus.io.dma_channels[c].nltr = counter;
 
         if counter == 0 {
-            state.finished = true;
+            self.dma.channels[c].finished = true;
             self.dma.wait = HDMA_INIT_DIRECT_COST - 1;
             return;
         }
 
-        state.line_counter = counter;
-        state.do_transfer = true;
+        self.dma.channels[c].do_transfer = true;
 
         let cost = if indirect {
             let lo = self.hdma_read_table(channel);
             let hi = self.hdma_read_table(channel);
-            self.bus.io.dma_channels[channel as usize].das = u16::from_le_bytes([lo, hi]);
+            self.bus.io.dma_channels[c].das = u16::from_le_bytes([lo, hi]);
             HDMA_INIT_INDIRECT_COST
         } else {
             HDMA_INIT_DIRECT_COST
@@ -286,50 +287,45 @@ impl RSnesCore {
         self.dma.wait = cost - 1;
     }
 
-    /// Per scanline: reload the entry if the counter ran out, transfer if
-    /// this line calls for it, then step the counter.
+    /// Per scanline: transfer if this line calls for it, step the counter, then
+    /// load the next entry when the counter runs out.
     fn hdma_line_channel(&mut self, channel: u8) {
-        if self.dma.channels[channel as usize].finished {
+        let c = channel as usize;
+        if self.dma.channels[c].finished {
             return;
         }
 
-        let indirect = self.bus.io.dma_channels[channel as usize].dmap & 0x40 != 0;
+        let indirect = self.bus.io.dma_channels[c].dmap & 0x40 != 0;
         let mut cost = HDMA_CHANNEL_COST;
 
-        if self.dma.channels[channel as usize].line_counter & 0x7F == 0 {
+        if self.dma.channels[c].do_transfer {
+            cost += self.hdma_transfer_unit(channel, indirect);
+        }
+
+        // Bit 7 of the counter after the decrement says if the next line transfers:
+        // 0x81-0xFF write every line, 0x01-0x80 write once then wait.
+        let ch = &mut self.bus.io.dma_channels[c];
+        ch.nltr = ch.nltr.wrapping_sub(1);
+        self.dma.channels[c].do_transfer = ch.nltr & 0x80 != 0;
+
+        if self.bus.io.dma_channels[c].nltr & 0x7F == 0 {
             let counter = self.hdma_read_table(channel);
+            self.bus.io.dma_channels[c].nltr = counter;
 
             // A line count of 0 terminates the channel for the rest of
             // the frame - it does not mean 256.
             if counter == 0 {
-                self.dma.channels[channel as usize].finished = true;
-                self.dma.wait = cost - 1;
-                return;
-            }
-
-            let state = &mut self.dma.channels[channel as usize];
-            state.line_counter = counter;
-            state.do_transfer = true;
-
-            if indirect {
-                let lo = self.hdma_read_table(channel);
-                let hi = self.hdma_read_table(channel);
-                self.bus.io.dma_channels[channel as usize].das = u16::from_le_bytes([lo, hi]);
-                cost += HDMA_INDIRECT_LOAD_COST;
+                self.dma.channels[c].finished = true;
+            } else {
+                self.dma.channels[c].do_transfer = true;
+                if indirect {
+                    let lo = self.hdma_read_table(channel);
+                    let hi = self.hdma_read_table(channel);
+                    self.bus.io.dma_channels[c].das = u16::from_le_bytes([lo, hi]);
+                    cost += HDMA_INDIRECT_LOAD_COST;
+                }
             }
         }
-
-        if self.dma.channels[channel as usize].do_transfer {
-            cost += self.hdma_transfer_unit(channel, indirect);
-        }
-
-        let state = &mut self.dma.channels[channel as usize];
-        // Bit 7 is the repeat flag: set means "write every line for N
-        // lines" (a gradient), clear means "write once, then hold for N
-        // lines" (a flat band).
-        let repeat = state.line_counter & 0x80 != 0;
-        state.line_counter = state.line_counter.wrapping_sub(1);
-        state.do_transfer = repeat || (state.line_counter & 0x7F) == 0;
 
         self.dma.wait = cost - 1;
     }
@@ -371,7 +367,7 @@ impl RSnesCore {
                 (a_addr, b_addr)
             };
             let byte = self.bus.read(src, &mut self.ppu, &mut self.apu).0;
-            self.bus.write(dst, byte, &mut self.ppu, &mut self.apu);
+            self.bus_write(dst, byte);
 
             addr = addr.wrapping_add(1);
             cost += BYTE_COST;
@@ -825,6 +821,65 @@ mod tests {
         settle_line(&mut rsnes, 5);
 
         assert_eq!(rsnes.ppu.regs.wh0, 0);
+    }
+
+    /// A channel enabled in the middle of the frame runs from the A2A and NLTR
+    /// values written by the game: no transfer on its first line, then one per line.
+    #[test]
+    fn test_hdma_enabled_mid_frame_uses_a2a_and_nltr() {
+        let mut rsnes = TestRsnesCore::new();
+        fill_wram(&mut rsnes, HDMA_TABLE, &[0x11, 0x22, 0x00]); // data, then terminator
+        configure_channel(&mut rsnes, 0, 0x00, 0x26, HDMA_TABLE, 0);
+
+        advance_core_to_scanline(&mut rsnes, 100);
+        write_reg(&mut rsnes, 0x4308, *HDMA_TABLE.addr.lo()); // A2A
+        write_reg(&mut rsnes, 0x4309, *HDMA_TABLE.addr.hi());
+        write_reg(&mut rsnes, 0x430A, 0x83); // NLTR: repeat, 3 lines
+        write_reg(&mut rsnes, 0x420C, 0b0000_0001);
+
+        settle_line(&mut rsnes, 100);
+        assert_eq!(rsnes.ppu.regs.wh0, 0x00, "no transfer on the first line");
+        settle_line(&mut rsnes, 101);
+        assert_eq!(rsnes.ppu.regs.wh0, 0x11);
+        settle_line(&mut rsnes, 102);
+        assert_eq!(rsnes.ppu.regs.wh0, 0x22);
+        settle_line(&mut rsnes, 103);
+        assert_eq!(rsnes.ppu.regs.wh0, 0x22, "terminator: the channel stops");
+    }
+
+    /// A channel that ended in one frame runs again in the next frame, even when
+    /// it is only enabled in the middle of that frame.
+    #[test]
+    fn test_hdma_finished_channel_runs_again_next_frame() {
+        let mut rsnes = TestRsnesCore::new();
+        arm_hdma(&mut rsnes, 0x00, 0x26, &[0x01, 0x77, 0x00]); // ends on line 1
+        settle_line(&mut rsnes, 1);
+        assert_eq!(rsnes.ppu.regs.wh0, 0x77);
+
+        // Disabled in V-Blank, then enabled again in the middle of the next frame.
+        advance_core_to_scanline(&mut rsnes, VBLANK_START_LINE);
+        write_reg(&mut rsnes, 0x420C, 0x00);
+        fill_wram(&mut rsnes, snes_addr!(0x7E:0x2000), &[0x55, 0x00]);
+        advance_core_to_scanline(&mut rsnes, 100);
+        write_reg(&mut rsnes, 0x4308, 0x00); // A2A = 0x2000
+        write_reg(&mut rsnes, 0x4309, 0x20);
+        write_reg(&mut rsnes, 0x430A, 0x82); // NLTR: repeat, 2 lines
+        write_reg(&mut rsnes, 0x420C, 0b0000_0001);
+
+        settle_line(&mut rsnes, 101);
+        assert_eq!(rsnes.ppu.regs.wh0, 0x55);
+    }
+
+    /// A line count of 0x80 is 128 lines in write-once mode: nothing on the next line.
+    #[test]
+    fn test_hdma_count_0x80_writes_once() {
+        let mut rsnes = TestRsnesCore::new();
+        arm_hdma(&mut rsnes, 0x00, 0x26, &[0x80, 0x55, 0x66, 0x00]);
+
+        settle_line(&mut rsnes, 0);
+        assert_eq!(rsnes.ppu.regs.wh0, 0x55);
+        settle_line(&mut rsnes, 1);
+        assert_eq!(rsnes.ppu.regs.wh0, 0x55);
     }
 
     /// Mode 0 writes every byte to the same B-bus register.

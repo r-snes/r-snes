@@ -8,10 +8,11 @@
 
 use crate::ppu::PPU;
 use crate::rendering::renderer::{BgParams, BitDepth, Layer, Priority, Renderer};
+use std::ops::Range;
 
 impl Renderer {
-    /// Renders BG1-BG3 in Mode 1 on framebuffer row `y`.
-    pub fn render_scanline_mode1(&mut self, ppu: &PPU, y: usize) {
+    /// Renders BG1-BG3 in Mode 1 on pixels `x_range` of framebuffer row `y`.
+    pub fn render_scanline_mode1(&mut self, ppu: &PPU, y: usize, x_range: Range<usize>) {
         // Mode 1: BG1/BG2 4bpp, BG3 2bpp. No per-layer palette offset.
         // Mode 1 order (front to back), between the sprites (OBJ0-OBJ3 = 3, 6, 9, 12):
         //   OBJ3 > BG1.1 > BG2.1 > OBJ2 > BG1.0 > BG2.0 > OBJ1 >
@@ -43,6 +44,7 @@ impl Renderer {
             self.render_bg_scanline(
                 ppu,
                 y,
+                x_range.clone(),
                 &BgParams {
                     tilemap_base: ppu.regs.bg_tilemap_addr(bg),
                     tiledata_base: ppu.regs.bg_tiledata_addr(bg),

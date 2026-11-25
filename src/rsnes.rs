@@ -7,6 +7,7 @@ use apu::Apu;
 use bus::Bus;
 use bus::cartridge::header::RomHeader;
 use bus::io::IrqMode;
+use common::snes_address::SnesAddress;
 use cpu::cpu::CPU;
 use cpu::cpu::CycleResult;
 #[cfg(feature = "plugins")]
@@ -190,12 +191,20 @@ impl RSnesCore {
                 let addr = *self.cpu.addr_bus();
                 let byte = self.cpu.data_bus;
 
-                let speed = self.bus.write(addr, byte, &mut self.ppu, &mut self.apu);
-
-                // Default to 6 cycles for now
-                self.cpu_master_cycles_to_wait = speed.cycles();
+                self.cpu_master_cycles_to_wait = self.bus_write(addr, byte);
             }
         }
+    }
+
+    /// Writes `value` on the bus and returns the access time in master cycles.
+    /// Before a PPU register write, the current line is drawn up to the current pixel with the old register values.
+    pub fn bus_write(&mut self, addr: SnesAddress, value: u8) -> u32 {
+        let ppu_register =
+            matches!(addr.bank, 0x00..=0x3F | 0x80..=0xBF) && (0x2100..0x2140).contains(&addr.addr);
+        if ppu_register && let Some(y) = self.ppu.visible_line() {
+            self.ppu_renderer.render_until(&self.ppu, y, self.ppu.output_x());
+        }
+        self.bus.write(addr, value, &mut self.ppu, &mut self.apu).cycles()
     }
 
     /// Advance the APU by however many of its own 1.024 MHz cycles are
@@ -221,6 +230,10 @@ impl RSnesCore {
                     ScanlineKind::VBlankStart => self.on_vblank_start(),
                     ScanlineKind::FrameStart => self.on_frame_start(),
                 }
+
+                if let Some(y) = self.ppu.visible_line() {
+                    self.ppu_renderer.start_line(&self.ppu, y);
+                }
             }
         }
     }
@@ -231,7 +244,7 @@ impl RSnesCore {
         self.bus.io.set_hblank(true);
 
         if let Some(y) = self.ppu.visible_line() {
-            self.ppu_renderer.render_scanline(&self.ppu, y);
+            self.ppu_renderer.render_until(&self.ppu, y, SCREEN_WIDTH);
         }
     }
 
@@ -259,6 +272,10 @@ impl RSnesCore {
         // The last visible scanline was rendered back at line 224's
         // H-Blank, so the back buffer is complete and safe to publish.
         self.ppu_renderer.swap_buffers();
+
+        // Every channel starts the frame unfinished, enabled or not: a channel
+        // enabled later in the frame runs from its A2A and NLTR registers.
+        self.dma.channels = [HdmaChannelState::default(); 8];
 
         // HDMA init for the new frame.
         if self.bus.io.hdmaen != 0 {
@@ -778,6 +795,22 @@ mod tests {
     // Scanline rendering
     // ============================================================
 
+    // White backdrop at full brightness, then wait for dot `dot` of scanline 1.
+    fn setup_white_line_until_dot(rsnes: &mut RSnesCore, dot: u64) {
+        rsnes.ppu.write(0x2100, 0x0F);
+        rsnes.ppu.write(0x2121, 0x00);
+        rsnes.ppu.write(0x2122, 0xFF);
+        rsnes.ppu.write(0x2122, 0x7F);
+        advance_core_to_scanline(rsnes, 1);
+        tick_core(rsnes, dot * 4);
+    }
+
+    fn fb_rgb(rsnes: &RSnesCore, x: usize, y: usize) -> [u8; 3] {
+        let i = (y * SCREEN_WIDTH + x) * 3;
+        let fb = &rsnes.ppu_renderer.framebuffer;
+        [fb[i], fb[i + 1], fb[i + 2]]
+    }
+
     /// Scanline N is drawn at its H-Blank, into framebuffer row N-1.
     /// Force blank makes the renderer emit black, which is easy to detect
     /// against a pre-filled buffer.
@@ -837,5 +870,41 @@ mod tests {
 
         advance_core_to_scanline(&mut rsnes, 0);
         assert_eq!(rsnes.ppu_renderer.presented()[0], 0xAB);
+    }
+
+    /// Pixel x is output at dot 22 + x: a write at dot 122 only changes pixels 100 and after.
+    #[test]
+    fn test_mid_line_ppu_write_changes_the_rest_of_the_line() {
+        let mut rsnes = TestRsnesCore::new();
+        setup_white_line_until_dot(&mut rsnes, 122);
+        rsnes.bus_write(snes_addr!(0:0x2100), 0x80); // force blank
+
+        tick_core(&mut rsnes, (HBLANK_START_DOT as u64 - 122) * 4);
+        assert_eq!(fb_rgb(&rsnes, 99, 0), [255, 255, 255]);
+        assert_eq!(fb_rgb(&rsnes, 100, 0), [0, 0, 0]);
+    }
+
+    /// A write before dot 22 changes the whole line.
+    #[test]
+    fn test_ppu_write_before_first_pixel_changes_the_whole_line() {
+        let mut rsnes = TestRsnesCore::new();
+        setup_white_line_until_dot(&mut rsnes, 10);
+        rsnes.bus_write(snes_addr!(0:0x2100), 0x80);
+
+        tick_core(&mut rsnes, (HBLANK_START_DOT as u64 - 10) * 4);
+        assert_eq!(fb_rgb(&rsnes, 0, 0), [0, 0, 0]);
+    }
+
+    /// A write during H-Blank does not change the line already drawn, only the next one.
+    #[test]
+    fn test_ppu_write_in_hblank_changes_the_next_line() {
+        let mut rsnes = TestRsnesCore::new();
+        setup_white_line_until_dot(&mut rsnes, 300);
+        rsnes.bus_write(snes_addr!(0:0x2100), 0x80);
+
+        advance_core_to_scanline(&mut rsnes, 2);
+        tick_core(&mut rsnes, HBLANK_START_DOT as u64 * 4);
+        assert_eq!(fb_rgb(&rsnes, 255, 0), [255, 255, 255]);
+        assert_eq!(fb_rgb(&rsnes, 0, 1), [0, 0, 0]);
     }
 }

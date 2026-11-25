@@ -3,15 +3,16 @@
 //! Uses the OAM evaluation to get the sprites on the line, then fetches their
 //! tiles from the last evaluated sprite to the first, at most 34 tiles per line.
 //! The tiles are first combined into a single OBJ line, where the first-evaluated
-//! sprite wins over the others regardless of priority, then that line is compared
-//! with the backgrounds. Sprites are 4bpp, use the CGRAM entries 128-255 and have
-//! a priority (0-3). Multi-tile sprites wrap the tile number per nibble
-//! (X in the low nibble, Y in the high nibble).
+//! sprite wins over the others regardless of priority. The OBJ line is built once
+//! per scanline, then compared with the backgrounds, one pixel range at a time.
+//! Sprites are 4bpp, use the CGRAM entries 128-255 and have a priority (0-3).
+//! Multi-tile sprites wrap the tile number per nibble.
 
 use crate::constants::*;
 use crate::oam::OAM;
 use crate::ppu::PPU;
-use crate::rendering::renderer::{BitDepth, Layer, Priority, Renderer};
+use crate::rendering::renderer::{BitDepth, Layer, LinePixel, Priority, Renderer};
+use std::ops::Range;
 
 // VRAM is 32768 words, sprite CHR addresses wrap within it.
 const VRAM_WORD_MASK: usize = (VRAM_SIZE / 2) - 1;
@@ -19,18 +20,10 @@ const VRAM_WORD_MASK: usize = (VRAM_SIZE / 2) - 1;
 // Maximum number of sprite tiles (8-pixel slices) fetched per scanline.
 const MAX_TILES_PER_LINE: usize = 34;
 
-// One pixel of the OBJ line: color, priority, color math enabled.
-type ObjPixel = (u16, Priority, bool);
-
 impl Renderer {
-    /// Render all visible sprites on scanline `y`
-    pub fn render_sprites(&mut self, ppu: &PPU, y: usize) {
-        // OBJ enable on main / sub screen (TM / TS bit 4).
-        let to_main = ppu.regs.tm & 0x10 != 0;
-        let to_sub = ppu.regs.ts & 0x10 != 0;
-        if !to_main && !to_sub {
-            return;
-        }
+    /// Builds the OBJ line of scanline `y`.
+    pub fn build_obj_line(&mut self, ppu: &PPU, y: usize) {
+        self.obj_line.fill(None);
 
         let objsel = ppu.regs.objsel;
         let oamadd = ppu.regs.oamadd;
@@ -38,9 +31,6 @@ impl Renderer {
 
         let (sprites, _time_over, _range_over) =
             ppu.oam.eval_sprites_for_scanline(y, objsel, oamadd, obj_interlace);
-
-        // OBJ line: one pixel per column, before comparison with the backgrounds.
-        let mut obj_line: [Option<ObjPixel>; SCREEN_WIDTH] = [None; SCREEN_WIDTH];
 
         // Tile fetch: from the last evaluated sprite to the first, only tiles with
         // X in -7..255 (all tiles at X = -256, quirk), at most 34 per line. Past the
@@ -140,25 +130,39 @@ impl Renderer {
 
                     let palette_entry = 128 + sprite.palette * 16 + color_index;
                     let color = ppu.cgram.read(palette_entry);
-                    obj_line[screen_x as usize] = Some((color, prio, obj_math));
+                    self.obj_line[screen_x as usize] = Some(LinePixel {
+                        color,
+                        z: prio,
+                        layer: Layer::Obj,
+                        obj_math,
+                    });
                 }
             }
         }
+    }
 
-        // Compare the OBJ line with the backgrounds. Windows apply to the OBJ line, after
-        // sprite vs sprite: a hidden sprite pixel never shows the sprite behind it.
+    /// Compares the OBJ line with the backgrounds on pixels `x_range`.
+    pub fn render_sprites(&mut self, ppu: &PPU, x_range: Range<usize>) {
+        // OBJ enable on main / sub screen (TM / TS bit 4).
+        let to_main = ppu.regs.tm & 0x10 != 0;
+        let to_sub = ppu.regs.ts & 0x10 != 0;
+        if !to_main && !to_sub {
+            return;
+        }
+
+        // Windows apply to the OBJ line, after sprite vs sprite.
         let win_main = ppu.regs.tmw & 0x10 != 0;
         let win_sub = ppu.regs.tsw & 0x10 != 0;
-        for (x, pixel) in obj_line.iter().enumerate() {
-            if let Some((color, prio, obj_math)) = *pixel {
-                // If the window hides this pixel, skip it on the screen(s) where TMW/TSW apply the window.
-                let masked = (win_main || win_sub) && ppu.regs.obj_window_masked(x);
-                if to_main && !(win_main && masked) {
-                    self.deposit_main(x, color, prio, Layer::Obj, obj_math);
-                }
-                if to_sub && !(win_sub && masked) {
-                    self.deposit_sub(x, color, prio, Layer::Obj, obj_math);
-                }
+        for x in x_range {
+            let Some(p) = self.obj_line[x] else {
+                continue;
+            };
+            let masked = (win_main || win_sub) && ppu.regs.obj_window_masked(x);
+            if to_main && !(win_main && masked) {
+                self.deposit_main(x, p.color, p.z, Layer::Obj, p.obj_math);
+            }
+            if to_sub && !(win_sub && masked) {
+                self.deposit_sub(x, p.color, p.z, Layer::Obj, p.obj_math);
             }
         }
     }
@@ -457,5 +461,28 @@ mod tests {
         let mut r = Renderer::new();
         r.render_scanline(&ppu, 0);
         assert_eq!(fb_pixel(&r, 0, 0), black);
+    }
+
+    // ============================================================
+    // Pixel ranges
+    // ============================================================
+
+    /// A sprite cut in two parts (x 96-103, cut at 100) is drawn on both parts.
+    #[test]
+    fn test_sprite_drawn_in_two_parts() {
+        let red = Renderer::apply_brightness(0x001F, 15);
+        let mut ppu = make_ppu_sprites();
+        write_sprite(&mut ppu, 0, 96, 0, 0, 0); // 8x8 red at (96, 0)
+
+        let mut r = Renderer::new();
+        r.build_obj_line(&ppu, 0);
+        r.render_pixels(&ppu, 0, 0..100);
+        r.render_pixels(&ppu, 0, 100..256);
+        assert_eq!(fb_pixel(&r, 95, 0), (0, 0, 0));
+        assert_eq!(fb_pixel(&r, 96, 0), red);
+        assert_eq!(fb_pixel(&r, 99, 0), red);
+        assert_eq!(fb_pixel(&r, 100, 0), red);
+        assert_eq!(fb_pixel(&r, 103, 0), red);
+        assert_eq!(fb_pixel(&r, 104, 0), (0, 0, 0));
     }
 }
