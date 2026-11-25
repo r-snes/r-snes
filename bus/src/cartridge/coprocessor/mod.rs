@@ -5,6 +5,7 @@
 //! every bus access, and the core steps it with the master clock.
 
 pub mod obc1;
+pub mod srtc;
 pub mod test_chip;
 
 use crate::bus::AccessSpeed;
@@ -78,6 +79,10 @@ pub fn create(header: &RomHeader) -> ChipSetup {
         // One arm per emulated chip
         Some(Coprocessor::OBC1) => ChipSetup::Ready {
             chip: Box::new(obc1::Obc1::new()),
+            note: None,
+        },
+        Some(Coprocessor::SRTC) => ChipSetup::Ready {
+            chip: Box::new(srtc::Srtc::new()),
             note: None,
         },
         Some(chip) => ChipSetup::Unsupported(unsupported_message(chip)),
