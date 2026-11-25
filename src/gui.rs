@@ -20,6 +20,8 @@ use sdl2::video::Window;
 
 use ppu::constants::{SCREEN_HEIGHT, SCREEN_WIDTH};
 
+#[cfg(not(tarpaulin_include))]
+use crate::config::{ConfigLoadError, RSnesConfig};
 use crate::rsnes::RomInfo;
 use crate::save_state::slots::{GameSaveStates, SLOT_COUNT, Slot};
 use command::Command;
@@ -249,7 +251,7 @@ impl Gui {
     /// Size of the game area in the smallest window: the SNES screen.
     pub const MIN_GAME_AREA: egui::Vec2 = egui::vec2(SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32);
 
-    pub fn new() -> Result<Self, String> {
+    pub fn new(config_load: Result<RSnesConfig, ConfigLoadError>) -> Result<Self, String> {
         let sdl_ctx = sdl2::init()?;
         let video_subsystem = sdl_ctx.video()?;
 
@@ -305,12 +307,17 @@ impl Gui {
             event_pump,
             audio_queue,
             framebuffer_texture: None,
-            state: GuiState::default(),
+            state: GuiState::new(config_load),
             _controller_subsystem: controller_subsystem,
             controller,
             stick_dirs: StickDirs::default(),
         })
     }
+
+    pub fn config(&self) -> &RSnesConfig {
+        &self.state.config
+    }
+
 
     /// Whether a menu (or any other egui popup) is open.
     fn popup_open(&self) -> bool {
@@ -750,6 +757,7 @@ impl Gui {
         widgets::error_box(ctx, area, &mut state.error_popup);
         widgets::save_state_picker(ctx, area, &mut state.save_state_picker);
         widgets::notification(ctx, area, &mut state.notification);
+        widgets::config_error_box(ctx, area, &mut state.show_config_error, &state.config_error);
         #[cfg(feature = "plugins")]
         widgets::plugin_perm_request(
             ctx,

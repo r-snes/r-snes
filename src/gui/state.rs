@@ -7,6 +7,7 @@ use egui_sdl2::egui;
 use plugins::plugin::Plugin;
 
 use super::SlotAction;
+use crate::config::{ConfigLoadError, RSnesConfig};
 
 /// What a slot of the picker holds.
 pub enum PickerContent {
@@ -192,6 +193,10 @@ pub struct GuiState {
     /// The message shown over the game, if any. Not an overlay: it neither
     /// pauses the game nor takes Escape.
     pub notification: Option<Notification>,
+
+    pub config: RSnesConfig,
+    pub config_error: Option<ConfigLoadError>,
+    pub show_config_error: bool,
 }
 
 impl GuiState {
@@ -211,6 +216,22 @@ impl GuiState {
             self.pending_plugin = None;
         }
         was_open
+    }
+
+    /// aaa
+    pub fn new(config_load: Result<RSnesConfig, ConfigLoadError>) -> Self {
+        let (config, config_error) = match config_load {
+            Ok(c) => (c, None),
+            Err(e) => (Default::default(), Some(e)),
+        };
+        let show_config_error = config_error.is_some();
+
+        Self {
+            config,
+            config_error,
+            show_config_error,
+            ..Default::default()
+        }
     }
 
     pub fn any_open(&self) -> bool {

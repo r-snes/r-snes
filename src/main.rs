@@ -119,7 +119,6 @@ fn run_slot_action(
 fn gui_emu_loop(
     gui: &mut gui::Gui,
     rsnes: RSnesCore,
-    config: &RSnesConfig,
 
     #[cfg(feature = "plugins")] plugin: Option<Plugin>,
 ) -> Option<RSnesEvent> {
@@ -152,7 +151,7 @@ fn gui_emu_loop(
     let closing_ev = 'emu_loop: loop {
         let frame_start = Instant::now();
 
-        let paus_when = &config.general.pause_when.0;
+        let paus_when = gui.config().general.pause_when.0;
         // Emulation stands still while a pause condition is met.
         // The last frame stays on screen, and the device is paused with its
         // queue intact, so resuming picks up exactly where the sound left off.
@@ -302,11 +301,7 @@ fn gui_emu_loop(
 /// Returns the first event the outer loop cares about. Input-only events
 /// (buttons, plugin actions) are meaningless without a game and are
 /// swallowed here.
-fn gui_idle_loop(
-    gui: &mut Gui,
-    #[expect(unused, reason = "unused for now")] config: &RSnesConfig,
-    default_framebuffer: &ppu::rendering::RawFramebuffer,
-) -> IdleExit {
+fn gui_idle_loop(gui: &mut Gui, default_framebuffer: &ppu::rendering::RawFramebuffer) -> IdleExit {
     gui.set_rom_title(None);
 
     let ev = loop {
@@ -348,14 +343,7 @@ fn gui_loop(
 
     #[cfg(feature = "plugins")] mut plugin: Option<Plugin>,
 ) -> Result<(), String> {
-    let mut gui = gui::Gui::new()?;
-    let config = match config_load {
-        Ok(c) => c,
-        Err(err) => {
-            gui.pass_error(Box::new(err));
-            Default::default()
-        }
-    };
+    let mut gui = gui::Gui::new(config_load)?;
     const DEFAULT_FRAMEBUFFER: &ppu::rendering::RawFramebuffer =
         include_bytes!("../assets/logo_framebuffer.raw");
 
@@ -366,7 +354,7 @@ fn gui_loop(
         // we leave the loop
         let ev = match rsnes_core.take() {
             None => {
-                let idle_exit = gui_idle_loop(&mut gui, &config, DEFAULT_FRAMEBUFFER);
+                let idle_exit = gui_idle_loop(&mut gui, DEFAULT_FRAMEBUFFER);
                 cfg_select! {
                     feature = "plugins" => {
                         let (ev, new_plugin) = idle_exit;
@@ -383,7 +371,7 @@ fn gui_loop(
 
             Some(emu) => {
                 let ret_ev = cfg_select! {
-                    feature = "plugins" => gui_emu_loop(&mut gui, emu, &config, plugin.take()),
+                    feature = "plugins" => gui_emu_loop(&mut gui, emu, plugin.take()),
                     _ => gui_emu_loop(&mut gui, emu, &config),
                 };
 
@@ -470,11 +458,8 @@ fn main() -> Result<(), String> {
         }
     };
 
-    let config = config::read_config(cli.config_file.0.as_ref());
+    let config = config::read_config(cli.config_file.0);
     if cli.verify_config {
-        if let Some(path) = &cli.config_file.0 {
-            print!("{path:?}: ")
-        }
         match &config {
             Err(load_error) => {
                 println!("Config file error: {load_error}");
