@@ -85,6 +85,19 @@ pub fn menu_bar(
                     );
                 });
 
+                ui.menu_button("Config", |ui| {
+                    item(
+                        ui,
+                        Command::ToggleConfigErrors,
+                        if state.show_config_error {
+                            "Hide config error window"
+                        } else {
+                            "Show config errors"
+                        },
+                        false,
+                    );
+                });
+
                 if data.paused {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(RichText::new("Paused").weak());
@@ -735,7 +748,7 @@ pub fn config_error_box(
     mut open: &mut bool,
     config_err: &Option<ConfigLoadError>,
 ) {
-    let window = egui::Window::new("Configuration file error")
+    let mut window = egui::Window::new("Config file errors")
         .constrain_to(area)
         .resizable(true)
         .collapsible(false)
@@ -743,15 +756,24 @@ pub fn config_error_box(
 
     match config_err {
         None => {
-            window.open(&mut open).show(ctx, |ui| {
-                ui.label("Config file OK!");
-
-                if ui.button("OK").clicked() {
-                    ui.close();
-                }
-            });
+            window
+                .default_width(200.0)
+                .default_height(40.0)
+                .open(&mut open)
+                .show(ctx, |ui| {
+                    ui.centered_and_justified(|ui| ui.label("Config file OK!"));
+                });
         }
         Some(error) => {
+
+            // hack so that the window doesn't render its usual close button (happens
+            // as soon as the &mut open is *true), but still commands the window to
+            // close when the *open has been set to false by something else
+            let mut _false = false;
+            if !*open {
+                window = window.open(&mut _false)
+            }
+
             window
                 .default_width(400.0)
                 .default_height(300.0)

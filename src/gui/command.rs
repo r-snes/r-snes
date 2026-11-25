@@ -1,5 +1,7 @@
 use egui_sdl2::sdl2::keyboard::{Keycode, Mod};
 
+use crate::gui::command::Command::ToggleConfigErrors;
+
 use super::GuiFrameData;
 
 /// A user action, reachable both from the menu bar and from a keyboard shortcut.
@@ -30,6 +32,8 @@ pub enum Command {
     UndoLoadState,
     /// Open the save state window, or close it if it is open.
     ChooseSaveState,
+    /// Show or hide the config error window.
+    ToggleConfigErrors,
     /// Pick a Lua plugin with a file dialog. Only possible with no game running,
     /// since the plugin is injected when the next ROM starts.
     #[cfg(feature = "plugins")]
@@ -90,6 +94,7 @@ impl Command {
         Command::LoadLatestState,
         Command::UndoLoadState,
         Command::ChooseSaveState,
+        Command::ToggleConfigErrors,
         #[cfg(feature = "plugins")]
         Command::LoadPlugin,
         #[cfg(feature = "plugins")]
@@ -101,6 +106,7 @@ impl Command {
             Command::OpenRom => Shortcut::ctrl(Keycode::L),
             Command::CloseRom => Shortcut::plain(Keycode::Escape),
             Command::Quit => Shortcut::ctrl(Keycode::Q),
+            Command::ToggleConfigErrors => Shortcut::ctrl(Keycode::E),
             Command::Reset => Shortcut::ctrl(Keycode::R),
             Command::TogglePause => Shortcut::plain(Keycode::P),
             Command::ToggleRomInfo => Shortcut::plain(Keycode::F1),
@@ -137,6 +143,11 @@ impl Command {
             | Command::LoadLatestState
             | Command::UndoLoadState
             | Command::ChooseSaveState => rom_loaded,
+
+            // we allow the user to open the config error box even when there's no error
+            // so that they can see the "Config file OK" message
+            ToggleConfigErrors => true,
+
             #[cfg(feature = "plugins")]
             Command::LoadPlugin => !rom_loaded,
             #[cfg(feature = "plugins")]
