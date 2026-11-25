@@ -273,6 +273,10 @@ impl RSnesCore {
         // H-Blank, so the back buffer is complete and safe to publish.
         self.ppu_renderer.swap_buffers();
 
+        // Every channel starts the frame unfinished, enabled or not: a channel
+        // enabled later in the frame runs from its A2A and NLTR registers.
+        self.dma.channels = [HdmaChannelState::default(); 8];
+
         // HDMA init for the new frame.
         if self.bus.io.hdmaen != 0 {
             self.dma.hdma_pending = true;
