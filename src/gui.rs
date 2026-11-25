@@ -319,6 +319,9 @@ impl Gui {
             }
             Command::CloseRom => out.push(RSnesEvent::Close),
             Command::Quit => out.push(RSnesEvent::Quit),
+            Command::ToggleConfigErrors => {
+                self.state.show_config_error = !self.state.show_config_error
+            }
             Command::Reset => out.push(RSnesEvent::Reset),
             Command::TogglePause => out.push(RSnesEvent::TogglePause),
             Command::ToggleRomInfo => self.state.show_rom_info = !self.state.show_rom_info,
