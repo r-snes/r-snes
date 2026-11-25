@@ -88,6 +88,12 @@ pub fn menu_bar(
                 ui.menu_button("Config", |ui| {
                     item(
                         ui,
+                        Command::ReloadConfig,
+                        "Reload configuration file",
+                        false,
+                    );
+                    item(
+                        ui,
                         Command::ToggleConfigErrors,
                         if state.show_config_error {
                             "Hide config error window"

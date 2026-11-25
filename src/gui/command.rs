@@ -32,6 +32,8 @@ pub enum Command {
     UndoLoadState,
     /// Open the save state window, or close it if it is open.
     ChooseSaveState,
+    /// Reload the configuration from the filesystem
+    ReloadConfig,
     /// Show or hide the config error window.
     ToggleConfigErrors,
     /// Pick a Lua plugin with a file dialog. Only possible with no game running,
@@ -95,6 +97,7 @@ impl Command {
         Command::UndoLoadState,
         Command::ChooseSaveState,
         Command::ToggleConfigErrors,
+        Command::ReloadConfig,
         #[cfg(feature = "plugins")]
         Command::LoadPlugin,
         #[cfg(feature = "plugins")]
@@ -106,7 +109,6 @@ impl Command {
             Command::OpenRom => Shortcut::ctrl(Keycode::L),
             Command::CloseRom => Shortcut::plain(Keycode::Escape),
             Command::Quit => Shortcut::ctrl(Keycode::Q),
-            Command::ToggleConfigErrors => Shortcut::ctrl(Keycode::E),
             Command::Reset => Shortcut::ctrl(Keycode::R),
             Command::TogglePause => Shortcut::plain(Keycode::P),
             Command::ToggleRomInfo => Shortcut::plain(Keycode::F1),
@@ -114,6 +116,8 @@ impl Command {
             Command::LoadLatestState => Shortcut::plain(Keycode::F3),
             Command::UndoLoadState => Shortcut::ctrl(Keycode::F3),
             Command::ChooseSaveState => Shortcut::plain(Keycode::F4),
+            Command::ReloadConfig => Shortcut::ctrl(Keycode::T),
+            Command::ToggleConfigErrors => Shortcut::ctrl(Keycode::E),
             #[cfg(feature = "plugins")]
             Command::LoadPlugin => Shortcut::ctrl(Keycode::P),
             #[cfg(feature = "plugins")]
@@ -148,6 +152,7 @@ impl Command {
             // so that they can see the "Config file OK" message
             ToggleConfigErrors => true,
 
+            Command::ReloadConfig => true,
             #[cfg(feature = "plugins")]
             Command::LoadPlugin => !rom_loaded,
             #[cfg(feature = "plugins")]

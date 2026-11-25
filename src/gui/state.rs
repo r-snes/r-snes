@@ -218,20 +218,31 @@ impl GuiState {
         was_open
     }
 
-    /// aaa
+    /// Creates a new [`GuiState`] with the result of loading a config file
     pub fn new(config_load: Result<RSnesConfig, ConfigLoadError>) -> Self {
+        let mut self_ = Self::default();
+        self_.apply_config_load_result(config_load);
+
+        self_
+    }
+
+    /// Fully reload the configuration file from the filesystem, and
+    /// set the GUI state to match the result of the load
+    pub fn reload_config(&mut self) {
+        use crate::config::{read_config, config_path};
+        self.apply_config_load_result(read_config(config_path()));
+    }
+
+    fn apply_config_load_result(&mut self, config_load: Result<RSnesConfig, ConfigLoadError>) {
         let (config, config_error) = match config_load {
             Ok(c) => (c, None),
             Err(e) => (Default::default(), Some(e)),
         };
         let show_config_error = config_error.is_some();
 
-        Self {
-            config,
-            config_error,
-            show_config_error,
-            ..Default::default()
-        }
+        self.config = config;
+        self.config_error = config_error;
+        self.show_config_error = show_config_error;
     }
 
     pub fn any_open(&self) -> bool {
