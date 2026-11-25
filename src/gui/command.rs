@@ -24,6 +24,8 @@ pub enum Command {
     TogglePause,
     /// Show or hide the ROM information window.
     ToggleRomInfo,
+    /// Reload the configuration from the filesystem
+    ReloadConfig,
     /// Show or hide the config error window.
     ToggleConfigErrors,
     /// Pick a Lua plugin with a file dialog. Only possible with no game running,
@@ -83,6 +85,7 @@ impl Command {
         Command::TogglePause,
         Command::ToggleRomInfo,
         Command::ToggleConfigErrors,
+        Command::ReloadConfig,
         #[cfg(feature = "plugins")]
         Command::LoadPlugin,
         #[cfg(feature = "plugins")]
@@ -94,10 +97,11 @@ impl Command {
             Command::OpenRom => Shortcut::ctrl(Keycode::L),
             Command::CloseRom => Shortcut::plain(Keycode::Escape),
             Command::Quit => Shortcut::ctrl(Keycode::Q),
-            Command::ToggleConfigErrors => Shortcut::ctrl(Keycode::E),
             Command::Reset => Shortcut::ctrl(Keycode::R),
             Command::TogglePause => Shortcut::plain(Keycode::P),
             Command::ToggleRomInfo => Shortcut::plain(Keycode::F1),
+            Command::ReloadConfig => Shortcut::ctrl(Keycode::T),
+            Command::ToggleConfigErrors => Shortcut::ctrl(Keycode::E),
             #[cfg(feature = "plugins")]
             Command::LoadPlugin => Shortcut::ctrl(Keycode::P),
             #[cfg(feature = "plugins")]
@@ -122,6 +126,7 @@ impl Command {
             // we allow the user to open the config error box even when there's no error
             // so that they can see the "Config file OK" message
             ToggleConfigErrors => true,
+            Command::ReloadConfig => true,
             Command::CloseRom | Command::Reset | Command::TogglePause | Command::ToggleRomInfo => {
                 rom_loaded
             }

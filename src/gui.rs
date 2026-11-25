@@ -319,12 +319,13 @@ impl Gui {
             }
             Command::CloseRom => out.push(RSnesEvent::Close),
             Command::Quit => out.push(RSnesEvent::Quit),
-            Command::ToggleConfigErrors => {
-                self.state.show_config_error = !self.state.show_config_error
-            }
             Command::Reset => out.push(RSnesEvent::Reset),
             Command::TogglePause => out.push(RSnesEvent::TogglePause),
             Command::ToggleRomInfo => self.state.show_rom_info = !self.state.show_rom_info,
+            Command::ReloadConfig => self.state.reload_config(),
+            Command::ToggleConfigErrors => {
+                self.state.show_config_error = !self.state.show_config_error
+            }
             #[cfg(feature = "plugins")]
             Command::LoadPlugin => self.load_plugin_dialog(),
             #[cfg(feature = "plugins")]
