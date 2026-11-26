@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::path::PathBuf;
 use std::time::{Duration, Instant, SystemTime};
 
 use egui_sdl2::egui;
@@ -8,6 +9,7 @@ use plugins::plugin::Plugin;
 
 use super::SlotAction;
 use crate::config::{ConfigLoadError, RSnesConfig};
+use crate::gui::widgets::config::ConfigUi;
 
 /// What a slot of the picker holds.
 pub enum PickerContent {
@@ -194,9 +196,10 @@ pub struct GuiState {
     /// pauses the game nor takes Escape.
     pub notification: Option<Notification>,
 
+    pub config_path: Option<PathBuf>,
     pub config: RSnesConfig,
     pub config_error: Option<ConfigLoadError>,
-    pub show_config_error: bool,
+    pub config_ui: Option<super::widgets::config::ConfigUi>,
 }
 
 impl GuiState {
@@ -219,8 +222,11 @@ impl GuiState {
     }
 
     /// Creates a new [`GuiState`] with the result of loading a config file
-    pub fn new(config_load: Result<RSnesConfig, ConfigLoadError>) -> Self {
-        let mut self_ = Self::default();
+    pub fn new(config_load: Result<RSnesConfig, ConfigLoadError>, config_path: Option<PathBuf>) -> Self {
+        let mut self_ = Self {
+            config_path,
+            ..Default::default()
+        };
         self_.apply_config_load_result(config_load);
 
         self_
@@ -229,8 +235,17 @@ impl GuiState {
     /// Fully reload the configuration file from the filesystem, and
     /// set the GUI state to match the result of the load
     pub fn reload_config(&mut self) {
-        use crate::config::{read_config, config_path};
-        self.apply_config_load_result(read_config(config_path()));
+        use crate::config::read_config;
+        let was_error = self.config_error.is_some();
+        self.apply_config_load_result(read_config(self.config_path.as_ref()));
+        let error_now = self.config_error.is_some();
+
+        if was_error && error_now {
+            self.notify("Config file is still invalid".to_owned());
+        }
+        if !was_error && !error_now {
+            self.notify("Config file reloaded".to_owned());
+        }
     }
 
     fn apply_config_load_result(&mut self, config_load: Result<RSnesConfig, ConfigLoadError>) {
@@ -238,11 +253,14 @@ impl GuiState {
             Ok(c) => (c, None),
             Err(e) => (Default::default(), Some(e)),
         };
-        let show_config_error = config_error.is_some();
+        let was_error = self.config_error.is_some();
+        let error_now = config_error.is_some();
 
         self.config = config;
         self.config_error = config_error;
-        self.show_config_error = show_config_error;
+        // if we either have an error now, or previously had an error, we want to
+        // show explicit feedback about the config load
+        self.config_ui = (error_now || was_error).then_some(ConfigUi::default());
     }
 
     pub fn any_open(&self) -> bool {
@@ -253,6 +271,10 @@ impl GuiState {
             open = open || self.pending_plugin.is_some();
         }
         open
+    }
+
+    pub fn notify(&mut self, msg: String) {
+        self.notification = Some(Notification::new(msg))
     }
 }
 

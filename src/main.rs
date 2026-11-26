@@ -340,10 +340,11 @@ fn gui_idle_loop(gui: &mut Gui, default_framebuffer: &ppu::rendering::RawFramebu
 fn gui_loop(
     mut rsnes_core: Option<RSnesCore>,
     config_load: Result<RSnesConfig, ConfigLoadError>,
+    config_path: Option<PathBuf>,
 
     #[cfg(feature = "plugins")] mut plugin: Option<Plugin>,
 ) -> Result<(), String> {
-    let mut gui = gui::Gui::new(config_load)?;
+    let mut gui = gui::Gui::new(config_load, config_path)?;
     const DEFAULT_FRAMEBUFFER: &ppu::rendering::RawFramebuffer =
         include_bytes!("../assets/logo_framebuffer.raw");
 
@@ -458,7 +459,7 @@ fn main() -> Result<(), String> {
         }
     };
 
-    let config = config::read_config(cli.config_file.0);
+    let config = config::read_config(cli.config_file.0.as_ref());
     if cli.verify_config {
         match &config {
             Err(load_error) => {
@@ -486,10 +487,11 @@ fn main() -> Result<(), String> {
         feature = "plugins" => gui_loop(
             emu,
             config,
+            cli.config_file.0,
             cli.load_plugin_noconfirm
                 .map(|p| Plugin::load_from_file(&p).unwrap()),
         ),
-        _ => gui_loop(emu, config),
+        _ => gui_loop(emu, config, cli.config_file.0),
     }
 }
 

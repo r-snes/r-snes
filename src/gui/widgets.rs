@@ -1,3 +1,5 @@
+pub mod config;
+
 use std::time::SystemTime;
 use std::{error::Error, io::ErrorKind::NotFound};
 
@@ -5,6 +7,7 @@ use bus::cartridge::header::RomHeader;
 use egui_sdl2::egui::{self, RichText};
 use ppu::constants::{SCREEN_HEIGHT, SCREEN_WIDTH};
 
+use crate::gui::widgets::config::{ConfigUi, ConfigUiAction};
 use crate::save_state::slots::MAX_NAME_LENGTH;
 use crate::{config::ConfigLoadError, rsnes::RomInfo};
 
@@ -95,7 +98,7 @@ pub fn menu_bar(
                     item(
                         ui,
                         Command::ToggleConfigErrors,
-                        if state.show_config_error {
+                        if state.config_ui.is_some() {
                             "Hide config error window"
                         } else {
                             "Show config errors"
@@ -751,10 +754,14 @@ pub fn notification(
 pub fn config_error_box(
     ctx: &egui::Context,
     area: egui::Rect,
-    mut open: &mut bool,
+    config_ui: Option<&mut ConfigUi>,
     config_err: &Option<ConfigLoadError>,
 ) {
-    let mut window = egui::Window::new("Config file errors")
+    let Some(config_ui) = config_ui else {
+        return;
+    };
+
+    let window = egui::Window::new("Config file errors")
         .constrain_to(area)
         .resizable(true)
         .collapsible(false)
@@ -762,24 +769,25 @@ pub fn config_error_box(
 
     match config_err {
         None => {
+            let mut open = true;
             window
                 .default_width(200.0)
                 .default_height(40.0)
                 .open(&mut open)
                 .show(ctx, |ui| {
                     ui.centered_and_justified(|ui| ui.label("Config file OK!"));
+                    if ui.button("Open config file in default editor").clicked() {
+                        config_ui.action = Some(ConfigUiAction::OpenConfigFile)
+                    }
+                    if ui.button("Reload config").clicked() {
+                        config_ui.action = Some(ConfigUiAction::Reload)
+                    }
                 });
+            if !open {
+                config_ui.action = Some(ConfigUiAction::Close)
+            }
         }
         Some(error) => {
-
-            // hack so that the window doesn't render its usual close button (happens
-            // as soon as the &mut open is *true), but still commands the window to
-            // close when the *open has been set to false by something else
-            let mut _false = false;
-            if !*open {
-                window = window.open(&mut _false)
-            }
-
             window
                 .default_width(400.0)
                 .default_height(300.0)
@@ -788,17 +796,50 @@ pub fn config_error_box(
                     match error {
                         ConfigLoadError::NoConfigPath => {
                             ui.label("We don't even know where to look for a config file on your system");
+                            if ui.button("Ignore and run default config for now").clicked() {
+                                config_ui.action = Some(ConfigUiAction::Close)
+                            }
                         }
                         ConfigLoadError::IoError(io_err, path) if matches!(io_err.kind(), NotFound) => {
                             ui.label(format!("It seems like you have no config file at {path:?}"));
                             ui.label("Using the default config for now, please create an empty file at that path to silence this error");
+                            ui.horizontal(|ui| {
+                                if ui.button("Retry loading config").clicked() {
+                                    config_ui.action = Some(ConfigUiAction::Reload)
+                                }
+                                if ui.button("Ignore and run default config for now").clicked() {
+                                    config_ui.action = Some(ConfigUiAction::Close)
+                                }
+                                if ui.button("Create empty config file").clicked() {
+                                    config_ui.action = Some(ConfigUiAction::CreateEmptyConfig)
+                                }
+                                if ui.button("Create default config file").clicked() {
+                                    config_ui.action = Some(ConfigUiAction::CreateDefaultConfig)
+                                }
+                            });
                         }
                         ConfigLoadError::IoError(io_err, _) => {
                             ui.label(io_err.to_string());
+                            ui.horizontal(|ui| {
+                                if ui.button("Retry loading config").clicked() {
+                                    config_ui.action = Some(ConfigUiAction::Reload)
+                                }
+                                if ui.button("Ignore and run default config for now").clicked() {
+                                    config_ui.action = Some(ConfigUiAction::Close)
+                                }
+                            });
                         }
                         ConfigLoadError::TomlError(toml_err, path) => {
                             ui.label(format!("Your config file at {path:?} isn't a valid R-SNES configuration file, see the error below:"));
                             ui.code(toml_err.to_string());
+                            ui.horizontal(|ui| {
+                                if ui.button("Retry loading config").clicked() {
+                                    config_ui.action = Some(ConfigUiAction::Reload)
+                                }
+                                if ui.button("Ignore and run default config for now").clicked() {
+                                    config_ui.action = Some(ConfigUiAction::Close)
+                                }
+                            });
                         }
                     }
                 });

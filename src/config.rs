@@ -1,6 +1,9 @@
 use enumset::{EnumSet, EnumSetType, enum_set};
 use serde::{Deserialize, Serialize};
-use std::{fmt::Debug, path::PathBuf};
+use std::{
+    fmt::Debug,
+    path::{Path, PathBuf},
+};
 
 #[derive(Default, Deserialize)]
 #[cfg_attr(test, derive(PartialEq, Eq, Debug))]
@@ -94,13 +97,12 @@ pub fn config_path() -> Option<PathBuf> {
     )
 }
 
-pub fn read_config(path: Option<PathBuf>) -> Result<RSnesConfig, ConfigLoadError> {
+pub fn read_config(path: Option<impl AsRef<Path>>) -> Result<RSnesConfig, ConfigLoadError> {
     let path = path.ok_or(ConfigLoadError::NoConfigPath)?;
-    let contents = match std::fs::read(&path) {
-        Err(e) => return Err(ConfigLoadError::IoError(e, path)),
-        Ok(c) => c,
-    };
-    let cfg = toml::de::from_slice(&contents).map_err(|e| ConfigLoadError::TomlError(e, path))?;
+    let contents = std::fs::read(&path)
+        .map_err(|e| ConfigLoadError::IoError(e, path.as_ref().to_path_buf()))?;
+    let cfg = toml::de::from_slice(&contents)
+        .map_err(|e| ConfigLoadError::TomlError(e, path.as_ref().to_path_buf()))?;
 
     Ok(cfg)
 }
