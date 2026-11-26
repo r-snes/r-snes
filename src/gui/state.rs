@@ -28,7 +28,7 @@ pub enum PickerContent {
     },
 }
 
-/// One save slot, as the slot picker shows it.
+/// One save slot, as the save state picker shows it.
 pub struct PickerEntry {
     /// Slot number, from 1 to `SLOT_COUNT`.
     pub slot: usize,
@@ -62,7 +62,7 @@ pub enum Confirmation {
 
 /// The save state window: every slot of the game, and what the user is
 /// doing with the selected one.
-pub struct SlotPicker {
+pub struct SaveStatePicker {
     /// Every slot, by number.
     pub entries: Vec<PickerEntry>,
     /// Index in `entries` of the selected slot.
@@ -75,7 +75,7 @@ pub struct SlotPicker {
     pub action: Option<SlotAction>,
 }
 
-impl SlotPicker {
+impl SaveStatePicker {
     /// Entries per row.
     pub const COLUMNS: usize = 5;
 
@@ -187,7 +187,7 @@ pub struct GuiState {
     pub granted_plugin: Option<Plugin>,
 
     /// The save state picker. Emulation stands still while it is open.
-    pub slot_picker: Option<SlotPicker>,
+    pub save_state_picker: Option<SaveStatePicker>,
 
     /// The message shown over the game, if any. Not an overlay: it neither
     /// pauses the game nor takes Escape.
@@ -204,7 +204,7 @@ impl GuiState {
         let was_open = self.any_open();
         self.show_rom_info = false;
         self.error_popup = None;
-        self.slot_picker = None;
+        self.save_state_picker = None;
         self.notification = None;
         #[cfg(feature = "plugins")]
         {
@@ -215,7 +215,7 @@ impl GuiState {
 
     pub fn any_open(&self) -> bool {
         let mut open =
-            self.show_rom_info || self.error_popup.is_some() || self.slot_picker.is_some();
+            self.show_rom_info || self.error_popup.is_some() || self.save_state_picker.is_some();
         #[cfg(feature = "plugins")]
         {
             open = open || self.pending_plugin.is_some();
@@ -229,21 +229,27 @@ mod tests {
     use super::*;
     use crate::gui::test_utils::test_picker;
 
-    fn picker() -> SlotPicker {
+    fn picker() -> SaveStatePicker {
         test_picker(&egui::Context::default())
     }
 
     #[test]
     fn a_new_picker_selects_at_most_the_last_slot() {
         let ctx = egui::Context::default();
-        assert_eq!(SlotPicker::new(test_picker(&ctx).entries, 4).selected, 4);
-        assert_eq!(SlotPicker::new(test_picker(&ctx).entries, 99).selected, 9);
+        assert_eq!(
+            SaveStatePicker::new(test_picker(&ctx).entries, 4).selected,
+            4
+        );
+        assert_eq!(
+            SaveStatePicker::new(test_picker(&ctx).entries, 99).selected,
+            9
+        );
     }
 
     #[test]
     #[should_panic(expected = "a picker needs slots")]
     fn a_picker_needs_slots() {
-        SlotPicker::new(Vec::new(), 0);
+        SaveStatePicker::new(Vec::new(), 0);
     }
 
     #[test]
@@ -268,7 +274,7 @@ mod tests {
     #[test]
     fn the_selection_moves_by_columns_and_rows_and_stops_at_the_ends() {
         let mut picker = picker();
-        let row = SlotPicker::COLUMNS as isize;
+        let row = SaveStatePicker::COLUMNS as isize;
 
         picker.move_selection(1);
         assert_eq!(picker.selected, 1);
@@ -323,11 +329,11 @@ mod tests {
         let mut state = GuiState::default();
         assert!(!state.any_open());
 
-        state.slot_picker = Some(picker());
+        state.save_state_picker = Some(picker());
         assert!(state.any_open());
 
         assert!(state.close_all());
-        assert!(state.slot_picker.is_none());
+        assert!(state.save_state_picker.is_none());
         assert!(!state.close_all(), "nothing left to close");
     }
 

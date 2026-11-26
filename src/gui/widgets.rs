@@ -9,7 +9,9 @@ use crate::rsnes::RomInfo;
 use crate::save_state::slots::MAX_NAME_LENGTH;
 
 use super::command::Command;
-use super::state::{Confirmation, GuiState, Notification, PickerContent, PickerEntry, SlotPicker};
+use super::state::{
+    Confirmation, GuiState, Notification, PickerContent, PickerEntry, SaveStatePicker,
+};
 use super::{Gui, GuiFrameData, SlotAction};
 
 #[cfg(feature = "plugins")]
@@ -63,14 +65,14 @@ pub fn menu_bar(
                     #[cfg(feature = "plugins")]
                     item(ui, Command::RunPluginDefault, "Run plugin action", false);
                     ui.separator();
-                    item(ui, Command::SaveState, "Save state", false);
+                    item(ui, Command::QuickSaveState, "Save state", false);
                     item(ui, Command::LoadLatestState, "Load latest state", false);
                     item(ui, Command::UndoLoadState, "Undo load", false);
                     item(
                         ui,
                         Command::ChooseSaveState,
                         "Save states...",
-                        state.slot_picker.is_some(),
+                        state.save_state_picker.is_some(),
                     );
                 });
 
@@ -357,7 +359,7 @@ const NAME_FIELD_ID: &str = "slot_name_field";
 /// thumbnails, the width alone counts and the window scrolls.
 fn thumbnail_size(ctx: &egui::Context, area: egui::Rect, rows: usize) -> (egui::Vec2, bool) {
     let padding = ctx.global_style().spacing.button_padding * 2.0;
-    let (columns, rows) = (SlotPicker::COLUMNS as f32, rows as f32);
+    let (columns, rows) = (SaveStatePicker::COLUMNS as f32, rows as f32);
     let aspect = SCREEN_WIDTH as f32 / SCREEN_HEIGHT as f32;
     let room = (area.size() * PICKER_AREA_SHARE).max(area.size().min(PICKER_FULL_AREA));
 
@@ -382,15 +384,19 @@ fn thumbnail_size(ctx: &egui::Context, area: egui::Rect, rows: usize) -> (egui::
 /// The save state picker: the used slots, the most recent first, each with
 /// its saved screen, number and age. Selection of the slot is possible with
 /// the mouse or the keyboard arrows and Enter.
-pub fn slot_picker(ctx: &egui::Context, area: egui::Rect, picker: &mut Option<SlotPicker>) {
+pub fn save_state_picker(
+    ctx: &egui::Context,
+    area: egui::Rect,
+    picker: &mut Option<SaveStatePicker>,
+) {
     let Some(picker_state) = picker else {
         return;
     };
 
-    let rows = picker_state.entries.len().div_ceil(SlotPicker::COLUMNS);
+    let rows = picker_state.entries.len().div_ceil(SaveStatePicker::COLUMNS);
     let (thumbnail, scrolls) = thumbnail_size(ctx, area, rows);
     let cell_width = thumbnail.x + ctx.global_style().spacing.button_padding.x * 2.0;
-    let columns = SlotPicker::COLUMNS as f32;
+    let columns = SaveStatePicker::COLUMNS as f32;
     let grid_width = columns * cell_width + (columns - 1.0) * PICKER_GAP;
 
     let now = SystemTime::now();
@@ -410,8 +416,8 @@ pub fn slot_picker(ctx: &egui::Context, area: egui::Rect, picker: &mut Option<Sl
                 // The details below are cut to the grid's width.
                 ui.set_max_width(grid_width);
 
-                egui::Grid::new("slot_picker")
-                    .num_columns(SlotPicker::COLUMNS)
+                egui::Grid::new("save_state_picker")
+                    .num_columns(SaveStatePicker::COLUMNS)
                     .spacing([PICKER_GAP, PICKER_GAP])
                     .show(ui, |ui| {
                         for index in 0..picker_state.entries.len() {
@@ -425,7 +431,7 @@ pub fn slot_picker(ctx: &egui::Context, area: egui::Rect, picker: &mut Option<Sl
                                 picker_state.load_selected();
                             }
 
-                            if (index + 1) % SlotPicker::COLUMNS == 0 {
+                            if (index + 1) % SaveStatePicker::COLUMNS == 0 {
                                 ui.end_row();
                             }
                         }
@@ -524,7 +530,7 @@ fn badge(ui: &egui::Ui, rect: egui::Rect, corner: egui::Align2, text: &str) {
 
 /// The details of the selected slot, then its actions. An action that needs
 /// confirming, or a name being typed, takes the place of the action buttons.
-fn slot_details(ui: &mut egui::Ui, picker: &mut SlotPicker, now: SystemTime) {
+fn slot_details(ui: &mut egui::Ui, picker: &mut SaveStatePicker, now: SystemTime) {
     const UNLOCK_FIRST: &str = "The slot is locked. Unlock it first.";
 
     let entry = picker.selected_entry();
@@ -1113,7 +1119,7 @@ mod tests {
     ];
 
     /// Sets a picker up before it is laid out.
-    type Prepare = fn(&mut SlotPicker);
+    type Prepare = fn(&mut SaveStatePicker);
 
     /// Every slot selected, then a name being typed and both confirmations.
     const EVERY_SELECTION: [Prepare; 13] = [

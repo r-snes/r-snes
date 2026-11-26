@@ -23,7 +23,7 @@ pub enum Command {
     /// Show or hide the ROM information window.
     ToggleRomInfo,
     /// Save the game to the first free save slot, or over the oldest one.
-    SaveState,
+    QuickSaveState,
     /// Load the most recent save slot.
     LoadLatestState,
     /// Go back to the state before the last load.
@@ -86,7 +86,7 @@ impl Command {
         Command::Reset,
         Command::TogglePause,
         Command::ToggleRomInfo,
-        Command::SaveState,
+        Command::QuickSaveState,
         Command::LoadLatestState,
         Command::UndoLoadState,
         Command::ChooseSaveState,
@@ -104,7 +104,7 @@ impl Command {
             Command::Reset => Shortcut::ctrl(Keycode::R),
             Command::TogglePause => Shortcut::plain(Keycode::P),
             Command::ToggleRomInfo => Shortcut::plain(Keycode::F1),
-            Command::SaveState => Shortcut::plain(Keycode::F2),
+            Command::QuickSaveState => Shortcut::plain(Keycode::F2),
             Command::LoadLatestState => Shortcut::plain(Keycode::F3),
             Command::UndoLoadState => Shortcut::ctrl(Keycode::F3),
             Command::ChooseSaveState => Shortcut::plain(Keycode::F4),
@@ -133,7 +133,7 @@ impl Command {
             | Command::Reset
             | Command::TogglePause
             | Command::ToggleRomInfo
-            | Command::SaveState
+            | Command::QuickSaveState
             | Command::LoadLatestState
             | Command::UndoLoadState
             | Command::ChooseSaveState => rom_loaded,
@@ -219,7 +219,7 @@ mod tests {
         assert!(!Command::Reset.is_enabled(&idle));
         assert!(!Command::TogglePause.is_enabled(&idle));
         assert!(!Command::ToggleRomInfo.is_enabled(&idle));
-        assert!(!Command::SaveState.is_enabled(&idle));
+        assert!(!Command::QuickSaveState.is_enabled(&idle));
         assert!(!Command::LoadLatestState.is_enabled(&idle));
         assert!(!Command::UndoLoadState.is_enabled(&idle));
         assert!(!Command::ChooseSaveState.is_enabled(&idle));

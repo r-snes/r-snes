@@ -23,7 +23,7 @@ use ppu::constants::{SCREEN_HEIGHT, SCREEN_WIDTH};
 use crate::rsnes::RomInfo;
 use crate::save_state::slots::{GameSaveStates, SLOT_COUNT, Slot};
 use command::Command;
-use state::{GuiState, Notification, PickerContent, PickerEntry, SlotPicker};
+use state::{GuiState, Notification, PickerContent, PickerEntry, SaveStatePicker};
 
 #[cfg(feature = "plugins")]
 use plugins::plugin::Plugin;
@@ -138,7 +138,7 @@ pub enum RSnesEvent {
     ButtonUp(SnesButton),
 
     /// Save the game to the first free save slot, or over the oldest one
-    SaveState,
+    QuickSaveState,
 
     /// Load the most recent save slot
     LoadLatestState,
@@ -323,21 +323,21 @@ impl Gui {
     }
 
     /// Opens the save state window.
-    pub fn open_slot_picker(&mut self, states: &GameSaveStates) {
+    pub fn open_save_state_picker(&mut self, states: &GameSaveStates) {
         let ctx = &self.egui_canvas.ctx;
         let entries = (1..=SLOT_COUNT).map(|slot| picker_entry(ctx, states, slot)).collect();
-        let selected = match &self.state.slot_picker {
+        let selected = match &self.state.save_state_picker {
             Some(picker) => picker.selected,
             None => states.latest_slot().map_or(0, |slot| slot - 1),
         };
-        self.state.slot_picker = Some(SlotPicker::new(entries, selected));
+        self.state.save_state_picker = Some(SaveStatePicker::new(entries, selected));
     }
 
     /// Shows the slots of `states` again in the save state window, if it is
     /// open.
-    pub fn refresh_slot_picker(&mut self, states: &GameSaveStates) {
-        if self.state.slot_picker.is_some() {
-            self.open_slot_picker(states);
+    pub fn refresh_save_state_picker(&mut self, states: &GameSaveStates) {
+        if self.state.save_state_picker.is_some() {
+            self.open_save_state_picker(states);
         }
     }
 
@@ -407,10 +407,10 @@ impl Gui {
             Command::Reset => out.push(RSnesEvent::Reset),
             Command::TogglePause => out.push(RSnesEvent::TogglePause),
             Command::ToggleRomInfo => self.state.show_rom_info = !self.state.show_rom_info,
-            Command::SaveState => out.push(RSnesEvent::SaveState),
+            Command::QuickSaveState => out.push(RSnesEvent::QuickSaveState),
             Command::LoadLatestState => out.push(RSnesEvent::LoadLatestState),
-            Command::ChooseSaveState if self.state.slot_picker.is_some() => {
-                self.state.slot_picker = None;
+            Command::ChooseSaveState if self.state.save_state_picker.is_some() => {
+                self.state.save_state_picker = None;
             }
             Command::ChooseSaveState => out.push(RSnesEvent::ChooseSaveState),
             Command::UndoLoadState => out.push(RSnesEvent::UndoLoadState),
@@ -592,8 +592,8 @@ impl Gui {
 
     /// Moves the picker's selection with the arrows and load with Enter.
     /// Returns whether the key was used.
-    fn drive_slot_picker(picker: &mut SlotPicker, key: Keycode) -> bool {
-        let row = SlotPicker::COLUMNS as isize;
+    fn drive_save_state_picker(picker: &mut SaveStatePicker, key: Keycode) -> bool {
+        let row = SaveStatePicker::COLUMNS as isize;
         match key {
             Keycode::Left => picker.move_selection(-1),
             Keycode::Right => picker.move_selection(1),
@@ -623,14 +623,14 @@ impl Gui {
                 continue;
             }
 
-            // While the slot picker is open, arrows and Enter drive it,
+            // While the save state picker is open, arrows and Enter drive it,
             // unless a name is being typed.
-            if let Some(picker) = &mut self.state.slot_picker
+            if let Some(picker) = &mut self.state.save_state_picker
                 && !self.egui_canvas.ctx.egui_wants_keyboard_input()
                 && let SdlEvent::KeyDown {
                     keycode: Some(key), ..
                 } = &event
-                && Self::drive_slot_picker(picker, *key)
+                && Self::drive_save_state_picker(picker, *key)
             {
                 continue;
             }
@@ -733,7 +733,7 @@ impl Gui {
     ) {
         widgets::rom_info(ctx, area, &mut state.show_rom_info, data.rom_info);
         widgets::error_box(ctx, area, &mut state.error_popup);
-        widgets::slot_picker(ctx, area, &mut state.slot_picker);
+        widgets::save_state_picker(ctx, area, &mut state.save_state_picker);
         widgets::notification(ctx, area, &mut state.notification);
         #[cfg(feature = "plugins")]
         widgets::plugin_perm_request(
@@ -766,11 +766,11 @@ impl Gui {
         });
 
         // An action chosen in the save state window. A load closes it.
-        if let Some(picker) = &mut self.state.slot_picker
+        if let Some(picker) = &mut self.state.save_state_picker
             && let Some(action) = picker.action.take()
         {
             if matches!(action, SlotAction::Load(_)) {
-                self.state.slot_picker = None;
+                self.state.save_state_picker = None;
             }
             events.push(RSnesEvent::SlotAction(action));
         }
@@ -836,14 +836,14 @@ mod tests {
             (Keycode::Left, 5),
             (Keycode::Up, 0),
         ] {
-            assert!(Gui::drive_slot_picker(&mut picker, key), "{key}");
+            assert!(Gui::drive_save_state_picker(&mut picker, key), "{key}");
             assert_eq!(picker.selected, selected, "after {key}");
         }
-        assert!(Gui::drive_slot_picker(&mut picker, Keycode::Return));
+        assert!(Gui::drive_save_state_picker(&mut picker, Keycode::Return));
         assert_eq!(picker.action, Some(SlotAction::Load(1)));
 
         picker.action = None;
-        assert!(Gui::drive_slot_picker(&mut picker, Keycode::KpEnter));
+        assert!(Gui::drive_save_state_picker(&mut picker, Keycode::KpEnter));
         assert_eq!(picker.action, Some(SlotAction::Load(1)));
     }
 
@@ -852,7 +852,7 @@ mod tests {
         let mut picker = test_picker(&egui::Context::default());
 
         for key in [Keycode::Z, Keycode::Space, Keycode::Escape, Keycode::F4] {
-            assert!(!Gui::drive_slot_picker(&mut picker, key), "{key}");
+            assert!(!Gui::drive_save_state_picker(&mut picker, key), "{key}");
         }
         assert_eq!(picker.selected, 0);
         assert_eq!(picker.action, None);

@@ -16,7 +16,7 @@ use crate::rsnes::RomInfo;
 use crate::save_state::slots::MAX_NAME_LENGTH;
 
 use super::command::Command;
-use super::state::{GuiState, Notification, PickerContent, PickerEntry, SlotPicker};
+use super::state::{GuiState, Notification, PickerContent, PickerEntry, SaveStatePicker};
 use super::{Gui, GuiFrameData, widgets};
 
 /// The unreadable slots' reason: longer than the window is wide.
@@ -28,7 +28,7 @@ pub const LONG_REASON: &str = "a reason much longer than the window is wide, to 
 /// - 1 to 5 saved; 1 is the latest, 2 has the longest name, 3 is locked;
 /// - 6 and 7 unreadable, with [`LONG_REASON`];
 /// - 8 to 10 empty.
-pub fn test_picker(ctx: &egui::Context) -> SlotPicker {
+pub fn test_picker(ctx: &egui::Context) -> SaveStatePicker {
     let screen = ctx.load_texture(
         "screen",
         egui::ColorImage::from_rgb(
@@ -61,7 +61,7 @@ pub fn test_picker(ctx: &egui::Context) -> SlotPicker {
             latest: slot == 1,
         })
         .collect();
-    SlotPicker::new(entries, 0)
+    SaveStatePicker::new(entries, 0)
 }
 
 /// The save state window, filling a game area of `size`, on
@@ -69,17 +69,17 @@ pub fn test_picker(ctx: &egui::Context) -> SlotPicker {
 /// `None` once the window is closed.
 pub fn picker_harness(
     size: egui::Vec2,
-    prepare: impl FnOnce(&mut SlotPicker),
-) -> Harness<'static, Option<SlotPicker>> {
+    prepare: impl FnOnce(&mut SaveStatePicker),
+) -> Harness<'static, Option<SaveStatePicker>> {
     // One frame per input event, at 60 frames per second as in R-SNES: two
     // clicks are then close enough in time to make a double click.
     let mut harness = Harness::builder()
         .with_size(size)
         .with_step_dt(1.0 / 60.0)
         .build_ui_state(
-            |ui, picker: &mut Option<SlotPicker>| {
+            |ui, picker: &mut Option<SaveStatePicker>| {
                 let area = ui.ctx().content_rect();
-                widgets::slot_picker(ui.ctx(), area, picker);
+                widgets::save_state_picker(ui.ctx(), area, picker);
             },
             None,
         );
@@ -91,7 +91,7 @@ pub fn picker_harness(
 }
 
 /// The picker of a harness from [`picker_harness`], which must be open.
-pub fn picker<'h>(harness: &'h Harness<'_, Option<SlotPicker>>) -> &'h SlotPicker {
+pub fn picker<'h>(harness: &'h Harness<'_, Option<SaveStatePicker>>) -> &'h SaveStatePicker {
     harness.state().as_ref().expect("the window is open")
 }
 
@@ -154,7 +154,7 @@ pub fn menu_harness(picker_open: bool) -> Harness<'static, MenuTest> {
         test,
     );
     if picker_open {
-        harness.state_mut().state.slot_picker = Some(test_picker(&harness.ctx));
+        harness.state_mut().state.save_state_picker = Some(test_picker(&harness.ctx));
     }
     harness.run();
     harness

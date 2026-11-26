@@ -24,7 +24,7 @@
 //! # Slots
 //!
 //! The slots are read from the disk once, when the game's save states are
-//! opened, and again on [`GameSaveStates::refresh`] (when the slot picker
+//! opened, and again on [`GameSaveStates::refresh`] (when the save state picker
 //! opens). In between, they are kept in memory: every action updates its
 //! slot there, and a load that finds its file missing or damaged updates it
 //! too. Files changed outside this window are only seen on the next refresh.
