@@ -95,14 +95,12 @@ pub fn menu_bar(
                         "Reload configuration file",
                         false,
                     );
+                    let verb = if state.config_ui.is_some() { "Hide" } else { "Show" };
+                    let info = if state.config_error.is_some() { "errors" } else { "info" };
                     item(
                         ui,
                         Command::ToggleConfigErrors,
-                        if state.config_ui.is_some() {
-                            "Hide config error window"
-                        } else {
-                            "Show config errors"
-                        },
+                        &format!("{verb} config {info}"),
                         false,
                     );
                 });
