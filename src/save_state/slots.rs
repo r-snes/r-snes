@@ -322,7 +322,7 @@ impl GameSaveStates {
             Err(SaveStateError::NoSaveState) => self.slots[slot - 1] = Slot::Empty,
             Err(
                 error @ (SaveStateError::NotASaveState
-                | SaveStateError::UnsupportedVersion { .. }
+                | SaveStateError::UnsupportedFormat { .. }
                 | SaveStateError::WrongRom
                 | SaveStateError::Corrupted(_)),
             ) => self.slots[slot - 1] = unreadable(&path, error),

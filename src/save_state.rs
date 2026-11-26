@@ -5,12 +5,14 @@
 //!
 //! ```text
 //! MAGIC                     the text "R-SNES save state\n"
-//! SaveStateInfo             postcard, starting with the emulator version
-//!                           (first, so the slot list reads it fast)
+//! SaveStateInfo             postcard, starting with the format version
+//!                           (first, so it is read before anything else)
 //! core state                postcard CoreState
 //! ```
 //!
-//! A state made by another version of R-SNES is refused.
+//! Only states of the current [`FORMAT_VERSION`] are loaded, whatever the
+//! version of R-SNES that made them. The format version must be bumped
+//! whenever the saved data changes.
 //! A state made with another ROM (CRC32 mismatch) is refused too.
 //!
 //! # What is saved
@@ -51,16 +53,22 @@ pub(crate) mod test_utils;
 /// Text every save state file starts with.
 pub const MAGIC: &[u8] = b"R-SNES save state\n";
 
-/// Version of R-SNES, the only one whose save states are loaded.
+/// Version of the save state format. Bump it whenever the saved data changes.
+pub const FORMAT_VERSION: u32 = 1;
+
+/// Version of R-SNES, written in save states for information.
 pub const EMULATOR_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Header of a save state, readable without decoding the rest.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SaveStateInfo {
-    /// Version of R-SNES that wrote the file.
+    /// Version of the save state format, see [`FORMAT_VERSION`].
     ///
-    /// Must stay the first field: it is read alone first, so that a file of
-    /// another version is refused even if the rest of its info has changed.
+    /// Must stay the first field, and a `u32`, in every format: it is read
+    /// alone first, so that a file of another format is refused even if the
+    /// rest of its info has changed.
+    pub format_version: u32,
+    /// Version of R-SNES that wrote the file.
     pub emulator_version: String,
     /// CRC32 of the ROM the state was made with.
     pub rom_checksum: u32,
@@ -127,17 +135,18 @@ impl SaveState {
         self.core.renderer.presented
     }
 
-    /// Checks the magic text and the version, and reads the info.
+    /// Checks the magic text and the format version, and reads the info.
     /// Returns the info and the rest of the file.
     fn read_header(bytes: &[u8]) -> Result<(SaveStateInfo, &[u8]), SaveStateError> {
         let rest = bytes.strip_prefix(MAGIC).ok_or(SaveStateError::NotASaveState)?;
 
-        // The info starts with the version: postcard encodes a struct as its
-        // fields one after another, so its first field reads like a lone String.
+        // The info starts with the format version: postcard encodes a struct
+        // as its fields one after another, so its first field reads like a
+        // lone u32.
         let (found, _) =
-            postcard::take_from_bytes::<String>(rest).map_err(SaveStateError::corrupted)?;
-        if found != EMULATOR_VERSION {
-            return Err(SaveStateError::UnsupportedVersion { found });
+            postcard::take_from_bytes::<u32>(rest).map_err(SaveStateError::corrupted)?;
+        if found != FORMAT_VERSION {
+            return Err(SaveStateError::UnsupportedFormat { found });
         }
 
         postcard::take_from_bytes(rest).map_err(SaveStateError::corrupted)
@@ -167,6 +176,7 @@ impl RSnesCore {
     /// Saves the whole console into a save state file.
     pub fn save_state(&self) -> Result<Vec<u8>, SaveStateError> {
         let info = SaveStateInfo {
+            format_version: FORMAT_VERSION,
             emulator_version: EMULATOR_VERSION.to_owned(),
             rom_checksum: self.rom_checksum,
             created_at: SystemTime::now(),
@@ -279,10 +289,10 @@ impl RSnesCore {
 pub enum SaveStateError {
     /// The file doesn't start with [`MAGIC`].
     NotASaveState,
-    /// The file was made by another version of R-SNES.
-    UnsupportedVersion {
-        /// Version of R-SNES that made the file.
-        found: String,
+    /// The file uses another save state format than [`FORMAT_VERSION`].
+    UnsupportedFormat {
+        /// Format version of the file.
+        found: u32,
     },
     /// The state was made with another ROM.
     WrongRom,
@@ -319,11 +329,18 @@ impl fmt::Display for SaveStateError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::NotASaveState => write!(f, "This file is not an R-SNES save state."),
-            Self::UnsupportedVersion { found } => write!(
-                f,
-                "This save state was made by R-SNES {found} \
-                 and can only be loaded by that version (this is R-SNES {EMULATOR_VERSION})."
-            ),
+            Self::UnsupportedFormat { found } => {
+                let made_by = if *found > FORMAT_VERSION {
+                    "a newer"
+                } else {
+                    "an older"
+                };
+                write!(
+                    f,
+                    "This save state was made by {made_by} version of R-SNES and can't be \
+                     loaded by this one (format {found}, this version reads format {FORMAT_VERSION})."
+                )
+            }
             Self::WrongRom => write!(f, "This save state was made with another game."),
             Self::Corrupted(detail) => {
                 write!(
@@ -533,8 +550,32 @@ mod tests {
     }
 
     #[test]
-    fn a_state_of_another_emulator_version_is_refused() {
+    fn a_state_of_another_format_is_refused() {
         let core = make_rsnes_from(&test_rom());
+        let info = SaveState::read_info(&core.save_state().unwrap()).unwrap();
+
+        for other in [FORMAT_VERSION - 1, FORMAT_VERSION + 1] {
+            let info = SaveStateInfo {
+                format_version: other,
+                ..info.clone()
+            };
+            let file = postcard::to_extend(&info, MAGIC.to_vec()).unwrap();
+            let bytes = core.encode_core(file).unwrap();
+
+            assert!(matches!(
+                decode_error(&bytes),
+                SaveStateError::UnsupportedFormat { found } if found == other
+            ));
+            assert!(matches!(
+                SaveState::read_info(&bytes),
+                Err(SaveStateError::UnsupportedFormat { .. })
+            ));
+        }
+    }
+
+    #[test]
+    fn a_state_of_another_emulator_version_is_loaded() {
+        let mut core = make_rsnes_from(&test_rom());
         let info = SaveState::read_info(&core.save_state().unwrap()).unwrap();
         let older = SaveStateInfo {
             emulator_version: "0.0.1".into(),
@@ -543,26 +584,35 @@ mod tests {
         let file = postcard::to_extend(&older, MAGIC.to_vec()).unwrap();
         let bytes = core.encode_core(file).unwrap();
 
-        assert!(matches!(
-            decode_error(&bytes),
-            SaveStateError::UnsupportedVersion { found } if found == "0.0.1"
-        ));
-        assert!(matches!(
-            SaveState::read_info(&bytes),
-            Err(SaveStateError::UnsupportedVersion { .. })
-        ));
+        let state = SaveState::decode(&bytes).unwrap();
+        assert_eq!(state.info.emulator_version, "0.0.1");
+        core.load_state(state).unwrap();
+    }
+
+    #[test]
+    fn the_unsupported_format_message_says_which_version_made_the_state() {
+        let older = SaveStateError::UnsupportedFormat {
+            found: FORMAT_VERSION - 1,
+        };
+        let newer = SaveStateError::UnsupportedFormat {
+            found: FORMAT_VERSION + 1,
+        };
+
+        assert!(older.to_string().contains("an older version"), "{older}");
+        assert!(newer.to_string().contains("a newer version"), "{newer}");
     }
 
     #[test]
     fn a_truncated_file_is_corrupted() {
         let bytes = make_rsnes_from(&test_rom()).save_state().unwrap();
 
-        // Without the version, inside it, inside the rest of the info, then
-        // inside the console state.
+        // Without the format version, inside the emulator version, inside the
+        // rest of the info, then inside the console state. The format version
+        // takes 1 byte, and the emulator version 1 byte of length plus its text.
         for length in [
             MAGIC.len(),
-            MAGIC.len() + 2,
-            MAGIC.len() + 1 + EMULATOR_VERSION.len() + 1,
+            MAGIC.len() + 1 + 2,
+            MAGIC.len() + 1 + 1 + EMULATOR_VERSION.len() + 1,
             bytes.len() / 2,
             bytes.len() - 1,
         ] {
@@ -587,9 +637,7 @@ mod tests {
     fn every_error_has_a_message() {
         let errors = [
             SaveStateError::NotASaveState,
-            SaveStateError::UnsupportedVersion {
-                found: "0.0.1".into(),
-            },
+            SaveStateError::UnsupportedFormat { found: 0 },
             SaveStateError::WrongRom,
             SaveStateError::Corrupted("detail".into()),
             SaveStateError::Encoding("detail".into()),
