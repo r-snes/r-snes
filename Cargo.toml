@@ -100,6 +100,7 @@ directories = "6.0.0"
 tempfile = "3.27.0"
 bus = { version = "0.1.0", path = "./bus", features = ["test-utils"] }
 egui_kittest = "0.36.2"
+serde_json = { version = "1.0.149", features = ["preserve_order"] }
 
 [target.'cfg(windows)'.dependencies]
 sdl2 = { workspace = true, features = ["bundled", "static-link"] }

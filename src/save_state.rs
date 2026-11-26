@@ -12,7 +12,8 @@
 //!
 //! Only states of the current [`FORMAT_VERSION`] are loaded, whatever the
 //! version of R-SNES that made them. The format version must be bumped
-//! whenever the saved data changes.
+//! whenever the saved data changes: the `format_tests` module checks that a
+//! committed save state still decodes to the same values.
 //! A state made with another ROM (CRC32 mismatch) is refused too.
 //!
 //! # What is saved
@@ -46,6 +47,8 @@ use std::io;
 use std::sync::Arc;
 use std::time::SystemTime;
 
+#[cfg(test)]
+mod format_tests;
 pub mod slots;
 #[cfg(test)]
 pub(crate) mod test_utils;
@@ -53,7 +56,7 @@ pub(crate) mod test_utils;
 /// Text every save state file starts with.
 pub const MAGIC: &[u8] = b"R-SNES save state\n";
 
-/// Version of the save state format. Bump it whenever the saved data changes.
+/// Version of the save state format. Bump it whenever the saved data changes, see `format_tests`.
 pub const FORMAT_VERSION: u32 = 1;
 
 /// Version of R-SNES, written in save states for information.
@@ -80,9 +83,9 @@ pub struct SaveStateInfo {
 // and an owning struct (for loading).
 duplicate! {
     [
-        DUP_name           DUP_derive            DUP_ref  DUP_doc;
-        [CoreStateRef<'a>] [serde::Serialize]    [&'a]    ["Saved part of the core, borrowed from it to be serialized."];
-        [CoreState]        [serde::Deserialize]  []       ["Saved part of the core, deserialized from a file."];
+        DUP_name           DUP_derive                               DUP_ref  DUP_doc;
+        [CoreStateRef<'a>] [serde::Serialize]                       [&'a]    ["Saved part of the core, borrowed from it to be serialized."];
+        [CoreState]        [serde::Serialize, serde::Deserialize]   []       ["Saved part of the core, deserialized from a file."];
     ]
     #[doc = DUP_doc]
     #[derive(DUP_derive)]
