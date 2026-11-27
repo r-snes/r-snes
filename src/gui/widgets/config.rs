@@ -1,6 +1,6 @@
 #[derive(Default)]
 pub struct ConfigUi {
-    pub action: Option<ConfigUiAction>
+    pub action: Option<ConfigUiAction>,
 }
 
 pub enum ConfigUiAction {

@@ -254,7 +254,10 @@ impl Gui {
     /// Size of the game area in the smallest window: the SNES screen.
     pub const MIN_GAME_AREA: egui::Vec2 = egui::vec2(SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32);
 
-    pub fn new(config_load: Result<RSnesConfig, ConfigLoadError>, config_path: Option<PathBuf>) -> Result<Self, String> {
+    pub fn new(
+        config_load: Result<RSnesConfig, ConfigLoadError>,
+        config_path: Option<PathBuf>,
+    ) -> Result<Self, String> {
         let sdl_ctx = sdl2::init()?;
         let video_subsystem = sdl_ctx.video()?;
 
