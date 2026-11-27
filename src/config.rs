@@ -12,14 +12,15 @@ pub struct RSnesConfig {
     /// simpler general options
     #[serde(default)]
     pub general: GeneralConfig,
+    // commented out because unused, and somehow #[expect]
+    // doesn't work to silence the warning
+    // /// keybinds, controller options etc.
+    // #[serde(default)]
+    // pub input: InputConfig,
 
-    /// keybinds, controller options etc.
-    #[serde(default)]
-    pub input: InputConfig,
-
-    /// options about how we should handle the config file
-    #[serde(default)]
-    pub config: ConfigConfig,
+    // /// options about how we should handle the config file
+    // #[serde(default)]
+    // pub config: ConfigConfig,
 }
 
 #[derive(Default, Deserialize)]
@@ -29,15 +30,17 @@ pub struct GeneralConfig {
     pub pause_when: PauseWhen,
 }
 
-#[derive(Default, Deserialize)]
-#[cfg_attr(test, derive(PartialEq, Eq, Debug))]
-#[serde(deny_unknown_fields)]
-pub struct InputConfig {}
+// same as above
+// #[derive(Default, Deserialize)]
+// #[cfg_attr(test, derive(PartialEq, Eq, Debug))]
+// #[serde(deny_unknown_fields)]
+// pub struct InputConfig {}
 
-#[derive(Default, Deserialize)]
-#[cfg_attr(test, derive(PartialEq, Eq, Debug))]
-#[serde(deny_unknown_fields)]
-pub struct ConfigConfig {}
+// #[derive(Default, Deserialize)]
+// #[cfg_attr(test, derive(PartialEq, Eq, Debug))]
+// #[serde(deny_unknown_fields)]
+// pub struct ConfigConfig {}
+
 #[derive(Deserialize)]
 #[cfg_attr(test, derive(PartialEq, Eq, Debug))]
 pub struct PauseWhen(pub EnumSet<GuiContext>);
@@ -115,6 +118,7 @@ pub fn read_config(path: Option<impl AsRef<Path>>) -> Result<RSnesConfig, Config
 
 #[cfg(test)]
 mod test {
+    #![expect(clippy::needless_update, reason = "used for forward compatibility")]
     use super::*;
 
     #[test]

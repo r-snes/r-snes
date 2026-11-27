@@ -431,12 +431,12 @@ impl Default for ConfigPath {
         Self(config::config_path())
     }
 }
-impl ToString for ConfigPath {
-    fn to_string(&self) -> String {
+impl std::fmt::Display for ConfigPath {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.0 {
             // will be printed if [`config::config_path()`] fails to get the config directory
-            None => "None (couldn't resolve a default config directory)".to_owned(),
-            Some(p) => p.to_string_lossy().into_owned(),
+            None => write!(f, "None (couldn't resolve a default config directory)"),
+            Some(p) => f.write_str(&p.to_string_lossy()),
         }
     }
 }
