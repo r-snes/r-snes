@@ -352,8 +352,6 @@ fn gui_loop(
     #[cfg(feature = "plugins")] mut plugin: Option<Plugin>,
 ) -> Result<(), String> {
     let mut gui = gui::Gui::new(config_load, config_path)?;
-    const DEFAULT_FRAMEBUFFER: &ppu::rendering::RawFramebuffer =
-        include_bytes!("../assets/logo_framebuffer.raw");
 
     loop {
         // move out of the `Option` in case it's `Some`
@@ -362,7 +360,7 @@ fn gui_loop(
         // we leave the loop
         let ev = match rsnes_core.take() {
             None => {
-                let idle_exit = gui_idle_loop(&mut gui, DEFAULT_FRAMEBUFFER);
+                let idle_exit = gui_idle_loop(&mut gui, assets::DEFAULT_FRAMEBUFFER);
                 cfg_select! {
                     feature = "plugins" => {
                         let (ev, new_plugin) = idle_exit;
