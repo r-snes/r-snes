@@ -417,7 +417,7 @@ struct Cli {
     /// A custom config file path to use instead of the system default
     #[cfg_attr(
         feature = "cli",
-        arg(long, short = 'c', value_name = "path/to/config.toml", default_value_t)
+        arg(long, short = 'c', value_name = "path/to/config.toml", default_value_os_t)
     )]
     pub config_file: ConfigPath,
 
@@ -430,6 +430,17 @@ struct Cli {
     pub verify_config: bool,
 }
 
+// Special handling for the default of Cli's `config_file` field:
+// we want the default to use the path determined using `directories`,
+// but this is fallible too (in case we don't find a user's $HOME).
+// Plus clap is extra weird and wants to store the default value in
+// a lazy static (an OsString since we use `default_value_os_t`, it's
+// a String otherwise, which messes up non-UTF8 even if the underlying field
+// is a PathBuf).
+// So we have to define how to convert to and from this lazy OsString,
+// and we decide to use the empty string as a placeholder for None (when
+// `directories` failed to find a config dir), which should be fine because
+// the empty string would always be an invalid config path anyways
 #[derive(Clone)]
 struct ConfigPath(Option<PathBuf>);
 impl Default for ConfigPath {
@@ -437,18 +448,20 @@ impl Default for ConfigPath {
         Self(config::config_path())
     }
 }
-impl std::fmt::Display for ConfigPath {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.0 {
-            // will be printed if [`config::config_path()`] fails to get the config directory
-            None => write!(f, "None (couldn't resolve a default config directory)"),
-            Some(p) => f.write_str(&p.to_string_lossy()),
+impl From<OsString> for ConfigPath {
+    fn from(value: OsString) -> Self {
+        match value {
+            v if v.is_empty() => Self(None),
+            v => Self(Some(PathBuf::from(v))),
         }
     }
 }
-impl From<OsString> for ConfigPath {
-    fn from(value: OsString) -> Self {
-        Self(Some(PathBuf::from(value)))
+impl From<ConfigPath> for OsString {
+    fn from(value: ConfigPath) -> Self {
+        match value.0 {
+            None => "".into(),
+            Some(p) => p.into()
+        }
     }
 }
 
