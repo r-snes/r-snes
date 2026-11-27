@@ -159,7 +159,9 @@ fn gui_emu_loop(
             || (gui.menu_open() && paus_when.contains(config::GuiContext::Navbar))
             || (gui.pending_perm_request() && paus_when.contains(config::GuiContext::PermRequest))
             || (gui.rom_info_open() && paus_when.contains(config::GuiContext::RomInfo))
-            || (gui.pending_error_popup() && paus_when.contains(config::GuiContext::ErrorPopup)));
+            || (gui.pending_error_popup() && paus_when.contains(config::GuiContext::ErrorPopup))
+            || (gui.save_state_picker_open() && paus_when.contains(config::GuiContext::SaveState))
+            || (gui.config_info_open() && paus_when.contains(config::GuiContext::ConfigInfo)));
 
         audio.set_running(gui, running);
 

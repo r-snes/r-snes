@@ -365,6 +365,16 @@ impl Gui {
         self.state.error_popup.is_some()
     }
 
+    /// Returns whether the save state picker is open
+    pub fn save_state_picker_open(&self) -> bool {
+        self.state.save_state_picker.is_some()
+    }
+
+    /// Returns whether the config info window is open
+    pub fn config_info_open(&self) -> bool {
+        self.state.config_ui.is_some()
+    }
+
     /// Whether the ROM info window is open
     pub fn rom_info_open(&self) -> bool {
         self.state.show_rom_info

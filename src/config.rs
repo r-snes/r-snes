@@ -44,9 +44,13 @@ pub struct PauseWhen(pub EnumSet<GuiContext>);
 
 impl Default for PauseWhen {
     fn default() -> Self {
-        Self(enum_set![
-            GuiContext::Navbar | GuiContext::PermRequest | GuiContext::ErrorPopup
-        ])
+        Self(enum_set!(
+            GuiContext::Navbar |
+            GuiContext::PermRequest |
+            GuiContext::ErrorPopup |
+            GuiContext::SaveState |
+            GuiContext::ConfigInfo |
+        ))
     }
 }
 
@@ -58,6 +62,8 @@ pub enum GuiContext {
     PermRequest,
     ErrorPopup,
     RomInfo,
+    SaveState,
+    ConfigInfo,
 }
 
 #[derive(Debug)]
