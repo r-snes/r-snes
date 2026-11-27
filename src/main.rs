@@ -57,6 +57,11 @@ fn gui_emu_loop(
     // Close any overlays that might have been left open from the previous window.
     gui.close_overlays();
 
+    // A ROM needing an unsupported coprocessor still runs, but warn the user.
+    if let Some(warning) = &rsnes.bus.cart.chip_warning {
+        gui.pass_warning(warning.clone());
+    }
+
     // Snapshot the ROM header once — it never changes while the ROM is loaded,
     // so there's no reason to rebuild it every frame.
     let rom_info = rsnes.rom_info();

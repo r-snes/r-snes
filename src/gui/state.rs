@@ -30,6 +30,8 @@ impl PendingPlugin {
 pub struct GuiState {
     pub show_rom_info: bool,
     pub error_popup: Option<Box<dyn Error>>,
+    /// Warning about the loaded ROM (e.g. an unsupported coprocessor)
+    pub warning_popup: Option<String>,
 
     /// A plugin loaded and awaiting the user's grant/deny decision.
     #[cfg(feature = "plugins")]
@@ -51,6 +53,7 @@ impl GuiState {
         let was_open = self.any_open();
         self.show_rom_info = false;
         self.error_popup = None;
+        self.warning_popup = None;
         #[cfg(feature = "plugins")]
         {
             self.pending_plugin = None;
@@ -59,7 +62,8 @@ impl GuiState {
     }
 
     pub fn any_open(&self) -> bool {
-        let mut open = self.show_rom_info || self.error_popup.is_some();
+        let mut open =
+            self.show_rom_info || self.error_popup.is_some() || self.warning_popup.is_some();
         #[cfg(feature = "plugins")]
         {
             open = open || self.pending_plugin.is_some();

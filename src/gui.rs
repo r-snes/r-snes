@@ -593,6 +593,7 @@ impl Gui {
     ) {
         widgets::rom_info(ctx, area, &mut state.show_rom_info, data.rom_info);
         widgets::error_box(ctx, area, &mut state.error_popup);
+        widgets::warning_box(ctx, area, &mut state.warning_popup);
         #[cfg(feature = "plugins")]
         widgets::plugin_perm_request(
             ctx,
@@ -655,6 +656,11 @@ impl Gui {
 
     pub fn pass_error(&mut self, err: Box<dyn Error>) {
         self.state.error_popup = Some(err);
+    }
+
+    /// Shows a warning window, closed by the user or with the other overlays
+    pub fn pass_warning(&mut self, warning: String) {
+        self.state.warning_popup = Some(warning);
     }
 
     pub fn unwrap_result<T: Default, E: Error + 'static>(&mut self, res: Result<T, E>) -> T {
