@@ -359,6 +359,7 @@ impl Gui {
     }
 
     /// Returns whether theres is a perm request open
+    #[cfg(feature = "plugins")]
     pub fn pending_perm_request(&self) -> bool {
         self.state.pending_plugin.is_some()
     }

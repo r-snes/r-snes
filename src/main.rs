@@ -29,6 +29,7 @@ use crate::{
 #[cfg(feature = "cli")]
 use clap::Parser;
 
+use common::bool_combinators::or;
 #[cfg(feature = "plugins")]
 use plugins::plugin::Plugin;
 use std::{
@@ -155,13 +156,16 @@ fn gui_emu_loop(
         // Emulation stands still while a pause condition is met.
         // The last frame stays on screen, and the device is paused with its
         // queue intact, so resuming picks up exactly where the sound left off.
-        let running = !(paused
-            || (gui.menu_open() && paus_when.contains(config::GuiContext::Navbar))
-            || (gui.pending_perm_request() && paus_when.contains(config::GuiContext::PermRequest))
-            || (gui.rom_info_open() && paus_when.contains(config::GuiContext::RomInfo))
-            || (gui.pending_error_popup() && paus_when.contains(config::GuiContext::ErrorPopup))
-            || (gui.save_state_picker_open() && paus_when.contains(config::GuiContext::SaveState))
-            || (gui.config_info_open() && paus_when.contains(config::GuiContext::ConfigInfo)));
+        let running = !or([
+            paused,
+            gui.menu_open() && paus_when.contains(config::GuiContext::Navbar),
+            #[cfg(feature = "plugins")]
+            (gui.pending_perm_request() && paus_when.contains(config::GuiContext::PermRequest)),
+            gui.rom_info_open() && paus_when.contains(config::GuiContext::RomInfo),
+            gui.pending_error_popup() && paus_when.contains(config::GuiContext::ErrorPopup),
+            gui.save_state_picker_open() && paus_when.contains(config::GuiContext::SaveState),
+            gui.config_info_open() && paus_when.contains(config::GuiContext::ConfigInfo),
+        ]);
 
         audio.set_running(gui, running);
 
@@ -375,7 +379,7 @@ fn gui_loop(
             Some(emu) => {
                 let ret_ev = cfg_select! {
                     feature = "plugins" => gui_emu_loop(&mut gui, emu, plugin.take()),
-                    _ => gui_emu_loop(&mut gui, emu, &config),
+                    _ => gui_emu_loop(&mut gui, emu),
                 };
 
                 match ret_ev {
@@ -408,11 +412,14 @@ struct Cli {
     /// A plugin to load at startup, **without any confirmation
     /// for requested permissions**
     #[cfg(feature = "plugins")]
-    #[arg(long, value_name = "PLUGIN.lua")]
+    #[cfg_attr(feature = "cli", arg(long, value_name = "PLUGIN.lua"))]
     pub load_plugin_noconfirm: Option<PathBuf>,
 
     /// A custom config file path to use instead of the system default
-    #[arg(long, short = 'c', value_name = "path/to/config.toml", default_value_t)]
+    #[cfg_attr(
+        feature = "cli",
+        arg(long, short = 'c', value_name = "path/to/config.toml", default_value_t)
+    )]
     pub config_file: ConfigPath,
 
     /// Don't start the emulator, just check that the config file loads
@@ -420,7 +427,7 @@ struct Cli {
     /// failure (the error would otherwise be shown in the graphical window)
     ///
     /// Use together with `-c` to check a config file for correctness
-    #[arg(long, default_value_t = false)]
+    #[cfg_attr(feature = "cli", arg(long, default_value_t = false))]
     pub verify_config: bool,
 }
 
