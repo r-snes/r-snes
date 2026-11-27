@@ -95,8 +95,16 @@ pub fn menu_bar(
                         "Reload configuration file",
                         false,
                     );
-                    let verb = if state.config_ui.is_some() { "Hide" } else { "Show" };
-                    let info = if state.config_error.is_some() { "errors" } else { "info" };
+                    let verb = if state.config_ui.is_some() {
+                        "Hide"
+                    } else {
+                        "Show"
+                    };
+                    let info = if state.config_error.is_some() {
+                        "errors"
+                    } else {
+                        "info"
+                    };
                     item(
                         ui,
                         Command::ToggleConfigErrors,
@@ -758,6 +766,11 @@ pub fn config_error_box(
     let Some(config_ui) = config_ui else {
         return;
     };
+    let mut action_button = |ui: &mut egui::Ui, msg, action| {
+        if ui.button(msg).clicked() {
+            config_ui.action = Some(action);
+        }
+    };
 
     let window = egui::Window::new("Config file errors")
         .constrain_to(area)
@@ -775,12 +788,8 @@ pub fn config_error_box(
                 .show(ctx, |ui| {
                     ui.label("Config file OK!");
                     ui.horizontal(|ui| {
-                        if ui.button("Open config file in default editor").clicked() {
-                            config_ui.action = Some(ConfigUiAction::OpenConfigFile)
-                        }
-                        if ui.button("Reload config").clicked() {
-                            config_ui.action = Some(ConfigUiAction::Reload)
-                        }
+                        action_button(ui, "Open config file", ConfigUiAction::OpenConfigFile);
+                        action_button(ui, "Reload config", ConfigUiAction::Reload);
                     });
                 });
             if !open {
@@ -796,49 +805,32 @@ pub fn config_error_box(
                     match error {
                         ConfigLoadError::NoConfigPath => {
                             ui.label("We don't even know where to look for a config file on your system");
-                            if ui.button("Ignore and run default config for now").clicked() {
-                                config_ui.action = Some(ConfigUiAction::Close)
-                            }
+                            action_button(ui, "Ignore and run default config for now", ConfigUiAction::Close);
                         }
                         ConfigLoadError::IoError(io_err, path) if matches!(io_err.kind(), NotFound) => {
                             ui.label(format!("It seems like you have no config file at {path:?}"));
                             ui.label("Using the default config for now, please create an empty file at that path to silence this error");
                             ui.horizontal(|ui| {
-                                if ui.button("Retry loading config").clicked() {
-                                    config_ui.action = Some(ConfigUiAction::Reload)
-                                }
-                                if ui.button("Ignore and run default config for now").clicked() {
-                                    config_ui.action = Some(ConfigUiAction::Close)
-                                }
-                                if ui.button("Create empty config file").clicked() {
-                                    config_ui.action = Some(ConfigUiAction::CreateEmptyConfig)
-                                }
-                                if ui.button("Create default config file").clicked() {
-                                    config_ui.action = Some(ConfigUiAction::CreateDefaultConfig)
-                                }
+                                action_button(ui, "Retry loading config", ConfigUiAction::Reload);
+                                action_button(ui, "Ignore and run default config for now", ConfigUiAction::Close);
+                                action_button(ui, "Create empty config file", ConfigUiAction::CreateEmptyConfig);
+                                action_button(ui, "Create default config file", ConfigUiAction::CreateDefaultConfig);
                             });
                         }
                         ConfigLoadError::IoError(io_err, _) => {
                             ui.label(io_err.to_string());
                             ui.horizontal(|ui| {
-                                if ui.button("Retry loading config").clicked() {
-                                    config_ui.action = Some(ConfigUiAction::Reload)
-                                }
-                                if ui.button("Ignore and run default config for now").clicked() {
-                                    config_ui.action = Some(ConfigUiAction::Close)
-                                }
+                                action_button(ui, "Retry loading config", ConfigUiAction::OpenConfigFile);
+                                action_button(ui, "Ignore and run default config for now", ConfigUiAction::Close);
                             });
                         }
                         ConfigLoadError::TomlError(toml_err, path) => {
                             ui.label(format!("Your config file at {path:?} isn't a valid R-SNES configuration file, see the error below:"));
                             ui.code(toml_err.to_string());
                             ui.horizontal(|ui| {
-                                if ui.button("Retry loading config").clicked() {
-                                    config_ui.action = Some(ConfigUiAction::Reload)
-                                }
-                                if ui.button("Ignore and run default config for now").clicked() {
-                                    config_ui.action = Some(ConfigUiAction::Close)
-                                }
+                                action_button(ui, "Retry loading config", ConfigUiAction::OpenConfigFile);
+                                action_button(ui, "Ignore and run default config for now", ConfigUiAction::Close);
+                                action_button(ui, "Open config file", ConfigUiAction::OpenConfigFile);
                             });
                         }
                     }
