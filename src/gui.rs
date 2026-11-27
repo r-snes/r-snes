@@ -5,6 +5,9 @@ mod test_utils;
 pub mod widgets;
 
 use std::error::Error;
+#[cfg(not(tarpaulin_include))]
+use std::io::Write;
+#[cfg(not(tarpaulin_include))]
 use std::path::PathBuf;
 
 use egui_sdl2::canvas::EguiCanvas;
@@ -20,6 +23,10 @@ use sdl2::video::Window;
 
 use ppu::constants::{SCREEN_HEIGHT, SCREEN_WIDTH};
 
+#[cfg(not(tarpaulin_include))]
+use crate::config::{ConfigLoadError, RSnesConfig};
+#[cfg(not(tarpaulin_include))]
+use crate::gui::widgets::config::ConfigUiAction;
 use crate::rsnes::RomInfo;
 use crate::save_state::slots::{GameSaveStates, SLOT_COUNT, Slot};
 use command::Command;
@@ -249,7 +256,10 @@ impl Gui {
     /// Size of the game area in the smallest window: the SNES screen.
     pub const MIN_GAME_AREA: egui::Vec2 = egui::vec2(SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32);
 
-    pub fn new() -> Result<Self, String> {
+    pub fn new(
+        config_load: Result<RSnesConfig, ConfigLoadError>,
+        config_path: Option<PathBuf>,
+    ) -> Result<Self, String> {
         let sdl_ctx = sdl2::init()?;
         let video_subsystem = sdl_ctx.video()?;
 
@@ -305,11 +315,15 @@ impl Gui {
             event_pump,
             audio_queue,
             framebuffer_texture: None,
-            state: GuiState::default(),
+            state: GuiState::new(config_load, config_path),
             _controller_subsystem: controller_subsystem,
             controller,
             stick_dirs: StickDirs::default(),
         })
+    }
+
+    pub fn config(&self) -> &RSnesConfig {
+        &self.state.config
     }
 
     /// Whether a menu (or any other egui popup) is open.
@@ -344,6 +358,32 @@ impl Gui {
     /// Shows a short message over the game for a moment.
     pub fn notify(&mut self, text: impl Into<String>) {
         self.state.notification = Some(Notification::new(text.into()));
+    }
+
+    /// Returns whether theres is a perm request open
+    #[cfg(feature = "plugins")]
+    pub fn pending_perm_request(&self) -> bool {
+        self.state.pending_plugin.is_some()
+    }
+
+    /// Returns whether theres is an error popup open
+    pub fn pending_error_popup(&self) -> bool {
+        self.state.error_popup.is_some()
+    }
+
+    /// Returns whether the save state picker is open
+    pub fn save_state_picker_open(&self) -> bool {
+        self.state.save_state_picker.is_some()
+    }
+
+    /// Returns whether the config info window is open
+    pub fn config_info_open(&self) -> bool {
+        self.state.config_ui.is_some()
+    }
+
+    /// Whether the ROM info window is open
+    pub fn rom_info_open(&self) -> bool {
+        self.state.show_rom_info
     }
 
     /// Sets the SDL2 window title. Pass `None` to reset to the default.
@@ -414,6 +454,13 @@ impl Gui {
             }
             Command::ChooseSaveState => out.push(RSnesEvent::ChooseSaveState),
             Command::UndoLoadState => out.push(RSnesEvent::UndoLoadState),
+            Command::ReloadConfig => self.state.reload_config(),
+            Command::ToggleConfigErrors => {
+                self.state.config_ui = match self.state.config_ui {
+                    None => Some(Default::default()),
+                    Some(_) => None,
+                };
+            }
             #[cfg(feature = "plugins")]
             Command::LoadPlugin => self.load_plugin_dialog(),
             #[cfg(feature = "plugins")]
@@ -735,6 +782,7 @@ impl Gui {
         widgets::error_box(ctx, area, &mut state.error_popup);
         widgets::save_state_picker(ctx, area, &mut state.save_state_picker);
         widgets::notification(ctx, area, &mut state.notification);
+        widgets::config_error_box(ctx, area, state.config_ui.as_mut(), &state.config_error);
         #[cfg(feature = "plugins")]
         widgets::plugin_perm_request(
             ctx,
@@ -773,6 +821,11 @@ impl Gui {
                 self.state.save_state_picker = None;
             }
             events.push(RSnesEvent::SlotAction(action));
+        }
+        if let Some(config_info) = &mut self.state.config_ui
+            && let Some(action) = config_info.action.take()
+        {
+            self.run_config_ui_action(action);
         }
 
         let ctx = &self.egui_canvas.ctx;
@@ -814,6 +867,58 @@ impl Gui {
             Err(e) => {
                 self.pass_error(Box::new(e));
                 Default::default()
+            }
+        }
+    }
+
+    fn run_config_ui_action(&mut self, action: ConfigUiAction) {
+        let create_new_config = |gui: &mut Self| -> Option<std::fs::File> {
+            let path = gui.state.config_path.as_ref()?;
+            if let Some(parent) = path.parent() {
+                match std::fs::create_dir_all(parent) {
+                    Ok(()) => (),
+                    Err(e) => {
+                        gui.pass_error(Box::new(e));
+                        return None;
+                    }
+                }
+            }
+            match std::fs::OpenOptions::new().write(true).create_new(true).open(path) {
+                Ok(file) => Some(file),
+                Err(e) => {
+                    gui.pass_error(Box::new(e));
+                    None
+                }
+            }
+        };
+
+        match action {
+            ConfigUiAction::Close => self.state.config_ui = None,
+            ConfigUiAction::Reload => self.state.reload_config(),
+            ConfigUiAction::CreateEmptyConfig => {
+                if create_new_config(self).is_some() {
+                    self.state.reload_config();
+                }
+            }
+            ConfigUiAction::CreateDefaultConfig => {
+                if let Some(mut file) = create_new_config(self) {
+                    self.unwrap_result(
+                        file.write_all(crate::assets::DEFAULT_CONFIG_FILE.as_bytes()),
+                    );
+                    drop(file);
+                    self.state.reload_config();
+                }
+            }
+            ConfigUiAction::OpenConfigFile => {
+                if let Some(path) = &self.state.config_path {
+                    self.unwrap_result(opener::open(path))
+                } else {
+                    // only fails when we don't have a path for the config file,
+                    // trying to reload will open the config error box or show
+                    // a notification that the config file is still invalid if
+                    // it was already open
+                    self.state.reload_config();
+                }
             }
         }
     }

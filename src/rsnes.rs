@@ -21,6 +21,7 @@ use std::path::Path;
 use std::path::PathBuf;
 #[cfg(feature = "plugins")]
 use std::time::{Duration, Instant};
+#[cfg(feature = "plugins")]
 use std::{cell::RefCell, rc::Rc};
 
 /// Live state of a host-side controller, driven by user input.

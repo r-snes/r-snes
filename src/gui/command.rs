@@ -1,5 +1,7 @@
 use egui_sdl2::sdl2::keyboard::{Keycode, Mod};
 
+use crate::gui::command::Command::ToggleConfigErrors;
+
 use super::GuiFrameData;
 
 /// A user action, reachable both from the menu bar and from a keyboard shortcut.
@@ -30,6 +32,10 @@ pub enum Command {
     UndoLoadState,
     /// Open the save state window, or close it if it is open.
     ChooseSaveState,
+    /// Reload the configuration from the filesystem
+    ReloadConfig,
+    /// Show or hide the config error window.
+    ToggleConfigErrors,
     /// Pick a Lua plugin with a file dialog. Only possible with no game running,
     /// since the plugin is injected when the next ROM starts.
     #[cfg(feature = "plugins")]
@@ -90,6 +96,8 @@ impl Command {
         Command::LoadLatestState,
         Command::UndoLoadState,
         Command::ChooseSaveState,
+        Command::ToggleConfigErrors,
+        Command::ReloadConfig,
         #[cfg(feature = "plugins")]
         Command::LoadPlugin,
         #[cfg(feature = "plugins")]
@@ -108,6 +116,8 @@ impl Command {
             Command::LoadLatestState => Shortcut::plain(Keycode::F3),
             Command::UndoLoadState => Shortcut::ctrl(Keycode::F3),
             Command::ChooseSaveState => Shortcut::plain(Keycode::F4),
+            Command::ReloadConfig => Shortcut::ctrl(Keycode::T),
+            Command::ToggleConfigErrors => Shortcut::ctrl(Keycode::E),
             #[cfg(feature = "plugins")]
             Command::LoadPlugin => Shortcut::ctrl(Keycode::P),
             #[cfg(feature = "plugins")]
@@ -137,6 +147,12 @@ impl Command {
             | Command::LoadLatestState
             | Command::UndoLoadState
             | Command::ChooseSaveState => rom_loaded,
+
+            // we allow the user to open the config error box even when there's no error
+            // so that they can see the "Config file OK" message
+            ToggleConfigErrors => true,
+
+            Command::ReloadConfig => true,
             #[cfg(feature = "plugins")]
             Command::LoadPlugin => !rom_loaded,
             #[cfg(feature = "plugins")]

@@ -8,16 +8,20 @@
 //! It contains the main loop, which handles GUI events,
 //! emulation updates, and audio output.
 
+mod assets;
 mod audio;
+mod config;
 mod dma;
 mod gui;
 mod rsnes;
 mod save_state;
+
 #[cfg(test)]
 mod test_utils;
 
 use crate::{
     audio::GameAudio,
+    config::{ConfigLoadError, RSnesConfig},
     gui::{Gui, GuiFrameData, RSnesEvent, SlotAction, SnesButton},
     rsnes::{RSnesCore, RSnesEmu},
     save_state::{SaveStateError, slots::GameSaveStates},
@@ -26,9 +30,12 @@ use crate::{
 #[cfg(feature = "cli")]
 use clap::Parser;
 
+use common::bool_combinators::or;
 #[cfg(feature = "plugins")]
 use plugins::plugin::Plugin;
 use std::{
+    error::Error,
+    ffi::OsString,
     fs, io,
     path::PathBuf,
     time::{Duration, Instant},
@@ -120,9 +127,6 @@ fn gui_emu_loop(
     let mut frame_nb = 0_u64;
     let exec_start = Instant::now();
 
-    // Close any overlays that might have been left open from the previous window.
-    gui.close_overlays();
-
     // Snapshot the ROM header once — it never changes while the ROM is loaded,
     // so there's no reason to rebuild it every frame.
     let rom_info = rsnes.rom_info();
@@ -149,11 +153,21 @@ fn gui_emu_loop(
     let closing_ev = 'emu_loop: loop {
         let frame_start = Instant::now();
 
-        // Emulation also stands still while a menu is open, so the game
-        // doesn't carry on unattended. The last frame stays on screen, and
-        // the device is paused with its queue intact, so resuming picks up
-        // exactly where the sound left off.
-        let running = !paused && !gui.menu_open();
+        let paus_when = gui.config().general.pause_when.0;
+        // Emulation stands still while a pause condition is met.
+        // The last frame stays on screen, and the device is paused with its
+        // queue intact, so resuming picks up exactly where the sound left off.
+        let running = !or([
+            paused,
+            gui.menu_open() && paus_when.contains(config::GuiContext::Navbar),
+            #[cfg(feature = "plugins")]
+            (gui.pending_perm_request() && paus_when.contains(config::GuiContext::PermRequest)),
+            gui.rom_info_open() && paus_when.contains(config::GuiContext::RomInfo),
+            gui.pending_error_popup() && paus_when.contains(config::GuiContext::ErrorPopup),
+            gui.save_state_picker_open() && paus_when.contains(config::GuiContext::SaveState),
+            gui.config_info_open() && paus_when.contains(config::GuiContext::ConfigInfo),
+        ]);
+
         audio.set_running(gui, running);
 
         // run master cycles until the PPU completes a frame
@@ -332,12 +346,12 @@ fn gui_idle_loop(gui: &mut Gui, default_framebuffer: &ppu::rendering::RawFramebu
 
 fn gui_loop(
     mut rsnes_core: Option<RSnesCore>,
+    config_load: Result<RSnesConfig, ConfigLoadError>,
+    config_path: Option<PathBuf>,
 
     #[cfg(feature = "plugins")] mut plugin: Option<Plugin>,
 ) -> Result<(), String> {
-    let mut gui = gui::Gui::new()?;
-    const DEFAULT_FRAMEBUFFER: &ppu::rendering::RawFramebuffer =
-        include_bytes!("../assets/logo_framebuffer.raw");
+    let mut gui = gui::Gui::new(config_load, config_path)?;
 
     loop {
         // move out of the `Option` in case it's `Some`
@@ -346,7 +360,7 @@ fn gui_loop(
         // we leave the loop
         let ev = match rsnes_core.take() {
             None => {
-                let idle_exit = gui_idle_loop(&mut gui, DEFAULT_FRAMEBUFFER);
+                let idle_exit = gui_idle_loop(&mut gui, assets::DEFAULT_FRAMEBUFFER);
                 cfg_select! {
                     feature = "plugins" => {
                         let (ev, new_plugin) = idle_exit;
@@ -397,8 +411,63 @@ struct Cli {
     /// A plugin to load at startup, **without any confirmation
     /// for requested permissions**
     #[cfg(feature = "plugins")]
-    #[arg(long, value_name = "PLUGIN.lua")]
+    #[cfg_attr(feature = "cli", arg(long, value_name = "PLUGIN.lua"))]
     pub load_plugin_noconfirm: Option<PathBuf>,
+
+    /// A custom config file path to use instead of the system default
+    #[cfg_attr(
+        feature = "cli",
+        arg(
+            long,
+            short = 'c',
+            value_name = "path/to/config.toml",
+            default_value_os_t
+        )
+    )]
+    pub config_file: ConfigPath,
+
+    /// Don't start the emulator, just check that the config file loads
+    /// properly. Prints an error messages to the terminal in case of
+    /// failure (the error would otherwise be shown in the graphical window)
+    ///
+    /// Use together with `-c` to check a config file for correctness
+    #[cfg_attr(feature = "cli", arg(long, default_value_t = false))]
+    pub verify_config: bool,
+}
+
+// Special handling for the default of Cli's `config_file` field:
+// we want the default to use the path determined using `directories`,
+// but this is fallible too (in case we don't find a user's $HOME).
+// Plus clap is extra weird and wants to store the default value in
+// a lazy static (an OsString since we use `default_value_os_t`, it's
+// a String otherwise, which messes up non-UTF8 even if the underlying field
+// is a PathBuf).
+// So we have to define how to convert to and from this lazy OsString,
+// and we decide to use the empty string as a placeholder for None (when
+// `directories` failed to find a config dir), which should be fine because
+// the empty string would always be an invalid config path anyways
+#[derive(Clone)]
+struct ConfigPath(Option<PathBuf>);
+impl Default for ConfigPath {
+    fn default() -> Self {
+        Self(config::config_path())
+    }
+}
+impl From<OsString> for ConfigPath {
+    fn from(value: OsString) -> Self {
+        match value {
+            v if v.is_empty() => Self(None),
+            v => Self(Some(PathBuf::from(v))),
+        }
+    }
+}
+impl From<ConfigPath> for OsString {
+    fn from(value: ConfigPath) -> Self {
+        match value.0 {
+            None => "".into(),
+            Some(p) => p.into(),
+        }
+    }
 }
 
 fn main() -> Result<(), String> {
@@ -416,6 +485,25 @@ fn main() -> Result<(), String> {
         }
     };
 
+    let config = config::read_config(cli.config_file.0.as_ref());
+    if cli.verify_config {
+        match &config {
+            Err(load_error) => {
+                println!("Config file error: {load_error}");
+                let mut rec_err: &dyn Error = &load_error;
+                while let Some(err) = rec_err.source() {
+                    println!("Caused by: {err}");
+                    rec_err = err;
+                }
+                std::process::exit(1)
+            }
+            Ok(_) => {
+                println!("Config file OK");
+                std::process::exit(0)
+            }
+        }
+    };
+
     let emu = match cli.rom {
         None => None,
         Some(rom_path) => Some(RSnesCore::load_rom(&rom_path).map_err(|e| e.to_string())?),
@@ -424,10 +512,12 @@ fn main() -> Result<(), String> {
     cfg_select! {
         feature = "plugins" => gui_loop(
             emu,
+            config,
+            cli.config_file.0,
             cli.load_plugin_noconfirm
                 .map(|p| Plugin::load_from_file(&p).unwrap()),
         ),
-        _ => gui_loop(emu),
+        _ => gui_loop(emu, config, cli.config_file.0),
     }
 }
 
