@@ -773,13 +773,15 @@ pub fn config_error_box(
                 .default_height(40.0)
                 .open(&mut open)
                 .show(ctx, |ui| {
-                    ui.centered_and_justified(|ui| ui.label("Config file OK!"));
-                    if ui.button("Open config file in default editor").clicked() {
-                        config_ui.action = Some(ConfigUiAction::OpenConfigFile)
-                    }
-                    if ui.button("Reload config").clicked() {
-                        config_ui.action = Some(ConfigUiAction::Reload)
-                    }
+                    ui.label("Config file OK!");
+                    ui.horizontal(|ui| {
+                        if ui.button("Open config file in default editor").clicked() {
+                            config_ui.action = Some(ConfigUiAction::OpenConfigFile)
+                        }
+                        if ui.button("Reload config").clicked() {
+                            config_ui.action = Some(ConfigUiAction::Reload)
+                        }
+                    });
                 });
             if !open {
                 config_ui.action = Some(ConfigUiAction::Close)
