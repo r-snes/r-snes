@@ -6,6 +6,8 @@ pub mod widgets;
 
 use std::error::Error;
 #[cfg(not(tarpaulin_include))]
+use std::io::Write;
+#[cfg(not(tarpaulin_include))]
 use std::path::PathBuf;
 
 use egui_sdl2::canvas::EguiCanvas;
@@ -870,43 +872,41 @@ impl Gui {
     }
 
     fn run_config_ui_action(&mut self, action: ConfigUiAction) {
+        let create_new_config = |gui: &mut Self| -> Option<std::fs::File> {
+            let path = gui.state.config_path.as_ref()?;
+            if let Some(parent) = path.parent() {
+                match std::fs::create_dir_all(parent) {
+                    Ok(()) => (),
+                    Err(e) => {
+                        gui.pass_error(Box::new(e));
+                        return None;
+                    }
+                }
+            }
+            match std::fs::OpenOptions::new().write(true).create(true).open(path) {
+                Ok(file) => Some(file),
+                Err(e) => {
+                    gui.pass_error(Box::new(e));
+                    None
+                }
+            }
+        };
+
         match action {
             ConfigUiAction::Close => self.state.config_ui = None,
             ConfigUiAction::Reload => self.state.reload_config(),
             ConfigUiAction::CreateEmptyConfig => {
-                let Some(path) = self.state.config_path.as_ref() else {
-                    return;
-                };
-                if let Some(parent) = path.parent() {
-                    match std::fs::create_dir_all(parent) {
-                        Ok(()) => (),
-                        Err(e) => {
-                            self.pass_error(Box::new(e));
-                            return;
-                        }
-                    }
-                }
-                match std::fs::File::create(path) {
-                    Ok(_) => self.state.reload_config(),
-                    Err(e) => self.pass_error(Box::new(e)),
+                if create_new_config(self).is_some() {
+                    self.state.reload_config();
                 }
             }
             ConfigUiAction::CreateDefaultConfig => {
-                let Some(path) = self.state.config_path.as_ref() else {
-                    return;
-                };
-                if let Some(parent) = path.parent() {
-                    match std::fs::create_dir_all(parent) {
-                        Ok(()) => (),
-                        Err(e) => {
-                            self.pass_error(Box::new(e));
-                            return;
-                        }
-                    }
-                }
-                match std::fs::write(path, crate::assets::DEFAULT_CONFIG_FILE) {
-                    Ok(()) => self.state.reload_config(),
-                    Err(e) => self.pass_error(Box::new(e)),
+                if let Some(mut file) = create_new_config(self) {
+                    self.unwrap_result(
+                        file.write_all(crate::assets::DEFAULT_CONFIG_FILE.as_bytes()),
+                    );
+                    drop(file);
+                    self.state.reload_config();
                 }
             }
             ConfigUiAction::OpenConfigFile => {
