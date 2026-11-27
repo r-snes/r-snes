@@ -100,7 +100,7 @@ impl std::error::Error for ConfigLoadError {
 
 pub fn config_path() -> Option<PathBuf> {
     Some(
-        directories::ProjectDirs::from("", "R-SNES", "R-SNES")?
+        directories::ProjectDirs::from("", "", "r-snes")?
             .config_dir()
             .join("r-snes_config.toml"),
     )
