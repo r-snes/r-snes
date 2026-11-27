@@ -23,9 +23,11 @@ pub type RawARAM = [u8; 64 * 1024];
 /// Everything else, including `$F200–$F27F`, is plain RAM. (An earlier
 /// test-only shortcut mapped the DSP registers there; games upload sample
 /// data into that range, so it sent their samples into the DSP.)
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct Memory {
     /// 64 KB APU RAM.  All addresses that are not intercepted as I/O
     /// read/write from/to this array.
+    #[serde(with = "common::serde_arrays::boxed_array")]
     pub ram: Box<RawARAM>, // 64KB APU RAM,
 
     /// The DSP register file.  Accessed by the CPU exclusively through

@@ -1,0 +1,938 @@
+{
+  "info": {
+    "format_version": 1,
+    "emulator_version": "0.1.0",
+    "rom_checksum": 2135999264,
+    "created_at": {
+      "secs_since_epoch": 1795710593,
+      "nanos_since_epoch": 683806000
+    }
+  },
+  "core": {
+    "wram": {
+      "data": {
+        "len": 131072,
+        "crc32": "5EC16E84"
+      }
+    },
+    "io": {
+      "wmadd": {
+        "bank": "Bank7E",
+        "addr": 0
+      },
+      "joyout": 0,
+      "controllers": [
+        {
+          "connected": true,
+          "buttons": 0,
+          "shift": 65535,
+          "latch": false
+        },
+        {
+          "connected": true,
+          "buttons": 0,
+          "shift": 65535,
+          "latch": false
+        }
+      ],
+      "auto_joypad": "Idle",
+      "nmitimen": 129,
+      "wrio": 255,
+      "wrmpya": 4,
+      "wrmpyb": 4,
+      "wrdiv": 65535,
+      "wrdivb": 255,
+      "htime": 511,
+      "vtime": 511,
+      "mdmaen": 0,
+      "hdmaen": 2,
+      "memsel": 0,
+      "rddiv": 0,
+      "rdmpy": 16,
+      "rdnmi": 2,
+      "timeup": 0,
+      "hvbjoy": 0,
+      "joy1": 0,
+      "joy2": 0,
+      "joy3": 0,
+      "joy4": 0,
+      "dma_channels": [
+        {
+          "dmap": 1,
+          "bbad": 24,
+          "a1t": {
+            "bank": 0,
+            "addr": 2048
+          },
+          "das": 0,
+          "dasb": 255,
+          "a2a": 65535,
+          "nltr": 255,
+          "unused": 255
+        },
+        {
+          "dmap": 0,
+          "bbad": 0,
+          "a1t": {
+            "bank": 0,
+            "addr": 33280
+          },
+          "das": 255,
+          "dasb": 255,
+          "a2a": 33285,
+          "nltr": 255,
+          "unused": 255
+        },
+        {
+          "dmap": 255,
+          "bbad": 255,
+          "a1t": {
+            "bank": 255,
+            "addr": 65535
+          },
+          "das": 255,
+          "dasb": 255,
+          "a2a": 65535,
+          "nltr": 255,
+          "unused": 255
+        },
+        {
+          "dmap": 255,
+          "bbad": 255,
+          "a1t": {
+            "bank": 255,
+            "addr": 65535
+          },
+          "das": 255,
+          "dasb": 255,
+          "a2a": 65535,
+          "nltr": 255,
+          "unused": 255
+        },
+        {
+          "dmap": 255,
+          "bbad": 255,
+          "a1t": {
+            "bank": 255,
+            "addr": 65535
+          },
+          "das": 255,
+          "dasb": 255,
+          "a2a": 65535,
+          "nltr": 255,
+          "unused": 255
+        },
+        {
+          "dmap": 255,
+          "bbad": 255,
+          "a1t": {
+            "bank": 255,
+            "addr": 65535
+          },
+          "das": 255,
+          "dasb": 255,
+          "a2a": 65535,
+          "nltr": 255,
+          "unused": 255
+        },
+        {
+          "dmap": 255,
+          "bbad": 255,
+          "a1t": {
+            "bank": 255,
+            "addr": 65535
+          },
+          "das": 255,
+          "dasb": 255,
+          "a2a": 65535,
+          "nltr": 255,
+          "unused": 255
+        },
+        {
+          "dmap": 255,
+          "bbad": 255,
+          "a1t": {
+            "bank": 255,
+            "addr": 65535
+          },
+          "das": 255,
+          "dasb": 255,
+          "a2a": 65535,
+          "nltr": 255,
+          "unused": 255
+        }
+      ],
+      "open_bus": 8
+    },
+    "sram": {
+      "data": {
+        "len": 8192,
+        "crc32": "DDFD2313"
+      },
+      "mask": 8191
+    },
+    "cpu": {
+      "registers": {
+        "A": 1,
+        "DB": 0,
+        "D": 0,
+        "X": 2048,
+        "Y": 0,
+        "P": {
+          "C": true,
+          "N": false,
+          "V": false,
+          "Z": false,
+          "D": false,
+          "I": true,
+          "M": true,
+          "X": false
+        },
+        "E": false,
+        "PB": 0,
+        "PC": 32883,
+        "S": 8191
+      },
+      "addr_bus": {
+        "bank": 0,
+        "addr": 32882
+      },
+      "addr_bus2": {
+        "bank": 0,
+        "addr": 0
+      },
+      "data_bus": 203,
+      "state": "WaitForInterrupt",
+      "internal_data_bus": 16907,
+      "next_cycle": "cpu::instrs::interrupts::wai::wai_cyc2",
+      "next_fetch": "cpu::instrs::interrupts::wai::wai_cyc2"
+    },
+    "ppu": {
+      "regs": {
+        "inidisp": 8,
+        "objsel": 0,
+        "oamadd": 0,
+        "bgmode": 1,
+        "mosaic": 0,
+        "bgsc": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "bg12nba": 0,
+        "bg34nba": 0,
+        "bg1hofs": 0,
+        "m7hofs": 0,
+        "bg1vofs": 0,
+        "m7vofs": 0,
+        "bghofs": [
+          0,
+          0,
+          0
+        ],
+        "bgvofs": [
+          0,
+          0,
+          0
+        ],
+        "vmain": 128,
+        "vmadd": 1024,
+        "m7sel": 0,
+        "m7a": 0,
+        "m7b": 0,
+        "m7c": 0,
+        "m7d": 0,
+        "m7x": 0,
+        "m7y": 0,
+        "w12sel": 0,
+        "w34sel": 0,
+        "wobjsel": 0,
+        "wh0": 0,
+        "wh1": 0,
+        "wh2": 0,
+        "wh3": 0,
+        "wbglog": 0,
+        "wobjlog": 0,
+        "tm": 1,
+        "ts": 0,
+        "tmw": 0,
+        "tsw": 0,
+        "cgwsel": 0,
+        "cgadsub": 0,
+        "coldata": 0,
+        "setini": 0,
+        "mpy": 0,
+        "ophct": 0,
+        "opvct": 0,
+        "bgofs_latch": 0,
+        "bghofs_latch": 0,
+        "mode7_latch": 0,
+        "cgram_latch": {
+          "latch": 4,
+          "phase": "Low"
+        },
+        "ophct_latch": {
+          "latch": 0,
+          "phase": "Low"
+        },
+        "opvct_latch": {
+          "latch": 0,
+          "phase": "Low"
+        },
+        "counter_latch": false
+      },
+      "vram": {
+        "memory": {
+          "len": 32768,
+          "crc32": "D2EFA0AE"
+        },
+        "vram_latch": 3
+      },
+      "cgram": {
+        "memory": {
+          "len": 256,
+          "crc32": "364A5BC4"
+        },
+        "word_addr": 1
+      },
+      "oam": {
+        "data": {
+          "len": 544,
+          "crc32": "5C6B9531"
+        },
+        "address": 0,
+        "write_latch": 0,
+        "time_over": false,
+        "range_over": true
+      },
+      "scanline": 131,
+      "h_cycles": 4,
+      "frame": 3,
+      "mosaic_vcounter": 0,
+      "ppu1_open_bus": 0,
+      "ppu2_open_bus": 0
+    },
+    "renderer": {
+      "framebuffer": {
+        "len": 172032,
+        "crc32": "3450F2B7"
+      },
+      "presented": {
+        "len": 172032,
+        "crc32": "A5E9F2A7"
+      }
+    },
+    "apu": {
+      "cpu": {
+        "regs": {
+          "a": 0,
+          "x": 0,
+          "y": 0,
+          "sp": 239,
+          "pc": 65472,
+          "psw": 0
+        },
+        "cycles": 0,
+        "halted": false
+      },
+      "memory": {
+        "ram": {
+          "len": 65536,
+          "crc32": "4698620A"
+        },
+        "dsp": {
+          "registers": {
+            "len": 128,
+            "crc32": "CD3D5223"
+          },
+          "voices": [
+            {
+              "left_vol": 0,
+              "right_vol": 0,
+              "pitch": 0,
+              "srcn": 0,
+              "key_on": false,
+              "pitch_counter": 0,
+              "current_sample": 0,
+              "history": [
+                0,
+                0,
+                0,
+                0
+              ],
+              "adsr": {
+                "adsr_mode": false,
+                "gain_param": 0,
+                "attack_rate": 0,
+                "decay_rate": 0,
+                "sustain_level": 0,
+                "sustain_rate": 0,
+                "envelope_level": 0,
+                "envelope_phase": "Off",
+                "tick_counter": 0
+              },
+              "brr": {
+                "addr": 0,
+                "nibble_idx": 0,
+                "prev1": 0,
+                "prev2": 0,
+                "block_end": false,
+                "sample_buffer": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "buffer_fill": 0
+              }
+            },
+            {
+              "left_vol": 0,
+              "right_vol": 0,
+              "pitch": 0,
+              "srcn": 0,
+              "key_on": false,
+              "pitch_counter": 0,
+              "current_sample": 0,
+              "history": [
+                0,
+                0,
+                0,
+                0
+              ],
+              "adsr": {
+                "adsr_mode": false,
+                "gain_param": 0,
+                "attack_rate": 0,
+                "decay_rate": 0,
+                "sustain_level": 0,
+                "sustain_rate": 0,
+                "envelope_level": 0,
+                "envelope_phase": "Off",
+                "tick_counter": 0
+              },
+              "brr": {
+                "addr": 0,
+                "nibble_idx": 0,
+                "prev1": 0,
+                "prev2": 0,
+                "block_end": false,
+                "sample_buffer": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "buffer_fill": 0
+              }
+            },
+            {
+              "left_vol": 0,
+              "right_vol": 0,
+              "pitch": 0,
+              "srcn": 0,
+              "key_on": false,
+              "pitch_counter": 0,
+              "current_sample": 0,
+              "history": [
+                0,
+                0,
+                0,
+                0
+              ],
+              "adsr": {
+                "adsr_mode": false,
+                "gain_param": 0,
+                "attack_rate": 0,
+                "decay_rate": 0,
+                "sustain_level": 0,
+                "sustain_rate": 0,
+                "envelope_level": 0,
+                "envelope_phase": "Off",
+                "tick_counter": 0
+              },
+              "brr": {
+                "addr": 0,
+                "nibble_idx": 0,
+                "prev1": 0,
+                "prev2": 0,
+                "block_end": false,
+                "sample_buffer": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "buffer_fill": 0
+              }
+            },
+            {
+              "left_vol": 0,
+              "right_vol": 0,
+              "pitch": 0,
+              "srcn": 0,
+              "key_on": false,
+              "pitch_counter": 0,
+              "current_sample": 0,
+              "history": [
+                0,
+                0,
+                0,
+                0
+              ],
+              "adsr": {
+                "adsr_mode": false,
+                "gain_param": 0,
+                "attack_rate": 0,
+                "decay_rate": 0,
+                "sustain_level": 0,
+                "sustain_rate": 0,
+                "envelope_level": 0,
+                "envelope_phase": "Off",
+                "tick_counter": 0
+              },
+              "brr": {
+                "addr": 0,
+                "nibble_idx": 0,
+                "prev1": 0,
+                "prev2": 0,
+                "block_end": false,
+                "sample_buffer": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "buffer_fill": 0
+              }
+            },
+            {
+              "left_vol": 0,
+              "right_vol": 0,
+              "pitch": 0,
+              "srcn": 0,
+              "key_on": false,
+              "pitch_counter": 0,
+              "current_sample": 0,
+              "history": [
+                0,
+                0,
+                0,
+                0
+              ],
+              "adsr": {
+                "adsr_mode": false,
+                "gain_param": 0,
+                "attack_rate": 0,
+                "decay_rate": 0,
+                "sustain_level": 0,
+                "sustain_rate": 0,
+                "envelope_level": 0,
+                "envelope_phase": "Off",
+                "tick_counter": 0
+              },
+              "brr": {
+                "addr": 0,
+                "nibble_idx": 0,
+                "prev1": 0,
+                "prev2": 0,
+                "block_end": false,
+                "sample_buffer": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "buffer_fill": 0
+              }
+            },
+            {
+              "left_vol": 0,
+              "right_vol": 0,
+              "pitch": 0,
+              "srcn": 0,
+              "key_on": false,
+              "pitch_counter": 0,
+              "current_sample": 0,
+              "history": [
+                0,
+                0,
+                0,
+                0
+              ],
+              "adsr": {
+                "adsr_mode": false,
+                "gain_param": 0,
+                "attack_rate": 0,
+                "decay_rate": 0,
+                "sustain_level": 0,
+                "sustain_rate": 0,
+                "envelope_level": 0,
+                "envelope_phase": "Off",
+                "tick_counter": 0
+              },
+              "brr": {
+                "addr": 0,
+                "nibble_idx": 0,
+                "prev1": 0,
+                "prev2": 0,
+                "block_end": false,
+                "sample_buffer": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "buffer_fill": 0
+              }
+            },
+            {
+              "left_vol": 0,
+              "right_vol": 0,
+              "pitch": 0,
+              "srcn": 0,
+              "key_on": false,
+              "pitch_counter": 0,
+              "current_sample": 0,
+              "history": [
+                0,
+                0,
+                0,
+                0
+              ],
+              "adsr": {
+                "adsr_mode": false,
+                "gain_param": 0,
+                "attack_rate": 0,
+                "decay_rate": 0,
+                "sustain_level": 0,
+                "sustain_rate": 0,
+                "envelope_level": 0,
+                "envelope_phase": "Off",
+                "tick_counter": 0
+              },
+              "brr": {
+                "addr": 0,
+                "nibble_idx": 0,
+                "prev1": 0,
+                "prev2": 0,
+                "block_end": false,
+                "sample_buffer": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "buffer_fill": 0
+              }
+            },
+            {
+              "left_vol": 0,
+              "right_vol": 0,
+              "pitch": 0,
+              "srcn": 0,
+              "key_on": false,
+              "pitch_counter": 0,
+              "current_sample": 0,
+              "history": [
+                0,
+                0,
+                0,
+                0
+              ],
+              "adsr": {
+                "adsr_mode": false,
+                "gain_param": 0,
+                "attack_rate": 0,
+                "decay_rate": 0,
+                "sustain_level": 0,
+                "sustain_rate": 0,
+                "envelope_level": 0,
+                "envelope_phase": "Off",
+                "tick_counter": 0
+              },
+              "brr": {
+                "addr": 0,
+                "nibble_idx": 0,
+                "prev1": 0,
+                "prev2": 0,
+                "block_end": false,
+                "sample_buffer": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "buffer_fill": 0
+              }
+            }
+          ],
+          "dir_base": 0,
+          "master_vol_left": 0,
+          "master_vol_right": 0,
+          "flg": 224,
+          "new_kon": 0,
+          "every_other_sample": true,
+          "kon_delay": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "non": 0,
+          "pmon": 0,
+          "noise_lfsr": 16384,
+          "noise_tick_counter": 0,
+          "echo_vol_left": 0,
+          "echo_vol_right": 0,
+          "efb": 0,
+          "eon": 0,
+          "esa": 0,
+          "edl": 0,
+          "fir_coeff": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "fir_history": [
+            [
+              0,
+              0
+            ],
+            [
+              0,
+              0
+            ],
+            [
+              0,
+              0
+            ],
+            [
+              0,
+              0
+            ],
+            [
+              0,
+              0
+            ],
+            [
+              0,
+              0
+            ],
+            [
+              0,
+              0
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "echo_ptr": 0,
+          "echo_len": 0,
+          "echo_out_l": 0,
+          "echo_out_r": 0
+        },
+        "dsp_addr": 0,
+        "control": 128,
+        "port_in": [
+          4,
+          0,
+          0,
+          0
+        ],
+        "port_out": [
+          170,
+          187,
+          0,
+          0
+        ],
+        "timer_div": [
+          0,
+          0,
+          0
+        ],
+        "timer_out": [
+          0,
+          0,
+          0
+        ]
+      },
+      "timers": {
+        "cycle": 115,
+        "stage": [
+          0,
+          0,
+          0
+        ],
+        "prev_enable": 0
+      },
+      "cycles": 59635,
+      "dsp_cycles": 19,
+      "cycle_debt": 0,
+      "ipl": "AwaitStart",
+      "bytes_this_block": 0
+    },
+    "dma": {
+      "state": "Idle",
+      "wait": 0,
+      "dma_running": false,
+      "dma": null,
+      "hdma_pending": false,
+      "hdma_init": false,
+      "hdma_queue": 0,
+      "channels": [
+        {
+          "line_counter": 0,
+          "do_transfer": false,
+          "finished": false
+        },
+        {
+          "line_counter": 0,
+          "do_transfer": true,
+          "finished": true
+        },
+        {
+          "line_counter": 0,
+          "do_transfer": false,
+          "finished": false
+        },
+        {
+          "line_counter": 0,
+          "do_transfer": false,
+          "finished": false
+        },
+        {
+          "line_counter": 0,
+          "do_transfer": false,
+          "finished": false
+        },
+        {
+          "line_counter": 0,
+          "do_transfer": false,
+          "finished": false
+        },
+        {
+          "line_counter": 0,
+          "do_transfer": false,
+          "finished": false
+        },
+        {
+          "line_counter": 0,
+          "do_transfer": false,
+          "finished": false
+        }
+      ]
+    },
+    "master_cycles": 1250788,
+    "cpu_master_cycles_to_wait": 1,
+    "apu_cycle_debt": 8126500,
+    "nmi_line": false
+  }
+}

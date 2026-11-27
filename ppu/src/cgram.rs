@@ -12,8 +12,10 @@ use crate::write_twice::BytePhase;
 use common::u16_split::U16Split;
 
 /// Palette memory, its word address and the open bus used by reads.
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct CGRAM {
     /// CGRAM content, stored as 16-bit words (one color per word).
+    #[serde(with = "common::serde_arrays::array")]
     pub memory: [u16; CGRAM_SIZE / 2],
     /// Internal 8-bit word address (0-255).
     word_addr: u8,

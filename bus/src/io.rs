@@ -18,6 +18,7 @@ use ppu::ppu::PPU;
 ///
 /// # Reference
 /// [SNESdev Wiki - MMIO registers](https://snes.nesdev.org/wiki/MMIO_registers)
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct Io {
     /// **WMADDL/M/H** (`0x2181–0x2183`, W) - 17-bit WRAM address used by
     /// **WMDATA** (`0x2180`, R/W) when reading/writing WRAM through it.
@@ -199,7 +200,7 @@ pub struct Io {
 }
 
 /// WRAM bank selected by bit 0 of WMADDH (`0x2183`)
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[repr(u8)]
 pub enum WmAddBank {
     /// First WRAM bank (bit 0 cleared)
@@ -210,7 +211,7 @@ pub enum WmAddBank {
 }
 
 /// 17-bit WRAM address held by WMADDL/M/H, used by WMDATA
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Copy, Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct WmAddress {
     /// WRAM bank (the 17th bit of the address)
     pub bank: WmAddBank,
@@ -219,7 +220,7 @@ pub struct WmAddress {
 }
 
 /// Once-per-frame auto-joypad read, clocked by master cycles.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 enum AutoJoypad {
     /// Not reading (disabled, or this frame's read has finished).
     #[default]
@@ -240,6 +241,7 @@ enum AutoJoypad {
 ///
 /// # Reference
 /// [SNESdev Wiki - DMA registers](https://snes.nesdev.org/wiki/DMA_registers)
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct DMAChannel {
     /// **DMAPn** (`0x43n0`) - Channel parameters.
     /// Bit 7 = direction (0: CPU->PPU, 1: PPU->CPU), bit 6 = HDMA indirect

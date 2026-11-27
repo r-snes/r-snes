@@ -6,7 +6,7 @@ use crate::cartridge::header::RomHeader;
 ///
 /// On real hardware this chip is battery-backed, which is what makes it save
 /// data. At the moment it does not save anywhere and just acts as a basic RAM.
-#[derive(PartialEq)]
+#[derive(PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Sram {
     data: Vec<u8>,
     mask: usize,
@@ -22,6 +22,12 @@ impl Sram {
             data: vec![0xFF; size],
             mask: size.saturating_sub(1),
         }
+    }
+
+    /// Whether `other` has the same size and mirroring as this S-RAM, so
+    /// that it can take its place, e.g. when loading a save state.
+    pub fn same_layout(&self, other: &Sram) -> bool {
+        self.data.len() == other.data.len() && self.mask == other.mask
     }
 
     /// Whether the cartridge has an S-RAM chip
@@ -49,5 +55,33 @@ impl Sram {
             let offset = linear & self.mask;
             self.data[offset] = value;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sram(size: usize, mask: usize) -> Sram {
+        Sram {
+            data: vec![0; size],
+            mask,
+        }
+    }
+
+    #[test]
+    fn an_sram_of_the_same_size_and_mirroring_has_the_same_layout() {
+        assert!(sram(0x2000, 0x1FFF).same_layout(&sram(0x2000, 0x1FFF)));
+        assert!(sram(0, 0).same_layout(&sram(0, 0)));
+    }
+
+    #[test]
+    fn an_sram_of_another_size_or_mirroring_has_another_layout() {
+        let sram_ = sram(0x2000, 0x1FFF);
+
+        assert!(!sram_.same_layout(&sram(0x800, 0x7FF)));
+        assert!(!sram_.same_layout(&sram(0, 0)));
+        assert!(!sram_.same_layout(&sram(0x800, 0x1FFF)));
+        assert!(!sram_.same_layout(&sram(0x2000, 0x7FF)));
     }
 }

@@ -16,7 +16,7 @@ use ppu::ppu::PPU;
 use ppu::ppu::PpuEvent;
 use ppu::ppu::ScanlineKind;
 use std::error::Error;
-use std::ops::DerefMut;
+use std::ops::{Deref, DerefMut};
 use std::path::Path;
 use std::path::PathBuf;
 #[cfg(feature = "plugins")]
@@ -49,7 +49,7 @@ impl JoypadState {
 /// without anything else: no GUI handles, no additional resources for
 /// plugin execution; just the hardware components.
 pub struct RSnesCore {
-    pub _rom_path: PathBuf,
+    pub rom_path: PathBuf,
     pub bus: Bus,
     pub cpu: CPU,
     pub ppu: PPU,
@@ -61,6 +61,9 @@ pub struct RSnesCore {
     pub dma: Dma,
     pub nmi_line: bool,
     pub joypads: [JoypadState; 2],
+    /// CRC32 of the ROM (without copier header), computed once at load.
+    /// Identifies the game: a save state is only loaded into the same ROM.
+    pub rom_checksum: u32,
 }
 
 /// Snapshot of the loaded ROM's metadata for display in the GUI.
@@ -70,7 +73,7 @@ pub struct RSnesCore {
 #[derive(Clone)]
 pub struct RomInfo {
     pub path: PathBuf,
-    /// Actual size of the ROM file on disk, in KB - not the header's
+    /// Actual size of the ROM file on disk, in KiB - not the header's
     /// `rom_size` exponent, which is what the cartridge *claims*.
     pub file_size_kb: usize,
     pub header: RomHeader,
@@ -80,7 +83,7 @@ impl RSnesCore {
     /// Builds a display snapshot of the loaded ROM's metadata.
     pub fn rom_info(&self) -> RomInfo {
         RomInfo {
-            path: self._rom_path.clone(),
+            path: self.rom_path.clone(),
             file_size_kb: self.bus.cart.rom.len() / 1024,
             header: self.bus.cart.header.clone(),
         }
@@ -104,13 +107,14 @@ impl RSnesCore {
 
     pub fn load_rom<P: AsRef<Path>>(rom_path: &P) -> Result<Self, Box<dyn Error>> {
         let bus = Bus::new(rom_path)?;
+        let rom_checksum = crc32fast::hash(&bus.cart.rom);
         let cpu = CPU::poweron();
         let ppu = PPU::new();
         let ppu_renderer = ppu::Renderer::new();
         let apu = Apu::new();
 
         Ok(Self {
-            _rom_path: rom_path.as_ref().to_path_buf().clone(),
+            rom_path: rom_path.as_ref().to_path_buf().clone(),
             bus,
             cpu,
             ppu,
@@ -122,6 +126,7 @@ impl RSnesCore {
             dma: Dma::default(),
             nmi_line: false,
             joypads: Default::default(),
+            rom_checksum,
         })
     }
 
@@ -339,7 +344,7 @@ impl RSnesEmu {
     const REAL_TIME_CHECK_PERIOD_CYCLES: u64 = 16384;
 
     #[cfg_attr(
-        feature = "plugins",
+        all(feature = "plugins", not(test)),
         expect(unused, reason = "unused for now, but makes sense to have")
     )]
     pub fn new(core: RSnesCore) -> Self {
@@ -366,6 +371,16 @@ impl RSnesEmu {
         Ok(Self { core: rc, plugin })
     }
 
+    /// The console, to read it.
+    pub fn core(&self) -> impl Deref<Target = RSnesCore> {
+        #[cfg(feature = "plugins")]
+        return self.core.borrow();
+
+        #[cfg(not(feature = "plugins"))]
+        return &self.core;
+    }
+
+    /// The console, to change it.
     pub fn core_mut(&mut self) -> impl DerefMut<Target = RSnesCore> {
         #[cfg(feature = "plugins")]
         return self.core.borrow_mut();

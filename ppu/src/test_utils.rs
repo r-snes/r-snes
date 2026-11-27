@@ -1,5 +1,8 @@
 //! Helpers shared by the PPU tests.
 
+// Test helpers: left out of the coverage report.
+#![cfg(not(tarpaulin_include))]
+
 use crate::constants::SCREEN_WIDTH;
 use crate::ppu::PPU;
 use crate::rendering::renderer::Renderer;

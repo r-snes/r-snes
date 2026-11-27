@@ -10,6 +10,7 @@ use instr_metalang_procmacro::cpu_instr_no_inc_pc;
 /// The primary way to use this CPU is through the [`Self::cycle`] function,
 /// which allows to resume execution between cycles, and inspecting
 /// what kind of cycle (memory access or internal) the CPU just finished.
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct CPU {
     /// Internal registers accessible read/write to executed programs
     pub(crate) registers: Registers,
@@ -52,7 +53,7 @@ pub struct CPU {
 
 /// State of the CPU, hinting what may or may not happen
 /// when calling the [`CPU::cycle`] function
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum CPUState {
     /// Default state of the CPU: running, executing instructions
     #[default]
@@ -107,6 +108,11 @@ impl CPU {
     /// Public getter to internal registers, can be used for tests or diagnostics
     pub fn regs(&self) -> &Registers {
         &self.registers
+    }
+
+    /// Public getter to the CPU state
+    pub fn state(&self) -> CPUState {
+        self.state
     }
 
     /// Public getter to the address bus, needs to be read by the
