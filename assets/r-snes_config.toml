@@ -1,0 +1,13 @@
+# R-SNES 0.2.0 default configuration file
+#
+# As of this version, this configuration file results in exactly
+# the same configuration options as an empty file (because ommitted
+# options have a default value, and all the options are explicitly
+# assigned their default value in this file)
+#
+# See https://toml.io/en/ if you want to learn to deal with TOML yourself
+# and the "Configuring" section of our wiki to learn more about config options
+
+[general]
+# Available values: all below + "rom_info"
+pause_when = ["navbar", "perm_request", "error_popup", "save_state", "config_info"]

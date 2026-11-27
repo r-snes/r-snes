@@ -904,7 +904,7 @@ impl Gui {
                         }
                     }
                 }
-                match std::fs::write(path, "# config file\n") {
+                match std::fs::write(path, crate::assets::DEFAULT_CONFIG_FILE) {
                     Ok(()) => self.state.reload_config(),
                     Err(e) => self.pass_error(Box::new(e)),
                 }

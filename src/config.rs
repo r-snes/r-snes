@@ -167,4 +167,21 @@ mod test {
     fn fail_on_unexpected_field() {
         assert!(toml::de::from_str::<RSnesConfig>("non_existent_option = 3").is_err())
     }
+
+    #[test]
+    fn default_config_equals_empty() {
+        assert_eq!(
+            toml::de::from_str::<RSnesConfig>(crate::assets::DEFAULT_CONFIG_FILE),
+            toml::de::from_str::<RSnesConfig>(""),
+        )
+    }
+
+    #[test]
+    fn default_config_contains_the_correct_version() {
+        let current_version = env!("CARGO_PKG_VERSION");
+        assert!(
+            crate::assets::DEFAULT_CONFIG_FILE.contains(current_version),
+            "Default config file doesn't contain the current version number ({current_version})"
+        )
+    }
 }

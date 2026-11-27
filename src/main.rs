@@ -8,6 +8,7 @@
 //! It contains the main loop, which handles GUI events,
 //! emulation updates, and audio output.
 
+mod assets;
 mod audio;
 mod config;
 mod dma;
