@@ -883,7 +883,7 @@ impl Gui {
                     }
                 }
             }
-            match std::fs::OpenOptions::new().write(true).create(true).open(path) {
+            match std::fs::OpenOptions::new().write(true).create_new(true).open(path) {
                 Ok(file) => Some(file),
                 Err(e) => {
                     gui.pass_error(Box::new(e));
