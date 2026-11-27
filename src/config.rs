@@ -27,6 +27,7 @@ pub struct RSnesConfig {
 #[cfg_attr(test, derive(PartialEq, Eq, Debug))]
 #[serde(deny_unknown_fields)]
 pub struct GeneralConfig {
+    #[serde(default)]
     pub pause_when: PauseWhen,
 }
 
@@ -171,8 +172,8 @@ mod test {
     #[test]
     fn default_config_equals_empty() {
         assert_eq!(
-            toml::de::from_str::<RSnesConfig>(crate::assets::DEFAULT_CONFIG_FILE),
-            toml::de::from_str::<RSnesConfig>(""),
+            toml::de::from_str::<RSnesConfig>(crate::assets::DEFAULT_CONFIG_FILE).unwrap(),
+            toml::de::from_str::<RSnesConfig>("").unwrap(),
         )
     }
 
@@ -183,5 +184,13 @@ mod test {
             crate::assets::DEFAULT_CONFIG_FILE.contains(current_version),
             "Default config file doesn't contain the current version number ({current_version})"
         )
+    }
+
+    #[test]
+    fn empty_general_tab() {
+        assert_eq!(
+            toml::de::from_str::<RSnesConfig>("[general]\n").unwrap(),
+            Default::default(),
+        );
     }
 }
