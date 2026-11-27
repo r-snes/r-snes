@@ -6,4 +6,4 @@ pub const DEFAULT_FRAMEBUFFER: &ppu::rendering::RawFramebuffer =
     include_bytes!("../assets/logo_framebuffer.raw");
 
 /// The default R-SNES configuration file
-pub const DEFAULT_CONFIG_FILE: &'static str = include_str!("../assets/r-snes_config.toml");
+pub const DEFAULT_CONFIG_FILE: &str = include_str!("../assets/r-snes_config.toml");
