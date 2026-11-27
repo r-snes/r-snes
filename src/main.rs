@@ -417,7 +417,12 @@ struct Cli {
     /// A custom config file path to use instead of the system default
     #[cfg_attr(
         feature = "cli",
-        arg(long, short = 'c', value_name = "path/to/config.toml", default_value_os_t)
+        arg(
+            long,
+            short = 'c',
+            value_name = "path/to/config.toml",
+            default_value_os_t
+        )
     )]
     pub config_file: ConfigPath,
 
@@ -460,7 +465,7 @@ impl From<ConfigPath> for OsString {
     fn from(value: ConfigPath) -> Self {
         match value.0 {
             None => "".into(),
-            Some(p) => p.into()
+            Some(p) => p.into(),
         }
     }
 }
