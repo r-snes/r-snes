@@ -214,6 +214,7 @@ impl GuiState {
         self.error_popup = None;
         self.save_state_picker = None;
         self.notification = None;
+        self.config_ui = None;
         #[cfg(feature = "plugins")]
         {
             self.pending_plugin = None;
@@ -222,7 +223,10 @@ impl GuiState {
     }
 
     /// Creates a new [`GuiState`] with the result of loading a config file
-    pub fn new(config_load: Result<RSnesConfig, ConfigLoadError>, config_path: Option<PathBuf>) -> Self {
+    pub fn new(
+        config_load: Result<RSnesConfig, ConfigLoadError>,
+        config_path: Option<PathBuf>,
+    ) -> Self {
         let mut self_ = Self {
             config_path,
             ..Default::default()
@@ -264,8 +268,10 @@ impl GuiState {
     }
 
     pub fn any_open(&self) -> bool {
-        let mut open =
-            self.show_rom_info || self.error_popup.is_some() || self.save_state_picker.is_some();
+        let mut open = self.show_rom_info
+            || self.error_popup.is_some()
+            || self.save_state_picker.is_some()
+            || self.config_ui.is_some();
         #[cfg(feature = "plugins")]
         {
             open = open || self.pending_plugin.is_some();
