@@ -7,10 +7,9 @@ use std::{
 
 #[derive(Default, Deserialize)]
 #[cfg_attr(test, derive(PartialEq, Eq, Debug))]
-#[serde(deny_unknown_fields)]
+#[serde(deny_unknown_fields, default)]
 pub struct RSnesConfig {
     /// simpler general options
-    #[serde(default)]
     pub general: GeneralConfig,
     // commented out because unused, and somehow #[expect]
     // doesn't work to silence the warning
@@ -25,25 +24,25 @@ pub struct RSnesConfig {
 
 #[derive(Default, Deserialize)]
 #[cfg_attr(test, derive(PartialEq, Eq, Debug))]
-#[serde(deny_unknown_fields)]
+#[serde(deny_unknown_fields, default)]
 pub struct GeneralConfig {
-    #[serde(default)]
     pub pause_when: PauseWhen,
 }
 
 // same as above
 // #[derive(Default, Deserialize)]
 // #[cfg_attr(test, derive(PartialEq, Eq, Debug))]
-// #[serde(deny_unknown_fields)]
+// #[serde(deny_unknown_fields, default)]
 // pub struct InputConfig {}
 
 // #[derive(Default, Deserialize)]
 // #[cfg_attr(test, derive(PartialEq, Eq, Debug))]
-// #[serde(deny_unknown_fields)]
+// #[serde(deny_unknown_fields, default)]
 // pub struct ConfigConfig {}
 
 #[derive(Deserialize)]
 #[cfg_attr(test, derive(PartialEq, Eq, Debug))]
+#[serde(deny_unknown_fields, default)]
 pub struct PauseWhen(pub EnumSet<GuiContext>);
 
 impl Default for PauseWhen {
