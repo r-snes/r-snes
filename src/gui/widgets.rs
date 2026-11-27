@@ -820,7 +820,7 @@ pub fn config_error_box(
                         ConfigLoadError::IoError(io_err, _) => {
                             ui.label(io_err.to_string());
                             ui.horizontal(|ui| {
-                                action_button(ui, "Retry loading config", ConfigUiAction::OpenConfigFile);
+                                action_button(ui, "Retry loading config", ConfigUiAction::Reload);
                                 action_button(ui, "Ignore and run default config for now", ConfigUiAction::Close);
                             });
                         }
@@ -828,7 +828,7 @@ pub fn config_error_box(
                             ui.label(format!("Your config file at {path:?} isn't a valid R-SNES configuration file, see the error below:"));
                             ui.code(toml_err.to_string());
                             ui.horizontal(|ui| {
-                                action_button(ui, "Retry loading config", ConfigUiAction::OpenConfigFile);
+                                action_button(ui, "Retry loading config", ConfigUiAction::Reload);
                                 action_button(ui, "Ignore and run default config for now", ConfigUiAction::Close);
                                 action_button(ui, "Open config file", ConfigUiAction::OpenConfigFile);
                             });
